@@ -1,0 +1,9 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+#include "Generated.xcconfig"
+
+// Avoid CodeSign failures on iOS Simulator when files have extended attributes
+// like com.apple.FinderInfo or com.apple.fileprovider.* (common in synced folders).
+CODE_SIGNING_ALLOWED[sdk=iphonesimulator*] = NO
+CODE_SIGNING_REQUIRED[sdk=iphonesimulator*] = NO
+CODE_SIGN_IDENTITY[sdk=iphonesimulator*] =
+EXPANDED_CODE_SIGN_IDENTITY[sdk=iphonesimulator*] =
