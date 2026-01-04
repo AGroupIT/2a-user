@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 
-import '../../../core/ui/glass_surface.dart';
 import '../../../core/ui/sheet_handle.dart';
 
 class MoreSheet extends StatelessWidget {

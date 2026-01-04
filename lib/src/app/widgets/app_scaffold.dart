@@ -8,9 +8,6 @@ import '../../core/ui/glass_surface.dart';
 import '../../features/clients/presentation/client_switcher_button.dart';
 import '../../features/notifications/presentation/notifications_bell_button.dart';
 import '../../features/more/presentation/more_button.dart';
-import '../../core/ui/ios_visual_effect_view.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform, kIsWeb;
 
 class AppScaffold extends StatelessWidget {
   final String title;

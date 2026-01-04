@@ -7,8 +7,6 @@ Future<void> showHelpDialog(
   required String title,
   required Widget content,
 }) {
-  final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
-
   return showModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,

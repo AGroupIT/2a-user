@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:excel/excel.dart' as xls;
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/ui/sheet_handle.dart';
@@ -76,7 +73,6 @@ class TracksScreen extends ConsumerStatefulWidget {
 }
 
 class _TracksScreenState extends ConsumerState<TracksScreen> {
-  bool _isExporting = false;
   // Local tracking for photo report requests and their notes
   final Set<String> _requestedPhotoReports = <String>{};
   final Map<String, String> _photoRequestNotes = <String, String>{};
@@ -1328,57 +1324,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
   }
 
-  Future<void> _exportXlsx() async {
-    if (_isExporting) return;
-    setState(() => _isExporting = true);
-    try {
-      final excel = xls.Excel.createExcel();
-      final sheet = excel['Tracks'];
-      sheet.appendRow([
-        xls.TextCellValue('Код'),
-        xls.TextCellValue('Статус'),
-        xls.TextCellValue('Дата'),
-        xls.TextCellValue('Заметка'),
-      ]);
-
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) {
-        final tracks = ref
-            .read(tracksListProvider(clientCode))
-            .maybeWhen(data: (t) => t, orElse: () => const <TrackItem>[]);
-        final filtered = _applyFilters(tracks);
-        for (final t in filtered) {
-          sheet.appendRow([
-            xls.TextCellValue(t.code),
-            xls.TextCellValue(t.status),
-            xls.TextCellValue(DateFormat('yyyy-MM-dd').format(t.date)),
-            xls.TextCellValue(t.comment ?? ''),
-          ]);
-        }
-      }
-
-      final bytes = excel.encode();
-      if (bytes == null) {
-        _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
-        return;
-      }
-
-      final dir = await getApplicationDocumentsDirectory();
-      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final filePath = '${dir.path}/tracks_$ts.xlsx';
-      final file = File(filePath);
-      await file.writeAsBytes(bytes, flush: true);
-
-      _showStyledSnackBar(context, 'Файл сохранён');
-
-      await Share.shareXFiles([XFile(filePath)], text: 'Экспорт треков');
-    } catch (e) {
-      _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final clientCode = ref.watch(activeClientCodeProvider);
@@ -1604,13 +1549,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 }
 
 enum ViewMode { all, groups, singles }
-
-const Set<String> _selectableStatuses = {
-  'На складе',
-  'Отправлен',
-  'Прибыл на терминал',
-  'Сформирован к выдаче',
-};
 
 class _Filters extends StatefulWidget {
   final String status;

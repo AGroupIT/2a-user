@@ -144,12 +144,3 @@ class _IOSMaterialSurface extends StatelessWidget {
     );
   }
 }
-
-// Placeholder to help iOS compositor allocate layer before UiKitView attaches.
-class _iOSBlurViewPlaceholder extends StatelessWidget {
-  const _iOSBlurViewPlaceholder();
-  @override
-  Widget build(BuildContext context) {
-    return const ColoredBox(color: Colors.transparent);
-  }
-}

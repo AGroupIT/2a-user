@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/empty_state.dart';
-import '../../../core/ui/glass_surface.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../application/client_codes_controller.dart';
 

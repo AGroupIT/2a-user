@@ -30,11 +30,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
         : codes.first;
 
     await prefs.setStringList(_codesKey, codes);
-    if (active != null) {
-      await prefs.setString(_activeKey, active);
-    } else {
-      await prefs.remove(_activeKey);
-    }
+    await prefs.setString(_activeKey, active);
 
     return ClientCodesState(codes: List.unmodifiable(codes), activeCode: active);
   }
