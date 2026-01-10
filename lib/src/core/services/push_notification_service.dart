@@ -1,11 +1,21 @@
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/notifications/domain/notification_item.dart';
+
+/// Background message handler (must be top-level)
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('🔔 Background FCM message: ${message.messageId}');
+}
 
 /// Провайдер для сервиса push-уведомлений
 final pushNotificationServiceProvider = Provider<PushNotificationService>((
@@ -42,14 +52,122 @@ final unreadNotificationsCountProvider = NotifierProvider<UnreadNotificationsCou
 
 /// Сервис для управления push-уведомлениями и badge на иконке приложения
 class PushNotificationService {
+  static final PushNotificationService _instance = PushNotificationService._internal();
+  factory PushNotificationService() => _instance;
+  PushNotificationService._internal();
+  
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
-  bool _isInitialized = false;
+  static FirebaseMessaging? _messaging;
+  static bool _isInitialized = false;
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
+  
+  // Callback для обработки FCM сообщений
+  static Function(RemoteMessage)? onFCMMessageReceived;
 
-  /// Инициализация сервиса уведомлений
+  /// Статическая инициализация Firebase (вызывать из main)
+  static Future<void> initializeFirebase() async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+      
+      _messaging = FirebaseMessaging.instance;
+      
+      // Запрос разрешений
+      final settings = await _messaging!.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      
+      debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
+      
+      // Background handler
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      
+      // Foreground handler
+      FirebaseMessaging.onMessage.listen((message) {
+        debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
+        onFCMMessageReceived?.call(message);
+        _showFCMNotification(message);
+      });
+      
+      // Message opened app
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        debugPrint('🔔 FCM opened app: ${message.notification?.title}');
+        // Handle navigation based on message data
+      });
+      
+      debugPrint('🔔 Firebase initialized');
+    } catch (e) {
+      debugPrint('🔔 Firebase init error: $e');
+    }
+  }
+  
+  /// Показать локальное уведомление из FCM
+  static Future<void> _showFCMNotification(RemoteMessage message) async {
+    final notification = message.notification;
+    if (notification == null) return;
+    
+    final plugin = FlutterLocalNotificationsPlugin();
+    
+    const androidDetails = AndroidNotificationDetails(
+      'fcm_channel',
+      'Push уведомления',
+      channelDescription: 'Уведомления от сервера',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+    
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+    
+    await plugin.show(
+      message.hashCode,
+      notification.title,
+      notification.body,
+      const NotificationDetails(android: androidDetails, iOS: iosDetails),
+      payload: message.data['route'],
+    );
+  }
+  
+  /// Получить FCM токен
+  static Future<String?> getFCMToken() async {
+    try {
+      return await _messaging?.getToken();
+    } catch (e) {
+      debugPrint('🔔 Error getting FCM token: $e');
+      return null;
+    }
+  }
+  
+  /// Подписаться на топик
+  static Future<void> subscribeToTopic(String topic) async {
+    try {
+      await _messaging?.subscribeToTopic(topic);
+      debugPrint('🔔 Subscribed to: $topic');
+    } catch (e) {
+      debugPrint('🔔 Subscribe error: $e');
+    }
+  }
+  
+  /// Отписаться от топика
+  static Future<void> unsubscribeFromTopic(String topic) async {
+    try {
+      await _messaging?.unsubscribeFromTopic(topic);
+    } catch (e) {
+      debugPrint('🔔 Unsubscribe error: $e');
+    }
+  }
+
+  /// Инициализация локальных уведомлений
   Future<void> initialize({void Function(String? route)? onTap}) async {
     if (_isInitialized) {
       onNotificationTap = onTap;
@@ -78,7 +196,7 @@ class PushNotificationService {
     );
 
     // Request permissions on iOS
-    if (Platform.isIOS) {
+    if (!kIsWeb && Platform.isIOS) {
       await _notifications
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin

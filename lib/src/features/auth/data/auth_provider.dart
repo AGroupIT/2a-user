@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 
+import '../../../core/services/push_notification_service.dart';
 import '../../clients/application/client_codes_controller.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
@@ -85,12 +87,37 @@ class AuthNotifier extends Notifier<AuthState> {
         userDomain: domain,
         isLoading: false,
       );
+      
+      // Регистрируем устройство для push-уведомлений
+      _registerForPush(domain);
+      
       return true;
     }
     return false;
   }
+  
+  /// Регистрация устройства для push-уведомлений
+  Future<void> _registerForPush(String domain) async {
+    try {
+      final token = await PushNotificationService.getFCMToken();
+      if (token != null) {
+        debugPrint('🔔 FCM Token for client: ${token.substring(0, 20)}...');
+        // TODO: Отправить токен на сервер через API
+        // await apiClient.post('/devices', data: {...})
+      }
+      
+      // Подписываемся на топики клиентов
+      await PushNotificationService.subscribeToTopic('clients');
+      await PushNotificationService.subscribeToTopic('domain_$domain');
+    } catch (e) {
+      debugPrint('🔔 Error registering for push: $e');
+    }
+  }
 
   Future<void> logout() async {
+    // Отписываемся от push-уведомлений
+    await _unregisterFromPush();
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kIsLoggedInKey);
     await prefs.remove(_kUserEmailKey);
@@ -103,6 +130,19 @@ class AuthNotifier extends Notifier<AuthState> {
       isLoggedIn: false,
       isLoading: false,
     );
+  }
+  
+  /// Отписка от push-уведомлений
+  Future<void> _unregisterFromPush() async {
+    try {
+      final domain = state.userDomain;
+      await PushNotificationService.unsubscribeFromTopic('clients');
+      if (domain != null) {
+        await PushNotificationService.unsubscribeFromTopic('domain_$domain');
+      }
+    } catch (e) {
+      debugPrint('🔔 Error unregistering from push: $e');
+    }
   }
 }
 

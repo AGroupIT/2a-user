@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "949693718080",
+    "project_id": "a-user",
+    "storage_bucket": "a-user.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:949693718080:android:c3e09cea22b5d8379a49a5",
+        "android_client_info": {
+          "package_name": "com.twoalogistic.user"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
