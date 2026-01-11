@@ -1,6 +1,10 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/persistence/shared_preferences_provider.dart';
+import '../../auth/data/auth_provider.dart';
 import '../domain/client_codes_state.dart';
 
 final clientCodesControllerProvider =
@@ -14,22 +18,56 @@ final activeClientCodeProvider = Provider<String?>((ref) {
 });
 
 class ClientCodesController extends AsyncNotifier<ClientCodesState> {
-  static const _codesKey = 'client_codes';
   static const _activeKey = 'active_client_code';
+  static const _codesKey = 'client_codes_list';
 
   @override
   Future<ClientCodesState> build() async {
     final prefs = await ref.watch(sharedPreferencesProvider.future);
+    final authState = ref.watch(authProvider);
     
-    // Для разработки всегда используем тестовые данные
-    final codes = <String>['2A-12', '2A-34', '3B-56', '4C-78', '5D-90'];
+    // Если авторизация ещё грузится - ждём
+    if (authState.isLoading) {
+      return const ClientCodesState(codes: [], activeCode: null);
+    }
     
+    // Получаем коды из данных авторизации
+    List<String> codes = [];
+    
+    if (authState.clientData != null) {
+      final clientCodes = authState.clientData!['codes'];
+      if (clientCodes is List) {
+        codes = clientCodes.map((e) {
+          if (e is Map) {
+            return (e['code'] ?? e.toString()).toString();
+          }
+          return e.toString();
+        }).toList();
+      }
+    }
+    
+    // Если кодов нет из авторизации - пробуем восстановить из локального хранилища
+    if (codes.isEmpty) {
+      final savedCodes = prefs.getStringList(_codesKey);
+      if (savedCodes != null && savedCodes.isNotEmpty) {
+        codes = savedCodes;
+      }
+    } else {
+      // Сохраняем коды локально для восстановления после перезапуска
+      await prefs.setStringList(_codesKey, codes);
+    }
+    
+    // Если кодов всё ещё нет - возвращаем пустой state
+    if (codes.isEmpty) {
+      return const ClientCodesState(codes: [], activeCode: null);
+    }
+    
+    // Восстанавливаем сохранённый активный код
     final storedActive = prefs.getString(_activeKey);
     final active = (storedActive != null && codes.contains(storedActive))
         ? storedActive
         : codes.first;
 
-    await prefs.setStringList(_codesKey, codes);
     await prefs.setString(_activeKey, active);
 
     return ClientCodesState(codes: List.unmodifiable(codes), activeCode: active);
@@ -49,8 +87,9 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
     required String code,
     required String pin,
   }) async {
-    final trimmedCode = code.trim();
+    final trimmedCode = code.trim().toUpperCase();
     final trimmedPin = pin.trim();
+    
     if (trimmedCode.isEmpty) {
       throw Exception('Введите код клиента');
     }
@@ -58,21 +97,72 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
       throw Exception('PIN должен быть из 4 цифр');
     }
 
+    // Проверяем, не привязан ли уже этот код
     final current = state.asData?.value ?? const ClientCodesState(codes: [], activeCode: null);
-    final nextCodes = <String>{...current.codes, trimmedCode}.toList()..sort();
-    final nextState = ClientCodesState(codes: List.unmodifiable(nextCodes), activeCode: trimmedCode);
+    if (current.codes.contains(trimmedCode)) {
+      throw Exception('Этот код уже привязан к вашему аккаунту');
+    }
 
-    state = AsyncValue.data(nextState);
+    // Вызываем API для привязки кода к клиенту
+    final apiClient = ref.read(apiClientProvider);
+    
+    try {
+      final response = await apiClient.post(
+        '/client-codes/link-by-pin',
+        data: {
+          'code': trimmedCode,
+          'pin': trimmedPin,
+        },
+      );
+      
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Не удалось привязать код');
+      }
+      
+      // Успешно привязали - добавляем код в список
+      final nextCodes = <String>{...current.codes, trimmedCode}.toList()..sort();
+      final nextState = ClientCodesState(
+        codes: List.unmodifiable(nextCodes),
+        activeCode: trimmedCode,
+      );
 
-    final prefs = await ref.read(sharedPreferencesProvider.future);
-    await prefs.setStringList(_codesKey, nextCodes);
-    await prefs.setString(_activeKey, trimmedCode);
+      state = AsyncValue.data(nextState);
+
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      await prefs.setString(_activeKey, trimmedCode);
+      await prefs.setStringList(_codesKey, nextCodes);
+      
+      debugPrint('✅ Код $trimmedCode успешно привязан');
+    } on DioException catch (e) {
+      debugPrint('❌ Ошибка привязки кода: $e');
+      
+      String errorMessage = 'Не удалось привязать код';
+      
+      if (e.response?.statusCode == 404) {
+        errorMessage = 'Код не найден';
+      } else if (e.response?.statusCode == 400) {
+        final data = e.response?.data;
+        if (data is Map && data['error'] != null) {
+          errorMessage = data['error'].toString();
+        } else {
+          errorMessage = 'Неверный PIN или код уже привязан';
+        }
+      } else if (e.response?.statusCode == 409) {
+        errorMessage = 'Этот код уже привязан к другому клиенту';
+      } else if (e.response?.data is Map) {
+        final data = e.response!.data as Map;
+        if (data['error'] != null) {
+          errorMessage = data['error'].toString();
+        }
+      }
+      
+      throw Exception(errorMessage);
+    }
   }
 
   Future<void> logout() async {
     final prefs = await ref.read(sharedPreferencesProvider.future);
     await prefs.remove(_activeKey);
-    await prefs.remove(_codesKey);
     // По UX после выхода оставим пустой список и null активный код
     state = const AsyncValue.data(ClientCodesState(codes: [], activeCode: null));
   }

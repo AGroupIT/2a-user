@@ -128,6 +128,88 @@ class NotificationItem {
     );
   }
 
+  /// Парсинг из JSON (API response)
+  factory NotificationItem.fromJson(Map<String, dynamic> json) {
+    final typeStr = json['type'] as String? ?? 'track_update';
+    final data = json['data'] as Map<String, dynamic>? ?? {};
+    
+    // Определяем тип уведомления
+    final type = _parseNotificationType(typeStr);
+    
+    // Определяем маршрут
+    String? route = _getRouteForType(type, data);
+    
+    return NotificationItem(
+      id: json['id'].toString(),
+      type: type,
+      title: json['title'] as String? ?? '',
+      message: json['body'] as String? ?? '',
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      isRead: json['isRead'] as bool? ?? false,
+      route: route,
+      relatedId: data['trackNumber'] as String? ?? 
+                 data['assemblyNumber'] as String? ?? 
+                 data['invoiceNumber'] as String? ??
+                 data['trackId']?.toString() ??
+                 data['assemblyId']?.toString() ??
+                 data['invoiceId']?.toString(),
+      oldStatus: data['oldStatus'] as String?,
+      newStatus: data['newStatus'] as String? ?? data['status'] as String?,
+    );
+  }
+  
+  /// Парсинг типа уведомления из строки API
+  static NotificationType _parseNotificationType(String typeStr) {
+    switch (typeStr) {
+      case 'track_update':
+      case 'track_status_changed':
+      case 'track_status_change':
+        return NotificationType.trackStatus;
+      case 'assembly_update':
+      case 'assembly_status_changed':
+      case 'assembly_status_change':
+        return NotificationType.assemblyStatus;
+      case 'photo_report_update':
+      case 'photo_report_ready':
+      case 'photo_request_completed':
+        return NotificationType.photoReportStatus;
+      case 'question_answered':
+      case 'question_update':
+        return NotificationType.questionStatus;
+      case 'chat_message':
+      case 'new_message':
+        return NotificationType.chatMessage;
+      case 'news':
+      case 'new_news':
+        return NotificationType.news;
+      case 'invoice':
+      case 'new_invoice':
+      case 'invoice_created':
+        return NotificationType.invoice;
+      default:
+        return NotificationType.trackStatus;
+    }
+  }
+  
+  /// Получить маршрут для типа уведомления
+  static String? _getRouteForType(NotificationType type, Map<String, dynamic> data) {
+    switch (type) {
+      case NotificationType.trackStatus:
+      case NotificationType.assemblyStatus:
+      case NotificationType.photoReportStatus:
+      case NotificationType.questionStatus:
+        return '/tracks';
+      case NotificationType.chatMessage:
+        return '/support';
+      case NotificationType.news:
+        final newsId = data['newsId'];
+        if (newsId != null) return '/news/$newsId';
+        return '/news';
+      case NotificationType.invoice:
+        return '/invoices';
+    }
+  }
+
   /// Создать уведомление об изменении статуса трека
   factory NotificationItem.trackStatusChange({
     required String id,

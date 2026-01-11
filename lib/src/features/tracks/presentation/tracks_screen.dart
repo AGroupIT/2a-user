@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -5,13 +6,33 @@ import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/services/auto_refresh_service.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../data/fake_tracks_repository.dart';
+import '../../auth/data/auth_provider.dart';
+import '../data/tracks_provider.dart';
+import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
+
+// Alias для authStateProvider
+final authStateProvider = authProvider;
+
+/// Парсит HEX цвет из строки (например "#FF5733" или "FF5733")
+Color? parseHexColor(String? hexString) {
+  if (hexString == null || hexString.isEmpty) return null;
+  try {
+    String hex = hexString.replaceAll('#', '');
+    if (hex.length == 6) {
+      hex = 'FF$hex'; // Добавляем альфа-канал
+    }
+    return Color(int.parse(hex, radix: 16));
+  } catch (_) {
+    return null;
+  }
+}
 
 void _showStyledSnackBar(
   BuildContext context,
@@ -59,7 +80,7 @@ void _showStyledSnackBar(
           ? const Color(0xFFE53935)
           : const Color(0xFFfe3301),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 15 ),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
       duration: const Duration(seconds: 3),
     ),
   );
@@ -72,22 +93,24 @@ class TracksScreen extends ConsumerStatefulWidget {
   ConsumerState<TracksScreen> createState() => _TracksScreenState();
 }
 
-class _TracksScreenState extends ConsumerState<TracksScreen> {
+class _TracksScreenState extends ConsumerState<TracksScreen>
+    with AutoRefreshMixin {
   // Local tracking for photo report requests and their notes
   final Set<String> _requestedPhotoReports = <String>{};
   final Map<String, String> _photoRequestNotes = <String, String>{};
   final Map<String, DateTime> _photoRequestCreatedAt = <String, DateTime>{};
   final Map<String, DateTime> _photoRequestUpdatedAt = <String, DateTime>{};
-  String _status = 'Все';
-  final List<String> _allStatuses = const [
-    'Все',
-    'На складе',
-    'Отправлен',
-    'Прибыл на терминал',
-    'Сформирован к выдаче',
-  ];
+
+  // Фильтры - теперь используем код статуса из БД
+  String? _statusCode; // null = Все
   ViewMode _viewMode = ViewMode.all;
   String _query = '';
+  Timer? _searchDebounce;
+
+  // Текущий notifier для отслеживания изменений состояния
+  PaginatedTracksNotifier? _currentNotifier;
+
+  // Выбранные треки
   final Set<String> _selectedTracks = <String>{};
   String? _selectedStatus;
   final Set<String> _selectableStatuses = const {
@@ -111,26 +134,55 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   final Map<String, DateTime> _groupQuestionCreatedAt = <String, DateTime>{};
   final Map<String, DateTime> _groupQuestionUpdatedAt = <String, DateTime>{};
 
-  // Packaging options
-  static const List<String> _packagingOptions = [
-    'Коробка',
-    'Картонные уголки',
-    'Пенопласт',
-    'Пузырчатая пленка',
-    'Деревянная обвязка',
-    'Паллет',
-    'Запросить помощь менеджера',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _setupAutoRefresh();
+  }
 
-  static const List<String> _cargoCategories = [
-    'Сборный груз',
-    'Хоз.товары/текстиль',
-    'Одежда',
-    'Обувь',
-    'Продукты питания',
-    'Спец.тариф',
-    'Крупный опт',
-  ];
+  void _setupAutoRefresh() {
+    startAutoRefresh(() {
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode != null) {
+        // Тихое обновление без показа индикатора загрузки
+        ref.read(paginatedTracksProvider(clientCode)).loadInitial(silent: true);
+        // Также обновляем сборки в фоне
+        ref.invalidate(assembliesListProvider(clientCode));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    stopAutoRefresh();
+    _searchDebounce?.cancel();
+    _currentNotifier?.removeListener(_onNotifierStateChanged);
+    super.dispose();
+  }
+
+  void _onNotifierStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _updateNotifierListener(PaginatedTracksNotifier newNotifier) {
+    if (_currentNotifier != newNotifier) {
+      _currentNotifier?.removeListener(_onNotifierStateChanged);
+      _currentNotifier = newNotifier;
+      _currentNotifier?.addListener(_onNotifierStateChanged);
+    }
+  }
+
+  /// Метод для обновления списка треков
+  void _refreshTracks() {
+    final clientCode = ref.read(activeClientCodeProvider);
+    if (clientCode != null) {
+      // Обновляем с актуальными фильтрами из UI
+      final filterParams = _getFilterParams(clientCode);
+      ref.read(paginatedTracksProvider(clientCode)).updateFilters(filterParams);
+    }
+  }
 
   Future<bool> _confirmAction(
     BuildContext context, {
@@ -282,13 +334,62 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     );
     if (result == true) {
       final now = DateTime.now();
+      final wish = controller.text.trim();
+
+      // Получаем данные для API
+      final auth = ref.read(authStateProvider);
+      final clientId = auth.clientId;
+      // Получаем clientCodeId из clientData
+      int? clientCodeId;
+      final codes = auth.clientData?['codes'] as List<dynamic>?;
+      if (codes != null && codes.isNotEmpty) {
+        final firstCode = codes.first;
+        if (firstCode is Map<String, dynamic>) {
+          clientCodeId = firstCode['id'] as int?;
+        }
+      }
+
+      if (track.id == null || clientId == null) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: нет данных для запроса',
+          isError: true,
+        );
+        return;
+      }
+
+      // Оптимистичное обновление UI
       setState(() {
         _requestedPhotoReports.add(track.code);
-        _photoRequestNotes[track.code] = controller.text.trim();
+        _photoRequestNotes[track.code] = wish;
         _photoRequestCreatedAt[track.code] = now;
         _photoRequestUpdatedAt[track.code] = now;
       });
-      _showStyledSnackBar(context, 'Запрос фотоотчёта отправлен');
+
+      // Отправляем запрос в API
+      final apiService = ref.read(tracksApiServiceProvider);
+      final success = await apiService.createPhotoRequest(
+        clientId: clientId,
+        clientCodeId: clientCodeId,
+        trackId: track.id!,
+        trackNumber: track.code,
+        wish: wish.isNotEmpty ? wish : null,
+      );
+
+      if (success) {
+        _showStyledSnackBar(context, 'Запрос фотоотчёта отправлен');
+        // Обновляем список треков
+        _refreshTracks();
+      } else {
+        // Откатываем изменения
+        setState(() {
+          _requestedPhotoReports.remove(track.code);
+          _photoRequestNotes.remove(track.code);
+          _photoRequestCreatedAt.remove(track.code);
+          _photoRequestUpdatedAt.remove(track.code);
+        });
+        _showStyledSnackBar(context, 'Ошибка отправки запроса', isError: true);
+      }
     }
   }
 
@@ -389,15 +490,139 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     );
     if (result == true) {
       final now = DateTime.now();
+      final question = controller.text.trim();
+
+      if (question.isEmpty) {
+        _showStyledSnackBar(context, 'Введите вопрос', isError: true);
+        return;
+      }
+
+      // Получаем данные для API
+      final auth = ref.read(authStateProvider);
+      final clientId = auth.clientId;
+      // Получаем clientCodeId из clientData
+      int? clientCodeId;
+      final codes = auth.clientData?['codes'] as List<dynamic>?;
+      if (codes != null && codes.isNotEmpty) {
+        final firstCode = codes.first;
+        if (firstCode is Map<String, dynamic>) {
+          clientCodeId = firstCode['id'] as int?;
+        }
+      }
+
+      if (track.id == null || clientId == null) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: нет данных для запроса',
+          isError: true,
+        );
+        return;
+      }
+
+      // Оптимистичное обновление UI
+      final wasEmpty = (_askedQuestions[track.code] ?? '').trim().isEmpty;
       setState(() {
-        final wasEmpty = (_askedQuestions[track.code] ?? '').trim().isEmpty;
-        _askedQuestions[track.code] = controller.text.trim();
+        _askedQuestions[track.code] = question;
         if (wasEmpty) {
           _questionCreatedAt[track.code] = now;
         }
         _questionUpdatedAt[track.code] = now;
       });
-      _showStyledSnackBar(context, 'Вопрос отправлен');
+
+      // Отправляем запрос в API
+      final apiService = ref.read(tracksApiServiceProvider);
+      final success = await apiService.createTrackQuestion(
+        clientId: clientId,
+        clientCodeId: clientCodeId,
+        trackId: track.id!,
+        trackNumber: track.code,
+        question: question,
+      );
+
+      if (success) {
+        _showStyledSnackBar(context, 'Вопрос отправлен');
+        // Обновляем список треков
+        _refreshTracks();
+      } else {
+        // Откатываем изменения при ошибке
+        setState(() {
+          if (wasEmpty) {
+            _askedQuestions.remove(track.code);
+            _questionCreatedAt.remove(track.code);
+          }
+          _questionUpdatedAt.remove(track.code);
+        });
+        _showStyledSnackBar(context, 'Ошибка отправки вопроса', isError: true);
+      }
+    }
+  }
+
+  Future<void> _cancelPhotoRequest(TrackItem track) async {
+    final confirmed = await _confirmAction(
+      context,
+      title: 'Отменить запрос фотоотчёта?',
+      message: 'Запрос фотоотчёта будет отменён.',
+    );
+
+    if (!confirmed) return;
+
+    // Если есть активный запрос из API
+    final activeRequest = track.activePhotoRequest;
+    if (activeRequest != null) {
+      final apiService = ref.read(tracksApiServiceProvider);
+      final success = await apiService.cancelPhotoRequest(activeRequest.id);
+
+      if (success) {
+        // Обновляем список треков
+        _refreshTracks();
+        _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
+      } else {
+        _showStyledSnackBar(context, 'Ошибка отмены запроса', isError: true);
+      }
+    } else {
+      // Удаляем из локального state
+      setState(() {
+        _requestedPhotoReports.remove(track.code);
+        _photoRequestNotes.remove(track.code);
+        _photoRequestCreatedAt.remove(track.code);
+        _photoRequestUpdatedAt.remove(track.code);
+      });
+      _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
+    }
+  }
+
+  Future<void> _cancelQuestion(TrackItem track) async {
+    final confirmed = await _confirmAction(
+      context,
+      title: 'Отменить вопрос?',
+      message: 'Вопрос будет отменён.',
+    );
+
+    if (!confirmed) return;
+
+    // Если есть активный вопрос из API
+    final activeQuestion = track.activeQuestion;
+    if (activeQuestion != null) {
+      final apiService = ref.read(tracksApiServiceProvider);
+      final success = await apiService.cancelTrackQuestion(activeQuestion.id);
+
+      if (success) {
+        // Обновляем список треков
+        _refreshTracks();
+        _showStyledSnackBar(context, 'Вопрос отменён');
+      } else {
+        _showStyledSnackBar(context, 'Ошибка отмены вопроса', isError: true);
+      }
+    } else {
+      // Удаляем из локального state
+      setState(() {
+        _askedQuestions.remove(track.code);
+        _questionStatus.remove(track.code);
+        _questionAnswers.remove(track.code);
+        _questionCreatedAt.remove(track.code);
+        _questionUpdatedAt.remove(track.code);
+      });
+      _showStyledSnackBar(context, 'Вопрос отменён');
     }
   }
 
@@ -484,16 +709,38 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     if (result == true) {
-      setState(() => _overrideComments[track.code] = controller.text.trim());
-      _showStyledSnackBar(context, 'Заметка сохранена');
+      final comment = controller.text.trim();
+      setState(() => _overrideComments[track.code] = comment);
+
+      // Сохраняем в API если есть trackId
+      if (track.id != null) {
+        final apiService = ref.read(tracksApiServiceProvider);
+        final success = await apiService.addTrackComment(
+          trackId: track.id!,
+          comment: comment,
+        );
+
+        if (success) {
+          _showStyledSnackBar(context, 'Заметка сохранена');
+        } else {
+          _showStyledSnackBar(
+            context,
+            'Заметка сохранена локально',
+            isError: false,
+          );
+        }
+      } else {
+        _showStyledSnackBar(context, 'Заметка сохранена');
+      }
     }
   }
 
   Future<void> _showGroupCommentSheet(
     BuildContext context,
-    TrackGroup group,
+    TrackAssembly assembly,
   ) async {
-    final existing = _groupComments[group.id] ?? '';
+    // Используем комментарий из локального кэша или из данных сборки
+    final existing = _groupComments[assembly.id.toString()] ?? assembly.comment ?? '';
     final controller = TextEditingController(text: existing);
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -577,17 +824,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     if (result == true) {
-      setState(() => _groupComments[group.id] = controller.text.trim());
-      _showStyledSnackBar(context, 'Заметка по сборке сохранена');
+      final comment = controller.text.trim();
+      setState(() => _groupComments[assembly.id.toString()] = comment);
+
+      // Сохраняем в API
+      final apiService = ref.read(assembliesApiServiceProvider);
+      final success = await apiService.addAssemblyComment(
+        assemblyId: assembly.id,
+        comment: comment,
+      );
+
+      if (success) {
+        _showStyledSnackBar(context, 'Заметка по сборке сохранена');
+      } else {
+        _showStyledSnackBar(
+          context,
+          'Ошибка сохранения заметки',
+          isError: true,
+        );
+      }
     }
   }
 
   Future<void> _showGroupQuestionSheet(
     BuildContext context,
-    TrackGroup group,
+    TrackAssembly assembly,
   ) async {
     final controller = TextEditingController(
-      text: _groupQuestions[group.id] ?? '',
+      text: _groupQuestions[assembly.id.toString()] ?? '',
     );
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -681,22 +945,32 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     if (result == true) {
       final now = DateTime.now();
       setState(() {
-        final wasEmpty = (_groupQuestions[group.id] ?? '').trim().isEmpty;
-        _groupQuestions[group.id] = controller.text.trim();
+        final wasEmpty = (_groupQuestions[assembly.id.toString()] ?? '')
+            .trim()
+            .isEmpty;
+        _groupQuestions[assembly.id.toString()] = controller.text.trim();
         if (wasEmpty) {
-          _groupQuestionCreatedAt[group.id] = now;
+          _groupQuestionCreatedAt[assembly.id.toString()] = now;
         }
-        _groupQuestionUpdatedAt[group.id] = now;
+        _groupQuestionUpdatedAt[assembly.id.toString()] = now;
       });
       _showStyledSnackBar(context, 'Вопрос по сборке отправлен');
     }
   }
 
   Future<void> _showCreateGroupSheet(BuildContext context) async {
-    final selectedPacking = <String>{};
+    final selectedPackingIds = <int>{};
     String? selectedInsurance;
     String? insuranceAmount;
-    String? selectedCategory;
+
+    // Загружаем тарифы и типы упаковки
+    final tariffs = await ref.read(tariffsProvider.future);
+    final packagingTypes = await ref.read(packagingTypesProvider.future);
+    
+    // Выбираем первый тариф по умолчанию
+    Tariff? selectedTariff = tariffs.isNotEmpty ? tariffs.first : null;
+
+    if (!mounted) return;
 
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -737,7 +1011,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           ),
                           const SizedBox(height: 16),
                           const Text(
-                            'Категория груза',
+                            'Тариф',
                             style: TextStyle(
                               color: Colors.black54,
                               fontSize: 13,
@@ -745,29 +1019,40 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Theme(
-                            data: Theme.of(context).copyWith(
-                              dropdownMenuTheme: DropdownMenuThemeData(
-                                menuStyle: MenuStyle(
-                                  backgroundColor: MaterialStateProperty.all(
-                                    Colors.white,
+                          if (tariffs.isEmpty)
+                            const Text(
+                              'Нет доступных тарифов',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          else
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                dropdownMenuTheme: DropdownMenuThemeData(
+                                  menuStyle: MenuStyle(
+                                    backgroundColor: WidgetStateProperty.all(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
+                              child: _CustomDropdown<int>(
+                                value: selectedTariff!.id,
+                                label: 'Тариф',
+                                items: tariffs
+                                    .map(
+                                      (t) => _DropdownItem(
+                                        value: t.id,
+                                        label: '${t.name} — ${t.baseCost.toStringAsFixed(0)} ¥/кг',
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  setSheetState(() {
+                                    selectedTariff = tariffs.firstWhere((t) => t.id == value);
+                                  });
+                                },
+                              ),
                             ),
-                            child: _CustomDropdown<String>(
-                              value: selectedCategory ?? 'Выберите категорию',
-                              label: 'Категория груза',
-                              items: _cargoCategories
-                                  .map(
-                                    (cat) =>
-                                        _DropdownItem(value: cat, label: cat),
-                                  )
-                                  .toList(),
-                              onChanged: (value) =>
-                                  setSheetState(() => selectedCategory = value),
-                            ),
-                          ),
                           const SizedBox(height: 16),
                           const Text(
                             'Тип упаковки',
@@ -778,64 +1063,62 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          GridView.count(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            childAspectRatio: 4.5,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            children: _packagingOptions
-                                .where(
-                                  (opt) => opt != 'Запросить помощь менеджера',
-                                )
-                                .map((option) {
-                                  final isSelected = selectedPacking.contains(
-                                    option,
-                                  );
+                          if (packagingTypes.isEmpty)
+                            const Text(
+                              'Нет доступных типов упаковки',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          else
+                            GridView.count(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 8,
+                              crossAxisSpacing: 8,
+                              childAspectRatio: 3.0,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              children: packagingTypes.map((packing) {
+                                final isSelected = selectedPackingIds.contains(packing.id);
 
-                                  return GestureDetector(
-                                    onTap: () {
-                                      setSheetState(() {
-                                        if (isSelected) {
-                                          selectedPacking.remove(option);
-                                        } else {
-                                          selectedPacking.add(option);
-                                          // Сбрасываем помощь менеджера если выбран обычный тип
-                                          selectedPacking.remove(
-                                            'Запросить помощь менеджера',
-                                          );
-                                        }
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: isSelected
-                                            ? const LinearGradient(
-                                                colors: [
-                                                  Color(0xFFfe3301),
-                                                  Color(0xFFff5f02),
-                                                ],
-                                                begin: Alignment.centerLeft,
-                                                end: Alignment.centerRight,
-                                              )
-                                            : null,
-                                        color: isSelected ? null : Colors.white,
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? Colors.transparent
-                                              : Colors.grey.shade300,
-                                          width: 1,
-                                        ),
-                                        borderRadius: BorderRadius.circular(20),
+                                return GestureDetector(
+                                  onTap: () {
+                                    setSheetState(() {
+                                      if (isSelected) {
+                                        selectedPackingIds.remove(packing.id);
+                                      } else {
+                                        selectedPackingIds.add(packing.id);
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: isSelected
+                                          ? const LinearGradient(
+                                              colors: [
+                                                Color(0xFFfe3301),
+                                                Color(0xFFff5f02),
+                                              ],
+                                              begin: Alignment.centerLeft,
+                                              end: Alignment.centerRight,
+                                            )
+                                          : null,
+                                      color: isSelected ? null : Colors.white,
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? Colors.transparent
+                                            : Colors.grey.shade300,
+                                        width: 1,
                                       ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 10,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          option,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          packing.nameRu ?? packing.name,
                                           style: TextStyle(
                                             color: isSelected
                                                 ? Colors.white
@@ -846,92 +1129,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                             fontSize: 13,
                                           ),
                                           textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${packing.baseCost.toStringAsFixed(0)} ¥',
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? Colors.white70
+                                                : Colors.black54,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                })
-                                .toList(),
-                          ),
-                          const SizedBox(height: 8),
-                          GestureDetector(
-                            onTap: () {
-                              setSheetState(() {
-                                final isSelected = selectedPacking.contains(
-                                  'Запросить помощь менеджера',
-                                );
-                                if (isSelected) {
-                                  selectedPacking.remove(
-                                    'Запросить помощь менеджера',
-                                  );
-                                } else {
-                                  selectedPacking.clear();
-                                  selectedPacking.add(
-                                    'Запросить помощь менеджера',
-                                  );
-                                }
-                              });
-                            },
-                            child: Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                gradient:
-                                    selectedPacking.contains(
-                                      'Запросить помощь менеджера',
-                                    )
-                                    ? const LinearGradient(
-                                        colors: [
-                                          Color(0xFFfe3301),
-                                          Color(0xFFff5f02),
-                                        ],
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                      )
-                                    : null,
-                                color:
-                                    selectedPacking.contains(
-                                      'Запросить помощь менеджера',
-                                    )
-                                    ? null
-                                    : Colors.white,
-                                border: Border.all(
-                                  color:
-                                      selectedPacking.contains(
-                                        'Запросить помощь менеджера',
-                                      )
-                                      ? Colors.transparent
-                                      : Colors.grey.shade300,
-                                  width: 1,
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Запросить помощь менеджера',
-                                  style: TextStyle(
-                                    color:
-                                        selectedPacking.contains(
-                                          'Запросить помощь менеджера',
-                                        )
-                                        ? Colors.white
-                                        : Colors.black87,
-                                    fontWeight:
-                                        selectedPacking.contains(
-                                          'Запросить помощь менеджера',
-                                        )
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                    fontSize: 13,
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
+                                );
+                              }).toList(),
                             ),
-                          ),
                           const SizedBox(height: 16),
                           const Text(
                             'Страховка',
@@ -1075,9 +1291,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           const SizedBox(height: 20),
                           FilledButton(
                             onPressed:
-                                selectedPacking.isNotEmpty &&
+                                selectedPackingIds.isNotEmpty &&
                                     selectedInsurance != null &&
-                                    selectedCategory != null &&
+                                    selectedTariff != null &&
                                     (selectedInsurance == 'no' ||
                                         (selectedInsurance == 'yes' &&
                                             insuranceAmount?.isNotEmpty ==
@@ -1099,49 +1315,64 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     );
 
     if (result == true) {
-      _showStyledSnackBar(
-        context,
-        'Сборка создана с ${_selectedTracks.length} треками',
+      // Получаем данные для API
+      final auth = ref.read(authStateProvider);
+      final clientId = auth.clientId;
+
+      if (clientId == null) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: нет данных клиента',
+          isError: true,
+        );
+        return;
+      }
+
+      // Преобразуем trackIds из выбранных треков
+      // Получаем треки из текущего состояния пагинации
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode == null) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: код клиента не найден',
+          isError: true,
+        );
+        return;
+      }
+
+      final tracksState = ref.read(paginatedTracksProvider(clientCode)).state;
+      final tracks = tracksState.tracks;
+
+      final selectedTrackIds = tracks
+          .where((t) => _selectedTracks.contains(t.code) && t.id != null)
+          .map((t) => t.id!)
+          .toList();
+
+      // Создаём сборку через API
+      final apiService = ref.read(assembliesApiServiceProvider);
+      final assembly = await apiService.createAssembly(
+        clientId: clientId,
+        tariffId: selectedTariff?.id,
+        packagingTypeIds: selectedPackingIds.toList(),
+        hasInsurance: selectedInsurance == 'yes',
+        insuranceAmount: selectedInsurance == 'yes' && insuranceAmount != null
+            ? double.tryParse(insuranceAmount!)
+            : null,
+        trackIds: selectedTrackIds,
       );
-      setState(() {
-        _selectedTracks.clear();
-        _selectedStatus = null;
-      });
-    }
-  }
 
-  Future<void> _cancelPhotoRequest(TrackItem track) async {
-    final ok = await _confirmAction(
-      context,
-      title: 'Отменить фотоотчёт',
-      message: 'Вы уверены, что хотите отменить запрос фотоотчёта?',
-    );
-    if (!ok) return;
-    setState(() {
-      _requestedPhotoReports.remove(track.code);
-      _photoRequestNotes.remove(track.code);
-      _photoRequestCreatedAt.remove(track.code);
-      _photoRequestUpdatedAt.remove(track.code);
-    });
-    if (mounted) {
-      _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
-    }
-  }
-
-  Future<void> _cancelQuestion(TrackItem track) async {
-    final ok = await _confirmAction(
-      context,
-      title: 'Отменить вопрос',
-      message: 'Вы уверены, что хотите отменить вопрос?',
-    );
-    if (!ok) return;
-    setState(() {
-      _askedQuestions.remove(track.code);
-      _questionCreatedAt.remove(track.code);
-      _questionUpdatedAt.remove(track.code);
-    });
-    if (mounted) {
-      _showStyledSnackBar(context, 'Вопрос отменён');
+      if (assembly != null) {
+        _showStyledSnackBar(context, 'Сборка ${assembly.number} создана');
+        setState(() {
+          _selectedTracks.clear();
+          _selectedStatus = null;
+        });
+        // Обновляем список треков
+        _refreshTracks();
+        ref.invalidate(assembliesListProvider(clientCode));
+      } else {
+        _showStyledSnackBar(context, 'Ошибка создания сборки', isError: true);
+      }
     }
   }
 
@@ -1313,15 +1544,90 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     if (result == true) {
+      final productName = nameController.text.trim();
+      final quantity = int.tryParse(qtyController.text.trim()) ?? 1;
+
+      // Сохраняем локально для отображения
       setState(() {
         _productInfos[track.code] = _ProductInfo(
-          name: nameController.text.trim(),
-          quantity: int.tryParse(qtyController.text.trim()),
+          name: productName,
+          quantity: quantity,
           images: images,
         );
       });
-      _showStyledSnackBar(context, 'Информация о товаре сохранена');
+
+      // Отправляем на сервер
+      if (track.id != null) {
+        final apiService = ref.read(tracksApiServiceProvider);
+
+        // Загружаем первое изображение если есть
+        File? imageFile;
+        if (images.isNotEmpty) {
+          imageFile = File(images.first);
+        }
+
+        final success = await apiService.updateProductInfo(
+          trackId: track.id!,
+          productName: productName,
+          quantity: quantity,
+          imageFile: imageFile,
+        );
+
+        if (success) {
+          _showStyledSnackBar(context, 'Информация о товаре сохранена');
+          _refreshTracks();
+        } else {
+          _showStyledSnackBar(
+            context,
+            'Ошибка сохранения на сервере',
+            isError: true,
+          );
+        }
+      } else {
+        _showStyledSnackBar(context, 'Информация о товаре сохранена локально');
+      }
     }
+  }
+
+  /// Получить текущие параметры фильтрации
+  TracksFilterParams _getFilterParams(String clientCode) {
+    return TracksFilterParams(
+      clientCode: clientCode,
+      statusCode: _statusCode,
+      search: _query.isNotEmpty ? _query : null,
+      viewMode: _viewMode == ViewMode.all
+          ? 'all'
+          : _viewMode == ViewMode.groups
+          ? 'groups'
+          : 'singles',
+    );
+  }
+
+  /// Обработчик изменения поиска с debounce
+  void _onSearchChanged(String value, String clientCode) {
+    setState(() => _query = value);
+
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      final params = _getFilterParams(clientCode);
+      ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
+    });
+  }
+
+  /// Обработчик изменения статуса
+  void _onStatusChanged(String? statusCode, String clientCode) {
+    setState(() => _statusCode = statusCode);
+
+    final params = _getFilterParams(clientCode);
+    ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
+  }
+
+  /// Обработчик изменения режима просмотра
+  void _onViewModeChanged(ViewMode mode, String clientCode) {
+    setState(() => _viewMode = mode);
+
+    final params = _getFilterParams(clientCode);
+    ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
   }
 
   @override
@@ -1336,121 +1642,124 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       );
     }
 
-    final tracksAsync = ref.watch(tracksListProvider(clientCode));
+    // Получаем статусы из БД
+    final statusesAsync = ref.watch(trackStatusesProvider);
+
+    // Получаем notifier и состояние пагинированного списка
+    final tracksNotifier = ref.watch(paginatedTracksProvider(clientCode));
+    // Подписываемся на изменения состояния notifier
+    _updateNotifierListener(tracksNotifier);
+
+    final tracksState = tracksNotifier.state;
+
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 72.0;
 
     return Stack(
       children: [
-        ListView(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            topPad * 0.7 + 6,
-            16,
-            bottomPad +
-                16 +
-                (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8),
-          ),
-          children: [
-            Text(
-              'Треки',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(16),
-              child: _Filters(
-                status: _status,
-                statuses: _allStatuses,
-                viewMode: _viewMode,
-                query: _query,
-                onStatusChanged: (v) => setState(() => _status = v),
-                onViewModeChanged: (v) => setState(() => _viewMode = v),
-                onQueryChanged: (v) => setState(() => _query = v),
-              ),
-            ),
-            const SizedBox(height: 18),
-            tracksAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => EmptyState(
-                icon: Icons.error_outline_rounded,
-                title: 'Не удалось загрузить треки',
-                message: e.toString(),
-              ),
-              data: (tracks) {
-                final filtered = _applyFilters(tracks);
-                if (filtered.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.local_shipping_outlined,
-                    title: 'Ничего не найдено',
-                    message: 'Попробуйте изменить фильтры или строку поиска.',
-                  );
+        RefreshIndicator(
+          onRefresh: () async {
+            // Обновляем с актуальными фильтрами из UI
+            final filterParams = _getFilterParams(clientCode);
+            await ref
+                .read(paginatedTracksProvider(clientCode))
+                .updateFilters(filterParams);
+            ref.invalidate(assembliesListProvider(clientCode));
+          },
+          color: const Color(0xFFfe3301),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              // Проверяем нужна ли подгрузка при скролле
+              if (notification is ScrollUpdateNotification) {
+                final metrics = notification.metrics;
+                final maxScroll = metrics.maxScrollExtent;
+                final currentScroll = metrics.pixels;
+                // Загружаем ещё когда до конца осталось ~10% списка
+                if (currentScroll >= maxScroll * 0.9 &&
+                    !tracksState.isLoading) {
+                  ref.read(paginatedTracksProvider(clientCode)).loadMore();
                 }
-
-                final groups = _groupTracks(filtered);
-                return Column(
-                  children: groups
-                      .map(
-                        (g) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _TrackGroupCard(
-                            group: g.group,
-                            tracks: g.tracks,
-                            selectedTrackCodes: _selectedTracks,
-                            selectedStatus: _selectedStatus,
-                            onToggle: _toggleTrack,
-                            requestedPhotoReports: _requestedPhotoReports,
-                            onPhotoRequest: (track) =>
-                                _showPhotoRequestSheet(context, track),
-                            onCancelPhotoRequest: (track) =>
-                                _cancelPhotoRequest(track),
-                            photoRequestCreatedAt: _photoRequestCreatedAt,
-                            photoRequestUpdatedAt: _photoRequestUpdatedAt,
-                            photoRequestNotes: _photoRequestNotes,
-                            overrideComments: _overrideComments,
-                            onAskQuestion: (track) =>
-                                _showAskQuestionSheet(context, track),
-                            onCancelQuestion: (track) => _cancelQuestion(track),
-                            onEditComment: (track) =>
-                                _showCommentSheet(context, track),
-                            onEditProduct: (track) =>
-                                _showAboutProductSheet(context, track),
-                            askedQuestions: _askedQuestions,
-                            questionCreatedAt: _questionCreatedAt,
-                            questionUpdatedAt: _questionUpdatedAt,
-                            questionStatus: _questionStatus,
-                            questionAnswers: _questionAnswers,
-                            productInfos: _productInfos,
-                            groupComments: _groupComments,
-                            groupQuestions: _groupQuestions,
-                            groupQuestionCreatedAt: _groupQuestionCreatedAt,
-                            groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
-                            onEditGroupComment: (group) =>
-                                _showGroupCommentSheet(context, group),
-                            onAskGroupQuestion: (group) =>
-                                _showGroupQuestionSheet(context, group),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
+              }
+              return false;
+            },
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                topPad * 0.7 + 6,
+                16,
+                bottomPad +
+                    16 +
+                    (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8),
+              ),
+              children: [
+                Text(
+                  'Треки',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: statusesAsync.when(
+                    loading: () => const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                    error: (_, __) => _FiltersNew(
+                      statusCode: _statusCode,
+                      statuses: const [],
+                      viewMode: _viewMode,
+                      query: _query,
+                      onStatusChanged: (v) => _onStatusChanged(v, clientCode),
+                      onViewModeChanged: (v) =>
+                          _onViewModeChanged(v, clientCode),
+                      onQueryChanged: (v) => _onSearchChanged(v, clientCode),
+                    ),
+                    data: (statuses) => _FiltersNew(
+                      statusCode: _statusCode,
+                      statuses: statuses,
+                      viewMode: _viewMode,
+                      query: _query,
+                      onStatusChanged: (v) => _onStatusChanged(v, clientCode),
+                      onViewModeChanged: (v) =>
+                          _onViewModeChanged(v, clientCode),
+                      onQueryChanged: (v) => _onSearchChanged(v, clientCode),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                // Показываем информацию о количестве
+                if (tracksState.total > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Показано ${tracksState.tracks.length} из ${tracksState.total}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                _buildTracksList(tracksState),
+              ],
             ),
-          ],
+          ),
         ),
         if (_selectedTracks.isNotEmpty)
           Positioned(
@@ -1474,26 +1783,123 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     );
   }
 
-  List<TrackItem> _applyFilters(List<TrackItem> tracks) {
-    final q = _query.trim().toLowerCase();
-    return tracks.where((t) {
-      final statusOk = _status == 'Все' ? true : t.status == _status;
-      final queryOk = q.isEmpty ? true : t.code.toLowerCase().contains(q);
-      final viewOk = switch (_viewMode) {
-        ViewMode.all => true,
-        ViewMode.groups => t.groupId != null,
-        ViewMode.singles => t.groupId == null,
-      };
-      return statusOk && queryOk && viewOk;
-    }).toList();
+  /// Построить список треков с поддержкой пагинации
+  Widget _buildTracksList(PaginatedTracksState tracksState) {
+    // Показываем загрузку при первоначальной загрузке
+    if (tracksState.isLoading && tracksState.tracks.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(40),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Показываем ошибку
+    if (tracksState.error != null && tracksState.tracks.isEmpty) {
+      return EmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Не удалось загрузить треки',
+        message: tracksState.error!,
+      );
+    }
+
+    // Пустой список
+    if (tracksState.tracks.isEmpty) {
+      return const EmptyState(
+        icon: Icons.local_shipping_outlined,
+        title: 'Ничего не найдено',
+        message: 'Попробуйте изменить фильтры или строку поиска.',
+      );
+    }
+
+    // Группируем треки
+    final groups = _groupTracks(tracksState.tracks);
+
+    return Column(
+      children: [
+        ...groups.asMap().entries.map((entry) {
+          final index = entry.key;
+          final g = entry.value;
+
+          // Проверяем нужна ли подгрузка при достижении группы
+          // Считаем сколько треков до этой группы
+          int tracksBefore = 0;
+          for (int i = 0; i < index; i++) {
+            tracksBefore += groups[i].tracks.length;
+          }
+
+          // Если достигли ~90 трека из 100, загружаем ещё
+          if (tracksBefore >= 90 &&
+              !tracksState.isLoading &&
+              tracksState.hasMore) {
+            // Подгрузка будет через ScrollNotification
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TrackGroupCard(
+              assembly: g.assembly,
+              tracks: g.tracks,
+              selectedTrackCodes: _selectedTracks,
+              selectedStatus: _selectedStatus,
+              onToggle: _toggleTrack,
+              requestedPhotoReports: _requestedPhotoReports,
+              onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
+              onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
+              photoRequestCreatedAt: _photoRequestCreatedAt,
+              photoRequestUpdatedAt: _photoRequestUpdatedAt,
+              photoRequestNotes: _photoRequestNotes,
+              overrideComments: _overrideComments,
+              onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+              onCancelQuestion: (track) => _cancelQuestion(track),
+              onEditComment: (track) => _showCommentSheet(context, track),
+              onEditProduct: (track) => _showAboutProductSheet(context, track),
+              askedQuestions: _askedQuestions,
+              questionCreatedAt: _questionCreatedAt,
+              questionUpdatedAt: _questionUpdatedAt,
+              questionStatus: _questionStatus,
+              questionAnswers: _questionAnswers,
+              productInfos: _productInfos,
+              groupComments: _groupComments,
+              groupQuestions: _groupQuestions,
+              groupQuestionCreatedAt: _groupQuestionCreatedAt,
+              groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
+              onEditGroupComment: (assembly) =>
+                  _showGroupCommentSheet(context, assembly),
+              onAskGroupQuestion: (assembly) =>
+                  _showGroupQuestionSheet(context, assembly),
+            ),
+          );
+        }),
+        // Индикатор загрузки следующей страницы
+        if (tracksState.isLoading && tracksState.tracks.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        // Показываем что загружены все данные
+        if (!tracksState.hasMore && tracksState.tracks.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                'Все треки загружены',
+                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   List<_GroupBucket> _groupTracks(List<TrackItem> tracks) {
     final byKey = <String, _GroupBucket>{};
     for (final t in tracks) {
       final key = t.groupId ?? '__${t.code}';
-      byKey[key] = (byKey[key] ?? _GroupBucket(group: t.group, tracks: []))
-        ..tracks.add(t);
+      byKey[key] =
+          (byKey[key] ?? _GroupBucket(assembly: t.assembly, tracks: []))
+            ..tracks.add(t);
     }
     final list = byKey.values.toList(growable: false);
     list.sort((a, b) => b.latestDate.compareTo(a.latestDate));
@@ -1693,8 +2099,158 @@ class _FiltersState extends State<_Filters> {
   }
 }
 
+/// Новый виджет фильтров со статусами из БД
+class _FiltersNew extends StatefulWidget {
+  final String? statusCode; // null = Все
+  final List<TrackStatus> statuses;
+  final ViewMode viewMode;
+  final String query;
+  final ValueChanged<String?> onStatusChanged;
+  final ValueChanged<ViewMode> onViewModeChanged;
+  final ValueChanged<String> onQueryChanged;
+
+  const _FiltersNew({
+    required this.statusCode,
+    required this.statuses,
+    required this.viewMode,
+    required this.query,
+    required this.onStatusChanged,
+    required this.onViewModeChanged,
+    required this.onQueryChanged,
+  });
+
+  @override
+  State<_FiltersNew> createState() => _FiltersNewState();
+}
+
+class _FiltersNewState extends State<_FiltersNew> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(text: widget.query);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FiltersNew oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query &&
+        _searchController.text != widget.query) {
+      _searchController.text = widget.query;
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Формируем список статусов для dropdown
+    final statusItems = <_DropdownItem<String?>>[
+      const _DropdownItem(value: null, label: 'Все'),
+      ...widget.statuses.map(
+        (s) => _DropdownItem(value: s.code, label: s.nameRu),
+      ),
+    ];
+
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.all(1.5),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12.5),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: Color(0xFFfe3301),
+                  size: 20,
+                ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF999999),
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          widget.onQueryChanged('');
+                        },
+                      )
+                    : null,
+                hintText: 'Поиск по треку',
+                hintStyle: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF999999),
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {});
+                widget.onQueryChanged(value);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _CustomDropdown<ViewMode>(
+                value: widget.viewMode,
+                label: 'Вид',
+                items: const [
+                  _DropdownItem(value: ViewMode.all, label: 'Все'),
+                  _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+                  _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
+                ],
+                onChanged: (v) =>
+                    v != null ? widget.onViewModeChanged(v) : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _CustomDropdown<String?>(
+                value: widget.statusCode,
+                label: 'Статус',
+                items: statusItems,
+                onChanged: (v) => widget.onStatusChanged(v),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _TrackGroupCard extends StatelessWidget {
-  final TrackGroup? group;
+  final TrackAssembly? assembly;
   final List<TrackItem> tracks;
   final Set<String> selectedTrackCodes;
   final String? selectedStatus;
@@ -1720,11 +2276,11 @@ class _TrackGroupCard extends StatelessWidget {
   final Map<String, String> groupQuestions;
   final Map<String, DateTime> groupQuestionCreatedAt;
   final Map<String, DateTime> groupQuestionUpdatedAt;
-  final ValueChanged<TrackGroup> onEditGroupComment;
-  final ValueChanged<TrackGroup> onAskGroupQuestion;
+  final ValueChanged<TrackAssembly> onEditGroupComment;
+  final ValueChanged<TrackAssembly> onAskGroupQuestion;
 
   const _TrackGroupCard({
-    required this.group,
+    required this.assembly,
     required this.tracks,
     required this.selectedTrackCodes,
     required this.selectedStatus,
@@ -1757,15 +2313,18 @@ class _TrackGroupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd MMM yyyy', 'ru');
-    final groupComment = group != null ? (groupComments[group!.id] ?? '') : '';
-    final groupQuestion = group != null
-        ? (groupQuestions[group!.id] ?? '')
+    // Используем комментарий из локального кэша или из данных сборки
+    final groupComment = assembly != null
+        ? (groupComments[assembly!.id.toString()] ?? assembly!.comment ?? '')
         : '';
-    final groupQuestionCreated = group != null
-        ? groupQuestionCreatedAt[group!.id]
+    final groupQuestion = assembly != null
+        ? (groupQuestions[assembly!.id.toString()] ?? '')
+        : '';
+    final groupQuestionCreated = assembly != null
+        ? groupQuestionCreatedAt[assembly!.id.toString()]
         : null;
-    final groupQuestionUpdated = group != null
-        ? groupQuestionUpdatedAt[group!.id]
+    final groupQuestionUpdated = assembly != null
+        ? groupQuestionUpdatedAt[assembly!.id.toString()]
         : null;
     return Container(
       decoration: const BoxDecoration(
@@ -1782,7 +2341,7 @@ class _TrackGroupCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (group != null) ...[
+          if (assembly != null) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: Column(
@@ -1790,30 +2349,134 @@ class _TrackGroupCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Группа сборки',
-                          style: TextStyle(fontWeight: FontWeight.w900),
+                          'Сборка ${assembly!.number}',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                       ),
-                      if (group!.status != null)
-                        StatusPill(text: group!.status!),
+                      StatusPill(
+                        text: assembly!.statusName ?? assembly!.status,
+                        color: parseHexColor(assembly!.statusColor),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    'Категория: ${group!.category}',
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  Text(
-                    'Упаковка: ${group!.packing.join(', ')}',
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  if (group!.insurance)
+                  if (assembly!.name != null && assembly!.name!.isNotEmpty)
                     Text(
-                      'Страховка: ${group!.insuranceAmount?.toStringAsFixed(0) ?? '—'} ¥',
+                      assembly!.name!,
                       style: const TextStyle(color: Colors.black54),
                     ),
+                  // Отображение тарифа, упаковки и страховки
+                  if (assembly!.tariffName != null || 
+                      assembly!.packagingTypes.isNotEmpty || 
+                      assembly!.hasInsurance) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (assembly!.tariffName != null) ...[
+                            Row(
+                              children: [
+                                const Icon(Icons.local_shipping_outlined, 
+                                    size: 16, color: Colors.black54),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Тариф: ',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Text(
+                                  assembly!.tariffName!,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                if (assembly!.tariffCost != null) ...[
+                                  const Text(' — ', style: TextStyle(color: Colors.black54)),
+                                  Text(
+                                    '${assembly!.tariffCost!.toStringAsFixed(0)} ¥/кг',
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                          if (assembly!.packagingTypes.isNotEmpty) ...[
+                            if (assembly!.tariffName != null) 
+                              const SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.inventory_2_outlined, 
+                                    size: 16, color: Colors.black54),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Упаковка: ',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    assembly!.packagingTypes.join(', '),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (assembly!.hasInsurance) ...[
+                            if (assembly!.tariffName != null || 
+                                assembly!.packagingTypes.isNotEmpty) 
+                              const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Icon(Icons.verified_user_outlined, 
+                                    size: 16, color: Colors.blue),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Страховка: ',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Text(
+                                  assembly!.insuranceAmount != null
+                                      ? 'от ${assembly!.insuranceAmount!.toStringAsFixed(0)} ¥'
+                                      : 'Да',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   if (groupComment.trim().isNotEmpty ||
                       groupQuestion.trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -1876,19 +2539,9 @@ class _TrackGroupCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _ActionChipButton(
-                        label: 'Добавить заметку',
-                        onPressed: () => onEditGroupComment(group!),
-                      ),
-                      _ActionChipButton(
-                        icon: Icons.help_outline_rounded,
-                        iconOnly: true,
-                        onPressed: () => onAskGroupQuestion(group!),
-                      ),
-                    ],
+                  _ActionChipButton(
+                    label: 'Добавить заметку',
+                    onPressed: () => onEditGroupComment(assembly!),
                   ),
                 ],
               ),
@@ -1909,21 +2562,38 @@ class _TrackGroupCard extends StatelessWidget {
                 track.status == 'На складе' ||
                 track.status == 'На сборке' ||
                 track.status == 'Отправлен';
+            final activePhoto = track.activePhotoRequest;
+            final activeQuestion = track.activeQuestion;
             final isPhotoRequested =
-                track.photoRequestAt != null ||
+                activePhoto != null ||
                 requestedPhotoReports.contains(track.code);
             final commentText = overrideComments[track.code] ?? track.comment;
-            final hasQuestion = (askedQuestions[track.code] ?? '')
-                .trim()
-                .isNotEmpty;
+            final hasQuestion =
+                activeQuestion != null ||
+                (askedQuestions[track.code] ?? '').trim().isNotEmpty;
             final photoCreated =
-                track.photoRequestAt ?? photoRequestCreatedAt[track.code];
+                activePhoto?.createdAt ?? photoRequestCreatedAt[track.code];
             final photoUpdated =
-                track.photoTaskUpdatedAt ?? photoRequestUpdatedAt[track.code];
-            final productInfo = productInfos[track.code];
-            final photoStatusLabel = track.photoTaskStatus?.label ?? 'NEW';
-            final questionCreated = questionCreatedAt[track.code];
-            final questionUpdated = questionUpdatedAt[track.code];
+                activePhoto?.completedAt ?? photoRequestUpdatedAt[track.code];
+            // Используем productInfo из API или локальной карты
+            final apiProductInfo = track.productInfo;
+            final localProductInfo = productInfos[track.code];
+            // Объединяем данные: приоритет у API, затем локальные данные
+            final productInfoName =
+                apiProductInfo?.name ?? localProductInfo?.name ?? '';
+            final productInfoQuantity =
+                apiProductInfo?.quantity ?? localProductInfo?.quantity;
+            final productInfoImages = localProductInfo?.images ?? <String>[];
+            final hasProductInfo =
+                productInfoName.isNotEmpty ||
+                productInfoQuantity != null ||
+                productInfoImages.isNotEmpty;
+
+            final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
+            final questionCreated =
+                activeQuestion?.createdAt ?? questionCreatedAt[track.code];
+            final questionUpdated =
+                activeQuestion?.answeredAt ?? questionUpdatedAt[track.code];
 
             final List<Widget> infoSections = [];
             final commentValue = (commentText ?? '').trim();
@@ -1949,7 +2619,7 @@ class _TrackGroupCard extends StatelessWidget {
               );
             }
 
-            if (track.photoTaskStatus != null || isPhotoRequested) {
+            if (activePhoto != null || isPhotoRequested) {
               final photoNote = photoRequestNotes[track.code] ?? '';
               infoSections.add(
                 Column(
@@ -1994,9 +2664,14 @@ class _TrackGroupCard extends StatelessWidget {
             }
 
             if (hasQuestion) {
-              final questionText = askedQuestions[track.code] ?? '';
-              final qStatus = questionStatus[track.code] ?? 'Новый';
-              final qAnswer = questionAnswers[track.code] ?? '';
+              final questionText =
+                  activeQuestion?.question ?? askedQuestions[track.code] ?? '';
+              final qStatus =
+                  activeQuestion?.statusLabel ??
+                  questionStatus[track.code] ??
+                  'Новый';
+              final qAnswer =
+                  activeQuestion?.answer ?? questionAnswers[track.code] ?? '';
               infoSections.add(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2046,10 +2721,7 @@ class _TrackGroupCard extends StatelessWidget {
               );
             }
 
-            if (productInfo != null &&
-                (productInfo.name.isNotEmpty ||
-                    productInfo.quantity != null ||
-                    productInfo.images.isNotEmpty)) {
+            if (hasProductInfo) {
               infoSections.add(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2062,22 +2734,22 @@ class _TrackGroupCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    if (productInfo.name.isNotEmpty)
+                    if (productInfoName.isNotEmpty)
                       Text(
-                        'Название: ${productInfo.name}',
+                        'Название: $productInfoName',
                         style: const TextStyle(color: Colors.black54),
                       ),
-                    if (productInfo.quantity != null) ...[
+                    if (productInfoQuantity != null) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Количество: ${productInfo.quantity}',
+                        'Количество: $productInfoQuantity',
                         style: const TextStyle(color: Colors.black54),
                       ),
                     ],
-                    if (productInfo.images.isNotEmpty) ...[
+                    if (productInfoImages.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Изображений: ${productInfo.images.length}',
+                        'Изображений: ${productInfoImages.length}',
                         style: const TextStyle(color: Colors.black54),
                       ),
                     ],
@@ -2129,7 +2801,10 @@ class _TrackGroupCard extends StatelessWidget {
                             ),
                           ),
                           if (track.status != 'На сборке')
-                            StatusPill(text: track.status),
+                            StatusPill(
+                              text: track.status,
+                              color: parseHexColor(track.statusColor),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -2517,10 +3192,10 @@ class _ActionChipButton extends StatelessWidget {
 }
 
 class _GroupBucket {
-  final TrackGroup? group;
+  final TrackAssembly? assembly;
   final List<TrackItem> tracks;
 
-  _GroupBucket({required this.group, required this.tracks});
+  _GroupBucket({required this.assembly, required this.tracks});
 
   DateTime get latestDate {
     var latest = DateTime.fromMillisecondsSinceEpoch(0);

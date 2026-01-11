@@ -8,6 +8,7 @@ import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../firebase_options.dart';
 import '../../features/notifications/domain/notification_item.dart';
 
 /// Background message handler (must be top-level)
@@ -71,35 +72,42 @@ class PushNotificationService {
   static Future<void> initializeFirebase() async {
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
       }
       
-      _messaging = FirebaseMessaging.instance;
-      
-      // Запрос разрешений
-      final settings = await _messaging!.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      
-      debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
-      
-      // Background handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-      
-      // Foreground handler
-      FirebaseMessaging.onMessage.listen((message) {
-        debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
-        onFCMMessageReceived?.call(message);
-        _showFCMNotification(message);
-      });
-      
-      // Message opened app
-      FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        debugPrint('🔔 FCM opened app: ${message.notification?.title}');
-        // Handle navigation based on message data
-      });
+      // Firebase Messaging не поддерживается на Windows Desktop
+      if (kIsWeb || (!kIsWeb && (Platform.isAndroid || Platform.isIOS))) {
+        _messaging = FirebaseMessaging.instance;
+        
+        // Запрос разрешений
+        final settings = await _messaging!.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        
+        debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
+        
+        // Background handler
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+        
+        // Foreground handler
+        FirebaseMessaging.onMessage.listen((message) {
+          debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
+          onFCMMessageReceived?.call(message);
+          _showFCMNotification(message);
+        });
+        
+        // Message opened app
+        FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          debugPrint('🔔 FCM opened app: ${message.notification?.title}');
+          // Handle navigation based on message data
+        });
+      } else {
+        debugPrint('🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)');
+      }
       
       debugPrint('🔔 Firebase initialized');
     } catch (e) {
@@ -431,6 +439,11 @@ class PushNotificationService {
 
   /// Обновить badge на иконке приложения
   Future<void> updateBadgeCount(int count) async {
+    // Badge не поддерживается на Desktop
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      return;
+    }
+    
     try {
       final isSupported = await FlutterAppBadger.isAppBadgeSupported();
       if (!isSupported) return;

@@ -4,19 +4,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
-import '../data/fake_news_repository.dart';
+import '../data/news_provider.dart';
 import '../domain/news_item.dart';
 
-class NewsListScreen extends ConsumerWidget {
+class NewsListScreen extends ConsumerStatefulWidget {
   const NewsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NewsListScreen> createState() => _NewsListScreenState();
+}
+
+class _NewsListScreenState extends ConsumerState<NewsListScreen>
+    with AutoRefreshMixin {
+  @override
+  void initState() {
+    super.initState();
+    startAutoRefresh(() {
+      ref.invalidate(newsListProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final asyncItems = ref.watch(newsListProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
+
+    Future<void> onRefresh() async {
+      ref.invalidate(newsListProvider);
+      await ref.read(newsListProvider.future);
+    }
 
     return asyncItems.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -32,27 +52,36 @@ class NewsListScreen extends ConsumerWidget {
             title: 'Пока нет новостей',
           );
         }
-        return ListView.builder(
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
-          itemCount: items.length + 1, // +1 for header
-          itemBuilder: (context, i) {
-            if (i == 0) {
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          color: const Color(0xFFfe3301),
+          child: ListView.builder(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 6,
+              16,
+              24 + bottomPad,
+            ),
+            itemCount: items.length + 1, // +1 for header
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Text(
+                    'Новости',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                );
+              }
+              final item = items[i - 1];
               return Padding(
-                padding: const EdgeInsets.only(bottom: 18),
-                child: Text(
-                  'Новости',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
+                padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
+                child: _NewsCard(item: item),
               );
-            }
-            final item = items[i - 1];
-            return Padding(
-              padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
-              child: _NewsCard(item: item),
-            );
-          },
+            },
+          ),
         );
       },
     );
@@ -107,10 +136,13 @@ class _NewsCard extends StatelessWidget {
                   errorWidget: (_, _, _) => Container(
                     height: 160,
                     color: const Color(0xFFF5F5F5),
-                    child: const Icon(Icons.image_not_supported_rounded, color: Color(0xFFCCCCCC)),
+                    child: const Icon(
+                      Icons.image_not_supported_rounded,
+                      color: Color(0xFFCCCCCC),
+                    ),
                   ),
                 ),
-              
+
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -118,7 +150,10 @@ class _NewsCard extends StatelessWidget {
                   children: [
                     // Date badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFfe3301).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -133,7 +168,7 @@ class _NewsCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Title
                     Text(
                       item.title,
@@ -144,7 +179,7 @@ class _NewsCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     // Excerpt
                     Text(
                       item.excerpt,
@@ -157,7 +192,7 @@ class _NewsCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Read more link
                     Row(
                       children: [

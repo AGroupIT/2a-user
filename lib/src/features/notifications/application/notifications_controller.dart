@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/push_notification_service.dart';
-import '../data/fake_notifications_repository.dart';
+import '../data/notifications_repository.dart';
 import '../domain/notification_item.dart';
 
 /// Состояние уведомлений (для совместимости)
@@ -67,10 +67,24 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     if (idx == -1) return;
     if (current[idx].isRead) return;
 
+    // Обновляем UI сразу
     final next = List<NotificationItem>.from(current);
     next[idx] = next[idx].copyWith(isRead: true);
     state = AsyncData(next);
     _updateBadge(next);
+    
+    // Отправляем на сервер
+    try {
+      final repo = ref.read(notificationsRepositoryProvider);
+      final intId = int.tryParse(id);
+      if (intId != null) {
+        await repo.markAsRead([intId]);
+      }
+    } catch (e) {
+      // Если ошибка - откатываем
+      state = AsyncData(current);
+      _updateBadge(current);
+    }
   }
 
   Future<void> markAllRead() async {
@@ -78,11 +92,22 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     if (current == null) return;
     if (current.every((n) => n.isRead)) return;
 
+    // Обновляем UI сразу
     final next = <NotificationItem>[
       for (final n in current) n.isRead ? n : n.copyWith(isRead: true),
     ];
     state = AsyncData(next);
     _updateBadge(next);
+    
+    // Отправляем на сервер
+    try {
+      final repo = ref.read(notificationsRepositoryProvider);
+      await repo.markAllAsRead();
+    } catch (e) {
+      // Если ошибка - откатываем
+      state = AsyncData(current);
+      _updateBadge(current);
+    }
   }
 
   Future<void> refresh() async {

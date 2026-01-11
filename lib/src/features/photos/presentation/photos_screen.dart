@@ -2,10 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../data/fake_photos_repository.dart';
+import '../data/photos_provider.dart';
 import '../domain/photo_item.dart';
 import 'photo_viewer_screen.dart';
 
@@ -16,7 +17,7 @@ class PhotosScreen extends ConsumerStatefulWidget {
   ConsumerState<PhotosScreen> createState() => _PhotosScreenState();
 }
 
-class _PhotosScreenState extends ConsumerState<PhotosScreen> {
+class _PhotosScreenState extends ConsumerState<PhotosScreen> with AutoRefreshMixin {
   late int _month;
   late int _year;
   String _selectedDate = '';
@@ -27,6 +28,20 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     final now = DateTime.now();
     _month = now.month - 1;
     _year = now.year;
+    _setupAutoRefresh();
+  }
+
+  void _setupAutoRefresh() {
+    startAutoRefresh(() {
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode != null) {
+        ref.invalidate(photosTotalCountProvider(clientCode));
+        ref.invalidate(photosDaysProvider((clientCode: clientCode, month: _month, year: _year)));
+        if (_selectedDate.isNotEmpty) {
+          ref.invalidate(photosByDateProvider((clientCode: clientCode, date: _selectedDate)));
+        }
+      }
+    });
   }
 
   @override
@@ -51,9 +66,22 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
-      children: [
+    Future<void> onRefresh() async {
+      ref.invalidate(photosTotalCountProvider(clientCode));
+      ref.invalidate(photosDaysProvider((clientCode: clientCode, month: _month, year: _year)));
+      if (_selectedDate.isNotEmpty) {
+        ref.invalidate(photosByDateProvider((clientCode: clientCode, date: _selectedDate)));
+        await ref.read(photosByDateProvider((clientCode: clientCode, date: _selectedDate)).future);
+      }
+      await ref.read(photosDaysProvider((clientCode: clientCode, month: _month, year: _year)).future);
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: const Color(0xFFfe3301),
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+        children: [
         Text(
           'Фотографии и видео',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
@@ -285,6 +313,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
           },
         ),
       ],
+      ),
     );
   }
 

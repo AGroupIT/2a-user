@@ -135,10 +135,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/support',
-        builder: (context, state) => const AppScaffold(
-          title: 'Поддержка',
-          child: SupportChatScreen(),
-        ),
+        builder: (context, state) {
+          final initialMessage = state.extra as String?;
+          return AppScaffold(
+            title: 'Поддержка',
+            child: SupportChatScreen(initialMessage: initialMessage),
+          );
+        },
       ),
       GoRoute(
         path: '/news',

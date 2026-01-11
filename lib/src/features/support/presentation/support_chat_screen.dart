@@ -1,19 +1,23 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../../invoices/data/fake_invoices_repository.dart';
+import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
-import '../../tracks/data/fake_tracks_repository.dart';
+import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
+import '../data/chat_provider.dart';
+import '../data/chat_models.dart';
 
 class SupportChatScreen extends ConsumerStatefulWidget {
-  const SupportChatScreen({super.key});
+  final String? initialMessage;
+  
+  const SupportChatScreen({super.key, this.initialMessage});
 
   @override
   ConsumerState<SupportChatScreen> createState() => _SupportChatScreenState();
@@ -21,14 +25,10 @@ class SupportChatScreen extends ConsumerStatefulWidget {
 
 class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     with WidgetsBindingObserver {
-  late final InMemoryChatController _chatController;
-  final _uuid = const Uuid();
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-
-  static const _currentUserId = 'user';
-  static const _supportUserId = 'support';
+  Timer? _pollingTimer;
 
   final bool _showQuickActions = false;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
@@ -37,16 +37,37 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _chatController = InMemoryChatController(messages: _getDemoMessages());
     _initNotifications();
-
-    // Отмечаем что чат открыт
+    
+    // Загружаем чат и запускаем polling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isChatScreenOpenProvider.notifier).set(true);
+      ref.read(chatControllerProvider.notifier).loadConversation();
+      
+      // Если есть начальное сообщение - устанавливаем его в текстовое поле
+      if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+        _textController.text = widget.initialMessage!;
+      }
+      
+      // Запускаем polling для новых сообщений
+      _startPolling();
     });
 
     // Очищаем уведомления при открытии чата
     _clearNotifications();
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && !_isAppInBackground) {
+        _pollMessages();
+      }
+    });
+  }
+  
+  void _pollMessages() {
+    ref.read(chatControllerProvider.notifier).pollNewMessages();
   }
 
   Future<void> _initNotifications() async {
@@ -61,25 +82,24 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   @override
   void dispose() {
-    // Отмечаем что чат закрыт
+    _pollingTimer?.cancel();
     ref.read(isChatScreenOpenProvider.notifier).set(false);
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
-    _chatController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Отслеживаем состояние приложения
     _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 
-    // Очищаем уведомления при возврате в приложение
     if (state == AppLifecycleState.resumed) {
       _clearNotifications();
+      // Обновляем сообщения при возврате в приложение
+      ref.read(chatControllerProvider.notifier).pollNewMessages();
     }
   }
 
@@ -88,177 +108,30 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       _appLifecycleState == AppLifecycleState.inactive ||
       _appLifecycleState == AppLifecycleState.hidden;
 
-  List<TextMessage> _getDemoMessages() {
-    final now = DateTime.now().toUtc();
-
-    // Хронологический порядок (старые первые, новые последние)
-    return [
-      // Самое старое сообщение первое
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _supportUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 2)),
-        text:
-            'Здравствуйте! Добро пожаловать в чат поддержки 2A Logistic. Чем мы можем вам помочь?',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _currentUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 55)),
-        text:
-            'Здравствуйте! Хотел уточнить статус моего груза по накладной 2A-12345',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _supportUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 50)),
-        text:
-            'Сейчас проверю информацию по вашей накладной. Одну минуту, пожалуйста.',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _supportUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 48)),
-        text:
-            'Ваш груз по накладной 2A-12345 находится на складе в Алматы. Ожидаемая дата доставки — завтра до 18:00.',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _currentUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 45)),
-        text: 'Спасибо за информацию! А можно ускорить доставку?',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _supportUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 40)),
-        text:
-            'К сожалению, в данном случае ускорить доставку не получится, так как груз уже запланирован на завтрашний рейс. Но я отмечу ваш заказ как приоритетный — доставим в первую очередь!',
-      ),
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _currentUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 35)),
-        text: 'Хорошо, спасибо!',
-      ),
-      // Самое новое сообщение последнее (будет внизу экрана)
-      TextMessage(
-        id: _uuid.v4(),
-        authorId: _supportUserId,
-        createdAt: now.subtract(const Duration(days: 1, hours: 1, minutes: 30)),
-        text:
-            'Пожалуйста! Если возникнут ещё вопросы — пишите, мы всегда на связи 🙂',
-      ),
-    ];
-  }
-
-  void _handleMessageSend(String text) {
+  Future<void> _handleMessageSend(String text) async {
     if (text.trim().isEmpty) return;
 
     HapticFeedback.lightImpact();
-
-    final message = TextMessage(
-      id: _uuid.v4(),
-      authorId: _currentUserId,
-      createdAt: DateTime.now().toUtc(),
-      text: text,
-    );
-
-    _chatController.insertMessage(message);
     _textController.clear();
-    setState(() {}); // Обновляем UI
-
-    // Имитация ответа поддержки через 30 секунд
-    Future.delayed(const Duration(seconds: 30), () {
-      if (mounted) {
-        _sendSupportReply(text);
-      }
-    });
+    
+    final success = await ref.read(chatControllerProvider.notifier).sendMessage(text);
+    
+    if (success) {
+      // Прокрутка вниз после отправки
+      _scrollToBottom();
+    }
   }
 
-  void _sendSupportReply(String userMessage) {
-    String replyText;
-
-    // Умные ответы в зависимости от содержимого сообщения
-    if (userMessage.contains('📦') &&
-        userMessage.contains('Информация о треке')) {
-      final replies = [
-        'Спасибо за предоставленную информацию о треке! Я вижу все детали. Есть ли ещё что-то, что вас интересует по этому грузу?',
-        'Отлично! Информация о треке получена. Могу подтвердить, что всё в порядке. Если возникнут вопросы — пишите!',
-        'Благодарю за детали по треку. Вижу статус и дату доставки. Всё выглядит хорошо. Чем ещё могу помочь?',
-        'Информация о треке принята! Если нужно уточнить статус или есть другие вопросы — обращайтесь.',
-      ];
-      replyText = replies[DateTime.now().second % replies.length];
-    } else if (userMessage.contains('🧾') &&
-        userMessage.contains('Информация о счёте')) {
-      final replies = [
-        'Спасибо за информацию о счёте! Все данные получены. Стоимость и параметры груза в порядке. Если есть вопросы по оплате — сообщите.',
-        'Отлично! Счёт получен. Вижу все детали по весу, объёму и стоимости. Всё корректно. Чем ещё могу помочь?',
-        'Благодарю за предоставленную информацию по счёту. Все параметры проверены. Если нужна дополнительная информация — обращайтесь!',
-        'Информация о счёте принята! Вижу итоговую сумму и параметры груза. Если возникнут вопросы по доставке или оплате — пишите.',
-      ];
-      replyText = replies[DateTime.now().second % replies.length];
-    } else if (userMessage.toLowerCase().contains('привет') ||
-        userMessage.toLowerCase().contains('здравствуй')) {
-      replyText = 'Здравствуйте! Рад вас видеть. Чем могу помочь сегодня?';
-    } else if (userMessage.toLowerCase().contains('спасибо')) {
-      replyText =
-          'Пожалуйста! Всегда рад помочь. Если возникнут ещё вопросы — обращайтесь! 😊';
-    } else if (userMessage.toLowerCase().contains('помощь') ||
-        userMessage.toLowerCase().contains('помог')) {
-      replyText =
-          'Конечно! Я здесь, чтобы помочь вам с любыми вопросами по грузоперевозкам. Что именно вас интересует?';
-    } else if (userMessage.toLowerCase().contains('где') ||
-        userMessage.toLowerCase().contains('статус')) {
-      replyText =
-          'Проверяю информацию о статусе вашего груза. Обычно это занимает 1-2 минуты. Пожалуйста, ожидайте...';
-    } else if (userMessage.toLowerCase().contains('цена') ||
-        userMessage.toLowerCase().contains('стоимость') ||
-        userMessage.toLowerCase().contains('сколько')) {
-      replyText =
-          'По вопросам стоимости доставки я могу предоставить актуальную информацию. Укажите, пожалуйста, направление и параметры груза.';
-    } else if (userMessage.toLowerCase().contains('когда') ||
-        userMessage.toLowerCase().contains('срок')) {
-      replyText =
-          'Уточняю сроки доставки для вашего груза. Обычно это занимает несколько минут. Подожду информации от склада.';
-    } else {
-      // Общие ответы
-      final replies = [
-        'Спасибо за сообщение! Я проверю информацию и свяжусь с вами в ближайшее время.',
-        'Принято! Обрабатываю ваш запрос. Пожалуйста, ожидайте ответа от нашего специалиста.',
-        'Благодарю за обращение! Ваш вопрос передан в работу. Среднее время ответа — 15 минут.',
-        'Сообщение получено! Наш менеджер скоро свяжется с вами для уточнения деталей.',
-        'Спасибо за ваше терпение! Проверяю информацию по вашему запросу...',
-        'Получил ваше сообщение. Сейчас уточню детали и обязательно отвечу.',
-      ];
-      replyText = replies[DateTime.now().second % replies.length];
-    }
-
-    final reply = TextMessage(
-      id: _uuid.v4(),
-      authorId: _supportUserId,
-      createdAt: DateTime.now().toUtc(),
-      text: replyText,
-    );
-
-    HapticFeedback.mediumImpact();
-    _chatController.insertMessage(reply);
-    setState(() {}); // Обновляем UI
-
-    // Отправляем push-уведомление, если приложение в фоне
-    // Не отправляем если экран чата открыт (проверяем через isChatScreenOpenProvider)
-    final isChatOpen = ref.read(isChatScreenOpenProvider);
-    debugPrint(
-      'Sending reply. App in background: $_isAppInBackground, state: $_appLifecycleState, chat open: $isChatOpen',
-    );
-    if (_isAppInBackground && !isChatOpen) {
-      final notificationService = ref.read(pushNotificationServiceProvider);
-      notificationService.showChatMessageNotification(
-        senderName: 'Алексей Смирнов',
-        message: replyText,
-      );
-      debugPrint('Notification sent!');
-    }
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _showQuickSendSheet() {
@@ -289,16 +162,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('💬 Комментарий: ${track.comment}');
     }
 
-    if (track.group != null) {
+    if (track.assembly != null) {
       buffer.writeln('');
-      buffer.writeln('📁 **Группа сборки:** ${track.groupId}');
-      buffer.writeln('   • Категория: ${track.group!.category}');
-      buffer.writeln('   • Упаковка: ${track.group!.packing.join(', ')}');
-      if (track.group!.insurance) {
-        buffer.writeln(
-          '   • Страховка: ${track.group!.insuranceAmount?.toStringAsFixed(0)} ₽',
-        );
-      }
+      buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
+      buffer.writeln('   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}');
     }
 
     if (track.photoReportUrls.isNotEmpty) {
@@ -306,8 +173,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('📸 Фото отчёт: ${track.photoReportUrls.length} фото');
     }
 
-    if (track.photoTaskStatus != null) {
-      buffer.writeln('📷 Запрос фото: ${track.photoTaskStatus!.label}');
+    final activePhoto = track.activePhotoRequest;
+    if (activePhoto != null) {
+      buffer.writeln('📷 Запрос фото: ${activePhoto.status}');
     }
 
     _handleMessageSend(buffer.toString());
@@ -331,26 +199,24 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       '   • Плотность: ${invoice.density.toStringAsFixed(0)} кг/м³',
     );
 
-    if (invoice.deliveryType != null) {
-      buffer.writeln('   • Доставка: ${invoice.deliveryType}');
-    }
-    if (invoice.tariffType != null) {
-      buffer.writeln('   • Тариф: ${invoice.tariffType}');
+    if (invoice.tariffName != null) {
+      buffer.writeln('   • Тариф: ${invoice.tariffName}');
     }
 
     buffer.writeln('');
     buffer.writeln('💰 **Стоимость:**');
-    if (invoice.tariffCost != null) {
-      buffer.writeln('   • Тариф: \$${invoice.tariffCost!.toStringAsFixed(2)}');
+    if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
+      buffer.writeln('   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг');
     }
-    if (invoice.insuranceCost != null) {
+    if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
       buffer.writeln(
         '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
       );
     }
-    if (invoice.packagingCost != null) {
+    if (invoice.packagings.isNotEmpty) {
+      final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
       buffer.writeln(
-        '   • Упаковка: \$${invoice.packagingCost!.toStringAsFixed(2)}',
+        '   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}',
       );
     }
     buffer.writeln(
@@ -398,29 +264,51 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   Widget _buildMessagesList() {
-    final messages = _chatController.messages.toList();
+    final chatState = ref.watch(chatControllerProvider);
+    
+    if (chatState.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFfe3301)),
+        ),
+      );
+    }
+    
+    if (chatState.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              chatState.error!,
+              style: const TextStyle(color: Colors.black54),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(chatControllerProvider.notifier).loadConversation();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFfe3301),
+              ),
+              child: const Text('Повторить', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final messages = chatState.messages;
 
     if (messages.isEmpty) {
       return _buildEmptyState();
     }
 
-    // Сортируем по дате создания (старые сверху, новые снизу)
-    messages.sort((a, b) {
-      final aDate = a.createdAt ?? DateTime.now();
-      final bDate = b.createdAt ?? DateTime.now();
-      return aDate.compareTo(bDate);
-    });
-
-    // Используем ScrollController для автопрокрутки вниз
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    // Автопрокрутка вниз
+    _scrollToBottom();
 
     return ListView.builder(
       controller: _scrollController,
@@ -428,20 +316,17 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        if (message is TextMessage) {
-          return _buildMessageBubble(message);
-        }
-        return const SizedBox.shrink();
+        return _buildMessageBubble(message);
       },
     );
   }
 
-  Widget _buildMessageBubble(TextMessage message) {
-    final isMe = message.authorId == _currentUserId;
+  Widget _buildMessageBubble(ChatMessage message) {
+    final isMe = message.isFromClient;
     final dateFormat = DateFormat('HH:mm');
 
-    // Имена для отображения
-    final authorName = isMe ? 'Иванов Иван Иванович' : 'Алексей Смирнов';
+    // Используем реальное имя из сообщения
+    final authorName = message.senderName;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -531,7 +416,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        message.text,
+                        message.content,
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.4,
@@ -540,9 +425,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        dateFormat.format(
-                          message.createdAt?.toLocal() ?? DateTime.now(),
-                        ),
+                        dateFormat.format(message.createdAt.toLocal()),
                         style: TextStyle(
                           fontSize: 11,
                           color: isMe ? Colors.white70 : Colors.black45,
@@ -729,26 +612,42 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             ),
             const SizedBox(width: 12),
 
-            // Кнопка отправки
-            GestureDetector(
-              onTap: () => _handleMessageSend(_textController.text),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+            // Кнопка отправки с индикатором загрузки
+            Builder(
+              builder: (context) {
+                final isSending = ref.watch(chatControllerProvider.select((s) => s.isSending));
+                return GestureDetector(
+                  onTap: isSending ? null : () => _handleMessageSend(_textController.text),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isSending 
+                            ? [Colors.grey, Colors.grey.shade400]
+                            : [const Color(0xFFfe3301), const Color(0xFFff5f02)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: isSending 
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                   ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.send_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -955,7 +854,7 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
   }
 
   Widget _buildTracksList(String clientCode) {
-    final tracksAsync = ref.watch(tracksListProvider(clientCode));
+    final tracksAsync = ref.watch(tracksSimpleListProvider(clientCode));
 
     return tracksAsync.when(
       loading: () => const Center(

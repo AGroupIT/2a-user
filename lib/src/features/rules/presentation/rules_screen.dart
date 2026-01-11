@@ -2,19 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
-import '../data/fake_rules_repository.dart';
+import '../data/rules_provider.dart';
 import '../domain/rule_item.dart';
 
-class RulesScreen extends ConsumerWidget {
+class RulesScreen extends ConsumerStatefulWidget {
   const RulesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RulesScreen> createState() => _RulesScreenState();
+}
+
+class _RulesScreenState extends ConsumerState<RulesScreen>
+    with AutoRefreshMixin {
+  @override
+  void initState() {
+    super.initState();
+    startAutoRefresh(() {
+      ref.invalidate(rulesListProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final asyncItems = ref.watch(rulesListProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
+
+    Future<void> onRefresh() async {
+      ref.invalidate(rulesListProvider);
+      await ref.read(rulesListProvider.future);
+    }
 
     return asyncItems.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -30,27 +50,36 @@ class RulesScreen extends ConsumerWidget {
             title: 'Правила не найдены',
           );
         }
-        return ListView.builder(
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
-          itemCount: items.length + 1, // +1 for header
-          itemBuilder: (context, i) {
-            if (i == 0) {
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          color: const Color(0xFFfe3301),
+          child: ListView.builder(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 6,
+              16,
+              24 + bottomPad,
+            ),
+            itemCount: items.length + 1, // +1 for header
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Text(
+                    'Правила оказания услуг',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                );
+              }
+              final item = items[i - 1];
               return Padding(
-                padding: const EdgeInsets.only(bottom: 18),
-                child: Text(
-                  'Правила оказания услуг',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
+                padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
+                child: _RuleCard(item: item),
               );
-            }
-            final item = items[i - 1];
-            return Padding(
-              padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
-              child: _RuleCard(item: item),
-            );
-          },
+            },
+          ),
         );
       },
     );
@@ -108,7 +137,7 @@ class _RuleCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-                
+
                 // Text content
                 Expanded(
                   child: Column(
@@ -136,7 +165,7 @@ class _RuleCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                
+
                 // Arrow
                 const Icon(
                   Icons.arrow_forward_ios_rounded,

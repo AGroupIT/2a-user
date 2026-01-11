@@ -1,45 +1,79 @@
-import 'dart:math';
-
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
 import '../domain/search_result.dart';
 
 abstract class SearchRepository {
   Future<List<SearchResult>> searchTracks(String query);
+  Future<void> requestBinding({
+    required int trackId,
+    required String trackNumber,
+    required String clientCode,
+    required int clientId,
+    required int? clientCodeId,
+  });
 }
 
 final searchRepositoryProvider = Provider<SearchRepository>((ref) {
-  return FakeSearchRepository();
+  return RealSearchRepository(ref);
 });
 
-class FakeSearchRepository implements SearchRepository {
-  static const _statuses = <String>[
-    'В ожидании',
-    'На складе',
-    'На сборке',
-    'Отправлен',
-    'Получен',
-  ];
+class RealSearchRepository implements SearchRepository {
+  final Ref _ref;
+  
+  RealSearchRepository(this._ref);
+  
+  ApiClient get _api => _ref.read(apiClientProvider);
 
   @override
   Future<List<SearchResult>> searchTracks(String query) async {
-    await Future<void>.delayed(const Duration(milliseconds: 350));
     final q = query.trim();
     if (q.length < 5) return const [];
 
-    final rng = Random(q.hashCode);
-    final count = rng.nextInt(8);
-    final now = DateTime.now();
-
-    return List.generate(count, (i) {
-      final code = q.toUpperCase().contains('TRK') ? q.toUpperCase() : 'TRK-$q-${100 + i}';
-      return SearchResult(
-        trackCode: code,
-        status: _statuses[rng.nextInt(_statuses.length)],
-        updatedAt: now.subtract(Duration(days: rng.nextInt(30), hours: rng.nextInt(12))),
-        clientCode: rng.nextBool() ? '2A-${10 + rng.nextInt(90)}' : null,
+    try {
+      final response = await _api.get(
+        '/client/search',
+        queryParameters: {'query': q},
       );
-    });
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>? ?? [];
+        return results
+            .map((json) => SearchResult.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint('Error searching tracks: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> requestBinding({
+    required int trackId,
+    required String trackNumber,
+    required String clientCode,
+    required int clientId,
+    required int? clientCodeId,
+  }) async {
+    try {
+      await _api.post(
+        '/questions',
+        data: {
+          'trackId': trackId,
+          'trackNumber': trackNumber,
+          'clientId': clientId,
+          'clientCodeId': clientCodeId,
+          'question': 'Прошу привязать трек $trackNumber к моему коду клиента $clientCode',
+        },
+      );
+    } on DioException catch (e) {
+      debugPrint('Error requesting binding: $e');
+      rethrow;
+    }
   }
 }
-

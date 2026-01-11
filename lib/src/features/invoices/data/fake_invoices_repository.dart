@@ -81,22 +81,29 @@ class FakeInvoicesRepository implements InvoicesRepository {
       
       final status = statuses[rng.nextInt(statuses.length)];
       
+      // Генерируем упаковки с ценами
+      final packagingItems = packagingTypes.map((name) => 
+        PackagingItem(name: name, cost: 1.5 + rng.nextDouble() * 3)
+      ).toList();
+      
       return InvoiceItem(
         id: 'i_${clientCode}_$i',
         invoiceNumber: number,
         sendDate: date,
         status: status,
-        deliveryType: deliveryType,
-        tariffType: tariffType,
+        tariffName: tariffType,
+        tariffBaseCost: 6 + rng.nextDouble() * 4,
         placesCount: placesCount,
         density: density,
         weight: weight,
         volume: volume,
-        tariffCost: tariffCost,
+        calculationMethod: rng.nextBool() ? 'weight' : 'volume',
+        transshipmentCost: rng.nextInt(3) == 0 ? 10 + rng.nextDouble() * 20 : null,
         insuranceCost: insuranceEnabled ? insuranceCost : null,
-        packagingTypes: packagingTypes,
-        packagingCost: packagingTypes.isEmpty ? null : packagingCost,
-        uvCost: uvCost == 0 ? null : uvCost,
+        discount: rng.nextInt(5) == 0 ? 5 + rng.nextDouble() * 15 : null,
+        packagings: packagingItems,
+        packagingCostTotal: packagingTypes.isEmpty ? null : packagingCost,
+        deliveryCostUsd: totalUsd,
         totalCostUsd: totalUsd,
         rate: rate,
         totalCostRub: totalRub,

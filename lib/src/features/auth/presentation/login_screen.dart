@@ -13,9 +13,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _domainCtrl = TextEditingController(text: 'demo');
-  final _loginCtrl = TextEditingController(text: 'demo@demo.demo');
-  final _passwordCtrl = TextEditingController(text: 'demo');
+  final _domainCtrl = TextEditingController();
+  final _loginCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
 
@@ -45,10 +45,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           password: _passwordCtrl.text,
         );
 
+    if (!mounted) return;
+    
     setState(() => _isLoading = false);
 
-    if (!success && mounted) {
-      _showError('Неверный email, домен или пароль');
+    if (!success) {
+      // Показываем ошибку из authProvider
+      final authState = ref.read(authProvider);
+      _showError(authState.error ?? 'Ошибка авторизации');
     }
     // Router will automatically redirect to / on successful login
   }

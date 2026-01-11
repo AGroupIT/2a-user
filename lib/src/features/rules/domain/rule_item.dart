@@ -2,6 +2,7 @@ class RuleItem {
   final String slug;
   final String title;
   final String excerpt;
+
   /// Markdown content for rich text rendering
   final String content;
   final int order;
@@ -13,4 +14,33 @@ class RuleItem {
     required this.content,
     required this.order,
   });
+
+  factory RuleItem.fromJson(Map<String, dynamic> json) {
+    final content = json['content'] as String? ?? '';
+
+    return RuleItem(
+      slug: json['id'].toString(),
+      title: json['title'] as String? ?? '',
+      excerpt: _extractExcerpt(content),
+      content: content,
+      order: json['sortOrder'] as int? ?? 0,
+    );
+  }
+
+  /// Извлекает первые ~150 символов для превью
+  static String _extractExcerpt(String content) {
+    // Убираем markdown разметку для чистого текста
+    final cleaned = content
+        .replaceAll(RegExp(r'#{1,6}\s*'), '') // заголовки
+        .replaceAll(RegExp(r'\*{1,2}'), '') // bold/italic
+        .replaceAll(RegExp(r'`{1,3}'), '') // code
+        .replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1') // links
+        .replaceAll(RegExp(r'>\s*'), '') // blockquotes
+        .replaceAll(RegExp(r'[-*]\s+'), '') // lists
+        .replaceAll(RegExp(r'\n+'), ' ') // newlines
+        .trim();
+
+    if (cleaned.length <= 150) return cleaned;
+    return '${cleaned.substring(0, 147)}...';
+  }
 }

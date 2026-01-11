@@ -16,7 +16,10 @@ final rulesListProvider = FutureProvider<List<RuleItem>>((ref) async {
   return repo.fetchRules();
 });
 
-final ruleItemProvider = FutureProvider.family<RuleItem?, String>((ref, slug) async {
+final ruleItemProvider = FutureProvider.family<RuleItem?, String>((
+  ref,
+  slug,
+) async {
   final repo = ref.watch(rulesRepositoryProvider);
   return repo.getBySlug(slug);
 });

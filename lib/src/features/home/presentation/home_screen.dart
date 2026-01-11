@@ -1,28 +1,63 @@
-import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
+import '../../assemblies/data/assemblies_provider.dart';
+import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../../invoices/data/fake_invoices_repository.dart';
+import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
-import '../../photos/data/fake_photos_repository.dart';
+import '../../photos/data/photos_provider.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
-import '../../tracks/data/fake_tracks_repository.dart';
+import '../../profile/data/profile_provider.dart';
+import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
+  @override
+  void initState() {
+    super.initState();
+    _setupAutoRefresh();
+  }
+
+  void _setupAutoRefresh() {
+    startAutoRefresh(() {
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode != null) {
+        ref.invalidate(clientProfileProvider);
+        ref.invalidate(tracksDigestProvider(clientCode));
+        ref.invalidate(invoicesDigestProvider(clientCode));
+        ref.invalidate(photosRecentProvider((clientCode: clientCode, limit: 12)));
+        ref.invalidate(tracksCountProvider(clientCode));
+        ref.invalidate(assembliesCountProvider(clientCode));
+        ref.invalidate(invoicesCountProvider(clientCode));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final clientCode = ref.watch(activeClientCodeProvider);
+    final authState = ref.watch(authProvider);
+    final clientProfile = ref.watch(clientProfileProvider);
+    // Используем имя из профиля (актуальное с сервера), иначе из кэша авторизации
+    final clientName = clientProfile.asData?.value?.fullName ?? authState.clientName ?? 'Клиент';
+    
     if (clientCode == null) {
       return const EmptyState(
         icon: Icons.badge_outlined,
@@ -31,23 +66,46 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    final tracksAsync = ref.watch(tracksListProvider(clientCode));
-    final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
-    final photosCountAsync = ref.watch(photosTotalCountProvider(clientCode));
-    final recentPhotosAsync = ref.watch(photosRecentProvider((clientCode: clientCode, limit: 10)));
+    final tracksDigestAsync = ref.watch(tracksDigestProvider(clientCode));
+    final invoicesDigestAsync = ref.watch(invoicesDigestProvider(clientCode));
+    final recentPhotosAsync = ref.watch(photosRecentProvider((clientCode: clientCode, limit: 12)));
 
-    final tracksCount = tracksAsync.asData?.value.length;
-    final invoicesCount = invoicesAsync.asData?.value.length;
-    final photosCount = photosCountAsync.asData?.value;
+    final tracksCountAsync = ref.watch(tracksCountProvider(clientCode));
+    final assembliesCountAsync = ref.watch(assembliesCountProvider(clientCode));
+    final invoicesCountAsync = ref.watch(invoicesCountProvider(clientCode));
+
+    final tracksCount = tracksCountAsync.asData?.value;
+    final assembliesCount = assembliesCountAsync.asData?.value;
+    final invoicesCount = invoicesCountAsync.asData?.value;
 
     final theme = Theme.of(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
-      children: [
-        const _GreetingBlock(fullName: 'Богдан Остапенко'),
+    Future<void> onRefresh() async {
+      ref.invalidate(clientProfileProvider);
+      ref.invalidate(tracksDigestProvider(clientCode));
+      ref.invalidate(invoicesDigestProvider(clientCode));
+      ref.invalidate(photosRecentProvider((clientCode: clientCode, limit: 12)));
+      ref.invalidate(tracksCountProvider(clientCode));
+      ref.invalidate(assembliesCountProvider(clientCode));
+      ref.invalidate(invoicesCountProvider(clientCode));
+      // Ждём завершения загрузки
+      await Future.wait([
+        ref.read(clientProfileProvider.future),
+        ref.read(tracksDigestProvider(clientCode).future),
+        ref.read(invoicesDigestProvider(clientCode).future),
+        ref.read(photosRecentProvider((clientCode: clientCode, limit: 12)).future),
+      ]);
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: const Color(0xFFfe3301),
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+        children: [
+        _GreetingBlock(fullName: clientName),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -62,10 +120,10 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _QuickCard(
-                title: 'Фото',
-                icon: Icons.photo_rounded,
-                value: photosCount,
-                onTap: () => context.go('/photos'),
+                title: 'Сборки',
+                icon: Icons.inventory_2_rounded,
+                value: assembliesCount,
+                onTap: () => context.go('/tracks'), // TODO: создать экран сборок
               ),
             ),
             const SizedBox(width: 12),
@@ -88,7 +146,7 @@ class HomeScreen extends ConsumerWidget {
         _DigestSection(
           title: 'Треки',
           onAll: () => context.go('/tracks'),
-          child: _TracksDigest(tracksAsync: tracksAsync),
+          child: _TracksDigest(tracksAsync: tracksDigestAsync),
         ),
         const SizedBox(height: 12),
         _DigestSection(
@@ -100,9 +158,10 @@ class HomeScreen extends ConsumerWidget {
         _DigestSection(
           title: 'Счета',
           onAll: () => context.go('/invoices'),
-          child: _InvoicesDigest(invoicesAsync: invoicesAsync),
+          child: _InvoicesDigest(invoicesAsync: invoicesDigestAsync),
         ),
       ],
+      ),
     );
   }
 }
@@ -184,7 +243,7 @@ class _QuickCardState extends State<_QuickCard>
 
   @override
   Widget build(BuildContext context) {
-    final display = widget.value == null ? '—' : widget.value.toString();
+    final display = widget.value == null ? '–' : widget.value.toString();
     return AspectRatio(
       aspectRatio: 1.06,
       child: InkWell(
@@ -387,7 +446,7 @@ class _TracksDigest extends StatelessWidget {
                       padding: const EdgeInsets.only(left: 8),
                       child: StatusPill(
                         text: top[i].status,
-                        color: _trackStatusColor(context, top[i].status),
+                        color: _trackStatusColor(context, top[i].status, top[i].statusColor),
                       ),
                     ),
                   ),
@@ -406,7 +465,15 @@ class _TracksDigest extends StatelessWidget {
     );
   }
 
-  Color _trackStatusColor(BuildContext context, String status) {
+  Color _trackStatusColor(BuildContext context, String status, String? hexColor) {
+    // Если есть HEX цвет из БД - используем его
+    if (hexColor != null && hexColor.isNotEmpty) {
+      try {
+        final hex = hexColor.replaceAll('#', '');
+        return Color(int.parse('FF$hex', radix: 16));
+      } catch (_) {}
+    }
+    // Fallback по названию статуса
     final s = status.toLowerCase();
     if (s.contains('получ')) return const Color(0xFF1B8A5A);
     if (s.contains('отправ')) return const Color(0xFF2563EB);
@@ -457,12 +524,12 @@ class _PhotosDigest extends StatelessWidget {
               }
 
               final top = items.take(12).toList();
-              
+
               // Разбиваем на 3 колонки
               final col1 = <PhotoItem>[];
               final col2 = <PhotoItem>[];
               final col3 = <PhotoItem>[];
-              
+
               for (var i = 0; i < top.length; i++) {
                 if (i % 3 == 0) {
                   col1.add(top[i]);
@@ -580,11 +647,11 @@ class _PhotoThumb extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: item.url,
                       fit: BoxFit.cover,
-                      placeholder: (_, _) => Container(
+                      placeholder: (_, __) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
-                      errorWidget: (_, _, _) => Container(
+                      errorWidget: (_, __, ___) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(child: Icon(Icons.broken_image_outlined)),
                       ),
@@ -609,6 +676,46 @@ class _InvoicesDigest extends StatelessWidget {
   const _InvoicesDigest({
     required this.invoicesAsync,
   });
+
+  /// Расчёт Доставки USD по формуле:
+  /// Доставка = тариф * вес/объём + упаковка + перевалка + страховка - скидка
+  double _calculateDeliveryCostUsd(InvoiceItem item) {
+    if (item.deliveryCostUsd > 0) {
+      return item.deliveryCostUsd;
+    }
+    // Считаем стоимость тарифа
+    double tariffCost = 0;
+    if (item.tariffBaseCost != null && item.tariffBaseCost! > 0) {
+      // Определяем расчётную величину (вес или объём * 1000)
+      final calcWeight = item.weight;
+      final calcVolume = item.volume * 1000;
+      final billableWeight = calcWeight > calcVolume ? calcWeight : calcVolume;
+      tariffCost = item.tariffBaseCost! * billableWeight;
+    }
+    // Считаем стоимость упаковки
+    double packagingCost = 0;
+    if (item.packagingCostTotal != null && item.packagingCostTotal! > 0) {
+      packagingCost = item.packagingCostTotal!;
+    } else {
+      for (final p in item.packagings) {
+        packagingCost += p.cost;
+      }
+    }
+    final transshipment = item.transshipmentCost ?? 0;
+    final insurance = item.insuranceCost ?? 0;
+    final discount = item.discount ?? 0;
+    return tariffCost + packagingCost + transshipment + insurance - discount;
+  }
+
+  /// Расчёт К оплате RUB = Доставка USD × Курс
+  double _calculateTotalRub(InvoiceItem item) {
+    if (item.totalCostRub > 0) {
+      return item.totalCostRub;
+    }
+    final deliveryUsd = _calculateDeliveryCostUsd(item);
+    final rate = item.rate ?? 0;
+    return deliveryUsd * rate;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -656,28 +763,47 @@ class _InvoicesDigest extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (var i = 0; i < top.length; i++) ...[
-                  ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    title: Text(top[i].invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(df.format(top[i].sendDate)),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${money.format(top[i].totalCostRub.round())} ₽',
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  Builder(
+                    builder: (context) {
+                      final invoice = top[i];
+                      final deliveryUsd = _calculateDeliveryCostUsd(invoice);
+                      final totalRub = _calculateTotalRub(invoice);
+                      
+                      return ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        title: Text(invoice.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(df.format(invoice.sendDate)),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                if (deliveryUsd > 0) ...[
+                                  Text(
+                                    '\$${money.format(deliveryUsd.round())}',
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF2563EB)),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Text(
+                                  '${money.format(totalRub.round())} ₽',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    trailing: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: StatusPill(
-                        text: top[i].status,
-                        color: _invoiceStatusColor(context, top[i].status),
-                      ),
-                    ),
+                        trailing: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: StatusPill(
+                            text: invoice.statusName ?? invoice.status,
+                            color: _invoiceStatusColor(context, invoice.statusName ?? invoice.status, invoice.statusColor),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   if (i != top.length - 1)
                     const Divider(
@@ -694,7 +820,15 @@ class _InvoicesDigest extends StatelessWidget {
     );
   }
 
-  Color _invoiceStatusColor(BuildContext context, String status) {
+  Color _invoiceStatusColor(BuildContext context, String status, String? hexColor) {
+    // Если есть HEX цвет из API - используем его
+    if (hexColor != null && hexColor.isNotEmpty) {
+      try {
+        final hex = hexColor.replaceAll('#', '');
+        return Color(int.parse('FF$hex', radix: 16));
+      } catch (_) {}
+    }
+    // Fallback по названию статуса
     final s = status.toLowerCase();
     if (s.contains('оплачен')) return const Color(0xFF1B8A5A);
     if (s.contains('требует')) return const Color(0xFFB45309);

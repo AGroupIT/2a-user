@@ -43,31 +43,22 @@ class FakeTracksRepository implements TracksRepository {
 
     String pic(String seed, {int w = 900, int h = 700}) => 'https://picsum.photos/seed/$seed/$w/$h';
 
-    final groups = List.generate(2, (gi) {
-      final id = 'asm-${(clientCode.hashCode ^ gi ^ rng.nextInt(1 << 20)).toRadixString(16)}';
-      final packing = <String>[
-        'Коробка',
-        if (rng.nextBool()) 'Пузырчатая пленка',
-        if (rng.nextInt(4) == 0) 'Деревянная обрешетка',
-      ];
-      final category = ['Сборный груз', 'Одежда', 'Хоз.товары/Текстиль'][rng.nextInt(3)];
-      final insurance = rng.nextInt(3) == 0;
-      final insuranceAmount = insurance ? (5000 + rng.nextInt(50000)).toDouble() : null;
+    final assemblies = List.generate(2, (gi) {
+      final id = rng.nextInt(10000);
+      final number = 'ASM-${(clientCode.hashCode ^ gi ^ rng.nextInt(1 << 20)).toRadixString(16)}';
       final createdAt = now.subtract(Duration(days: 10 + gi * 6 + rng.nextInt(5)));
-      final status = ['На сборке', 'Отправлен', 'Прибыл на терминал'][rng.nextInt(3)];
+      final status = ['assembling', 'sent', 'arrived'][rng.nextInt(3)];
+      final statusName = ['На сборке', 'Отправлен', 'Прибыл на терминал'][rng.nextInt(3)];
 
-      final groupScalePhotos = List.generate(1 + rng.nextInt(3), (pi) => pic('scale_${id}_$pi'));
+      final groupScalePhotos = List.generate(1 + rng.nextInt(3), (pi) => pic('scale_${number}_$pi'));
 
       return (
         id: id,
-        group: TrackGroup(
+        assembly: TrackAssembly(
           id: id,
+          number: number,
           status: status,
-          packing: packing,
-          category: category,
-          insurance: insurance,
-          insuranceAmount: insuranceAmount,
-          createdAt: createdAt,
+          statusName: statusName,
         ),
         groupScalePhotos: groupScalePhotos,
       );
@@ -75,18 +66,19 @@ class FakeTracksRepository implements TracksRepository {
 
     final items = <TrackItem>[];
 
-    for (final g in groups) {
+    for (final g in assemblies) {
       for (var i = 0; i < 3; i++) {
         final code = 'TRK-${clientCode.replaceAll(' ', '')}-${200000 + rng.nextInt(900000)}';
         final date = now.subtract(Duration(days: rng.nextInt(40), hours: rng.nextInt(24)));
         items.add(
           TrackItem(
             code: code,
-            status: g.group.status ?? 'На сборке',
+            status: g.assembly.statusName ?? 'На сборке',
             date: date,
-            groupId: g.id,
-            group: g.group,
-            groupScalePhotos: g.groupScalePhotos,
+            createdAt: date,
+            updatedAt: date,
+            groupId: g.id.toString(),
+            assembly: g.assembly,
             comment: rng.nextInt(6) == 0 ? 'Проверить упаковку' : null,
           ),
         );
@@ -103,17 +95,26 @@ class FakeTracksRepository implements TracksRepository {
           code: code,
           status: status,
           date: date,
+          createdAt: date,
+          updatedAt: date,
           comment: rng.nextInt(5) == 0 ? 'Ваш комментарий' : null,
-          photoRequestAt: hasPhotoRequest ? date.add(const Duration(hours: 2)) : null,
-          photoRequestComment: hasPhotoRequest ? 'Нужен фотоотчет по упаковке' : null,
-          photoTaskStatus: hasPhotoRequest ? PhotoTaskStatus.newTask : null,
-          photoTaskUpdatedAt: hasPhotoRequest ? date.add(const Duration(hours: 6)) : null,
-          photoReportUrls: hasPhotoRequest ? [pic('pr_$code', w: 800, h: 800)] : const [],
+          photoRequests: hasPhotoRequest
+              ? [
+                  PhotoRequest(
+                    id: i,
+                    status: 'new',
+                    wishes: 'Нужен фотоотчет по упаковке',
+                    createdAt: date.add(const Duration(hours: 2)),
+                    completedAt: date.add(const Duration(hours: 6)),
+                    mediaUrls: [pic('pr_$code', w: 800, h: 800)],
+                  ),
+                ]
+              : const [],
         ),
       );
     }
 
-    items.sort((a, b) => b.date.compareTo(a.date));
+    items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     _cache[clientCode] = items;
     return items;
   }

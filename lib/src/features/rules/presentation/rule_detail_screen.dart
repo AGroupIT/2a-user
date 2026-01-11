@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
-import '../data/fake_rules_repository.dart';
+import '../data/rules_provider.dart';
 
 class RuleDetailScreen extends ConsumerWidget {
   final String slug;
@@ -33,15 +33,20 @@ class RuleDetailScreen extends ConsumerWidget {
         }
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            topPad * 0.7 + 6,
+            16,
+            24 + bottomPad,
+          ),
           children: [
             // Title
             Text(
               item.title,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                  ),
+                fontWeight: FontWeight.w900,
+                height: 1.2,
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -64,7 +69,10 @@ class RuleDetailScreen extends ConsumerWidget {
                 selectable: true,
                 onTapLink: (text, href, title) {
                   if (href != null) {
-                    launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+                    launchUrl(
+                      Uri.parse(href),
+                      mode: LaunchMode.externalApplication,
+                    );
                   }
                 },
                 styleSheet: _buildMarkdownStyleSheet(context),
@@ -89,11 +97,23 @@ class RuleDetailScreen extends ConsumerWidget {
       pPadding: const EdgeInsets.only(bottom: 12),
 
       // Headings
-      h1: baseTextStyle.copyWith(fontSize: 24, fontWeight: FontWeight.w900, height: 1.3),
+      h1: baseTextStyle.copyWith(
+        fontSize: 24,
+        fontWeight: FontWeight.w900,
+        height: 1.3,
+      ),
       h1Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h2: baseTextStyle.copyWith(fontSize: 20, fontWeight: FontWeight.w800, height: 1.3),
+      h2: baseTextStyle.copyWith(
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+        height: 1.3,
+      ),
       h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
-      h3: baseTextStyle.copyWith(fontSize: 17, fontWeight: FontWeight.w700, height: 1.3),
+      h3: baseTextStyle.copyWith(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+      ),
       h3Padding: const EdgeInsets.only(top: 12, bottom: 6),
       h4: baseTextStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
       h4Padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -101,7 +121,10 @@ class RuleDetailScreen extends ConsumerWidget {
       // Bold and italic
       strong: baseTextStyle.copyWith(fontWeight: FontWeight.w700),
       em: baseTextStyle.copyWith(fontStyle: FontStyle.italic),
-      del: baseTextStyle.copyWith(decoration: TextDecoration.lineThrough, color: const Color(0xFF999999)),
+      del: baseTextStyle.copyWith(
+        decoration: TextDecoration.lineThrough,
+        color: const Color(0xFF999999),
+      ),
 
       // Links
       a: baseTextStyle.copyWith(
@@ -144,9 +167,7 @@ class RuleDetailScreen extends ConsumerWidget {
 
       // Horizontal rule
       horizontalRuleDecoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Color(0xFFEEEEEE), width: 1),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
       ),
 
       // Table

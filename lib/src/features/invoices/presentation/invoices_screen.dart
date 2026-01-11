@@ -1,15 +1,30 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../data/fake_invoices_repository.dart';
+import '../data/invoices_provider.dart';
 import '../domain/invoice_item.dart';
+
+/// Парсит HEX цвет из строки
+Color? _parseHexColor(String? hexString) {
+  if (hexString == null || hexString.isEmpty) return null;
+  try {
+    String hex = hexString.replaceAll('#', '');
+    if (hex.length == 6) {
+      hex = 'FF$hex';
+    }
+    return Color(int.parse(hex, radix: 16));
+  } catch (_) {
+    return null;
+  }
+}
 
 class InvoicesScreen extends ConsumerStatefulWidget {
   const InvoicesScreen({super.key});
@@ -18,26 +33,37 @@ class InvoicesScreen extends ConsumerStatefulWidget {
   ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
 }
 
-class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
-  String _status = 'Все';
+class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
+    with AutoRefreshMixin {
+  String? _selectedStatusCode; // null = "Все"
   String _query = '';
 
-  static const List<String> _allStatuses = [
-    'Все',
-    'Не оплачен',
-    'Оплачен',
-    'Частично оплачен',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _setupAutoRefresh();
+  }
+
+  void _setupAutoRefresh() {
+    startAutoRefresh(() {
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode != null) {
+        ref.invalidate(invoicesListProvider(clientCode));
+        ref.invalidate(invoiceStatusesProvider);
+      }
+    });
+  }
 
   List<InvoiceItem> _applyFilters(List<InvoiceItem> items) {
     final q = _query.trim().toLowerCase();
     return items.where((inv) {
-      final statusOk = _status == 'Все' ? true : inv.status == _status;
+      // Фильтр по статусу (сравниваем по коду статуса)
+      final statusOk =
+          _selectedStatusCode == null || inv.status == _selectedStatusCode;
       final queryOk = q.isEmpty
           ? true
           : inv.invoiceNumber.toLowerCase().contains(q) ||
-                inv.deliveryType?.toLowerCase().contains(q) == true ||
-                inv.tariffType?.toLowerCase().contains(q) == true;
+                inv.tariffName?.toLowerCase().contains(q) == true;
       return statusOk && queryOk;
     }).toList();
   }
@@ -55,8 +81,22 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     }
 
     final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
+    final statusesAsync = ref.watch(invoiceStatusesProvider);
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
+
+    Future<void> onRefresh() async {
+      ref.invalidate(invoicesListProvider(clientCode));
+      ref.invalidate(invoiceStatusesProvider);
+      await ref.read(invoicesListProvider(clientCode).future);
+    }
+
+    // Собираем список статусов для фильтра
+    final List<InvoiceStatus> dbStatuses = statusesAsync.when(
+      data: (statuses) => statuses,
+      loading: () => <InvoiceStatus>[],
+      error: (_, __) => <InvoiceStatus>[],
+    );
 
     return invoicesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -68,61 +108,62 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
       data: (items) {
         final filtered = _applyFilters(items);
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            topPad * 0.7 + 6,
-            16,
-            bottomPad + 16,
-          ),
-          children: [
-            Text(
-              'Счета',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          color: const Color(0xFFfe3301),
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 6,
+              16,
+              bottomPad + 16,
             ),
-            const SizedBox(height: 18),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(16),
-              child: _Filters(
-                status: _status,
-                statuses: _allStatuses,
-                query: _query,
-                onStatusChanged: (v) => setState(() => _status = v),
-                onQueryChanged: (v) => setState(() => _query = v),
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (filtered.isEmpty)
-              const EmptyState(
-                icon: Icons.receipt_long_outlined,
-                title: 'Ничего не найдено',
-                message: 'Попробуйте изменить фильтры или строку поиска.',
-              )
-            else
-              ...filtered.map(
-                (inv) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _InvoiceTile(
-                    item: inv,
-                    clientCode: clientCode,
-                    clientName: 'Клиент $clientCode',
-                  ),
+            children: [
+              Text(
+                'Счета',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-          ],
+              const SizedBox(height: 18),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 24,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(16),
+                child: _Filters(
+                  selectedStatusCode: _selectedStatusCode,
+                  statuses: dbStatuses,
+                  query: _query,
+                  onStatusChanged: (code) =>
+                      setState(() => _selectedStatusCode = code),
+                  onQueryChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (filtered.isEmpty)
+                const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Ничего не найдено',
+                  message: 'Попробуйте изменить фильтры или строку поиска.',
+                )
+              else
+                ...filtered.map(
+                  (inv) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _InvoiceTile(item: inv, clientCode: clientCode),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -130,14 +171,14 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
 }
 
 class _Filters extends StatefulWidget {
-  final String status;
-  final List<String> statuses;
+  final String? selectedStatusCode;
+  final List<InvoiceStatus> statuses;
   final String query;
-  final ValueChanged<String> onStatusChanged;
+  final ValueChanged<String?> onStatusChanged;
   final ValueChanged<String> onQueryChanged;
 
   const _Filters({
-    required this.status,
+    required this.selectedStatusCode,
     required this.statuses,
     required this.query,
     required this.onStatusChanged,
@@ -235,13 +276,16 @@ class _FiltersState extends State<_Filters> {
           ),
         ),
         const SizedBox(height: 10),
-        _CustomDropdown<String>(
-          value: widget.status,
+        _CustomDropdown<String?>(
+          value: widget.selectedStatusCode,
           label: 'Статус',
-          items: widget.statuses
-              .map((s) => _DropdownItem(value: s, label: s))
-              .toList(),
-          onChanged: (v) => v != null ? widget.onStatusChanged(v) : null,
+          items: [
+            const _DropdownItem<String?>(value: null, label: 'Все'),
+            ...widget.statuses.map(
+              (s) => _DropdownItem<String?>(value: s.code, label: s.nameRu),
+            ),
+          ],
+          onChanged: widget.onStatusChanged,
         ),
       ],
     );
@@ -373,12 +417,11 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedLabel = widget.items
-        .firstWhere(
-          (item) => item.value == _selectedValue,
-          orElse: () => _DropdownItem(value: _selectedValue, label: 'N/A'),
-        )
-        .label;
+    final selectedItem = widget.items.cast<_DropdownItem<T>?>().firstWhere(
+      (item) => item?.value == _selectedValue,
+      orElse: () => null,
+    );
+    final selectedLabel = selectedItem?.label ?? 'Все';
 
     return CompositedTransformTarget(
       link: _layerLink,
@@ -442,18 +485,68 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
 class _InvoiceTile extends StatelessWidget {
   final InvoiceItem item;
   final String clientCode;
-  final String clientName;
 
-  const _InvoiceTile({
-    required this.item,
-    required this.clientCode,
-    required this.clientName,
-  });
+  const _InvoiceTile({required this.item, required this.clientCode});
+
+  /// Расчёт стоимости тарифа = вес × baseCost (или объём × 250)
+  double _calculateTariffCost() {
+    final baseCost = item.tariffBaseCost ?? 0;
+    final isByWeight = item.calculationMethod?.toLowerCase() == 'byweight';
+    if (isByWeight) {
+      return item.weight * baseCost;
+    } else {
+      return item.volume * 250;
+    }
+  }
+
+  /// Расчёт общей стоимости упаковки
+  double _calculatePackagingCost() {
+    // Если есть готовая сумма из API
+    if (item.packagingCostTotal != null && item.packagingCostTotal! > 0) {
+      return item.packagingCostTotal!;
+    }
+    // Иначе считаем: сумма стоимости упаковок × кол-во мест
+    double sum = 0;
+    for (final pkg in item.packagings) {
+      sum += pkg.cost;
+    }
+    return sum * item.placesCount;
+  }
+
+  /// Расчёт Доставки USD по формуле из админа:
+  /// Доставка = тариф + упаковка + перевалка + страховка - скидка
+  double _calculateDeliveryCostUsd() {
+    // Если API вернул готовое значение - используем его
+    if (item.deliveryCostUsd > 0) {
+      return item.deliveryCostUsd;
+    }
+    // Иначе считаем по формуле
+    final tariffCost = _calculateTariffCost();
+    final packagingCost = _calculatePackagingCost();
+    final transshipment = item.transshipmentCost ?? 0;
+    final insurance = item.insuranceCost ?? 0;
+    final discount = item.discount ?? 0;
+    return tariffCost + packagingCost + transshipment + insurance - discount;
+  }
+
+  /// Расчёт К оплате RUB = Доставка USD × Курс
+  double _calculateTotalRub() {
+    // Если API вернул готовое значение - используем его
+    if (item.totalCostRub > 0) {
+      return item.totalCostRub;
+    }
+    // Иначе считаем по формуле
+    final deliveryUsd = _calculateDeliveryCostUsd();
+    final rate = item.rate ?? 0;
+    return deliveryUsd * rate;
+  }
 
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
+    final statusColor = _parseHexColor(item.statusColor);
+    final totalRub = _calculateTotalRub();
 
     return Container(
       decoration: BoxDecoration(
@@ -487,7 +580,10 @@ class _InvoiceTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                StatusPill(text: item.status),
+                StatusPill(
+                  text: item.statusName ?? item.status,
+                  color: statusColor,
+                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -497,7 +593,7 @@ class _InvoiceTile extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${money.format(item.totalCostRub.round())} ₽',
+              '${money.format(totalRub.round())} ₽',
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 18,
@@ -509,19 +605,17 @@ class _InvoiceTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _openInvoiceSheet(context),
+                    onPressed: () => _openInvoiceDetailSheet(context),
                     child: const Text('Открыть'),
                   ),
                 ),
-                if (item.status == 'Требует оплаты') ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _showPayment(context),
-                      child: const Text('Оплатить'),
-                    ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => _goToPayment(context),
+                    child: const Text('Оплатить'),
                   ),
-                ],
+                ),
               ],
             ),
           ],
@@ -530,639 +624,376 @@ class _InvoiceTile extends StatelessWidget {
     );
   }
 
-  void _openInvoiceSheet(BuildContext context) {
+  void _openInvoiceDetailSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _InvoiceFormSheet(
+      builder: (sheetContext) => _InvoiceDetailSheet(
         item: item,
         clientCode: clientCode,
-        clientName: clientName,
-        onPay: () => _showPayment(context),
+        onPay: () {
+          Navigator.pop(sheetContext);
+          _goToPayment(context);
+        },
       ),
     );
   }
 
-  void _showPayment(BuildContext context) {
+  void _goToPayment(BuildContext context) {
     final money = NumberFormat.decimalPattern('ru');
+    final totalRub = _calculateTotalRub();
+    final message =
+        'Хочу оплатить счёт ${item.invoiceNumber} на сумму ${money.format(totalRub.round())} ₽';
 
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Text(
-                  'Оплата счёта',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Счёт: ${item.invoiceNumber}',
-                  style: const TextStyle(fontSize: 15),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Сумма к оплате: ${money.format(item.totalCostRub.round())} ₽',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFFfe3301),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Функция оплаты в разработке'),
-                      ),
-                    );
-                  },
-                  child: const Text('Перейти к оплате'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    // Переходим на страницу поддержки с сообщением
+    context.push('/support', extra: message);
   }
 }
 
-class _InvoiceFormSheet extends StatefulWidget {
+/// Лист с детальной информацией о счёте (только просмотр)
+class _InvoiceDetailSheet extends StatelessWidget {
   final InvoiceItem item;
   final String clientCode;
-  final String clientName;
   final VoidCallback onPay;
 
-  const _InvoiceFormSheet({
+  const _InvoiceDetailSheet({
     required this.item,
     required this.clientCode,
-    required this.clientName,
     required this.onPay,
   });
 
-  @override
-  State<_InvoiceFormSheet> createState() => _InvoiceFormSheetState();
-}
-
-class _InvoiceFormSheetState extends State<_InvoiceFormSheet> {
-  late final TextEditingController _numberCtrl;
-  late final TextEditingController _clientCodeCtrl;
-  late final TextEditingController _clientNameCtrl;
-  late final TextEditingController _tariffCostCtrl;
-  late final TextEditingController _insuranceCtrl;
-  late final TextEditingController _uvCtrl;
-  late final TextEditingController _discountCtrl;
-  late final TextEditingController _deliveryCostCtrl;
-  late final TextEditingController _rateCtrl;
-  late final TextEditingController _weightCtrl;
-  late final TextEditingController _volumeCtrl;
-
-  late String _tariffType;
-  late String _deliveryType;
-  late DateTime _sendDate;
-  late int _placesCount;
-  late double _weight;
-  late double _volume;
-  late bool _calcByDensity;
-  double _packagingCost = 0;
-  final Set<String> _selectedPackaging = <String>{};
-
-  double _totalUsd = 0;
-  double _totalRub = 0;
-
-  static const List<String> _tariffOptions = <String>[
-    'Спец. тариф',
-    'Сборный груз',
-    'Крупный ОПТ',
-  ];
-
-  static const List<String> _deliveryOptions = <String>[
-    'Авто',
-    'Авиа',
-    'Ж/Д',
-  ];
-
-  static const List<_PackagingOption> _packagingCatalog = <_PackagingOption>[
-    _PackagingOption(label: 'Коробка', price: 3.5),
-    _PackagingOption(label: 'Картонные уголки', price: 2.2),
-    _PackagingOption(label: 'Пузырчатая пленка', price: 1.8),
-    _PackagingOption(label: 'Деревянная обрешетка', price: 9.0),
-    _PackagingOption(label: 'Паллет', price: 12.0),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _numberCtrl = TextEditingController(text: widget.item.invoiceNumber);
-    _clientCodeCtrl = TextEditingController(text: widget.clientCode);
-    _clientNameCtrl = TextEditingController(text: widget.clientName);
-
-    _tariffType = widget.item.tariffType ?? _tariffOptions.first;
-    _deliveryType = widget.item.deliveryType ?? _deliveryOptions.first;
-    _sendDate = widget.item.sendDate;
-    _placesCount = widget.item.placesCount;
-    _weight = widget.item.weight;
-    _volume = widget.item.volume;
-    _calcByDensity = true;
-
-    final guessedDeliveryCost = (widget.item.totalCostUsd ?? 0) -
-        (widget.item.tariffCost ?? 0) -
-        (widget.item.insuranceCost ?? 0) -
-        (widget.item.packagingCost ?? 0) -
-        (widget.item.uvCost ?? 0);
-
-    _tariffCostCtrl = TextEditingController(
-      text: _format(widget.item.tariffCost ?? 0),
-    );
-    _insuranceCtrl = TextEditingController(
-      text: _format(widget.item.insuranceCost ?? 0),
-    );
-    _uvCtrl = TextEditingController(
-      text: _format(widget.item.uvCost ?? 0),
-    );
-    _discountCtrl = TextEditingController(text: '0');
-    _deliveryCostCtrl = TextEditingController(
-      text: _format(guessedDeliveryCost.clamp(0, double.infinity)),
-    );
-    _rateCtrl = TextEditingController(
-      text: _format(widget.item.rate ?? 95),
-    );
-    _weightCtrl = TextEditingController(text: _format(_weight));
-    _volumeCtrl = TextEditingController(text: _format(_volume));
-
-    for (final p in widget.item.packagingTypes) {
-      _selectedPackaging.add(p);
+  /// Перевод метода расчёта
+  String _translateCalculationMethod(String? method) {
+    switch (method?.toLowerCase()) {
+      case 'byweight':
+        return 'По весу';
+      case 'byvolume':
+        return 'По объёму';
+      default:
+        return method ?? '';
     }
-    _recalcPackaging();
-    _recalcTotals();
   }
 
-  @override
-  void dispose() {
-    _numberCtrl.dispose();
-    _clientCodeCtrl.dispose();
-    _clientNameCtrl.dispose();
-    _tariffCostCtrl.dispose();
-    _insuranceCtrl.dispose();
-    _uvCtrl.dispose();
-    _discountCtrl.dispose();
-    _deliveryCostCtrl.dispose();
-    _rateCtrl.dispose();
-    _weightCtrl.dispose();
-    _volumeCtrl.dispose();
-    super.dispose();
+  /// Расчёт стоимости тарифа = вес × baseCost (или объём × 250)
+  double _calculateTariffCost() {
+    final baseCost = item.tariffBaseCost ?? 0;
+    final isByWeight = item.calculationMethod?.toLowerCase() == 'byweight';
+    if (isByWeight) {
+      return item.weight * baseCost;
+    } else {
+      return item.volume * 250;
+    }
+  }
+
+  /// Расчёт общей стоимости упаковки
+  double _calculatePackagingCost() {
+    // Если есть готовая сумма из API
+    if (item.packagingCostTotal != null && item.packagingCostTotal! > 0) {
+      return item.packagingCostTotal!;
+    }
+    // Иначе считаем: сумма стоимости упаковок × кол-во мест
+    double sum = 0;
+    for (final pkg in item.packagings) {
+      sum += pkg.cost;
+    }
+    return sum * item.placesCount;
+  }
+
+  /// Расчёт Доставки USD по формуле из админа:
+  /// Доставка = тариф + упаковка + перевалка + страховка - скидка
+  double _calculateDeliveryCostUsd() {
+    // Если API вернул готовое значение - используем его
+    if (item.deliveryCostUsd > 0) {
+      return item.deliveryCostUsd;
+    }
+    // Иначе считаем по формуле
+    final tariffCost = _calculateTariffCost();
+    final packagingCost = _calculatePackagingCost();
+    final transshipment = item.transshipmentCost ?? 0;
+    final insurance = item.insuranceCost ?? 0;
+    final discount = item.discount ?? 0;
+    return tariffCost + packagingCost + transshipment + insurance - discount;
+  }
+
+  /// Расчёт К оплате RUB = Доставка USD × Курс
+  double _calculateTotalRub() {
+    // Если API вернул готовое значение - используем его
+    if (item.totalCostRub > 0) {
+      return item.totalCostRub;
+    }
+    // Иначе считаем по формуле
+    final deliveryUsd = _calculateDeliveryCostUsd();
+    final rate = item.rate ?? 0;
+    return deliveryUsd * rate;
   }
 
   @override
   Widget build(BuildContext context) {
-    final density = _volume <= 0 ? 0.0 : _weight / _volume;
-    final topPadding = MediaQuery.of(context).viewPadding.top;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final df = DateFormat('dd MMM yyyy', 'ru');
+    final money = NumberFormat.decimalPattern('ru');
+    final statusColor = _parseHexColor(item.statusColor);
 
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: Container(
-            margin: EdgeInsets.only(top: topPadding + 12),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+    final deliveryCostUsd = _calculateDeliveryCostUsd();
+    final totalRub = _calculateTotalRub();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            children: [
+              // Ручка
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const Text(
-                    'Счёт',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 14),
-                  _twoColumns(
-                    _buildField('Номер', _numberCtrl, textInputAction: TextInputAction.next),
-                    _buildField('Код клиента', _clientCodeCtrl, enabled: false),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildField('Клиент', _clientNameCtrl, enabled: false),
-                  const SizedBox(height: 14),
-                  _twoColumns(
-                    _dropdown(
-                      label: 'Тариф',
-                      value: _tariffType,
-                      items: _tariffOptions,
-                      onChanged: (v) => setState(() => _tariffType = v),
-                    ),
-                    _dropdown(
-                      label: 'Тип доставки',
-                      value: _deliveryType,
-                      items: _deliveryOptions,
-                      onChanged: (v) => setState(() => _deliveryType = v),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _twoColumns(
-                    _buildNumberField('Стоимость тарифа, \$', _tariffCostCtrl),
-                    _buildDateField(context),
-                  ),
-                  const SizedBox(height: 14),
-                  _twoColumns(
-                    _buildStepper('Кол-во мест', _placesCount, (v) {
-                      setState(() => _placesCount = v);
-                      _recalcTotals();
-                    }),
-                    _buildToggle(),
-                  ),
-                  const SizedBox(height: 12),
-                  _twoColumns(
-                    _buildNumberField('Вес, кг', _weightCtrl, onChanged: () {
-                      _weight = _parse(_weightCtrl.text);
-                      _autoDeliveryCost();
-                      _recalcTotals();
-                    }),
-                    _buildNumberField('Объём, м³', _volumeCtrl, onChanged: () {
-                      _volume = _parse(_volumeCtrl.text);
-                      _autoDeliveryCost();
-                      _recalcTotals();
-                    }),
-                  ),
-                  const SizedBox(height: 10),
-                  _infoRow('Плотность', '${density.toStringAsFixed(2)} кг/м³'),
-                  const SizedBox(height: 18),
-                  const Text('Упаковка (множественный выбор)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _packagingCatalog.map((p) {
-                      final selected = _selectedPackaging.contains(p.label);
-                      return FilterChip(
-                        label: Text('${p.label} • ${_format(p.price)}\$'),
-                        selected: selected,
-                        onSelected: (v) {
-                          setState(() {
-                            v ? _selectedPackaging.add(p.label) : _selectedPackaging.remove(p.label);
-                            _recalcPackaging();
-                            _recalcTotals();
-                          });
-                        },
-                        selectedColor: const Color(0x1Afe3301),
-                        checkmarkColor: const Color(0xFFfe3301),
-                        labelStyle: TextStyle(
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                          color: selected ? const Color(0xFFfe3301) : Colors.black87,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 10),
-                  _infoRow('Стоимость упаковки', '${_format(_packagingCost)} \$'),
-                  const SizedBox(height: 18),
-                  const Text('Стоимость и доп. услуги', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  _twoColumns(
-                    _buildNumberField('Стоимость доставки, \$', _deliveryCostCtrl, onChanged: _recalcTotals),
-                    _buildNumberField('Страховка, \$', _insuranceCtrl, onChanged: _recalcTotals),
-                  ),
-                  const SizedBox(height: 12),
-                  _twoColumns(
-                    _buildNumberField('Перевалка, \$', _uvCtrl, onChanged: _recalcTotals),
-                    _buildNumberField('Скидка, \$', _discountCtrl, onChanged: _recalcTotals),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildNumberField('Курс USD → RUB', _rateCtrl, onChanged: _recalcTotals),
-                  const SizedBox(height: 18),
-                  _infoRow('Итог, \$', '${_format(_totalUsd)} \$'),
-                  _infoRow('К оплате, ₽', NumberFormat.decimalPattern('ru').format(_totalRub.round())),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Счёт сохранён (черновик)')),
-                            );
-                          },
-                          child: const Text('Сохранить'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            widget.onPay();
-                          },
-                          child: const Text('Оплатить'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                ],
+                ),
               ),
-            ),
+              // Заголовок
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  item.invoiceNumber,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(text: item.invoiceNumber),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Номер скопирован'),
+                                    ),
+                                  );
+                                },
+                                child: const Icon(
+                                  Icons.copy,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          StatusPill(
+                            text: item.statusName ?? item.status,
+                            color: statusColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1),
+              // Контент
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: EdgeInsets.only(
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                  ),
+                  children: [
+                    _buildSection('Основная информация', [
+                      _buildInfoRow('Код клиента', clientCode),
+                      _buildInfoRow('Дата', df.format(item.sendDate)),
+                      if (item.tariffName != null)
+                        _buildInfoRow(
+                          'Тариф',
+                          '${item.tariffName!}${item.tariffBaseCost != null ? ' (\$${item.tariffBaseCost!.toStringAsFixed(2)}/кг)' : ''}',
+                        ),
+                      if (item.calculationMethod != null)
+                        _buildInfoRow(
+                          'Метод расчёта',
+                          _translateCalculationMethod(item.calculationMethod),
+                        ),
+                    ]),
+                    const SizedBox(height: 20),
+                    _buildSection('Габариты и вес', [
+                      _buildInfoRow('Кол-во мест', '${item.placesCount}'),
+                      _buildInfoRow(
+                        'Вес',
+                        '${item.weight.toStringAsFixed(2)} кг',
+                      ),
+                      _buildInfoRow(
+                        'Объём',
+                        '${item.volume.toStringAsFixed(3)} м³',
+                      ),
+                      _buildInfoRow(
+                        'Плотность',
+                        '${item.density.toStringAsFixed(2)} кг/м³',
+                      ),
+                    ]),
+                    const SizedBox(height: 20),
+                    // Упаковки (множественное значение)
+                    if (item.packagings.isNotEmpty) ...[
+                      _buildSection('Упаковка', [
+                        ...item.packagings.map(
+                          (p) => _buildInfoRow(
+                            p.name,
+                            '\$${p.cost.toStringAsFixed(2)}',
+                          ),
+                        ),
+                        if (item.packagings.length > 1) ...[
+                          const Divider(height: 16),
+                          _buildInfoRow(
+                            'Всего за упаковку',
+                            '\$${(item.packagings.fold<double>(0, (sum, p) => sum + p.cost) * item.placesCount).toStringAsFixed(2)}',
+                          ),
+                        ],
+                      ]),
+                      const SizedBox(height: 20),
+                    ],
+                    _buildSection('Стоимость', [
+                      // Перевалка
+                      if (item.transshipmentCost != null &&
+                          item.transshipmentCost! > 0)
+                        _buildInfoRow(
+                          'Перевалка',
+                          '\$${item.transshipmentCost!.toStringAsFixed(2)}',
+                        ),
+                      // Страховка
+                      if (item.insuranceCost != null && item.insuranceCost! > 0)
+                        _buildInfoRow(
+                          'Страховка',
+                          '\$${item.insuranceCost!.toStringAsFixed(2)}',
+                        ),
+                      // Скидка
+                      if (item.discount != null && item.discount! > 0)
+                        _buildInfoRow(
+                          'Скидка',
+                          '-\$${item.discount!.toStringAsFixed(2)}',
+                        ),
+                      const Divider(height: 16),
+                      _buildInfoRow(
+                        'Доставка, \$',
+                        '\$${deliveryCostUsd.toStringAsFixed(2)}',
+                      ),
+                      if (item.rate != null && item.rate! > 0)
+                        _buildInfoRow(
+                          'Курс',
+                          '${item.rate!.toStringAsFixed(2)} ₽',
+                        ),
+                      _buildInfoRow(
+                        'К оплате',
+                        '${money.format(totalRub.round())} ₽',
+                        isTotal: true,
+                      ),
+                    ]),
+                    const SizedBox(height: 24),
+                    // Кнопка оплаты
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: onPay,
+                        child: const Text('Перейти к оплате'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF333333),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildField(String label, TextEditingController ctrl, {bool enabled = true, TextInputAction? textInputAction}) {
-    return TextField(
-      controller: ctrl,
-      enabled: enabled,
-      textInputAction: textInputAction,
-      decoration: _inputDecoration(label),
-    );
-  }
-
-  Widget _buildNumberField(String label, TextEditingController ctrl, {VoidCallback? onChanged}) {
-    return TextField(
-      controller: ctrl,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
-      decoration: _inputDecoration(label),
-      onChanged: (_) => onChanged?.call(),
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F8F8),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(children: children),
+        ),
       ],
     );
   }
 
-  Widget _buildDateField(BuildContext context) {
-    final df = DateFormat('dd.MM.yyyy');
-    return GestureDetector(
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: _sendDate,
-          firstDate: DateTime(2020),
-          lastDate: DateTime.now().add(const Duration(days: 365)),
-        );
-        if (picked != null) {
-          setState(() => _sendDate = picked);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: _boxDecoration(),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Дата отправки', style: TextStyle(fontSize: 12, color: Color(0xFF999999))),
-                const SizedBox(height: 2),
-                Text(df.format(_sendDate), style: const TextStyle(fontWeight: FontWeight.w700)),
-              ],
-            ),
-            const Icon(Icons.calendar_month_rounded, color: Color(0xFFfe3301)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _dropdown({required String label, required String value, required List<String> items, required ValueChanged<String> onChanged}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: _boxDecoration(),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: value,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFFfe3301)),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-          items: items
-              .map(
-                (v) => DropdownMenuItem<String>(
-                  value: v,
-                  child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStepper(String label, int value, ValueChanged<int> onChanged) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: _boxDecoration(),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF999999))),
-              const SizedBox(height: 2),
-              Text('$value', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            ],
-          ),
-          Row(
-            children: [
-              IconButton(
-                onPressed: value > 0 ? () => onChanged(value - 1) : null,
-                icon: const Icon(Icons.remove_circle_outline),
-                color: const Color(0xFFfe3301),
-              ),
-              IconButton(
-                onPressed: () => onChanged(value + 1),
-                icon: const Icon(Icons.add_circle_outline),
-                color: const Color(0xFFfe3301),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToggle() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: _boxDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Расчёт доставки', style: TextStyle(fontSize: 12, color: Color(0xFF999999))),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              ChoiceChip(
-                label: const Text('По плотности'),
-                selected: _calcByDensity,
-                selectedColor: const Color(0x1Afe3301),
-                labelStyle: TextStyle(
-                  color: _calcByDensity ? const Color(0xFFfe3301) : Colors.black87,
-                  fontWeight: _calcByDensity ? FontWeight.w700 : FontWeight.w500,
-                ),
-                onSelected: (v) {
-                  setState(() => _calcByDensity = true);
-                  _autoDeliveryCost();
-                  _recalcTotals();
-                },
-              ),
-              const SizedBox(width: 10),
-              ChoiceChip(
-                label: const Text('По весу'),
-                selected: !_calcByDensity,
-                selectedColor: const Color(0x1Afe3301),
-                labelStyle: TextStyle(
-                  color: !_calcByDensity ? const Color(0xFFfe3301) : Colors.black87,
-                  fontWeight: !_calcByDensity ? FontWeight.w700 : FontWeight.w500,
-                ),
-                onSelected: (v) {
-                  setState(() => _calcByDensity = false);
-                  _autoDeliveryCost();
-                  _recalcTotals();
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, {bool isTotal = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(label, style: const TextStyle(color: Color(0xFF666666))),
+            flex: 2,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isTotal
+                    ? const Color(0xFF333333)
+                    : const Color(0xFF666666),
+                fontSize: isTotal ? 15 : 14,
+                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isTotal
+                    ? const Color(0xFFfe3301)
+                    : const Color(0xFF333333),
+                fontSize: isTotal ? 18 : 14,
+                fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
         ],
       ),
     );
   }
-
-  Widget _twoColumns(Widget left, Widget right) {
-    return Row(
-      children: [
-        Expanded(child: left),
-        const SizedBox(width: 10),
-        Expanded(child: right),
-      ],
-    );
-  }
-
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFfe3301), width: 1.3),
-      ),
-    );
-  }
-
-  BoxDecoration _boxDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.grey.shade200),
-    );
-  }
-
-  double _parse(String text) {
-    final normalized = text.replaceAll(',', '.');
-    return double.tryParse(normalized) ?? 0;
-  }
-
-  String _format(double value) {
-    return value.toStringAsFixed(2);
-  }
-
-  void _recalcPackaging() {
-    _packagingCost = _packagingCatalog
-        .where((p) => _selectedPackaging.contains(p.label))
-        .fold(0.0, (sum, p) => sum + p.price);
-  }
-
-  void _autoDeliveryCost() {
-    final measure = _calcByDensity
-        ? (_volume > 0 ? _weight / _volume : 0)
-        : _weight;
-    final suggested = (measure * 2.5).clamp(0.0, double.infinity);
-    _deliveryCostCtrl.text = _format(suggested);
-  }
-
-  void _recalcTotals() {
-    final tariff = _parse(_tariffCostCtrl.text);
-    final delivery = _parse(_deliveryCostCtrl.text);
-    final insurance = _parse(_insuranceCtrl.text);
-    final uv = _parse(_uvCtrl.text);
-    final discount = _parse(_discountCtrl.text);
-    final rate = _parse(_rateCtrl.text);
-
-    final subtotal = tariff + delivery + insurance + uv + _packagingCost;
-    _totalUsd = (subtotal - discount).clamp(0, double.infinity);
-    _totalRub = (_totalUsd * rate).clamp(0, double.infinity);
-    setState(() {});
-  }
-}
-
-class _PackagingOption {
-  final String label;
-  final double price;
-
-  const _PackagingOption({required this.label, required this.price});
 }

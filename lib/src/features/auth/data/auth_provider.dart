@@ -1,31 +1,43 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../clients/application/client_codes_controller.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
 const _kUserEmailKey = 'user_email';
 const _kUserDomainKey = 'user_domain';
-
-// Demo credentials
-const demoEmail = 'demo@demo.demo';
-const demoDomain = 'demo';
-const demoPassword = 'demo';
+const _kTokenKey = 'auth_token';
+const _kClientIdKey = 'client_id';
+const _kClientNameKey = 'client_name';
+const _kClientDataKey = 'client_data';
 
 class AuthState {
   final bool isLoggedIn;
   final String? userEmail;
   final String? userDomain;
   final bool isLoading;
+  final String? error;
+  final int? clientId;
+  final String? clientName;
+  final Map<String, dynamic>? clientData;
 
   const AuthState({
     this.isLoggedIn = false,
     this.userEmail,
     this.userDomain,
     this.isLoading = true,
+    this.error,
+    this.clientId,
+    this.clientName,
+    this.clientData,
   });
 
   AuthState copyWith({
@@ -33,19 +45,31 @@ class AuthState {
     String? userEmail,
     String? userDomain,
     bool? isLoading,
+    String? error,
+    bool clearError = false,
+    int? clientId,
+    String? clientName,
+    Map<String, dynamic>? clientData,
   }) {
     return AuthState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       userEmail: userEmail ?? this.userEmail,
       userDomain: userDomain ?? this.userDomain,
       isLoading: isLoading ?? this.isLoading,
+      error: clearError ? null : (error ?? this.error),
+      clientId: clientId ?? this.clientId,
+      clientName: clientName ?? this.clientName,
+      clientData: clientData ?? this.clientData,
     );
   }
 }
 
 class AuthNotifier extends Notifier<AuthState> {
+  late ApiClient _apiClient;
+  
   @override
   AuthState build() {
+    _apiClient = ref.read(apiClientProvider);
     _loadAuthState();
     return const AuthState();
   }
@@ -55,12 +79,36 @@ class AuthNotifier extends Notifier<AuthState> {
     final isLoggedIn = prefs.getBool(_kIsLoggedInKey) ?? false;
     final userEmail = prefs.getString(_kUserEmailKey);
     final userDomain = prefs.getString(_kUserDomainKey);
+    final clientId = prefs.getInt(_kClientIdKey);
+    final clientName = prefs.getString(_kClientNameKey);
+    
+    // Восстанавливаем токен
+    if (isLoggedIn) {
+      final savedToken = prefs.getString(_kTokenKey);
+      if (savedToken != null && savedToken.isNotEmpty) {
+        await _apiClient.setToken(savedToken);
+      }
+    }
+    
+    // Восстанавливаем данные клиента
+    Map<String, dynamic>? clientData;
+    final clientDataJson = prefs.getString(_kClientDataKey);
+    if (clientDataJson != null) {
+      try {
+        clientData = jsonDecode(clientDataJson) as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint('Error parsing client data: $e');
+      }
+    }
 
     state = AuthState(
       isLoggedIn: isLoggedIn,
       userEmail: userEmail,
       userDomain: userDomain,
       isLoading: false,
+      clientId: clientId,
+      clientName: clientName,
+      clientData: clientData,
     );
   }
 
@@ -69,41 +117,145 @@ class AuthNotifier extends Notifier<AuthState> {
     required String domain,
     required String password,
   }) async {
-    // Demo validation
-    if (email.toLowerCase() == demoEmail &&
-        domain.toLowerCase() == demoDomain &&
-        password == demoPassword) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kIsLoggedInKey, true);
-      await prefs.setString(_kUserEmailKey, email);
-      await prefs.setString(_kUserDomainKey, domain);
-
-      // Invalidate client codes to reload demo data
-      ref.invalidate(clientCodesControllerProvider);
-
-      state = AuthState(
-        isLoggedIn: true,
-        userEmail: email,
-        userDomain: domain,
-        isLoading: false,
+    state = state.copyWith(isLoading: true, clearError: true);
+    
+    try {
+      final response = await _apiClient.post(
+        '/login',
+        data: {
+          'email': email,
+          'password': password,
+          'type': 'client',  // Важно! Для клиентов type = 'client'
+        },
       );
       
-      // Регистрируем устройство для push-уведомлений
-      _registerForPush(domain);
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final token = data['token'] as String?;
+        final userData = data['user'] as Map<String, dynamic>?;
+        
+        if (token == null || userData == null) {
+          state = state.copyWith(
+            isLoading: false,
+            error: 'Некорректный ответ сервера',
+          );
+          return false;
+        }
+        
+        // Сохраняем токен в ApiClient
+        await _apiClient.setToken(token);
+        
+        // Извлекаем данные клиента
+        final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
+        final clientName = userData['fullName'] as String? ?? 
+                          userData['name'] as String? ?? 
+                          email;
+        final agentData = userData['agent'] as Map<String, dynamic>?;
+        final clientDomain = agentData?['domain'] as String? ?? domain;
+        
+        // Сохраняем в SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_kIsLoggedInKey, true);
+        await prefs.setString(_kUserEmailKey, email);
+        await prefs.setString(_kUserDomainKey, clientDomain);
+        await prefs.setString(_kTokenKey, token);
+        if (clientId != null) {
+          await prefs.setInt(_kClientIdKey, clientId);
+        }
+        await prefs.setString(_kClientNameKey, clientName);
+        await prefs.setString(_kClientDataKey, jsonEncode(userData));
+        
+        // Invalidate client codes to reload data
+        ref.invalidate(clientCodesControllerProvider);
+        
+        state = AuthState(
+          isLoggedIn: true,
+          userEmail: email,
+          userDomain: clientDomain,
+          isLoading: false,
+          clientId: clientId,
+          clientName: clientName,
+          clientData: userData,
+        );
+        
+        // Регистрируем устройство для push-уведомлений
+        _registerForPush(clientDomain);
+        
+        return true;
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Неверный email или пароль',
+        );
+        return false;
+      }
+    } on DioException catch (e) {
+      String errorMessage = 'Ошибка подключения к серверу';
       
-      return true;
+      if (e.response?.statusCode == 401) {
+        errorMessage = 'Неверный email или пароль';
+      } else if (e.response?.statusCode == 404) {
+        errorMessage = 'Пользователь не найден';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+                 e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Превышено время ожидания. Проверьте подключение';
+      } else if (e.type == DioExceptionType.connectionError) {
+        errorMessage = 'Нет подключения к серверу';
+      }
+      
+      debugPrint('Login error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: errorMessage,
+      );
+      return false;
+    } catch (e) {
+      debugPrint('Login error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Произошла ошибка: $e',
+      );
+      return false;
     }
-    return false;
   }
   
   /// Регистрация устройства для push-уведомлений
   Future<void> _registerForPush(String domain) async {
     try {
-      final token = await PushNotificationService.getFCMToken();
-      if (token != null) {
-        debugPrint('🔔 FCM Token for client: ${token.substring(0, 20)}...');
-        // TODO: Отправить токен на сервер через API
-        // await apiClient.post('/devices', data: {...})
+      final fcmToken = await PushNotificationService.getFCMToken();
+      if (fcmToken != null) {
+        debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
+        
+        // Определяем платформу
+        String platform = 'web';
+        if (!kIsWeb) {
+          if (Platform.isAndroid) {
+            platform = 'android';
+          } else if (Platform.isIOS) {
+            platform = 'ios';
+          } else if (Platform.isWindows) {
+            platform = 'windows';
+          } else if (Platform.isMacOS) {
+            platform = 'macos';
+          } else if (Platform.isLinux) {
+            platform = 'linux';
+          }
+        }
+        
+        // Отправляем токен на сервер
+        try {
+          await _apiClient.post(
+            '/devices',
+            data: {
+              'platform': platform,
+              'token': fcmToken,
+              'deviceId': await _getDeviceId(),
+            },
+          );
+          debugPrint('🔔 Device registered successfully');
+        } catch (e) {
+          debugPrint('🔔 Error registering device: $e');
+        }
       }
       
       // Подписываемся на топики клиентов
@@ -113,18 +265,47 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('🔔 Error registering for push: $e');
     }
   }
+  
+  /// Получить уникальный ID устройства
+  Future<String?> _getDeviceId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String? deviceId = prefs.getString('device_id');
+      if (deviceId == null) {
+        // Генерируем уникальный ID
+        deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}_${UniqueKey().hashCode}';
+        await prefs.setString('device_id', deviceId);
+      }
+      return deviceId;
+    } catch (e) {
+      return null;
+    }
+  }
 
   Future<void> logout() async {
     // Отписываемся от push-уведомлений
     await _unregisterFromPush();
     
+    // Очищаем токен в ApiClient
+    await _apiClient.clearToken();
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kIsLoggedInKey);
     await prefs.remove(_kUserEmailKey);
     await prefs.remove(_kUserDomainKey);
+    await prefs.remove(_kTokenKey);
+    await prefs.remove(_kClientIdKey);
+    await prefs.remove(_kClientNameKey);
+    await prefs.remove(_kClientDataKey);
 
-    // Clear notification badge
-    FlutterAppBadger.removeBadge();
+    // Clear notification badge (not supported on Desktop)
+    if (!kIsWeb && !Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+      try {
+        FlutterAppBadger.removeBadge();
+      } catch (e) {
+        debugPrint('Error clearing badge: $e');
+      }
+    }
 
     state = const AuthState(
       isLoggedIn: false,
@@ -136,6 +317,24 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _unregisterFromPush() async {
     try {
       final domain = state.userDomain;
+      
+      // Деактивируем устройство на сервере
+      final fcmToken = await PushNotificationService.getFCMToken();
+      if (fcmToken != null) {
+        try {
+          await _apiClient.delete(
+            '/devices',
+            data: {
+              'token': fcmToken,
+            },
+          );
+          debugPrint('🔔 Device deactivated successfully');
+        } catch (e) {
+          debugPrint('🔔 Error deactivating device: $e');
+        }
+      }
+      
+      // Отписываемся от топиков
       await PushNotificationService.unsubscribeFromTopic('clients');
       if (domain != null) {
         await PushNotificationService.unsubscribeFromTopic('domain_$domain');

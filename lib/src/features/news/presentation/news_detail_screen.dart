@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
-import '../data/fake_news_repository.dart';
+import '../data/news_provider.dart';
 
 class NewsDetailScreen extends ConsumerWidget {
   final String slug;
@@ -37,15 +37,20 @@ class NewsDetailScreen extends ConsumerWidget {
         final df = DateFormat('dd MMM yyyy', 'ru');
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            topPad * 0.7 + 6,
+            16,
+            24 + bottomPad,
+          ),
           children: [
             // Title
             Text(
               item.title,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                  ),
+                fontWeight: FontWeight.w900,
+                height: 1.2,
+              ),
             ),
             const SizedBox(height: 12),
 
@@ -53,7 +58,10 @@ class NewsDetailScreen extends ConsumerWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFfe3301).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -61,7 +69,11 @@ class NewsDetailScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFFfe3301)),
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 14,
+                        color: Color(0xFFfe3301),
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         df.format(item.publishedAt),
@@ -108,7 +120,11 @@ class NewsDetailScreen extends ConsumerWidget {
                     errorWidget: (_, _, _) => Container(
                       height: 200,
                       color: const Color(0xFFF5F5F5),
-                      child: const Icon(Icons.image_not_supported_rounded, color: Color(0xFFCCCCCC), size: 48),
+                      child: const Icon(
+                        Icons.image_not_supported_rounded,
+                        color: Color(0xFFCCCCCC),
+                        size: 48,
+                      ),
                     ),
                   ),
                 ),
@@ -135,7 +151,10 @@ class NewsDetailScreen extends ConsumerWidget {
                 selectable: true,
                 onTapLink: (text, href, title) {
                   if (href != null) {
-                    launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+                    launchUrl(
+                      Uri.parse(href),
+                      mode: LaunchMode.externalApplication,
+                    );
                   }
                 },
                 styleSheet: _buildMarkdownStyleSheet(context),
@@ -150,12 +169,17 @@ class NewsDetailScreen extends ConsumerWidget {
                         placeholder: (_, _) => Container(
                           height: 150,
                           color: const Color(0xFFF5F5F5),
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
                         errorWidget: (_, _, _) => Container(
                           height: 150,
                           color: const Color(0xFFF5F5F5),
-                          child: const Icon(Icons.broken_image_rounded, color: Color(0xFFCCCCCC)),
+                          child: const Icon(
+                            Icons.broken_image_rounded,
+                            color: Color(0xFFCCCCCC),
+                          ),
                         ),
                       ),
                     ),
@@ -182,11 +206,23 @@ class NewsDetailScreen extends ConsumerWidget {
       pPadding: const EdgeInsets.only(bottom: 12),
 
       // Headings
-      h1: baseTextStyle.copyWith(fontSize: 24, fontWeight: FontWeight.w900, height: 1.3),
+      h1: baseTextStyle.copyWith(
+        fontSize: 24,
+        fontWeight: FontWeight.w900,
+        height: 1.3,
+      ),
       h1Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h2: baseTextStyle.copyWith(fontSize: 20, fontWeight: FontWeight.w800, height: 1.3),
+      h2: baseTextStyle.copyWith(
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+        height: 1.3,
+      ),
       h2Padding: const EdgeInsets.only(top: 14, bottom: 6),
-      h3: baseTextStyle.copyWith(fontSize: 17, fontWeight: FontWeight.w700, height: 1.3),
+      h3: baseTextStyle.copyWith(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+      ),
       h3Padding: const EdgeInsets.only(top: 12, bottom: 6),
       h4: baseTextStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
       h4Padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -194,7 +230,10 @@ class NewsDetailScreen extends ConsumerWidget {
       // Bold and italic
       strong: baseTextStyle.copyWith(fontWeight: FontWeight.w700),
       em: baseTextStyle.copyWith(fontStyle: FontStyle.italic),
-      del: baseTextStyle.copyWith(decoration: TextDecoration.lineThrough, color: const Color(0xFF999999)),
+      del: baseTextStyle.copyWith(
+        decoration: TextDecoration.lineThrough,
+        color: const Color(0xFF999999),
+      ),
 
       // Links
       a: baseTextStyle.copyWith(
@@ -237,9 +276,7 @@ class NewsDetailScreen extends ConsumerWidget {
 
       // Horizontal rule
       horizontalRuleDecoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Color(0xFFEEEEEE), width: 1),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
       ),
 
       // Table

@@ -23,5 +23,52 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
       return repo.searchTracks(trimmed);
     });
   }
-}
 
+  Future<bool> requestBinding({
+    required int trackId,
+    required String trackNumber,
+    required String clientCode,
+    required int clientId,
+    required int? clientCodeId,
+  }) async {
+    try {
+      final repo = ref.read(searchRepositoryProvider);
+      await repo.requestBinding(
+        trackId: trackId,
+        trackNumber: trackNumber,
+        clientCode: clientCode,
+        clientId: clientId,
+        clientCodeId: clientCodeId,
+      );
+      
+      // Обновляем список - помечаем трек как имеющий вопрос
+      final current = state.value;
+      if (current != null) {
+        final updated = current.map((item) {
+          if (item.id == trackId) {
+            return SearchResult(
+              id: item.id,
+              trackCode: item.trackCode,
+              status: item.status,
+              statusZh: item.statusZh,
+              statusColor: item.statusColor,
+              updatedAt: item.updatedAt,
+              clientCode: item.clientCode,
+              clientCodeId: item.clientCodeId,
+              isNocode: item.isNocode,
+              hasQuestion: true,
+              hasPendingQuestion: true,
+              showBindButton: false, // Скрываем кнопку после отправки запроса
+            );
+          }
+          return item;
+        }).toList();
+        state = AsyncValue.data(updated);
+      }
+      
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+}

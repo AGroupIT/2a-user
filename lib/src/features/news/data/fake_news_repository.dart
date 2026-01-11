@@ -16,7 +16,10 @@ final newsListProvider = FutureProvider<List<NewsItem>>((ref) async {
   return repo.fetchNews();
 });
 
-final newsItemProvider = FutureProvider.family<NewsItem?, String>((ref, slug) async {
+final newsItemProvider = FutureProvider.family<NewsItem?, String>((
+  ref,
+  slug,
+) async {
   final repo = ref.watch(newsRepositoryProvider);
   return repo.getBySlug(slug);
 });
@@ -27,7 +30,8 @@ class FakeNewsRepository implements NewsRepository {
       slug: 'welcome',
       title: 'Добро пожаловать в 2A Logistic',
       excerpt: 'Мы обновили личный кабинет и готовим мобильное приложение.',
-      imageUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800',
+      imageUrl:
+          'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800',
       content: '''
 Мы рады представить вам **обновлённый личный кабинет** и анонсировать выход мобильного приложения!
 
@@ -57,7 +61,8 @@ class FakeNewsRepository implements NewsRepository {
       slug: 'pwa-tips',
       title: 'Подсказки по работе с фотоотчётами',
       excerpt: 'Как быстро найти нужные фото и отфильтровать по треку.',
-      imageUrl: 'https://images.unsplash.com/photo-1553413077-190dd305871c?w=800',
+      imageUrl:
+          'https://images.unsplash.com/photo-1553413077-190dd305871c?w=800',
       content: '''
 ## Как работать с фотоотчётами
 
@@ -131,7 +136,8 @@ class FakeNewsRepository implements NewsRepository {
   @override
   Future<List<NewsItem>> fetchNews() async {
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    final sorted = [..._items]..sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
+    final sorted = [..._items]
+      ..sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
     return sorted;
   }
 
@@ -145,4 +151,3 @@ class FakeNewsRepository implements NewsRepository {
     }
   }
 }
-

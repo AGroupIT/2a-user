@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../data/fake_add_tracks_repository.dart';
+import '../../tracks/data/tracks_provider.dart';
+import '../data/add_tracks_repository.dart';
 import '../domain/add_tracks_result.dart';
 
 class AddTracksScreen extends ConsumerStatefulWidget {
@@ -185,8 +186,9 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
       final raw = _ctrl.text;
       final codes = raw
           .split(RegExp(r'[\n,;]+'))
-          .map((s) => s.trim())
+          .map((s) => s.trim().toUpperCase()) // Приводим к верхнему регистру
           .where((s) => s.isNotEmpty)
+          .toSet() // Убираем дубликаты в самом вводе
           .toList();
       if (codes.isEmpty) {
         throw Exception('Введите хотя бы один трек-номер');
@@ -201,6 +203,12 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
         _result = res;
         _ctrl.clear();
       });
+
+      // Инвалидируем список треков, чтобы обновить его на странице треков
+      if (res.added > 0) {
+        // Обновляем пагинированный список
+        ref.read(paginatedTracksProvider(clientCode)).refresh();
+      }
 
       // Show success notification
       if (mounted) {
