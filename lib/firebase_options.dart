@@ -40,8 +40,8 @@ class DefaultFirebaseOptions {
 
   // iOS configuration (use same project, different app ID if needed)
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM',
-    appId: '1:949693718080:ios:c3e09cea22b5d8379a49a5', // Same as android for now
+    apiKey: 'AIzaSyA30Zv9Q7azXA5Y3_NpvfiM1gr2f1RRccE',
+    appId: '1:949693718080:ios:17d100c16cd133409a49a5',
     messagingSenderId: '949693718080',
     projectId: 'a-user',
     storageBucket: 'a-user.firebasestorage.app',
@@ -50,8 +50,8 @@ class DefaultFirebaseOptions {
 
   // macOS configuration
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM',
-    appId: '1:949693718080:ios:c3e09cea22b5d8379a49a5', // Same as android for now
+    apiKey: 'AIzaSyA30Zv9Q7azXA5Y3_NpvfiM1gr2f1RRccE',
+    appId: '1:949693718080:ios:17d100c16cd133409a49a5',
     messagingSenderId: '949693718080',
     projectId: 'a-user',
     storageBucket: 'a-user.firebasestorage.app',
