@@ -61,9 +61,18 @@ dependencies:
   flutter_app_badger: ^1.5.0
   gal: ^2.3.2
   
+  # Photo viewer for fullscreen images
+  photo_view: ^0.15.0
+  
+  # Showcase/Onboarding
+  showcaseview: ^4.0.0
+  
   # Firebase & Push Notifications
   firebase_core: ^3.12.1
   firebase_messaging: ^15.2.4
+  
+  # Phone input mask
+  mask_text_input_formatter: ^2.9.0
 
 dev_dependencies:
   flutter_test:

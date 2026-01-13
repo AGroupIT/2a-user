@@ -4,6 +4,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:photo_view/photo_view.dart';
+
+import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -57,33 +60,35 @@ class NewsDetailScreen extends ConsumerWidget {
             // Date badge
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFfe3301).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.calendar_today_rounded,
-                        size: 14,
-                        color: Color(0xFFfe3301),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        df.format(item.publishedAt),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFfe3301),
+                Builder(
+                  builder: (ctx) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: ctx.brandPrimary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 14,
+                          color: ctx.brandPrimary,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Text(
+                          df.format(item.publishedAt),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: ctx.brandPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -159,26 +164,30 @@ class NewsDetailScreen extends ConsumerWidget {
                 },
                 styleSheet: _buildMarkdownStyleSheet(context),
                 imageBuilder: (uri, title, alt) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: uri.toString(),
-                        fit: BoxFit.cover,
-                        placeholder: (_, _) => Container(
-                          height: 150,
-                          color: const Color(0xFFF5F5F5),
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                  final imageUrl = uri.toString();
+                  return GestureDetector(
+                    onTap: () => _openImageFullscreen(context, imageUrl),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => Container(
+                            height: 150,
+                            color: const Color(0xFFF5F5F5),
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
                           ),
-                        ),
-                        errorWidget: (_, _, _) => Container(
-                          height: 150,
-                          color: const Color(0xFFF5F5F5),
-                          child: const Icon(
-                            Icons.broken_image_rounded,
-                            color: Color(0xFFCCCCCC),
+                          errorWidget: (_, _, _) => Container(
+                            height: 150,
+                            color: const Color(0xFFF5F5F5),
+                            child: const Icon(
+                              Icons.broken_image_rounded,
+                              color: Color(0xFFCCCCCC),
+                            ),
                           ),
                         ),
                       ),
@@ -190,6 +199,15 @@ class NewsDetailScreen extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  /// Открывает изображение в полноэкранном режиме
+  void _openImageFullscreen(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _FullscreenImageViewer(imageUrl: imageUrl),
+      ),
     );
   }
 
@@ -237,13 +255,13 @@ class NewsDetailScreen extends ConsumerWidget {
 
       // Links
       a: baseTextStyle.copyWith(
-        color: const Color(0xFFfe3301),
+        color: context.brandPrimary,
         decoration: TextDecoration.underline,
-        decorationColor: const Color(0xFFfe3301),
+        decorationColor: context.brandPrimary,
       ),
 
       // Lists
-      listBullet: baseTextStyle.copyWith(color: const Color(0xFFfe3301)),
+      listBullet: baseTextStyle.copyWith(color: context.brandPrimary),
       listBulletPadding: const EdgeInsets.only(right: 8),
       listIndent: 20,
 
@@ -253,9 +271,7 @@ class NewsDetailScreen extends ConsumerWidget {
         color: const Color(0xFF666666),
       ),
       blockquoteDecoration: BoxDecoration(
-        border: const Border(
-          left: BorderSide(color: Color(0xFFfe3301), width: 4),
-        ),
+        border: Border(left: BorderSide(color: context.brandPrimary, width: 4)),
         color: const Color(0xFFFFF5F3),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -285,6 +301,41 @@ class NewsDetailScreen extends ConsumerWidget {
       tableBorder: TableBorder.all(color: const Color(0xFFEEEEEE), width: 1),
       tableHeadAlign: TextAlign.left,
       tableCellsPadding: const EdgeInsets.all(8),
+    );
+  }
+}
+
+/// Полноэкранный просмотрщик изображения с зумом
+class _FullscreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const _FullscreenImageViewer({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: PhotoView(
+        imageProvider: CachedNetworkImageProvider(imageUrl),
+        minScale: PhotoViewComputedScale.contained,
+        maxScale: PhotoViewComputedScale.covered * 3,
+        backgroundDecoration: const BoxDecoration(color: Colors.black),
+        loadingBuilder: (context, event) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+        errorBuilder: (context, error, stackTrace) => const Center(
+          child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+        ),
+      ),
     );
   }
 }

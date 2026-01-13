@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 
+import '../../../core/ui/app_colors.dart';
+
 import '../../../core/ui/sheet_handle.dart';
 
 class MoreSheet extends StatelessWidget {
@@ -37,7 +39,9 @@ class MoreSheet extends StatelessWidget {
                   children: [
                     Text(
                       'Меню',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     _MenuItem(
@@ -50,6 +54,13 @@ class MoreSheet extends StatelessWidget {
                       icon: Icons.support_agent_rounded,
                       title: 'Чат с поддержкой',
                       onTap: () => _go(context, '/support'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuItem(
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: 'Чат по оплате',
+                      iconColor: const Color(0xFF4CAF50),
+                      onTap: () => _go(context, '/payment-chat'),
                     ),
                     const SizedBox(height: 8),
                     _MenuItem(
@@ -81,15 +92,18 @@ class _MenuItem extends StatelessWidget {
   final IconData icon;
   final String title;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   const _MenuItem({
     required this.icon,
     required this.title,
     required this.onTap,
+    this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = iconColor ?? context.brandSecondary;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -107,10 +121,10 @@ class _MenuItem extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFff5f02).withValues(alpha: 0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: const Color(0xFFff5f02), size: 22),
+                child: Icon(icon, color: color, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -150,21 +164,21 @@ class _LogoutButton extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: const Color(0xFFfe3301).withValues(alpha: 0.1),
+            color: context.brandPrimary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFff5f02)),
+            border: Border.all(color: context.brandSecondary),
           ),
           child: Row(
-            children: const [
-              Icon(Icons.logout_rounded, color: Color(0xFFff5f02)),
-              SizedBox(width: 12),
+            children: [
+              Icon(Icons.logout_rounded, color: context.brandSecondary),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Выйти',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
-                    color: Color(0xFFff5f02),
+                    color: context.brandSecondary,
                   ),
                 ),
               ),

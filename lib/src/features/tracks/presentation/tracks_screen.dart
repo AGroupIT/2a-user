@@ -5,8 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:showcaseview/showcaseview.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -76,9 +79,7 @@ void _showStyledSnackBar(
         ),
       ),
       behavior: SnackBarBehavior.floating,
-      backgroundColor: isError
-          ? const Color(0xFFE53935)
-          : const Color(0xFFfe3301),
+      backgroundColor: isError ? const Color(0xFFE53935) : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
       duration: const Duration(seconds: 3),
@@ -134,10 +135,43 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   final Map<String, DateTime> _groupQuestionCreatedAt = <String, DateTime>{};
   final Map<String, DateTime> _groupQuestionUpdatedAt = <String, DateTime>{};
 
+  // Showcase keys
+  final _showcaseKeyFilters = GlobalKey();
+  final _showcaseKeyViewMode = GlobalKey();
+  final _showcaseKeyTrackItem = GlobalKey();
+
+  bool _showcaseStarted = false;
+
+  // Хранение контекста Showcase для вызова next()
+  BuildContext? _showcaseContext;
+
   @override
   void initState() {
     super.initState();
     _setupAutoRefresh();
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.tracks));
+    if (!showcaseState.shouldShow) return;
+
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyFilters,
+        _showcaseKeyViewMode,
+        _showcaseKeyTrackItem,
+      ]);
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.tracks)).markAsSeen();
   }
 
   void _setupAutoRefresh() {
@@ -284,13 +318,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                        colors: [context.brandPrimary, context.brandSecondary],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
-                      borderRadius: BorderRadius.all(Radius.circular(14)),
+                      borderRadius: const BorderRadius.all(Radius.circular(14)),
                     ),
                     padding: const EdgeInsets.all(1.5),
                     child: Container(
@@ -441,8 +475,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   const SizedBox(height: 6),
                   Container(
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                      gradient: LinearGradient(
+                        colors: [context.brandPrimary, context.brandSecondary],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -661,8 +695,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   const SizedBox(height: 6),
                   Container(
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                      gradient: LinearGradient(
+                        colors: [context.brandPrimary, context.brandSecondary],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -740,7 +774,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     TrackAssembly assembly,
   ) async {
     // Используем комментарий из локального кэша или из данных сборки
-    final existing = _groupComments[assembly.id.toString()] ?? assembly.comment ?? '';
+    final existing =
+        _groupComments[assembly.id.toString()] ?? assembly.comment ?? '';
     final controller = TextEditingController(text: existing);
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -751,74 +786,73 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-            top: 12,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [const SheetHandle()],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Заметка по сборке',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+      builder: (sheetContext) {
+        final viewInsetsBottom = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return SafeArea(
+          child: AnimatedPadding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + viewInsetsBottom),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SheetHandle(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Заметка по сборке',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  borderRadius: BorderRadius.all(Radius.circular(14)),
-                ),
-                padding: const EdgeInsets.all(1.5),
-                child: Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.all(Radius.circular(12.5)),
-                  ),
-                  child: TextField(
-                    controller: controller,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Добавьте или отредактируйте заметку по сборке…',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF999999),
-                        fontWeight: FontWeight.w500,
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [context.brandPrimary, context.brandSecondary],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                       ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.all(1.5),
+                    child: Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.5),
+                      ),
+                      child: TextField(
+                        controller: controller,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          hintText:
+                              'Добавьте или отредактируйте заметку по сборке…',
+                          hintStyle: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF999999),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                    child: const Text('Сохранить заметку'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Сохранить заметку'),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -896,13 +930,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
               ),
               const SizedBox(height: 6),
               Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                    colors: [context.brandPrimary, context.brandSecondary],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.all(Radius.circular(14)),
+                  borderRadius: const BorderRadius.all(Radius.circular(14)),
                 ),
                 padding: const EdgeInsets.all(1.5),
                 child: Container(
@@ -966,7 +1000,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     // Загружаем тарифы и типы упаковки
     final tariffs = await ref.read(tariffsProvider.future);
     final packagingTypes = await ref.read(packagingTypesProvider.future);
-    
+
     // Выбираем первый тариф по умолчанию
     Tariff? selectedTariff = tariffs.isNotEmpty ? tariffs.first : null;
 
@@ -1042,13 +1076,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                     .map(
                                       (t) => _DropdownItem(
                                         value: t.id,
-                                        label: '${t.name} — ${t.baseCost.toStringAsFixed(0)} ¥/кг',
+                                        label:
+                                            '${t.name} — ${t.baseCost.toStringAsFixed(0)} ¥/кг',
                                       ),
                                     )
                                     .toList(),
                                 onChanged: (value) {
                                   setSheetState(() {
-                                    selectedTariff = tariffs.firstWhere((t) => t.id == value);
+                                    selectedTariff = tariffs.firstWhere(
+                                      (t) => t.id == value,
+                                    );
                                   });
                                 },
                               ),
@@ -1077,7 +1114,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               children: packagingTypes.map((packing) {
-                                final isSelected = selectedPackingIds.contains(packing.id);
+                                final isSelected = selectedPackingIds.contains(
+                                  packing.id,
+                                );
 
                                 return GestureDetector(
                                   onTap: () {
@@ -1092,10 +1131,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                   child: Container(
                                     decoration: BoxDecoration(
                                       gradient: isSelected
-                                          ? const LinearGradient(
+                                          ? LinearGradient(
                                               colors: [
-                                                Color(0xFFfe3301),
-                                                Color(0xFFff5f02),
+                                                context.brandPrimary,
+                                                context.brandSecondary,
                                               ],
                                               begin: Alignment.centerLeft,
                                               end: Alignment.centerRight,
@@ -1115,7 +1154,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                       vertical: 8,
                                     ),
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Text(
                                           packing.nameRu ?? packing.name,
@@ -1168,10 +1208,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                   child: Container(
                                     decoration: BoxDecoration(
                                       gradient: selectedInsurance == 'yes'
-                                          ? const LinearGradient(
+                                          ? LinearGradient(
                                               colors: [
-                                                Color(0xFFfe3301),
-                                                Color(0xFFff5f02),
+                                                context.brandPrimary,
+                                                context.brandSecondary,
                                               ],
                                               begin: Alignment.centerLeft,
                                               end: Alignment.centerRight,
@@ -1218,10 +1258,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                   child: Container(
                                     decoration: BoxDecoration(
                                       gradient: selectedInsurance == 'no'
-                                          ? const LinearGradient(
+                                          ? LinearGradient(
                                               colors: [
-                                                Color(0xFFfe3301),
-                                                Color(0xFFff5f02),
+                                                context.brandPrimary,
+                                                context.brandSecondary,
                                               ],
                                               begin: Alignment.centerLeft,
                                               end: Alignment.centerRight,
@@ -1273,6 +1313,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                             ),
                             const SizedBox(height: 6),
                             _outlinedInput(
+                              context,
                               TextEditingController(
                                 text: insuranceAmount ?? '',
                               ),
@@ -1428,6 +1469,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       ),
                       const SizedBox(height: 6),
                       _outlinedInput(
+                        context,
                         nameController,
                         hint: 'например: кроссовки Nuke Air Max',
                       ),
@@ -1442,6 +1484,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       ),
                       const SizedBox(height: 6),
                       _outlinedInput(
+                        context,
                         qtyController,
                         hint: 'например: 2',
                         keyboardType: TextInputType.number,
@@ -1642,9 +1685,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
     }
 
-    // Получаем статусы из БД
-    final statusesAsync = ref.watch(trackStatusesProvider);
-
     // Получаем notifier и состояние пагинированного списка
     final tracksNotifier = ref.watch(paginatedTracksProvider(clientCode));
     // Подписываемся на изменения состояния notifier
@@ -1656,135 +1696,157 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 72.0;
 
-    return Stack(
-      children: [
-        RefreshIndicator(
-          onRefresh: () async {
-            // Обновляем с актуальными фильтрами из UI
-            final filterParams = _getFilterParams(clientCode);
-            await ref
-                .read(paginatedTracksProvider(clientCode))
-                .updateFilters(filterParams);
-            ref.invalidate(assembliesListProvider(clientCode));
-          },
-          color: const Color(0xFFfe3301),
-          child: NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              // Проверяем нужна ли подгрузка при скролле
-              if (notification is ScrollUpdateNotification) {
-                final metrics = notification.metrics;
-                final maxScroll = metrics.maxScrollExtent;
-                final currentScroll = metrics.pixels;
-                // Загружаем ещё когда до конца осталось ~10% списка
-                if (currentScroll >= maxScroll * 0.9 &&
-                    !tracksState.isLoading) {
-                  ref.read(paginatedTracksProvider(clientCode)).loadMore();
-                }
-              }
-              return false;
-            },
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                topPad * 0.7 + 6,
-                16,
-                bottomPad +
-                    16 +
-                    (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8),
-              ),
-              children: [
-                Text(
-                  'Треки',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 24,
-                        offset: Offset(0, 10),
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          _showcaseContext = showcaseContext;
+
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async {
+                  // Обновляем с актуальными фильтрами из UI
+                  final filterParams = _getFilterParams(clientCode);
+                  await ref
+                      .read(paginatedTracksProvider(clientCode))
+                      .updateFilters(filterParams);
+                  ref.invalidate(assembliesListProvider(clientCode));
+                },
+                color: context.brandPrimary,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    // Проверяем нужна ли подгрузка при скролле
+                    if (notification is ScrollUpdateNotification) {
+                      final metrics = notification.metrics;
+                      final maxScroll = metrics.maxScrollExtent;
+                      final currentScroll = metrics.pixels;
+                      // Загружаем ещё когда до конца осталось ~10% списка
+                      if (currentScroll >= maxScroll * 0.9 &&
+                          !tracksState.isLoading) {
+                        ref
+                            .read(paginatedTracksProvider(clientCode))
+                            .loadMore();
+                      }
+                    }
+                    return false;
+                  },
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      topPad * 0.7 + 6,
+                      16,
+                      bottomPad +
+                          16 +
+                          (_selectedTracks.isEmpty
+                              ? 0
+                              : bulkButtonExtraPad + 8),
+                    ),
+                    children: [
+                      Text(
+                        'Треки',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
+                      const SizedBox(height: 18),
+                      Showcase(
+                        key: _showcaseKeyFilters,
+                        title: 'Фильтры и поиск',
+                        description:
+                            'Используйте фильтры для поиска треков по статусу или номеру. Строка поиска позволяет быстро найти нужный трек.',
+                        targetBorderRadius: BorderRadius.circular(20),
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        onTargetClick: () {
+                          if (_showcaseContext != null) {
+                            ShowCaseWidget.of(_showcaseContext!).next();
+                          }
+                        },
+                        disposeOnTap: false,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x14000000),
+                                blurRadius: 24,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          child: _FiltersNew(
+                            statusCode: _statusCode,
+                            tracks: tracksState.tracks,
+                            viewMode: _viewMode,
+                            query: _query,
+                            onStatusChanged: (v) =>
+                                _onStatusChanged(v, clientCode),
+                            onViewModeChanged: (v) =>
+                                _onViewModeChanged(v, clientCode),
+                            onQueryChanged: (v) =>
+                                _onSearchChanged(v, clientCode),
+                            showcaseViewModeKey: _showcaseKeyViewMode,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      // Показываем информацию о количестве
+                      if (tracksState.total > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Показано ${tracksState.tracks.length} из ${tracksState.total}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      _buildTracksList(tracksState, clientCode),
                     ],
                   ),
-                  padding: const EdgeInsets.all(16),
-                  child: statusesAsync.when(
-                    loading: () => const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(20),
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                    error: (_, __) => _FiltersNew(
-                      statusCode: _statusCode,
-                      statuses: const [],
-                      viewMode: _viewMode,
-                      query: _query,
-                      onStatusChanged: (v) => _onStatusChanged(v, clientCode),
-                      onViewModeChanged: (v) =>
-                          _onViewModeChanged(v, clientCode),
-                      onQueryChanged: (v) => _onSearchChanged(v, clientCode),
-                    ),
-                    data: (statuses) => _FiltersNew(
-                      statusCode: _statusCode,
-                      statuses: statuses,
-                      viewMode: _viewMode,
-                      query: _query,
-                      onStatusChanged: (v) => _onStatusChanged(v, clientCode),
-                      onViewModeChanged: (v) =>
-                          _onViewModeChanged(v, clientCode),
-                      onQueryChanged: (v) => _onSearchChanged(v, clientCode),
+                ),
+              ),
+              if (_selectedTracks.isNotEmpty)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom:
+                      AppLayout.bottomBarHeight +
+                      AppLayout.bottomBarBottomMargin -
+                      75,
+                  child: SafeArea(
+                    top: false,
+                    child: FilledButton(
+                      onPressed: _selectedStatus == null
+                          ? null
+                          : () => _bulkAction(context),
+                      child: Text(_actionLabel()),
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
-                // Показываем информацию о количестве
-                if (tracksState.total > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Показано ${tracksState.tracks.length} из ${tracksState.total}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                _buildTracksList(tracksState),
-              ],
-            ),
-          ),
-        ),
-        if (_selectedTracks.isNotEmpty)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom:
-                AppLayout.bottomBarHeight +
-                AppLayout.bottomBarBottomMargin -
-                75,
-            child: SafeArea(
-              top: false,
-              child: FilledButton(
-                onPressed: _selectedStatus == null
-                    ? null
-                    : () => _bulkAction(context),
-                child: Text(_actionLabel()),
-              ),
-            ),
-          ),
-      ],
+            ],
+          );
+        },
+      ),
     );
   }
 
   /// Построить список треков с поддержкой пагинации
-  Widget _buildTracksList(PaginatedTracksState tracksState) {
+  Widget _buildTracksList(PaginatedTracksState tracksState, String clientCode) {
     // Показываем загрузку при первоначальной загрузке
     if (tracksState.isLoading && tracksState.tracks.isEmpty) {
       return const Center(
@@ -1813,6 +1875,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
     }
 
+    // Запускаем showcase когда данные загружены
+    if (_showcaseContext != null) {
+      _startShowcaseIfNeeded(_showcaseContext!);
+    }
+
     // Группируем треки
     final groups = _groupTracks(tracksState.tracks);
 
@@ -1836,40 +1903,72 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
             // Подгрузка будет через ScrollNotification
           }
 
+          // Оборачиваем первую карточку в Showcase
+          final trackCard = _TrackGroupCard(
+            assembly: g.assembly,
+            tracks: g.tracks,
+            selectedTrackCodes: _selectedTracks,
+            selectedStatus: _selectedStatus,
+            onToggle: _toggleTrack,
+            requestedPhotoReports: _requestedPhotoReports,
+            onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
+            onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
+            photoRequestCreatedAt: _photoRequestCreatedAt,
+            photoRequestUpdatedAt: _photoRequestUpdatedAt,
+            photoRequestNotes: _photoRequestNotes,
+            overrideComments: _overrideComments,
+            onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+            onCancelQuestion: (track) => _cancelQuestion(track),
+            onEditComment: (track) => _showCommentSheet(context, track),
+            onEditProduct: (track) => _showAboutProductSheet(context, track),
+            askedQuestions: _askedQuestions,
+            questionCreatedAt: _questionCreatedAt,
+            questionUpdatedAt: _questionUpdatedAt,
+            questionStatus: _questionStatus,
+            questionAnswers: _questionAnswers,
+            productInfos: _productInfos,
+            groupComments: _groupComments,
+            groupQuestions: _groupQuestions,
+            groupQuestionCreatedAt: _groupQuestionCreatedAt,
+            groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
+            onEditGroupComment: (assembly) =>
+                _showGroupCommentSheet(context, assembly),
+            onAskGroupQuestion: (assembly) =>
+                _showGroupQuestionSheet(context, assembly),
+          );
+
+          // Первый элемент оборачиваем в Showcase
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Showcase(
+                key: _showcaseKeyTrackItem,
+                title: 'Карточка трека',
+                description:
+                    'Нажмите на карточку, чтобы раскрыть детали. Здесь вы можете запросить фото, задать вопрос или выбрать трек для сборки.',
+                targetBorderRadius: BorderRadius.circular(18),
+                tooltipBackgroundColor: Colors.white,
+                textColor: Colors.black87,
+                titleTextStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+                descTextStyle: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+                onToolTipClick: _onShowcaseComplete,
+                onBarrierClick: _onShowcaseComplete,
+                child: trackCard,
+              ),
+            );
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: _TrackGroupCard(
-              assembly: g.assembly,
-              tracks: g.tracks,
-              selectedTrackCodes: _selectedTracks,
-              selectedStatus: _selectedStatus,
-              onToggle: _toggleTrack,
-              requestedPhotoReports: _requestedPhotoReports,
-              onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
-              onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
-              photoRequestCreatedAt: _photoRequestCreatedAt,
-              photoRequestUpdatedAt: _photoRequestUpdatedAt,
-              photoRequestNotes: _photoRequestNotes,
-              overrideComments: _overrideComments,
-              onAskQuestion: (track) => _showAskQuestionSheet(context, track),
-              onCancelQuestion: (track) => _cancelQuestion(track),
-              onEditComment: (track) => _showCommentSheet(context, track),
-              onEditProduct: (track) => _showAboutProductSheet(context, track),
-              askedQuestions: _askedQuestions,
-              questionCreatedAt: _questionCreatedAt,
-              questionUpdatedAt: _questionUpdatedAt,
-              questionStatus: _questionStatus,
-              questionAnswers: _questionAnswers,
-              productInfos: _productInfos,
-              groupComments: _groupComments,
-              groupQuestions: _groupQuestions,
-              groupQuestionCreatedAt: _groupQuestionCreatedAt,
-              groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
-              onEditGroupComment: (assembly) =>
-                  _showGroupCommentSheet(context, assembly),
-              onAskGroupQuestion: (assembly) =>
-                  _showGroupQuestionSheet(context, assembly),
-            ),
+            child: trackCard,
           );
         }),
         // Индикатор загрузки следующей страницы
@@ -2009,8 +2108,8 @@ class _FiltersState extends State<_Filters> {
       children: [
         Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+            gradient: LinearGradient(
+              colors: [context.brandPrimary, context.brandSecondary],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
@@ -2026,9 +2125,9 @@ class _FiltersState extends State<_Filters> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: Color(0xFFfe3301),
+                  color: context.brandPrimary,
                   size: 20,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -2102,21 +2201,23 @@ class _FiltersState extends State<_Filters> {
 /// Новый виджет фильтров со статусами из БД
 class _FiltersNew extends StatefulWidget {
   final String? statusCode; // null = Все
-  final List<TrackStatus> statuses;
+  final List<TrackItem> tracks; // Извлекаем статусы из треков
   final ViewMode viewMode;
   final String query;
   final ValueChanged<String?> onStatusChanged;
   final ValueChanged<ViewMode> onViewModeChanged;
   final ValueChanged<String> onQueryChanged;
+  final GlobalKey? showcaseViewModeKey;
 
   const _FiltersNew({
     required this.statusCode,
-    required this.statuses,
+    required this.tracks,
     required this.viewMode,
     required this.query,
     required this.onStatusChanged,
     required this.onViewModeChanged,
     required this.onQueryChanged,
+    this.showcaseViewModeKey,
   });
 
   @override
@@ -2149,20 +2250,69 @@ class _FiltersNewState extends State<_FiltersNew> {
 
   @override
   Widget build(BuildContext context) {
+    // Извлекаем уникальные статусы из загруженных треков
+    final uniqueStatuses = <String, String>{};
+    for (final track in widget.tracks) {
+      if (track.statusCode.isNotEmpty &&
+          !uniqueStatuses.containsKey(track.statusCode)) {
+        uniqueStatuses[track.statusCode] = track.status;
+      }
+    }
+
     // Формируем список статусов для dropdown
     final statusItems = <_DropdownItem<String?>>[
       const _DropdownItem(value: null, label: 'Все'),
-      ...widget.statuses.map(
-        (s) => _DropdownItem(value: s.code, label: s.nameRu),
+      ...uniqueStatuses.entries.map(
+        (e) => _DropdownItem(value: e.key, label: e.value),
       ),
     ];
+
+    // Виджет ViewMode dropdown
+    Widget viewModeDropdown = _CustomDropdown<ViewMode>(
+      value: widget.viewMode,
+      label: 'Вид',
+      items: const [
+        _DropdownItem(value: ViewMode.all, label: 'Все'),
+        _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+        _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
+      ],
+      onChanged: (v) => v != null ? widget.onViewModeChanged(v) : null,
+    );
+
+    // Оборачиваем в Showcase если ключ передан
+    if (widget.showcaseViewModeKey != null) {
+      viewModeDropdown = Showcase(
+        key: widget.showcaseViewModeKey!,
+        title: 'Режим отображения',
+        description:
+            'Переключайтесь между режимами: все треки, только сборки или одиночные посылки.',
+        targetBorderRadius: BorderRadius.circular(14),
+        tooltipBackgroundColor: Colors.white,
+        textColor: Colors.black87,
+        titleTextStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF1A1A1A),
+        ),
+        descTextStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.grey.shade600,
+        ),
+        onTargetClick: () {
+          ShowCaseWidget.of(context).next();
+        },
+        disposeOnTap: false,
+        child: viewModeDropdown,
+      );
+    }
 
     return Column(
       children: [
         Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+            gradient: LinearGradient(
+              colors: [context.brandPrimary, context.brandSecondary],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
@@ -2178,9 +2328,9 @@ class _FiltersNewState extends State<_FiltersNew> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: Color(0xFFfe3301),
+                  color: context.brandPrimary,
                   size: 20,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -2220,19 +2370,7 @@ class _FiltersNewState extends State<_FiltersNew> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              child: _CustomDropdown<ViewMode>(
-                value: widget.viewMode,
-                label: 'Вид',
-                items: const [
-                  _DropdownItem(value: ViewMode.all, label: 'Все'),
-                  _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
-                  _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
-                ],
-                onChanged: (v) =>
-                    v != null ? widget.onViewModeChanged(v) : null,
-              ),
-            ),
+            Expanded(child: viewModeDropdown),
             const SizedBox(width: 10),
             Expanded(
               child: _CustomDropdown<String?>(
@@ -2368,8 +2506,8 @@ class _TrackGroupCard extends StatelessWidget {
                       style: const TextStyle(color: Colors.black54),
                     ),
                   // Отображение тарифа, упаковки и страховки
-                  if (assembly!.tariffName != null || 
-                      assembly!.packagingTypes.isNotEmpty || 
+                  if (assembly!.tariffName != null ||
+                      assembly!.packagingTypes.isNotEmpty ||
                       assembly!.hasInsurance) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -2385,8 +2523,11 @@ class _TrackGroupCard extends StatelessWidget {
                           if (assembly!.tariffName != null) ...[
                             Row(
                               children: [
-                                const Icon(Icons.local_shipping_outlined, 
-                                    size: 16, color: Colors.black54),
+                                const Icon(
+                                  Icons.local_shipping_outlined,
+                                  size: 16,
+                                  color: Colors.black54,
+                                ),
                                 const SizedBox(width: 6),
                                 const Text(
                                   'Тариф: ',
@@ -2403,7 +2544,10 @@ class _TrackGroupCard extends StatelessWidget {
                                   ),
                                 ),
                                 if (assembly!.tariffCost != null) ...[
-                                  const Text(' — ', style: TextStyle(color: Colors.black54)),
+                                  const Text(
+                                    ' — ',
+                                    style: TextStyle(color: Colors.black54),
+                                  ),
                                   Text(
                                     '${assembly!.tariffCost!.toStringAsFixed(0)} ¥/кг',
                                     style: const TextStyle(
@@ -2417,13 +2561,16 @@ class _TrackGroupCard extends StatelessWidget {
                             ),
                           ],
                           if (assembly!.packagingTypes.isNotEmpty) ...[
-                            if (assembly!.tariffName != null) 
+                            if (assembly!.tariffName != null)
                               const SizedBox(height: 8),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.inventory_2_outlined, 
-                                    size: 16, color: Colors.black54),
+                                const Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 16,
+                                  color: Colors.black54,
+                                ),
                                 const SizedBox(width: 6),
                                 const Text(
                                   'Упаковка: ',
@@ -2445,13 +2592,16 @@ class _TrackGroupCard extends StatelessWidget {
                             ),
                           ],
                           if (assembly!.hasInsurance) ...[
-                            if (assembly!.tariffName != null || 
-                                assembly!.packagingTypes.isNotEmpty) 
+                            if (assembly!.tariffName != null ||
+                                assembly!.packagingTypes.isNotEmpty)
                               const SizedBox(height: 8),
                             Row(
                               children: [
-                                const Icon(Icons.verified_user_outlined, 
-                                    size: 16, color: Colors.blue),
+                                const Icon(
+                                  Icons.verified_user_outlined,
+                                  size: 16,
+                                  color: Colors.blue,
+                                ),
                                 const SizedBox(width: 6),
                                 const Text(
                                   'Страховка: ',
@@ -2990,9 +3140,9 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                               ),
                               decoration: BoxDecoration(
                                 color: _selectedValue == item.value
-                                    ? const Color(
-                                        0xFFfe3301,
-                                      ).withValues(alpha: 0.1)
+                                    ? context.brandPrimary.withValues(
+                                        alpha: 0.1,
+                                      )
                                     : Colors.transparent,
                               ),
                               child: Text(
@@ -3003,7 +3153,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                                       ? FontWeight.w600
                                       : FontWeight.w500,
                                   color: _selectedValue == item.value
-                                      ? const Color(0xFFfe3301)
+                                      ? context.brandPrimary
                                       : Colors.black87,
                                 ),
                               ),
@@ -3091,7 +3241,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                 _overlayEntry != null
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: const Color(0xFFfe3301),
+                color: context.brandPrimary,
                 size: 20,
               ),
             ],
@@ -3115,14 +3265,9 @@ class _ActionChipButton extends StatelessWidget {
     this.iconOnly = false,
   });
 
-  static const _grad = LinearGradient(
-    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
-
   @override
   Widget build(BuildContext context) {
+    final gradient = context.brandGradient;
     final isDisabled = onPressed == null;
 
     // Icon-only button (circular)
@@ -3130,7 +3275,7 @@ class _ActionChipButton extends StatelessWidget {
       return Opacity(
         opacity: isDisabled ? 0.45 : 1,
         child: Container(
-          decoration: BoxDecoration(gradient: _grad, shape: BoxShape.circle),
+          decoration: BoxDecoration(gradient: gradient, shape: BoxShape.circle),
           padding: const EdgeInsets.all(1.5),
           child: Material(
             color: Colors.white,
@@ -3140,7 +3285,7 @@ class _ActionChipButton extends StatelessWidget {
               onTap: onPressed,
               child: Padding(
                 padding: const EdgeInsets.all(8),
-                child: Icon(icon, size: 18, color: const Color(0xFFfe3301)),
+                child: Icon(icon, size: 18, color: context.brandPrimary),
               ),
             ),
           ),
@@ -3153,7 +3298,7 @@ class _ActionChipButton extends StatelessWidget {
       opacity: isDisabled ? 0.45 : 1,
       child: Container(
         decoration: BoxDecoration(
-          gradient: _grad,
+          gradient: gradient,
           borderRadius: BorderRadius.circular(12),
         ),
         padding: const EdgeInsets.all(1),
@@ -3169,7 +3314,7 @@ class _ActionChipButton extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[
-                    Icon(icon, size: 16, color: const Color(0xFFfe3301)),
+                    Icon(icon, size: 16, color: context.brandPrimary),
                     const SizedBox(width: 6),
                   ],
                   if (label != null)
@@ -3207,6 +3352,7 @@ class _GroupBucket {
 }
 
 Widget _outlinedInput(
+  BuildContext context,
   TextEditingController controller, {
   String? hint,
   TextInputType? keyboardType,
@@ -3215,8 +3361,8 @@ Widget _outlinedInput(
 }) {
   return Container(
     decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+      gradient: LinearGradient(
+        colors: [context.brandPrimary, context.brandSecondary],
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
       ),

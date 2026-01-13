@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:showcaseview/showcaseview.dart';
 
+import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -21,10 +24,41 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   String? _error;
   bool _submitting = false;
 
+  // Showcase keys
+  final _showcaseKeyInput = GlobalKey();
+  final _showcaseKeySubmit = GlobalKey();
+
+  bool _showcaseStarted = false;
+
+  // Хранение контекста Showcase для вызова next()
+  BuildContext? _showcaseContext;
+
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.addTracks));
+    if (!showcaseState.shouldShow) return;
+    
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyInput,
+        _showcaseKeySubmit,
+      ]);
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.addTracks)).markAsSeen();
   }
 
   @override
@@ -42,46 +76,63 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 100 + bottomPad),
-      children: [
-        Text(
-          'Добавить треки',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 18),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x14000000),
-                blurRadius: 24,
-                offset: Offset(0, 10),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          _showcaseContext = showcaseContext;
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return ListView(
+            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 100 + bottomPad),
             children: [
-              const Text(
-                'Введите трек-номера',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              Text(
+                'Добавить треки',
+                style: Theme.of(
+                  context,
+                ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'По одному в строке или через запятую',
-                style: TextStyle(color: Color(0xFF999999), fontSize: 13),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 18),
+              Showcase(
+                key: _showcaseKeyInput,
+                title: 'Поле ввода треков',
+                description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
+                onTargetClick: () {
+                  if (_showcaseContext != null) {
+                    ShowCaseWidget.of(_showcaseContext!).next();
+                  }
+                },
+                disposeOnTap: false,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                      'Введите трек-номера',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'По одному в строке или через запятую',
+                      style: TextStyle(color: Color(0xFF999999), fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                  gradient: LinearGradient(
+                    colors: [context.brandPrimary, context.brandSecondary],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
@@ -148,21 +199,33 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _submitting ? null : () => _submit(clientCode),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Добавить треки'),
+              Showcase(
+                key: _showcaseKeySubmit,
+                title: 'Кнопка добавления',
+                description: 'Нажмите для добавления введённых треков.',
+                onBarrierClick: () {
+                  _onShowcaseComplete();
+                },
+                onToolTipClick: () {
+                  _onShowcaseComplete();
+                },
+                child: FilledButton(
+                  onPressed: _submitting ? null : () => _submit(clientCode),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Добавить треки'),
+                ),
               ),
             ],
           ),
+        ),
         ),
         if (_result != null) ...[
           const SizedBox(height: 18),
@@ -171,7 +234,10 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
             onClose: () => setState(() => _result = null),
           ),
         ],
-      ],
+            ],
+          );
+        },
+      ),
     );
   }
 

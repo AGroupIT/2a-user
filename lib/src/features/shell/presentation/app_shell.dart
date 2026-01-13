@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/widgets/app_scaffold.dart';
 import '../../../core/ui/app_background.dart';
+import '../../../core/ui/app_colors.dart';
 
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -216,13 +217,13 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
                         child: Container(
                           width: itemWidth - 8,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                            gradient: LinearGradient(
+                              colors: [context.brandPrimary, context.brandSecondary],
                             ),
                             borderRadius: BorderRadius.circular(18),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFff5f02).withValues(alpha: 0.4),
+                                color: context.brandSecondary.withValues(alpha: 0.4),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),

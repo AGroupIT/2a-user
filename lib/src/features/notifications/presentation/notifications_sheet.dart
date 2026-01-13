@@ -1,24 +1,31 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../application/notifications_controller.dart';
 import '../domain/notification_item.dart';
+
+/// Интервал polling (30 секунд)
+const _kPollingInterval = Duration(seconds: 30);
 
 /// Notifier для фильтра типа уведомлений
 class _SelectedFilterNotifier extends Notifier<NotificationType?> {
   @override
   NotificationType? build() => null;
-  
+
   void set(NotificationType? value) => state = value;
 }
 
 /// Выбранный фильтр типа уведомлений
-final _selectedFilterProvider = NotifierProvider<_SelectedFilterNotifier, NotificationType?>(
-  _SelectedFilterNotifier.new,
-);
+final _selectedFilterProvider =
+    NotifierProvider<_SelectedFilterNotifier, NotificationType?>(
+      _SelectedFilterNotifier.new,
+    );
 
-class NotificationsSheet extends ConsumerWidget {
+class NotificationsSheet extends ConsumerStatefulWidget {
   final String clientCode;
   final ValueChanged<String> onNavigate;
   final ScrollController? controller;
@@ -31,9 +38,40 @@ class NotificationsSheet extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsSheet> createState() => _NotificationsSheetState();
+}
+
+class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startPolling();
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(_kPollingInterval, (_) {
+      if (!mounted) return;
+      debugPrint('🔔 Polling notifications...');
+      ref
+          .read(notificationsControllerProvider(widget.clientCode).notifier)
+          .refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final itemsAsync = ref.watch(notificationsControllerProvider(clientCode));
+    final itemsAsync = ref.watch(
+      notificationsControllerProvider(widget.clientCode),
+    );
     final selectedFilter = ref.watch(_selectedFilterProvider);
 
     return SafeArea(
@@ -53,12 +91,11 @@ class NotificationsSheet extends ConsumerWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed:
-                      itemsAsync.value?.any((n) => !n.isRead) == true
+                  onPressed: itemsAsync.value?.any((n) => !n.isRead) == true
                       ? () => ref
                             .read(
                               notificationsControllerProvider(
-                                clientCode,
+                                widget.clientCode,
                               ).notifier,
                             )
                             .markAllRead()
@@ -122,7 +159,7 @@ class NotificationsSheet extends ConsumerWidget {
                         onPressed: () => ref
                             .read(
                               notificationsControllerProvider(
-                                clientCode,
+                                widget.clientCode,
                               ).notifier,
                             )
                             .refresh(),
@@ -132,7 +169,7 @@ class NotificationsSheet extends ConsumerWidget {
                   ),
                 ),
               ),
-              data: (items) => _buildItemsList(context, ref, items, selectedFilter),
+              data: (items) => _buildItemsList(context, items, selectedFilter),
             ),
           ),
         ],
@@ -142,7 +179,6 @@ class NotificationsSheet extends ConsumerWidget {
 
   Widget _buildItemsList(
     BuildContext context,
-    WidgetRef ref,
     List<NotificationItem> items,
     NotificationType? selectedFilter,
   ) {
@@ -166,10 +202,7 @@ class NotificationsSheet extends ConsumerWidget {
               selectedFilter != null
                   ? 'Нет уведомлений типа "${selectedFilter.displayName}"'
                   : 'Пока нет уведомлений',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -177,7 +210,7 @@ class NotificationsSheet extends ConsumerWidget {
     }
 
     return ListView.separated(
-      controller: controller,
+      controller: widget.controller,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       physics: const BouncingScrollPhysics(),
       itemCount: filteredItems.length,
@@ -189,14 +222,12 @@ class NotificationsSheet extends ConsumerWidget {
           onTap: () async {
             await ref
                 .read(
-                  notificationsControllerProvider(
-                    clientCode,
-                  ).notifier,
+                  notificationsControllerProvider(widget.clientCode).notifier,
                 )
                 .markRead(item.id);
             final route = item.route;
             if (route == null) return;
-            onNavigate(route);
+            widget.onNavigate(route);
           },
         );
       },
@@ -225,10 +256,10 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFfe3301) : Colors.grey.shade100,
+          color: isSelected ? context.brandPrimary : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isSelected ? const Color(0xFFfe3301) : Colors.grey.shade300,
+            color: isSelected ? context.brandPrimary : Colors.grey.shade300,
           ),
         ),
         child: Row(
@@ -278,12 +309,12 @@ class _NotificationTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: item.isRead
                 ? Colors.grey.withValues(alpha: 0.05)
-                : const Color(0xFFff5f02).withValues(alpha: 0.08),
+                : context.brandSecondary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
             border: item.isRead
                 ? null
                 : Border.all(
-                    color: const Color(0xFFff5f02).withValues(alpha: 0.3),
+                    color: context.brandSecondary.withValues(alpha: 0.3),
                     width: 1,
                   ),
           ),
@@ -297,22 +328,22 @@ class _NotificationTile extends StatelessWidget {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFff5f02).withValues(alpha: 0.15),
+                      color: context.brandSecondary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       item.type.icon,
-                      color: const Color(0xFFff5f02),
+                      color: context.brandSecondary,
                       size: 22,
                     ),
                   ),
                   if (!item.isRead)
-                    const Positioned(
+                    Positioned(
                       right: -2,
                       top: -2,
                       child: CircleAvatar(
                         radius: 6,
-                        backgroundColor: Color(0xFFfe3301),
+                        backgroundColor: context.brandPrimary,
                       ),
                     ),
                 ],
@@ -355,15 +386,15 @@ class _NotificationTile extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFff5f02).withValues(alpha: 0.1),
+                        color: context.brandSecondary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         item.type.displayName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFFfe3301),
+                          color: context.brandPrimary,
                         ),
                       ),
                     ),

@@ -159,7 +159,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     }
   }
 
-  Future<void> _shareMedia() async {
+  Future<void> _shareMedia(BuildContext context) async {
     try {
       String filePath;
       
@@ -174,12 +174,16 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         await Dio().download(widget.item.url, filePath);
       }
       
-      // Шарим файл
+      // Шарим файл (sharePositionOrigin нужен для iPad)
+      final box = context.findRenderObject() as RenderBox?;
       await Share.shareXFiles(
         [XFile(filePath)],
         text: widget.item.trackingNumber != null 
             ? 'Трек: ${widget.item.trackingNumber}' 
             : null,
+        sharePositionOrigin: box != null 
+            ? box.localToGlobal(Offset.zero) & box.size
+            : const Rect.fromLTWH(0, 0, 100, 100),
       );
       
       // Удаляем временный файл для видео после небольшой задержки
@@ -297,7 +301,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      onPressed: _shareMedia,
+                      onPressed: () => _shareMedia(context),
                       icon: const Icon(Icons.share_rounded, color: Colors.white),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.black.withValues(alpha: 0.3),

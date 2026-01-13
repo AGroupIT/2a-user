@@ -11,6 +11,7 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/invoices/presentation/invoices_screen.dart';
 import '../features/news/presentation/news_detail_screen.dart';
 import '../features/news/presentation/news_list_screen.dart';
+import '../features/payment_chat/presentation/payment_chat_screen.dart';
 import '../features/photos/presentation/photos_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/rules/presentation/rule_detail_screen.dart';
@@ -140,6 +141,35 @@ final routerProvider = Provider<GoRouter>((ref) {
           return AppScaffold(
             title: 'Поддержка',
             child: SupportChatScreen(initialMessage: initialMessage),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/payment-chat',
+        builder: (context, state) {
+          String? initialMessage;
+          String? invoiceId;
+          String? invoiceNumber;
+          double? amount;
+          
+          if (state.extra is Map<String, dynamic>) {
+            final extra = state.extra as Map<String, dynamic>;
+            initialMessage = extra['message'] as String?;
+            invoiceId = extra['invoiceId'] as String?;
+            invoiceNumber = extra['invoiceNumber'] as String?;
+            amount = extra['amount'] as double?;
+          } else if (state.extra is String) {
+            initialMessage = state.extra as String?;
+          }
+          
+          return AppScaffold(
+            title: 'Чат по оплате',
+            child: PaymentChatScreen(
+              initialMessage: initialMessage,
+              invoiceId: invoiceId,
+              invoiceNumber: invoiceNumber,
+              amount: amount,
+            ),
           );
         },
       ),

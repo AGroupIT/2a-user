@@ -1,9 +1,11 @@
+import '../../../core/utils/delta_converter.dart';
+
 class RuleItem {
   final String slug;
   final String title;
   final String excerpt;
 
-  /// Markdown content for rich text rendering
+  /// Markdown content for rich text rendering (converted from Delta if needed)
   final String content;
   final int order;
 
@@ -16,7 +18,10 @@ class RuleItem {
   });
 
   factory RuleItem.fromJson(Map<String, dynamic> json) {
-    final content = json['content'] as String? ?? '';
+    final rawContent = json['content'] as String? ?? '';
+    
+    // Конвертируем Delta JSON в Markdown если нужно
+    final content = DeltaConverter.toMarkdown(rawContent);
 
     return RuleItem(
       slug: json['id'].toString(),

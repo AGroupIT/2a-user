@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../data/rules_provider.dart';
@@ -17,12 +20,37 @@ class RulesScreen extends ConsumerStatefulWidget {
 
 class _RulesScreenState extends ConsumerState<RulesScreen>
     with AutoRefreshMixin {
+  // Showcase keys
+  final _showcaseKeyRulesList = GlobalKey();
+
+  bool _showcaseStarted = false;
+
   @override
   void initState() {
     super.initState();
     startAutoRefresh(() {
       ref.invalidate(rulesListProvider);
     });
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final showcaseState = ref.read(showcaseProvider(ShowcasePage.rules));
+      if (showcaseState.shouldShow) {
+        ShowCaseWidget.of(
+          showcaseContext,
+        ).startShowCase([_showcaseKeyRulesList]);
+      }
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.rules)).markAsSeen();
   }
 
   @override
@@ -36,52 +64,86 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
       await ref.read(rulesListProvider.future);
     }
 
-    return asyncItems.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить правила',
-        message: e.toString(),
-      ),
-      data: (items) {
-        if (items.isEmpty) {
-          return const EmptyState(
-            icon: Icons.rule_folder_outlined,
-            title: 'Правила не найдены',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          color: const Color(0xFFfe3301),
-          child: ListView.builder(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              topPad * 0.7 + 6,
-              16,
-              24 + bottomPad,
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          // Запускаем showcase если нужно
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return asyncItems.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Не удалось загрузить правила',
+              message: e.toString(),
             ),
-            itemCount: items.length + 1, // +1 for header
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 18),
-                  child: Text(
-                    'Правила оказания услуг',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
+            data: (items) {
+              if (items.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.rule_folder_outlined,
+                  title: 'Правила не найдены',
                 );
               }
-              final item = items[i - 1];
-              return Padding(
-                padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
-                child: _RuleCard(item: item),
+              return Builder(
+                builder: (ctx) => RefreshIndicator(
+                  onRefresh: onRefresh,
+                  color: ctx.brandPrimary,
+                  child: ListView.builder(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      topPad * 0.7 + 6,
+                      16,
+                      24 + bottomPad,
+                    ),
+                    itemCount: items.length + 1, // +1 for header
+                    itemBuilder: (context, i) {
+                      if (i == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 18),
+                          child: Text(
+                            'Правила оказания услуг',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        );
+                      }
+                      final item = items[i - 1];
+                      if (i == 1) {
+                        // Первая карточка правил - оборачиваем в Showcase
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: i == items.length ? 0 : 12,
+                          ),
+                          child: Showcase(
+                            key: _showcaseKeyRulesList,
+                            title: 'Правила оказания услуг',
+                            description:
+                                'Список правил и условий работы. Нажмите на карточку для просмотра полного текста правила.',
+                            onBarrierClick: () {
+                              if (mounted) _onShowcaseComplete();
+                            },
+                            onToolTipClick: () {
+                              if (mounted) _onShowcaseComplete();
+                            },
+                            child: _RuleCard(item: item),
+                          ),
+                        );
+                      }
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: i == items.length ? 0 : 12,
+                        ),
+                        child: _RuleCard(item: item),
+                      );
+                    },
+                  ),
+                ),
               );
             },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -118,8 +180,8 @@ class _RuleCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                    gradient: LinearGradient(
+                      colors: [context.brandPrimary, context.brandSecondary],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),

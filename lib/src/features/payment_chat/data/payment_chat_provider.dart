@@ -6,21 +6,34 @@ import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
-import 'chat_models.dart';
+import '../../support/data/chat_models.dart';
 
-// ==================== Chat Repository ====================
+// ==================== Payment Chat Repository ====================
 
-/// Репозиторий для работы с чатом поддержки
-class ChatRepository {
+/// Простой Notifier для bool состояния (открыт ли экран чата по оплате)
+class IsPaymentChatScreenOpenNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+  
+  void set(bool value) => state = value;
+}
+
+/// Провайдер флага открытия экрана чата по оплате
+final isPaymentChatScreenOpenProvider = NotifierProvider<IsPaymentChatScreenOpenNotifier, bool>(
+  IsPaymentChatScreenOpenNotifier.new,
+);
+
+/// Репозиторий для работы с чатом по оплате
+class PaymentChatRepository {
   final ApiClient _apiClient;
 
-  ChatRepository(this._apiClient);
+  PaymentChatRepository(this._apiClient);
 
-  /// Получить или создать диалог с поддержкой
+  /// Получить или создать диалог по оплате
   /// Возвращает диалог с сообщениями
   Future<ChatConversation> getConversation() async {
     try {
-      final response = await _apiClient.get('/client/chat');
+      final response = await _apiClient.get('/client/payment-chat');
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
@@ -34,83 +47,101 @@ class ChatRepository {
         
         return ChatConversation.fromJson(conversationJson);
       }
-      throw Exception('Failed to load conversation');
+      throw Exception('Failed to load payment conversation');
     } on DioException catch (e) {
-      debugPrint('Error getting conversation: $e');
+      debugPrint('Error getting payment conversation: $e');
       rethrow;
     }
   }
 
-  /// Отправить сообщение в чат
-  Future<ChatMessage> sendMessage(String content, {String contentType = 'text', List<int>? attachmentIds}) async {
+  /// Отправить сообщение в чат по оплате
+  Future<ChatMessage> sendMessage(String content, {
+    String contentType = 'text',
+    Map<String, dynamic>? metadata,
+    List<int>? attachmentIds,
+  }) async {
     try {
       final response = await _apiClient.post(
-        '/client/chat',
+        '/client/payment-chat',
         data: {
           'content': content,
           'contentType': contentType,
+          if (metadata != null) 'metadata': metadata,
           if (attachmentIds != null && attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
         },
       );
 
       if (response.statusCode == 201 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        // API возвращает 'message', не 'data'
         return ChatMessage.fromJson(data['message'] as Map<String, dynamic>);
       }
-      throw Exception('Failed to send message');
+      throw Exception('Failed to send payment message');
     } on DioException catch (e) {
-      debugPrint('Error sending message: $e');
+      debugPrint('Error sending payment message: $e');
       rethrow;
     }
   }
-
-  /// Загрузить вложение
-  Future<ChatAttachment> uploadAttachment(File file, int conversationId) async {
+  
+  /// Загрузить файл в чат (изображение или PDF)
+  Future<Map<String, dynamic>?> uploadAttachment(File file, int conversationId) async {
     try {
       final fileName = file.path.split('/').last;
-      final mimeType = _getMimeType(fileName);
+      final extension = fileName.split('.').last.toLowerCase();
+      
+      // Определяем MIME-тип
+      String mimeType;
+      String mimeSubtype;
+      switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+          mimeType = 'image';
+          mimeSubtype = 'jpeg';
+          break;
+        case 'png':
+          mimeType = 'image';
+          mimeSubtype = 'png';
+          break;
+        case 'gif':
+          mimeType = 'image';
+          mimeSubtype = 'gif';
+          break;
+        case 'webp':
+          mimeType = 'image';
+          mimeSubtype = 'webp';
+          break;
+        case 'pdf':
+          mimeType = 'application';
+          mimeSubtype = 'pdf';
+          break;
+        default:
+          mimeType = 'application';
+          mimeSubtype = 'octet-stream';
+      }
       
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
           file.path,
           filename: fileName,
-          contentType: mimeType != null ? MediaType.parse(mimeType) : null,
+          contentType: MediaType(mimeType, mimeSubtype),
         ),
         'conversationId': conversationId.toString(),
       });
-
+      
       final response = await _apiClient.post(
         '/support/attachments',
         data: formData,
+        options: Options(
+          headers: {'Content-Type': 'multipart/form-data'},
+        ),
       );
-
+      
       if (response.statusCode == 201 && response.data != null) {
-        return ChatAttachment.fromJson(response.data as Map<String, dynamic>);
+        return response.data as Map<String, dynamic>;
       }
-      throw Exception('Failed to upload attachment');
+      return null;
     } on DioException catch (e) {
-      debugPrint('Error uploading attachment: $e');
-      rethrow;
-    }
-  }
-
-  String? _getMimeType(String fileName) {
-    final ext = fileName.toLowerCase().split('.').last;
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'gif':
-        return 'image/gif';
-      case 'webp':
-        return 'image/webp';
-      case 'pdf':
-        return 'application/pdf';
-      default:
-        return null;
+      debugPrint('Error uploading payment chat attachment: $e');
+      return null;
     }
   }
 
@@ -118,7 +149,7 @@ class ChatRepository {
   Future<List<ChatMessage>> getNewMessages(int conversationId, int afterMessageId) async {
     try {
       final response = await _apiClient.get(
-        '/client/chat',
+        '/client/payment-chat',
         queryParameters: {
           'afterMessageId': afterMessageId.toString(),
         },
@@ -127,10 +158,8 @@ class ChatRepository {
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
         
-        // messages приходят отдельно от conversation
         final messagesJson = data['messages'] as List<dynamic>? ?? [];
         
-        // Парсим только новые сообщения
         return messagesJson
             .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
             .where((m) => m.id > afterMessageId)
@@ -138,22 +167,22 @@ class ChatRepository {
       }
       return [];
     } on DioException catch (e) {
-      debugPrint('Error polling messages: $e');
+      debugPrint('Error polling payment messages: $e');
       return [];
     }
   }
 }
 
-/// Провайдер репозитория чата
-final chatRepositoryProvider = Provider<ChatRepository>((ref) {
+/// Провайдер репозитория чата по оплате
+final paymentChatRepositoryProvider = Provider<PaymentChatRepository>((ref) {
   final apiClient = ref.read(apiClientProvider);
-  return ChatRepository(apiClient);
+  return PaymentChatRepository(apiClient);
 });
 
-// ==================== Chat State ====================
+// ==================== Payment Chat State ====================
 
-/// Состояние чата
-class ChatState {
+/// Состояние чата по оплате
+class PaymentChatState {
   final ChatConversation? conversation;
   final List<ChatMessage> messages;
   final bool isLoading;
@@ -161,9 +190,9 @@ class ChatState {
   final bool isUploading;
   final String? error;
   final int? lastMessageId;
-  final List<ChatAttachment> pendingAttachments;
+  final List<Map<String, dynamic>> pendingAttachments;
 
-  const ChatState({
+  const PaymentChatState({
     this.conversation,
     this.messages = const [],
     this.isLoading = false,
@@ -174,7 +203,7 @@ class ChatState {
     this.pendingAttachments = const [],
   });
 
-  ChatState copyWith({
+  PaymentChatState copyWith({
     ChatConversation? conversation,
     List<ChatMessage>? messages,
     bool? isLoading,
@@ -182,10 +211,10 @@ class ChatState {
     bool? isUploading,
     String? error,
     int? lastMessageId,
-    List<ChatAttachment>? pendingAttachments,
+    List<Map<String, dynamic>>? pendingAttachments,
     bool clearError = false,
   }) {
-    return ChatState(
+    return PaymentChatState(
       conversation: conversation ?? this.conversation,
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
@@ -198,16 +227,16 @@ class ChatState {
   }
 }
 
-// ==================== Chat Controller ====================
+// ==================== Payment Chat Controller ====================
 
-/// Контроллер чата
-class ChatController extends Notifier<ChatState> {
-  late final ChatRepository _repository;
+/// Контроллер чата по оплате
+class PaymentChatController extends Notifier<PaymentChatState> {
+  late final PaymentChatRepository _repository;
 
   @override
-  ChatState build() {
-    _repository = ref.read(chatRepositoryProvider);
-    return const ChatState();
+  PaymentChatState build() {
+    _repository = ref.read(paymentChatRepositoryProvider);
+    return const PaymentChatState();
   }
 
   /// Загрузить диалог
@@ -234,28 +263,27 @@ class ChatController extends Notifier<ChatState> {
   }
 
   /// Отправить сообщение
-  Future<bool> sendMessage(String content, {List<int>? attachmentIds}) async {
-    final hasContent = content.trim().isNotEmpty;
-    final hasAttachments = attachmentIds != null && attachmentIds.isNotEmpty;
-    
-    if (!hasContent && !hasAttachments) return false;
+  Future<bool> sendMessage(String content, {
+    Map<String, dynamic>? metadata,
+    List<int>? attachmentIds,
+  }) async {
+    if (content.trim().isEmpty && (attachmentIds == null || attachmentIds.isEmpty)) return false;
     
     state = state.copyWith(isSending: true, clearError: true);
     
     try {
       final message = await _repository.sendMessage(
         content.trim(),
+        metadata: metadata,
         attachmentIds: attachmentIds,
       );
       
-      // Добавляем сообщение в список
       final newMessages = [...state.messages, message];
       
       state = state.copyWith(
         messages: newMessages,
         isSending: false,
         lastMessageId: message.id,
-        pendingAttachments: [], // Очищаем pending attachments
       );
       return true;
     } catch (e) {
@@ -266,39 +294,44 @@ class ChatController extends Notifier<ChatState> {
       return false;
     }
   }
-
-  /// Загрузить файл и добавить к pending attachments
-  Future<ChatAttachment?> uploadFile(File file) async {
-    if (state.conversation == null) return null;
-    
+  
+  /// Загрузить файл на сервер
+  Future<Map<String, dynamic>?> uploadFile(File file, int conversationId) async {
     state = state.copyWith(isUploading: true, clearError: true);
     
     try {
-      final attachment = await _repository.uploadAttachment(file, state.conversation!.id);
+      final result = await _repository.uploadAttachment(file, conversationId);
       
-      // Добавляем к pending attachments
-      state = state.copyWith(
-        isUploading: false,
-        pendingAttachments: [...state.pendingAttachments, attachment],
-      );
+      if (result != null) {
+        // Добавляем в pending attachments
+        state = state.copyWith(
+          isUploading: false,
+          pendingAttachments: [...state.pendingAttachments, result],
+        );
+        return result;
+      }
       
-      return attachment;
-    } catch (e) {
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
       );
       return null;
+    } catch (e) {
+      state = state.copyWith(
+        isUploading: false,
+        error: 'Ошибка при загрузке файла: $e',
+      );
+      return null;
     }
   }
-
+  
   /// Удалить pending attachment
-  void removePendingAttachment(int attachmentId) {
+  void removePendingAttachment(String id) {
     state = state.copyWith(
-      pendingAttachments: state.pendingAttachments.where((a) => a.id != attachmentId).toList(),
+      pendingAttachments: state.pendingAttachments.where((a) => a['id'] != id).toList(),
     );
   }
-
+  
   /// Очистить все pending attachments
   void clearPendingAttachments() {
     state = state.copyWith(pendingAttachments: []);
@@ -308,7 +341,6 @@ class ChatController extends Notifier<ChatState> {
   Future<void> pollNewMessages() async {
     if (state.conversation == null) return;
     
-    // Если нет сообщений, загружаем с нуля
     final lastMessageId = state.lastMessageId ?? 0;
     
     try {
@@ -318,7 +350,6 @@ class ChatController extends Notifier<ChatState> {
       );
       
       if (newMessages.isNotEmpty) {
-        // Фильтруем дубликаты по id
         final existingIds = state.messages.map((m) => m.id).toSet();
         final uniqueNewMessages = newMessages.where((m) => !existingIds.contains(m.id)).toList();
         
@@ -331,14 +362,13 @@ class ChatController extends Notifier<ChatState> {
             lastMessageId: lastId,
           );
           
-          // Показать локальное уведомление для сообщений от поддержки
-          // только если экран чата закрыт
-          final isChatOpen = ref.read(isChatScreenOpenProvider);
+          // Показать локальное уведомление для сообщений от бухгалтерии
+          final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
           if (!isChatOpen) {
             for (final msg in uniqueNewMessages) {
               if (msg.isFromSupport) {
                 final notificationService = ref.read(pushNotificationServiceProvider);
-                await notificationService.showChatMessageNotification(
+                await notificationService.showPaymentChatMessageNotification(
                   senderName: msg.senderName,
                   message: msg.content,
                   notificationId: msg.id,
@@ -349,7 +379,7 @@ class ChatController extends Notifier<ChatState> {
         }
       }
     } catch (e) {
-      debugPrint('Error polling messages: $e');
+      debugPrint('Error polling payment messages: $e');
     }
   }
 
@@ -359,5 +389,5 @@ class ChatController extends Notifier<ChatState> {
   }
 }
 
-/// Провайдер контроллера чата
-final chatControllerProvider = NotifierProvider<ChatController, ChatState>(ChatController.new);
+/// Провайдер контроллера чата по оплате
+final paymentChatControllerProvider = NotifierProvider<PaymentChatController, PaymentChatState>(PaymentChatController.new);

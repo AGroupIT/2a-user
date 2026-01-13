@@ -253,11 +253,23 @@ class PushNotificationService {
           name: 'Чат поддержки',
           description: 'Уведомления о новых сообщениях в чате поддержки',
         );
+      case NotificationType.paymentChatMessage:
+        return _ChannelConfig(
+          id: 'payment_chat_channel',
+          name: 'Чат по оплате',
+          description: 'Уведомления о новых сообщениях в чате по оплате',
+        );
       case NotificationType.news:
         return _ChannelConfig(
           id: 'news_channel',
           name: 'Новости',
           description: 'Уведомления о новых новостях',
+        );
+      case NotificationType.serviceRules:
+        return _ChannelConfig(
+          id: 'service_rules_channel',
+          name: 'Правила оказания услуг',
+          description: 'Уведомления о новых правилах оказания услуг',
         );
       case NotificationType.invoice:
         return _ChannelConfig(
@@ -337,6 +349,23 @@ class PushNotificationService {
     int? notificationId,
   }) async {
     final item = NotificationItem.chatMessage(
+      id:
+          notificationId?.toString() ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      senderName: senderName,
+      messagePreview: message,
+      createdAt: DateTime.now(),
+    );
+    await showNotification(item);
+  }
+
+  /// Показать уведомление о новом сообщении в чате по оплате
+  Future<void> showPaymentChatMessageNotification({
+    required String senderName,
+    required String message,
+    int? notificationId,
+  }) async {
+    final item = NotificationItem.paymentChatMessage(
       id:
           notificationId?.toString() ??
           DateTime.now().millisecondsSinceEpoch.toString(),
@@ -465,6 +494,7 @@ class PushNotificationService {
 
   /// Отменить все уведомления
   Future<void> cancelAllNotifications() async {
+    if (!_isInitialized) return;
     await _notifications.cancelAll();
     await clearBadge();
   }

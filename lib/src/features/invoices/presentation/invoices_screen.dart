@@ -3,11 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/invoices_provider.dart';
 import '../domain/invoice_item.dart';
@@ -38,10 +41,41 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   String? _selectedStatusCode; // null = "Все"
   String _query = '';
 
+  // Showcase keys
+  final _showcaseKeyFilters = GlobalKey();
+  final _showcaseKeyInvoiceItem = GlobalKey();
+
+  bool _showcaseStarted = false;
+
+  // Хранение контекста Showcase для вызова next()
+  BuildContext? _showcaseContext;
+
   @override
   void initState() {
     super.initState();
     _setupAutoRefresh();
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.invoices));
+    if (!showcaseState.shouldShow) return;
+    
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyFilters,
+        _showcaseKeyInvoiceItem,
+      ]);
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.invoices)).markAsSeen();
   }
 
   void _setupAutoRefresh() {
@@ -98,54 +132,89 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
       error: (_, __) => <InvoiceStatus>[],
     );
 
-    return invoicesAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить счета',
-        message: e.toString(),
-      ),
-      data: (items) {
-        final filtered = _applyFilters(items);
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          _showcaseContext = showcaseContext;
 
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          color: const Color(0xFFfe3301),
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              topPad * 0.7 + 6,
-              16,
-              bottomPad + 16,
+          return invoicesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Не удалось загрузить счета',
+              message: e.toString(),
             ),
-            children: [
-              Text(
-                'Счета',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 24,
-                      offset: Offset(0, 10),
+            data: (items) {
+              final filtered = _applyFilters(items);
+
+              // Запускаем showcase когда данные загружены
+              if (filtered.isNotEmpty) {
+                _startShowcaseIfNeeded(showcaseContext);
+              }
+
+              return RefreshIndicator(
+                onRefresh: onRefresh,
+                color: context.brandPrimary,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    topPad * 0.7 + 6,
+                    16,
+                    bottomPad + 16,
+                  ),
+                  children: [
+                    Text(
+                      'Счета',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(16),
-                child: _Filters(
-                  selectedStatusCode: _selectedStatusCode,
-                  statuses: dbStatuses,
-                  query: _query,
-                  onStatusChanged: (code) =>
-                      setState(() => _selectedStatusCode = code),
-                  onQueryChanged: (v) => setState(() => _query = v),
+                    const SizedBox(height: 18),
+                    Showcase(
+                      key: _showcaseKeyFilters,
+                      title: 'Фильтры счетов',
+                      description: 'Фильтруйте счета по статусу оплаты или ищите по номеру счёта.',
+                      targetBorderRadius: BorderRadius.circular(20),
+                      tooltipBackgroundColor: Colors.white,
+                      textColor: Colors.black87,
+                      titleTextStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      descTextStyle: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
+                      ),
+                      onTargetClick: () {
+                        if (_showcaseContext != null) {
+                          ShowCaseWidget.of(_showcaseContext!).next();
+                        }
+                      },
+                      disposeOnTap: false,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x14000000),
+                              blurRadius: 24,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: _Filters(
+                    selectedStatusCode: _selectedStatusCode,
+                    statuses: dbStatuses,
+                    query: _query,
+                    onStatusChanged: (code) =>
+                        setState(() => _selectedStatusCode = code),
+                    onQueryChanged: (v) => setState(() => _query = v),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -156,16 +225,52 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                   message: 'Попробуйте изменить фильтры или строку поиска.',
                 )
               else
-                ...filtered.map(
-                  (inv) => Padding(
+                ...filtered.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final inv = entry.value;
+
+                  final invoiceTile = _InvoiceTile(item: inv, clientCode: clientCode);
+
+                  // Первый элемент оборачиваем в Showcase
+                  if (index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Showcase(
+                        key: _showcaseKeyInvoiceItem,
+                        title: 'Карточка счёта',
+                        description: 'Нажмите на счёт для просмотра деталей. Здесь вы увидите сумму, статус оплаты и сможете скачать PDF.',
+                        targetBorderRadius: BorderRadius.circular(18),
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        onToolTipClick: _onShowcaseComplete,
+                        onBarrierClick: _onShowcaseComplete,
+                        child: invoiceTile,
+                      ),
+                    );
+                  }
+
+                  return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _InvoiceTile(item: inv, clientCode: clientCode),
-                  ),
+                    child: invoiceTile,
+                  );
+                }),
+                  ],
                 ),
-            ],
-          ),
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -219,8 +324,8 @@ class _FiltersState extends State<_Filters> {
       children: [
         Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+            gradient: LinearGradient(
+              colors: [context.brandPrimary, context.brandSecondary],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
@@ -236,9 +341,9 @@ class _FiltersState extends State<_Filters> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: Color(0xFFfe3301),
+                  color: context.brandPrimary,
                   size: 20,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -377,7 +482,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                       ),
                       decoration: BoxDecoration(
                         color: _selectedValue == item.value
-                            ? const Color(0xFFfe3301).withOpacity(0.1)
+                            ? context.brandPrimary.withOpacity(0.1)
                             : Colors.transparent,
                       ),
                       child: Text(
@@ -388,7 +493,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                               ? FontWeight.w600
                               : FontWeight.w500,
                           color: _selectedValue == item.value
-                              ? const Color(0xFFfe3301)
+                              ? context.brandPrimary
                               : Colors.black87,
                         ),
                       ),
@@ -471,7 +576,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                 _overlayEntry != null
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: const Color(0xFFfe3301),
+                color: context.brandPrimary,
                 size: 20,
               ),
             ],
@@ -546,7 +651,8 @@ class _InvoiceTile extends StatelessWidget {
     final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
-    final totalRub = _calculateTotalRub();
+    final deliveryUsd = _calculateDeliveryCostUsd();
+    final rate = item.rate ?? 0;
 
     return Container(
       decoration: BoxDecoration(
@@ -592,12 +698,13 @@ class _InvoiceTile extends StatelessWidget {
               style: const TextStyle(fontSize: 13, color: Color(0xFF666666)),
             ),
             const SizedBox(height: 4),
+            // Показываем доставку в USD
             Text(
-              '${money.format(totalRub.round())} ₽',
-              style: const TextStyle(
+              '\$${money.format(deliveryUsd.round())}',
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 18,
-                color: Color(0xFFfe3301),
+                color: context.brandPrimary,
               ),
             ),
             const SizedBox(height: 16),
@@ -609,13 +716,15 @@ class _InvoiceTile extends StatelessWidget {
                     child: const Text('Открыть'),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => _goToPayment(context),
-                    child: const Text('Оплатить'),
+                // Показываем кнопку оплаты только если статус НЕ "paid"
+                if (item.status.toLowerCase() != 'paid') ...[                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => _goToPayment(context),
+                      child: const Text('Оплатить'),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ],
@@ -643,12 +752,26 @@ class _InvoiceTile extends StatelessWidget {
 
   void _goToPayment(BuildContext context) {
     final money = NumberFormat.decimalPattern('ru');
-    final totalRub = _calculateTotalRub();
-    final message =
-        'Хочу оплатить счёт ${item.invoiceNumber} на сумму ${money.format(totalRub.round())} ₽';
+    final deliveryUsd = _calculateDeliveryCostUsd();
+    
+    // Формируем краткое сообщение с информацией о счёте
+    final buffer = StringBuffer();
+    buffer.writeln('💳 **Запрос на оплату счёта**');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('🔢 Номер: ${item.invoiceNumber}');
+    buffer.writeln('📊 Статус: ${item.statusName ?? item.status}');
+    buffer.writeln('');
+    buffer.writeln('💵 **Доставка: \$${money.format(deliveryUsd.round())}**');
 
-    // Переходим на страницу поддержки с сообщением
-    context.push('/support', extra: message);
+    final message = buffer.toString();
+
+    // Переходим на страницу чата по оплате с сообщением и metadata
+    context.push('/payment-chat', extra: {
+      'message': message,
+      'invoiceId': item.id,
+      'invoiceNumber': item.invoiceNumber,
+      'amount': deliveryUsd,
+    });
   }
 }
 
@@ -829,32 +952,32 @@ class _InvoiceDetailSheet extends StatelessWidget {
                   ),
                   children: [
                     _buildSection('Основная информация', [
-                      _buildInfoRow('Код клиента', clientCode),
-                      _buildInfoRow('Дата', df.format(item.sendDate)),
+                      _buildInfoRow(context, 'Код клиента', clientCode),
+                      _buildInfoRow(context, 'Дата', df.format(item.sendDate)),
                       if (item.tariffName != null)
-                        _buildInfoRow(
+                        _buildInfoRow(context,
                           'Тариф',
                           '${item.tariffName!}${item.tariffBaseCost != null ? ' (\$${item.tariffBaseCost!.toStringAsFixed(2)}/кг)' : ''}',
                         ),
                       if (item.calculationMethod != null)
-                        _buildInfoRow(
+                        _buildInfoRow(context,
                           'Метод расчёта',
                           _translateCalculationMethod(item.calculationMethod),
                         ),
                     ]),
                     const SizedBox(height: 20),
                     _buildSection('Габариты и вес', [
-                      _buildInfoRow('Кол-во мест', '${item.placesCount}'),
-                      _buildInfoRow(
-                        'Вес',
+                      _buildInfoRow(context, 'Кол-во мест', '${item.placesCount}'),
+                      _buildInfoRow(context,
+                          'Вес',
                         '${item.weight.toStringAsFixed(2)} кг',
                       ),
-                      _buildInfoRow(
-                        'Объём',
+                      _buildInfoRow(context,
+                          'Объём',
                         '${item.volume.toStringAsFixed(3)} м³',
                       ),
-                      _buildInfoRow(
-                        'Плотность',
+                      _buildInfoRow(context,
+                          'Плотность',
                         '${item.density.toStringAsFixed(2)} кг/м³',
                       ),
                     ]),
@@ -863,15 +986,14 @@ class _InvoiceDetailSheet extends StatelessWidget {
                     if (item.packagings.isNotEmpty) ...[
                       _buildSection('Упаковка', [
                         ...item.packagings.map(
-                          (p) => _buildInfoRow(
-                            p.name,
+                          (p) => _buildInfoRow(context, p.name,
                             '\$${p.cost.toStringAsFixed(2)}',
                           ),
                         ),
                         if (item.packagings.length > 1) ...[
                           const Divider(height: 16),
-                          _buildInfoRow(
-                            'Всего за упаковку',
+                          _buildInfoRow(context,
+                          'Всего за упаковку',
                             '\$${(item.packagings.fold<double>(0, (sum, p) => sum + p.cost) * item.placesCount).toStringAsFixed(2)}',
                           ),
                         ],
@@ -882,47 +1004,52 @@ class _InvoiceDetailSheet extends StatelessWidget {
                       // Перевалка
                       if (item.transshipmentCost != null &&
                           item.transshipmentCost! > 0)
-                        _buildInfoRow(
+                        _buildInfoRow(context,
                           'Перевалка',
                           '\$${item.transshipmentCost!.toStringAsFixed(2)}',
                         ),
                       // Страховка
                       if (item.insuranceCost != null && item.insuranceCost! > 0)
-                        _buildInfoRow(
+                        _buildInfoRow(context,
                           'Страховка',
                           '\$${item.insuranceCost!.toStringAsFixed(2)}',
                         ),
                       // Скидка
                       if (item.discount != null && item.discount! > 0)
-                        _buildInfoRow(
+                        _buildInfoRow(context,
                           'Скидка',
                           '-\$${item.discount!.toStringAsFixed(2)}',
                         ),
                       const Divider(height: 16),
-                      _buildInfoRow(
-                        'Доставка, \$',
+                      // Доставка USD - теперь крупно
+                      _buildInfoRow(context,
+                          'Доставка',
                         '\$${deliveryCostUsd.toStringAsFixed(2)}',
+                        isTotal: true,
                       ),
-                      if (item.rate != null && item.rate! > 0)
-                        _buildInfoRow(
+                      // Курс и К оплате RUB - только если курс установлен
+                      if (item.rate != null && item.rate! > 0) ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context,
                           'Курс',
                           '${item.rate!.toStringAsFixed(2)} ₽',
                         ),
-                      _buildInfoRow(
-                        'К оплате',
-                        '${money.format(totalRub.round())} ₽',
-                        isTotal: true,
-                      ),
+                        _buildInfoRow(context,
+                          'К оплате',
+                          '${money.format(totalRub.round())} ₽',
+                        ),
+                      ],
                     ]),
                     const SizedBox(height: 24),
-                    // Кнопка оплаты
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: onPay,
-                        child: const Text('Перейти к оплате'),
+                    // Кнопка оплаты - только если статус НЕ "paid"
+                    if (item.status.toLowerCase() != 'paid')
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: onPay,
+                          child: const Text('Перейти к оплате'),
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -959,7 +1086,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool isTotal = false}) {
+  Widget _buildInfoRow(BuildContext context, String label, String value, {bool isTotal = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -984,7 +1111,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
               value,
               style: TextStyle(
                 color: isTotal
-                    ? const Color(0xFFfe3301)
+                    ? context.brandPrimary
                     : const Color(0xFF333333),
                 fontSize: isTotal ? 18 : 14,
                 fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,

@@ -5,16 +5,22 @@ import '../../core/ui/app_colors.dart';
 class AppTheme {
   const AppTheme._();
 
+  /// Создать тему со статическими цветами (дефолт)
   static ThemeData light() {
+    return lightWithColors(BrandColors.defaultColors);
+  }
+
+  /// Создать тему с динамическими цветами бренда
+  static ThemeData lightWithColors(BrandColors brand) {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme:
           ColorScheme.fromSeed(
-            seedColor: AppColors.brandOrange,
+            seedColor: brand.primary,
             brightness: Brightness.light,
           ).copyWith(
-            primary: AppColors.brandOrange,
-            secondary: AppColors.brandOrangeLight,
+            primary: brand.primary,
+            secondary: brand.primaryLight,
           ),
     );
 
@@ -30,20 +36,20 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.transparent,
-        indicatorColor: AppColors.brandOrange.withValues(alpha: 0.14),
+        indicatorColor: brand.primary.withValues(alpha: 0.14),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return TextStyle(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            color: isSelected ? AppColors.brandOrange : AppColors.textSecondary,
+            color: isSelected ? brand.primary : AppColors.textSecondary,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return IconThemeData(
             size: 24,
-            color: isSelected ? AppColors.brandOrange : AppColors.textSecondary,
+            color: isSelected ? brand.primary : AppColors.textSecondary,
           );
         }),
       ),
@@ -72,8 +78,8 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: AppColors.brandOrange,
+          borderSide: BorderSide(
+            color: brand.primary,
             width: 1.5,
           ),
         ),
@@ -82,15 +88,15 @@ class AppTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return AppColors.brandOrange.withValues(alpha: 0.5);
+              return brand.primary.withValues(alpha: 0.5);
             }
             if (states.contains(WidgetState.pressed)) {
-              return AppColors.brandOrangeDark;
+              return brand.primaryDark;
             }
             if (states.contains(WidgetState.hovered)) {
-              return AppColors.brandOrange.withValues(alpha: 0.9);
+              return brand.primary.withValues(alpha: 0.9);
             }
-            return AppColors.brandOrange;
+            return brand.primary;
           }),
           foregroundColor: WidgetStateProperty.all(Colors.white),
           shape: WidgetStateProperty.all(
@@ -107,7 +113,7 @@ class AppTheme {
             return 2;
           }),
           shadowColor: WidgetStateProperty.all(
-            AppColors.brandOrange.withValues(alpha: 0.3),
+            brand.primary.withValues(alpha: 0.3),
           ),
         ),
       ),
@@ -118,27 +124,27 @@ class AppTheme {
               return Colors.white.withValues(alpha: 0.5);
             }
             if (states.contains(WidgetState.pressed)) {
-              return AppColors.brandOrange.withValues(alpha: 0.1);
+              return brand.primary.withValues(alpha: 0.1);
             }
             if (states.contains(WidgetState.hovered)) {
-              return AppColors.brandOrange.withValues(alpha: 0.05);
+              return brand.primary.withValues(alpha: 0.05);
             }
             return Colors.white;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return AppColors.brandOrange.withValues(alpha: 0.5);
+              return brand.primary.withValues(alpha: 0.5);
             }
-            return AppColors.brandOrange;
+            return brand.primary;
           }),
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
               return BorderSide(
-                color: AppColors.brandOrange.withValues(alpha: 0.3),
+                color: brand.primary.withValues(alpha: 0.3),
                 width: 1.5,
               );
             }
-            return const BorderSide(color: AppColors.brandOrange, width: 1.5);
+            return BorderSide(color: brand.primary, width: 1.5);
           }),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -155,9 +161,9 @@ class AppTheme {
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return AppColors.brandOrange.withValues(alpha: 0.5);
+              return brand.primary.withValues(alpha: 0.5);
             }
-            return AppColors.brandOrange;
+            return brand.primary;
           }),
           textStyle: WidgetStateProperty.all(
             const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),

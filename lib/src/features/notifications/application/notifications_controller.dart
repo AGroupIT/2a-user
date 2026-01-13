@@ -1,6 +1,9 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/push_notification_service.dart';
+import '../../clients/application/client_codes_controller.dart';
 import '../data/notifications_repository.dart';
 import '../domain/notification_item.dart';
 
@@ -35,6 +38,78 @@ final notificationsControllerProvider = AsyncNotifierProvider.autoDispose
     .family<NotificationsController, List<NotificationItem>, String>(
   NotificationsController.new,
 );
+
+/// Инициализатор push уведомлений для обновления списка
+void initializePushNotificationsHandler(WidgetRef ref) {
+  PushNotificationService.onFCMMessageReceived = (RemoteMessage message) {
+    _handleFCMMessage(ref, message);
+  };
+}
+
+void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
+  debugPrint('🔔 FCM received in notifications handler: ${message.data}');
+  
+  // Получаем активный clientCode
+  final clientCode = ref.read(activeClientCodeProvider);
+  if (clientCode == null) {
+    debugPrint('🔔 No active clientCode, skipping notification update');
+    return;
+  }
+  
+  // Пробуем создать NotificationItem из FCM данных
+  try {
+    final data = message.data;
+    final notification = message.notification;
+    
+    // Создаём уведомление из push данных
+    final item = NotificationItem(
+      id: data['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      type: _parseNotificationType(data['type']),
+      title: notification?.title ?? data['title'] ?? 'Новое уведомление',
+      message: notification?.body ?? data['message'] ?? '',
+      createdAt: DateTime.now(),
+      isRead: false,
+      route: data['route'],
+      relatedId: data['related_id'],
+      oldStatus: data['old_status'],
+      newStatus: data['new_status'],
+    );
+    
+    // Добавляем в контроллер
+    ref.read(notificationsControllerProvider(clientCode).notifier).addNotification(item);
+    debugPrint('🔔 Notification added to list: ${item.title}');
+  } catch (e) {
+    debugPrint('🔔 Error parsing FCM message: $e');
+    // Если не удалось распарсить - просто обновляем список
+    ref.read(notificationsControllerProvider(clientCode).notifier).refresh();
+  }
+}
+
+NotificationType _parseNotificationType(String? type) {
+  switch (type?.toLowerCase()) {
+    case 'track_status':
+    case 'trackstatus':
+      return NotificationType.trackStatus;
+    case 'assembly_status':
+    case 'assemblystatus':
+      return NotificationType.assemblyStatus;
+    case 'photo_report_status':
+    case 'photoreportstatus':
+      return NotificationType.photoReportStatus;
+    case 'question_status':
+    case 'questionstatus':
+      return NotificationType.questionStatus;
+    case 'chat_message':
+    case 'chatmessage':
+      return NotificationType.chatMessage;
+    case 'news':
+      return NotificationType.news;
+    case 'invoice':
+      return NotificationType.invoice;
+    default:
+      return NotificationType.news; // По умолчанию
+  }
+}
 
 /// Контроллер уведомлений
 class NotificationsController extends AsyncNotifier<List<NotificationItem>> {

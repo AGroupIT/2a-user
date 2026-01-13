@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -29,10 +31,43 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
+  // Showcase keys
+  final _showcaseKeyQuickCards = GlobalKey();
+  final _showcaseKeyDigest = GlobalKey();
+  final _showcaseKeyPhotos = GlobalKey();
+  
+  bool _showcaseStarted = false;
+
+  // Хранение контекста Showcase для вызова next()
+  BuildContext? _showcaseContext;
+
   @override
   void initState() {
     super.initState();
     _setupAutoRefresh();
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.home));
+    if (!showcaseState.shouldShow) return;
+    
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyQuickCards,
+        _showcaseKeyDigest,
+        _showcaseKeyPhotos,
+      ]);
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.home)).markAsSeen();
   }
 
   void _setupAutoRefresh() {
@@ -99,60 +134,146 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
       ]);
     }
 
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      color: const Color(0xFFfe3301),
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
-        children: [
-        _GreetingBlock(fullName: clientName),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickCard(
-                title: 'Треки',
-                icon: Icons.local_shipping_rounded,
-                value: tracksCount,
-                onTap: () => context.go('/tracks'),
+    // Запускаем showcase после загрузки данных
+    // (перенесено в build внутрь Builder)
+
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          _showcaseContext = showcaseContext;
+          
+          // Запускаем showcase после загрузки данных
+          if (tracksCountAsync.hasValue) {
+            _startShowcaseIfNeeded(showcaseContext);
+          }
+
+          return RefreshIndicator(
+            onRefresh: onRefresh,
+            color: context.brandPrimary,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+              children: [
+              _GreetingBlock(fullName: clientName),
+              const SizedBox(height: 14),
+              Showcase(
+                key: _showcaseKeyQuickCards,
+                title: 'Быстрый доступ',
+                description: 'Здесь отображается количество ваших треков, сборок и счетов. Нажмите на карточку для перехода к списку.',
+                targetBorderRadius: BorderRadius.circular(18),
+                tooltipBackgroundColor: Colors.white,
+                textColor: Colors.black87,
+                titleTextStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+                descTextStyle: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+                onTargetClick: () {
+                  if (_showcaseContext != null) {
+                    ShowCaseWidget.of(_showcaseContext!).next();
+                  }
+                },
+                disposeOnTap: false,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _QuickCard(
+                        title: 'Треки',
+                        icon: Icons.local_shipping_rounded,
+                        value: tracksCount,
+                        onTap: () => context.go('/tracks'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _QuickCard(
+                        title: 'Сборки',
+                        icon: Icons.inventory_2_rounded,
+                        value: assembliesCount,
+                        onTap: () => context.go('/tracks'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _QuickCard(
+                        title: 'Счета',
+                        icon: Icons.receipt_long_rounded,
+                        value: invoicesCount,
+                        onTap: () => context.go('/invoices'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickCard(
-                title: 'Сборки',
-                icon: Icons.inventory_2_rounded,
-                value: assembliesCount,
-                onTap: () => context.go('/tracks'), // TODO: создать экран сборок
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickCard(
-                title: 'Счета',
-                icon: Icons.receipt_long_rounded,
-                value: invoicesCount,
-                onTap: () => context.go('/invoices'),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 18),
         Text(
           'Дайджест',
           style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 10),
-        _DigestSection(
-          title: 'Треки',
-          onAll: () => context.go('/tracks'),
-          child: _TracksDigest(tracksAsync: tracksDigestAsync),
+        Showcase(
+          key: _showcaseKeyDigest,
+          title: 'Дайджест треков',
+          description: 'Последние обновления по вашим трекам. Нажмите "Смотреть все" для полного списка.',
+          targetBorderRadius: BorderRadius.circular(20),
+          tooltipBackgroundColor: Colors.white,
+          textColor: Colors.black87,
+          titleTextStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+          ),
+          descTextStyle: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade600,
+          ),
+          onTargetClick: () {
+            if (_showcaseContext != null) {
+              ShowCaseWidget.of(_showcaseContext!).next();
+            }
+          },
+          disposeOnTap: false,
+          child: _DigestSection(
+            title: 'Треки',
+            onAll: () => context.go('/tracks'),
+            child: _TracksDigest(tracksAsync: tracksDigestAsync),
+          ),
         ),
         const SizedBox(height: 12),
-        _DigestSection(
-          title: 'Фото',
-          onAll: () => context.go('/photos'),
-          child: _PhotosDigest(photosAsync: recentPhotosAsync),
+        Showcase(
+          key: _showcaseKeyPhotos,
+          title: 'Фотоотчёты',
+          description: 'Последние фотографии ваших посылок. Здесь вы можете увидеть состояние грузов на складе.',
+          targetBorderRadius: BorderRadius.circular(20),
+          tooltipBackgroundColor: Colors.white,
+          textColor: Colors.black87,
+          titleTextStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+          ),
+          descTextStyle: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade600,
+          ),
+          onToolTipClick: () {
+            _onShowcaseComplete();
+          },
+          onBarrierClick: () {
+            _onShowcaseComplete();
+          },
+          child: _DigestSection(
+            title: 'Фото',
+            onAll: () => context.go('/photos'),
+            child: _PhotosDigest(photosAsync: recentPhotosAsync),
+          ),
         ),
         const SizedBox(height: 12),
         _DigestSection(
@@ -160,7 +281,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
           onAll: () => context.go('/invoices'),
           child: _InvoicesDigest(invoicesAsync: invoicesDigestAsync),
         ),
-      ],
+            ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -244,6 +368,13 @@ class _QuickCardState extends State<_QuickCard>
   @override
   Widget build(BuildContext context) {
     final display = widget.value == null ? '–' : widget.value.toString();
+    // Получаем цвета бренда из темы
+    final primaryColor = context.brandPrimary;
+    final secondaryColor = context.brandSecondary;
+    final darkColor = HSLColor.fromColor(primaryColor)
+        .withLightness((HSLColor.fromColor(primaryColor).lightness - 0.1).clamp(0.0, 1.0))
+        .toColor();
+    
     return AspectRatio(
       aspectRatio: 1.06,
       child: InkWell(
@@ -267,13 +398,13 @@ class _QuickCardState extends State<_QuickCard>
                   )!,
                   colors: [
                     Color.lerp(
-                      const Color(0xFFfe3301),
-                      const Color(0xFFff5f02),
+                      darkColor,
+                      secondaryColor,
                       _animation.value * 0.5,
                     )!,
                     Color.lerp(
-                      const Color(0xFFff5f02),
-                      const Color(0xFFfe3301),
+                      secondaryColor,
+                      darkColor,
                       _animation.value * 0.5,
                     )!,
                   ],
@@ -282,8 +413,8 @@ class _QuickCardState extends State<_QuickCard>
                 boxShadow: [
                   BoxShadow(
                     color: Color.lerp(
-                      const Color(0xFFfe3301),
-                      const Color(0xFFff5f02),
+                      darkColor,
+                      secondaryColor,
                       _animation.value,
                     )!.withValues(alpha: 0.35),
                     blurRadius: 20 + (_animation.value * 5),

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
-import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'dart:io';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
@@ -59,7 +62,7 @@ void _showStyledSnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError
           ? const Color(0xFFE53935)
-          : const Color(0xFFfe3301),
+          : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
       duration: const Duration(seconds: 3),
@@ -98,6 +101,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   String _originalPhone = '';
   String _originalEmail = '';
 
+  // Showcase keys
+  final _showcaseKeyPersonalData = GlobalKey();
+  final _showcaseKeyStats = GlobalKey();
+  final _showcaseKeyExport = GlobalKey();
+
+  bool _showcaseStarted = false;
+
   // Flag to track if profile was loaded
   bool _profileLoaded = false;
 
@@ -105,6 +115,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   void initState() {
     super.initState();
     _setupAutoRefresh();
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      final showcaseState = ref.read(showcaseProvider(ShowcasePage.profile));
+      if (showcaseState.shouldShow) {
+        ShowCaseWidget.of(showcaseContext).startShowCase([
+          _showcaseKeyPersonalData,
+          _showcaseKeyStats,
+          _showcaseKeyExport,
+        ]);
+      }
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.profile)).markAsSeen();
   }
 
   void _setupAutoRefresh() {
@@ -156,111 +188,129 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
       ]);
     }
 
-    return profileAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('Ошибка загрузки профиля: $e'),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => ref.invalidate(clientProfileProvider),
-              child: const Text('Повторить'),
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          return profileAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Ошибка загрузки профиля: $e'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => ref.invalidate(clientProfileProvider),
+                    child: const Text('Повторить'),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
-      data: (profile) {
-        if (profile == null) {
-          return const Center(child: Text('Профиль не найден'));
-        }
-        
-        // Загружаем данные профиля в контроллеры
-        _loadProfileIntoControllers(profile);
-        
-        final companyDomain = profile.agent?.domain ?? '';
-        final stats = statsAsync.when(
-          data: (s) => s,
-          loading: () => ClientStats.empty,
-          error: (_, __) => ClientStats.empty,
-        );
+            data: (profile) {
+              if (profile == null) {
+                return const Center(child: Text('Профиль не найден'));
+              }
+              
+              // Загружаем данные профиля в контроллеры
+              _loadProfileIntoControllers(profile);
+              
+              // Запускаем showcase если нужно
+              _startShowcaseIfNeeded(showcaseContext);
+              
+              final companyDomain = profile.agent?.domain ?? '';
+              final stats = statsAsync.when(
+                data: (s) => s,
+                loading: () => ClientStats.empty,
+                error: (_, __) => ClientStats.empty,
+              );
 
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          color: const Color(0xFFfe3301),
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
-            children: [
-            Text(
-              'Профиль',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 18),
+              return RefreshIndicator(
+                onRefresh: onRefresh,
+                color: context.brandPrimary,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+                  children: [
+                  Text(
+                    'Профиль',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 18),
 
-            // Personal Info Section
-            _buildSectionCard(
-              title: 'Личные данные',
-              children: [
-                _buildEditableField(
-                  label: 'ФИО',
-                  controller: _nameCtrl,
-                  isEditing: _editingName,
-                  isSaving: _savingName,
-                  onEdit: () {
-                    _originalName = _nameCtrl.text;
-                    setState(() => _editingName = true);
-                  },
-                  onSave: () => _saveName(),
-                  onCancel: () => setState(() {
-                    _nameCtrl.text = _originalName;
-                    _editingName = false;
-                  }),
-                ),
-                const SizedBox(height: 12),
-                _buildEditableField(
-                  label: 'Телефон',
-                  controller: _phoneCtrl,
-                  isEditing: _editingPhone,
-                  isSaving: _savingPhone,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [_PhoneInputFormatter()],
-                  error: _phoneError,
-                  onEdit: () {
-                    _originalPhone = _phoneCtrl.text;
-                    setState(() => _editingPhone = true);
-                  },
-                  onSave: () => _savePhone(),
-                  onCancel: () => setState(() {
-                    _phoneCtrl.text = _originalPhone;
-                    _editingPhone = false;
-                    _phoneError = null;
-                  }),
-                ),
-                const SizedBox(height: 12),
-                _buildEditableField(
-                  label: 'Email',
-                  controller: _emailCtrl,
-                  isEditing: _editingEmail,
-                  isSaving: _savingEmail,
-                  keyboardType: TextInputType.emailAddress,
-                  onEdit: () {
-                    _originalEmail = _emailCtrl.text;
-                    setState(() => _editingEmail = true);
-                  },
-                  onSave: () => _saveEmail(),
-                  onCancel: () => setState(() {
-                    _emailCtrl.text = _originalEmail;
-                    _editingEmail = false;
-                  }),
-                ),
-                const SizedBox(height: 16),
-                _buildChangePasswordButton(),
-              ],
+                  // Personal Info Section
+                  Showcase(
+                    key: _showcaseKeyPersonalData,
+                    title: 'Личные данные',
+                    description: 'Здесь вы можете редактировать ваши контактные данные и сменить пароль.',
+                    onTargetClick: () {
+                      if (mounted) {
+                        ShowCaseWidget.of(showcaseContext).next();
+                      }
+                    },
+                    disposeOnTap: false,
+                    child: _buildSectionCard(
+                      title: 'Личные данные',
+                      children: [
+                        _buildEditableField(
+                          label: 'ФИО',
+                          controller: _nameCtrl,
+                          isEditing: _editingName,
+                          isSaving: _savingName,
+                          onEdit: () {
+                            _originalName = _nameCtrl.text;
+                            setState(() => _editingName = true);
+                          },
+                          onSave: () => _saveName(),
+                    onCancel: () => setState(() {
+                      _nameCtrl.text = _originalName;
+                      _editingName = false;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditableField(
+                    label: 'Телефон',
+                    controller: _phoneCtrl,
+                    isEditing: _editingPhone,
+                    isSaving: _savingPhone,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [_PhoneInputFormatter()],
+                    error: _phoneError,
+                    onEdit: () {
+                      _originalPhone = _phoneCtrl.text;
+                      setState(() => _editingPhone = true);
+                    },
+                    onSave: () => _savePhone(),
+                    onCancel: () => setState(() {
+                      _phoneCtrl.text = _originalPhone;
+                      _editingPhone = false;
+                      _phoneError = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditableField(
+                    label: 'Email',
+                    controller: _emailCtrl,
+                    isEditing: _editingEmail,
+                    isSaving: _savingEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    onEdit: () {
+                      _originalEmail = _emailCtrl.text;
+                      setState(() => _editingEmail = true);
+                    },
+                    onSave: () => _saveEmail(),
+                    onCancel: () => setState(() {
+                      _emailCtrl.text = _originalEmail;
+                      _editingEmail = false;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildChangePasswordButton(),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -274,36 +324,54 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
             const SizedBox(height: 16),
 
             // Statistics Section
-            _buildSectionCard(
+            Showcase(
+              key: _showcaseKeyStats,
               title: 'Статистика',
-              children: [
-                _buildStatsGroup('Трек-номера', stats.tracks),
-                const SizedBox(height: 16),
-                _buildStatsGroup('Счета', stats.invoices),
-                const SizedBox(height: 16),
-                _buildStatsGroup('Запросы фото', stats.photoRequests),
-                const SizedBox(height: 16),
-                _buildStatsGroup('Заданные вопросы', stats.questions),
-              ],
+              description: 'Ваша статистика по трек-номерам, счетам, запросам фото и вопросам.',
+              onTargetClick: () {
+                if (mounted) {
+                  ShowCaseWidget.of(showcaseContext).next();
+                }
+              },
+              disposeOnTap: false,
+              child: _buildSectionCard(
+                title: 'Статистика',
+                children: [
+                  _buildStatsGroup('Трек-номера', stats.tracks),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Счета', stats.invoices),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Запросы фото', stats.photoRequests),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Заданные вопросы', stats.questions),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
             // Export Section
-            _buildSectionCard(
+            Showcase(
+              key: _showcaseKeyExport,
               title: 'Выгрузка данных',
-              children: [
-                _buildExportButton(
-                  icon: Icons.receipt_long_rounded,
-                  label: 'Выгрузить счета в Excel',
-                  onPressed: _exportInvoices,
-                ),
-                const SizedBox(height: 10),
-                _buildExportButton(
-                  icon: Icons.local_shipping_rounded,
-                  label: 'Выгрузить треки в Excel',
-                  onPressed: _exportTracks,
-                ),
-              ],
+              description: 'Экспортируйте счета и треки в Excel файл.',
+              onBarrierClick: _onShowcaseComplete,
+              onToolTipClick: _onShowcaseComplete,
+              child: _buildSectionCard(
+                title: 'Выгрузка данных',
+                children: [
+                  _buildExportButton(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Выгрузить счета в Excel',
+                    onPressed: _exportInvoices,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildExportButton(
+                    icon: Icons.local_shipping_rounded,
+                    label: 'Выгрузить треки в Excel',
+                    onPressed: _exportTracks,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -352,9 +420,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
               ),
             ),
           ],
-          ),
-        );
-      },
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -569,8 +640,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
             children: [
               Container(
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                  gradient: LinearGradient(
+                    colors: [context.brandPrimary, context.brandSecondary],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
@@ -652,7 +723,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
               IconButton(
                 onPressed: onEdit,
                 icon: const Icon(Icons.edit_rounded, size: 20),
-                color: const Color(0xFFfe3301),
+                color: context.brandPrimary,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -725,8 +796,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                gradient: LinearGradient(
+                  colors: [context.brandPrimary, context.brandSecondary],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -771,15 +842,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xFFfe3301).withOpacity(0.15),
+              color: context.brandPrimary.withOpacity(0.15),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               '$count',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFFfe3301),
+                color: context.brandPrimary,
               ),
             ),
           ),
@@ -1029,13 +1100,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
       
       final dir = await getTemporaryDirectory();
       final fileName = 'Счета_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(bytes);
+      final tempFile = File('${dir.path}/$fileName');
+      await tempFile.writeAsBytes(bytes);
       
-      // Шарим файл
-      await Share.shareXFiles([XFile(file.path)], text: 'Экспорт счетов');
+      // Спрашиваем куда сохранить
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить счета',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
       
-      _showStyledSnackBar(context, 'Экспортировано ${invoices.length} счетов');
+      if (savePath == null) {
+        // Пользователь отменил
+        return;
+      }
+      
+      // Копируем файл в выбранное место
+      final saveFile = File(savePath);
+      await saveFile.writeAsBytes(bytes);
+      
+      _showStyledSnackBar(context, 'Сохранено ${invoices.length} счетов');
     } catch (e) {
       _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
     }
@@ -1109,11 +1194,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
       
       final dir = await getTemporaryDirectory();
       final fileName = 'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(bytes);
+      final tempFile = File('${dir.path}/$fileName');
+      await tempFile.writeAsBytes(bytes);
       
-      // Шарим файл
-      await Share.shareXFiles([XFile(file.path)], text: 'Экспорт треков');
+      // Спрашиваем куда сохранить
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить треки',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
+      
+      if (savePath == null) {
+        // Пользователь отменил
+        return;
+      }
+      
+      // Копируем файл в выбранное место
+      final saveFile = File(savePath);
+      await saveFile.writeAsBytes(bytes);
       
       _showStyledSnackBar(context, 'Экспортировано ${tracks.length} треков');
     } catch (e) {

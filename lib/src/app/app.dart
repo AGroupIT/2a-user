@@ -2,15 +2,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../core/services/chat_presence_service.dart';
+import '../core/ui/app_colors.dart';
+import '../features/notifications/application/notifications_controller.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
 
-class App extends ConsumerWidget {
+class App extends ConsumerStatefulWidget {
   const App({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<App> createState() => _AppState();
+}
+
+class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Инициализируем обработчик push уведомлений
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      initializePushNotificationsHandler(ref);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Глобальный обработчик жизненного цикла для chat presence
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.detached) {
+      // Приложение ушло в фон или закрывается - очищаем все присутствия
+      ref.read(chatPresenceServiceProvider).onAppPaused();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+    // Загружаем брендовые цвета из профиля агента
+    final brandColors = ref.watch(brandColorsProvider);
+    
     return MaterialApp.router(
       title: '2A Logistic',
       debugShowCheckedModeBanner: false,
@@ -23,7 +62,7 @@ class App extends ConsumerWidget {
         Locale('ru'),
         Locale('en'),
       ],
-      theme: AppTheme.light(),
+      theme: AppTheme.lightWithColors(brandColors),
       routerConfig: router,
     );
   }

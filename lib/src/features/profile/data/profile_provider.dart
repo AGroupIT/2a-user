@@ -82,12 +82,18 @@ class AgentInfo {
   final String name;
   final String? domain;
   final String? prefix;
+  final String? colorPrimary;
+  final String? colorSecondary;
+  final String? logoUrl;
 
   const AgentInfo({
     required this.id,
     required this.name,
     this.domain,
     this.prefix,
+    this.colorPrimary,
+    this.colorSecondary,
+    this.logoUrl,
   });
 
   factory AgentInfo.fromJson(Map<String, dynamic> json) {
@@ -96,6 +102,9 @@ class AgentInfo {
       name: json['name'] as String? ?? '',
       domain: json['domain'] as String?,
       prefix: json['prefix'] as String?,
+      colorPrimary: json['colorPrimary'] as String?,
+      colorSecondary: json['colorSecondary'] as String?,
+      logoUrl: json['logoUrl'] as String?,
     );
   }
 }

@@ -1,11 +1,12 @@
 import '../../../core/network/api_config.dart';
+import '../../../core/utils/delta_converter.dart';
 
 class NewsItem {
   final String slug;
   final String title;
   final String excerpt;
 
-  /// Markdown content for rich text rendering
+  /// Markdown content for rich text rendering (converted from Delta if needed)
   final String content;
   final DateTime publishedAt;
 
@@ -30,7 +31,10 @@ class NewsItem {
       imageUrl = ApiConfig.getMediaUrl(imageUrl);
     }
 
-    final content = json['content'] as String? ?? '';
+    final rawContent = json['content'] as String? ?? '';
+    
+    // Конвертируем Delta JSON в Markdown если нужно
+    final content = DeltaConverter.toMarkdown(rawContent);
 
     return NewsItem(
       slug: json['id'].toString(),

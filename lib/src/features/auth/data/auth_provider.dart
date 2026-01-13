@@ -10,6 +10,7 @@ import 'package:flutter_app_badger/flutter_app_badger.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../profile/data/profile_provider.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
 const _kUserEmailKey = 'user_email';
@@ -165,8 +166,9 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
         
-        // Invalidate client codes to reload data
+        // Invalidate client codes and profile to reload data
         ref.invalidate(clientCodesControllerProvider);
+        ref.invalidate(clientProfileProvider);
         
         state = AuthState(
           isLoggedIn: true,
@@ -214,6 +216,68 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         error: 'Произошла ошибка: $e',
+      );
+      return false;
+    }
+  }
+  
+  /// Авторизация по данным от password-reset (после подтверждения по звонку)
+  Future<bool> loginWithData({
+    required String token,
+    required Map<String, dynamic> userData,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    
+    try {
+      // Сохраняем токен в ApiClient
+      await _apiClient.setToken(token);
+      
+      // Извлекаем данные клиента
+      final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
+      final email = userData['email'] as String? ?? '';
+      final clientName = userData['fullName'] as String? ?? 
+                        userData['name'] as String? ?? 
+                        email;
+      final agentData = userData['agent'] as Map<String, dynamic>?;
+      final clientDomain = agentData?['domain'] as String? ?? '';
+      
+      // Сохраняем в SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kIsLoggedInKey, true);
+      await prefs.setString(_kUserEmailKey, email);
+      await prefs.setString(_kUserDomainKey, clientDomain);
+      await prefs.setString(_kTokenKey, token);
+      if (clientId != null) {
+        await prefs.setInt(_kClientIdKey, clientId);
+      }
+      await prefs.setString(_kClientNameKey, clientName);
+      await prefs.setString(_kClientDataKey, jsonEncode(userData));
+      
+      // Invalidate client codes and profile to reload data
+      ref.invalidate(clientCodesControllerProvider);
+      ref.invalidate(clientProfileProvider);
+      
+      state = AuthState(
+        isLoggedIn: true,
+        userEmail: email,
+        userDomain: clientDomain,
+        isLoading: false,
+        clientId: clientId,
+        clientName: clientName,
+        clientData: userData,
+      );
+      
+      // Регистрируем устройство для push-уведомлений
+      if (clientDomain.isNotEmpty) {
+        _registerForPush(clientDomain);
+      }
+      
+      return true;
+    } catch (e) {
+      debugPrint('LoginWithData error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Ошибка авторизации: $e',
       );
       return false;
     }

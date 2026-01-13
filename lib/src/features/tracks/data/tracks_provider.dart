@@ -60,9 +60,13 @@ final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
       },
     );
     
+    debugPrint('trackStatusesProvider: statusCode=${response.statusCode}, data=${response.data}');
+    
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final statusesJson = data['data'] as List<dynamic>? ?? [];
+      
+      debugPrint('trackStatusesProvider: parsed ${statusesJson.length} statuses');
       
       return statusesJson
           .map((json) => TrackStatus.fromJson(json as Map<String, dynamic>))

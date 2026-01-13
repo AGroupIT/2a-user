@@ -765,6 +765,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.3.0"
+  mask_text_input_formatter:
+    dependency: "direct main"
+    description:
+      name: mask_text_input_formatter
+      sha256: "978c58ec721c25621ceb468e633f4eef64b64d45424ac4540e0565d4f7c800cd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.9.0"
   matcher:
     dependency: transitive
     description:
@@ -901,6 +909,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  photo_view:
+    dependency: "direct main"
+    description:
+      name: photo_view
+      sha256: "1fc3d970a91295fbd1364296575f854c9863f225505c28c46e0a03e48960c75e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.15.0"
   platform:
     dependency: transitive
     description:
@@ -1077,6 +1093,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
+  showcaseview:
+    dependency: "direct main"
+    description:
+      name: showcaseview
+      sha256: "82e013ac2de1ae92cc6e652badf676606057c8e17aa3afd91e78866c4b4e85b1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.1"
   sky_engine:
     dependency: transitive
     description: flutter

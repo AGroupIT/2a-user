@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:showcaseview/showcaseview.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -16,7 +15,6 @@ import 'package:dio/dio.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/services/push_notification_service.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
@@ -25,33 +23,36 @@ import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
-import '../data/chat_provider.dart';
-import '../data/chat_models.dart';
+import '../../support/data/chat_models.dart';
+import '../data/payment_chat_provider.dart';
 
-class SupportChatScreen extends ConsumerStatefulWidget {
+class PaymentChatScreen extends ConsumerStatefulWidget {
   final String? initialMessage;
+  final String? invoiceId;
+  final String? invoiceNumber;
+  final double? amount;
   
-  const SupportChatScreen({super.key, this.initialMessage});
+  const PaymentChatScreen({
+    super.key,
+    this.initialMessage,
+    this.invoiceId,
+    this.invoiceNumber,
+    this.amount,
+  });
 
   @override
-  ConsumerState<SupportChatScreen> createState() => _SupportChatScreenState();
+  ConsumerState<PaymentChatScreen> createState() => _PaymentChatScreenState();
 }
 
-class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
+class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     with WidgetsBindingObserver {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   Timer? _pollingTimer;
 
-  final bool _showQuickActions = true;
+  final bool _showQuickActions = false;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
-
-  // Showcase keys
-  final _showcaseKeyMessages = GlobalKey();
-  final _showcaseKeyInput = GlobalKey();
-
-  bool _showcaseStarted = false;
 
   @override
   void initState() {
@@ -60,12 +61,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     _initNotifications();
     
     // Загружаем чат и запускаем polling
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(isChatScreenOpenProvider.notifier).set(true);
-      ref.read(chatControllerProvider.notifier).loadConversation();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      ref.read(isPaymentChatScreenOpenProvider.notifier).set(true);
+      await ref.read(paymentChatControllerProvider.notifier).loadConversation();
       
-      // Если есть начальное сообщение - устанавливаем его в текстовое поле
-      if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+      // Если есть начальное сообщение об оплате счёта - отправляем его сразу
+      if (widget.invoiceId != null && widget.initialMessage != null) {
+        await _sendInitialInvoiceMessage();
+      } else if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+        // Просто устанавливаем текст в поле (старое поведение)
         _textController.text = widget.initialMessage!;
       }
       
@@ -82,34 +86,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   /// Уведомить сервер что чат открыт
   Future<void> _notifyServerChatOpened() async {
-    final chatState = ref.read(chatControllerProvider);
+    final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
     await ref.read(chatPresenceServiceProvider).openChat(
-      ChatType.support,
+      ChatType.payment,
       conversationId: conversationId,
     );
-  }
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.support));
-    if (!showcaseState.shouldShow) return;
-    
-    _showcaseStarted = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyMessages,
-        _showcaseKeyInput,
-      ]);
-    });
-  }
-
-  void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.support)).markAsSeen();
   }
 
   void _startPolling() {
@@ -122,7 +104,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
   
   void _pollMessages() {
-    ref.read(chatControllerProvider.notifier).pollNewMessages();
+    ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
   }
 
   Future<void> _initNotifications() async {
@@ -138,10 +120,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void dispose() {
     _pollingTimer?.cancel();
-    ref.read(isChatScreenOpenProvider.notifier).set(false);
+    ref.read(isPaymentChatScreenOpenProvider.notifier).set(false);
     
     // Уведомляем сервер что чат закрыт
-    ref.read(chatPresenceServiceProvider).closeChat(ChatType.support);
+    ref.read(chatPresenceServiceProvider).closeChat(ChatType.payment);
     
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
@@ -158,7 +140,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     if (state == AppLifecycleState.resumed) {
       _clearNotifications();
       // Обновляем сообщения при возврате в приложение
-      ref.read(chatControllerProvider.notifier).pollNewMessages();
+      ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
       // Уведомляем сервер что чат снова открыт
       _notifyServerChatOpened();
     } else if (state == AppLifecycleState.paused) {
@@ -172,8 +154,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       _appLifecycleState == AppLifecycleState.inactive ||
       _appLifecycleState == AppLifecycleState.hidden;
 
-  Future<void> _handleMessageSend(String text) async {
-    final chatState = ref.read(chatControllerProvider);
+  // Флаг чтобы отправить начальное сообщение только один раз
+  bool _initialMessageSent = false;
+
+  Future<void> _handleMessageSend(String text, {Map<String, dynamic>? metadata}) async {
+    final chatState = ref.read(paymentChatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     
     // Если нет текста и нет вложений - ничего не делаем
@@ -183,16 +168,17 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     _textController.clear();
     
     // Собираем ID вложений
-    final attachmentIds = pendingAttachments.map((a) => a.id).toList();
+    final attachmentIds = pendingAttachments.map((a) => a['id'] as int).toList();
     
-    final success = await ref.read(chatControllerProvider.notifier).sendMessage(
-      text.isEmpty ? 'Файл' : text,
+    final success = await ref.read(paymentChatControllerProvider.notifier).sendMessage(
+      text.isEmpty ? 'Файл' : text, 
+      metadata: metadata,
       attachmentIds: attachmentIds,
     );
     
     if (success) {
       // Очищаем pending attachments
-      ref.read(chatControllerProvider.notifier).clearPendingAttachments();
+      ref.read(paymentChatControllerProvider.notifier).clearPendingAttachments();
       // Прокрутка вниз после отправки
       _scrollToBottom();
     }
@@ -347,7 +333,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   
   /// Загрузить файл на сервер
   Future<void> _uploadFile(File file) async {
-    final chatState = ref.read(chatControllerProvider);
+    final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
     
     if (conversationId == null) {
@@ -355,7 +341,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       return;
     }
     
-    final result = await ref.read(chatControllerProvider.notifier).uploadFile(file);
+    final result = await ref.read(paymentChatControllerProvider.notifier).uploadFile(file, conversationId);
     
     if (result == null) {
       _showErrorSnackbar('Ошибка при загрузке файла');
@@ -371,6 +357,26 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  /// Отправить начальное сообщение с информацией о счёте (если есть)
+  Future<void> _sendInitialInvoiceMessage() async {
+    if (_initialMessageSent) return;
+    if (widget.initialMessage == null || widget.initialMessage!.isEmpty) return;
+    
+    _initialMessageSent = true;
+    
+    Map<String, dynamic>? metadata;
+    if (widget.invoiceId != null) {
+      metadata = {
+        'type': 'invoice_payment_request',
+        'invoiceId': widget.invoiceId,
+        'invoiceNumber': widget.invoiceNumber,
+        'amount': widget.amount,
+      };
+    }
+    
+    await _handleMessageSend(widget.initialMessage!, metadata: metadata);
   }
 
   void _scrollToBottom() {
@@ -482,25 +488,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     _handleMessageSend(buffer.toString());
   }
 
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
-
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      child: Builder(
-        builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return Stack(
-            children: [
-              // Градиентный фон как на других страницах
-              const Positioned.fill(child: AppBackground()),
+    return Stack(
+      children: [
+        // Градиентный фон как на других страницах
+        const Positioned.fill(child: AppBackground()),
 
         SafeArea(
           bottom: false,
@@ -511,48 +507,23 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
               // Список сообщений
               Expanded(
-                child: Showcase(
-                  key: _showcaseKeyMessages,
-                  title: 'Чат с поддержкой',
-                  description: 'Здесь отображается история переписки с поддержкой. Вы можете задать любой вопрос.',
-                  onTargetClick: () {
-                    if (mounted && _showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
-                  },
-                  disposeOnTap: false,
-                  child: _buildMessagesList(),
-                ),
+                child: _buildMessagesList(),
               ),
 
               // Панель быстрых действий
               if (_showQuickActions) _buildQuickActionsBar(),
 
               // Поле ввода
-              Showcase(
-                key: _showcaseKeyInput,
-                title: 'Поле ввода',
-                description: 'Напишите сообщение и нажмите кнопку отправки. Можете прикрепить информацию о треке или счёте.',
-                onBarrierClick: () {
-                  if (mounted) _onShowcaseComplete();
-                },
-                onToolTipClick: () {
-                  if (mounted) _onShowcaseComplete();
-                },
-                child: _buildInputField(bottomInset),
-              ),
+              _buildInputField(bottomInset),
             ],
           ),
         ),
-            ],
-          );
-        },
-      ),
+      ],
     );
   }
 
   Widget _buildMessagesList() {
-    final chatState = ref.watch(chatControllerProvider);
+    final chatState = ref.watch(paymentChatControllerProvider);
     
     if (chatState.isLoading) {
       return Center(
@@ -577,7 +548,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                ref.read(chatControllerProvider.notifier).loadConversation();
+                ref.read(paymentChatControllerProvider.notifier).loadConversation();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: context.brandPrimary,
@@ -598,14 +569,68 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     // Автопрокрутка вниз
     _scrollToBottom();
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: messages.length,
-      itemBuilder: (context, index) {
-        final message = messages[index];
-        return _buildMessageBubble(message);
-      },
+    return Column(
+      children: [
+        // Информационный блок о назначении чата
+        _buildInfoBanner(),
+        
+        // Список сообщений
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: messages.length,
+            itemBuilder: (context, index) {
+              final message = messages[index];
+              return _buildMessageBubble(message);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  /// Информационный баннер о назначении чата
+  Widget _buildInfoBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFCC80)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Важная информация',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade900,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '• Этот чат предназначен только для проведения оплаты счетов.\n'
+            '• Другие вопросы здесь не обсуждаются.\n'
+            '• Для подтверждения оплаты отправьте скриншот платежа.\n'
+            '• Статус счёта обновится после проверки менеджером.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.orange.shade900,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -652,15 +677,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [context.brandPrimary, context.brandSecondary],
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
-                    Icons.support_agent_rounded,
+                    Icons.account_balance_wallet_rounded,
                     color: Colors.white,
                     size: 18,
                   ),
@@ -871,12 +896,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFFFE0D0),
+                      color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE8F5E9),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       Icons.picture_as_pdf,
-                      color: isMe ? Colors.white : context.brandPrimary,
+                      color: isMe ? Colors.white : const Color(0xFF4CAF50),
                       size: 22,
                     ),
                   ),
@@ -909,7 +934,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   const SizedBox(width: 8),
                   Icon(
                     Icons.download_rounded,
-                    color: isMe ? Colors.white70 : context.brandPrimary,
+                    color: isMe ? Colors.white70 : const Color(0xFF4CAF50),
                     size: 20,
                   ),
                 ],
@@ -931,7 +956,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   void _showFullImage(String url, String fileName) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => _FullScreenImageView(
+        builder: (context) => _PaymentFullScreenImageView(
           imageUrl: url,
           fileName: fileName,
           onDownload: () => _downloadFile(url, fileName),
@@ -1010,22 +1035,22 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [context.brandPrimary, context.brandSecondary],
+              gradient: const LinearGradient(
+                colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Icon(
-              Icons.support_agent_rounded,
+              Icons.account_balance_wallet_rounded,
               color: Colors.white,
               size: 40,
             ),
           ),
           const SizedBox(height: 24),
           const Text(
-            'Чат поддержки',
+            'Чат по оплате',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -1036,7 +1061,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              'Напишите нам и мы поможем решить любой вопрос',
+              'Напишите нам по любым вопросам оплаты счетов и доставки',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.black54),
             ),
@@ -1076,7 +1101,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   Widget _buildInputField(double bottomInset) {
-    final chatState = ref.watch(chatControllerProvider);
+    final chatState = ref.watch(paymentChatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     final isUploading = chatState.isUploading;
     
@@ -1104,7 +1129,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           children: [
             // Preview прикреплённых файлов
             if (pendingAttachments.isNotEmpty || isUploading)
-              _buildPendingAttachments(context, pendingAttachments, isUploading),
+              _buildPendingAttachments(pendingAttachments, isUploading),
             
             Row(
               children: [
@@ -1116,8 +1141,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -1162,7 +1187,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 // Кнопка отправки с индикатором загрузки
                 Builder(
                   builder: (context) {
-                    final isSending = ref.watch(chatControllerProvider.select((s) => s.isSending));
+                    final isSending = ref.watch(paymentChatControllerProvider.select((s) => s.isSending));
                     return GestureDetector(
                       onTap: (isSending || isUploading) ? null : () => _handleMessageSend(_textController.text),
                       child: Container(
@@ -1205,7 +1230,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
   
   /// Виджет для отображения прикреплённых файлов перед отправкой
-  Widget _buildPendingAttachments(BuildContext context, List<ChatAttachment> attachments, bool isUploading) {
+  Widget _buildPendingAttachments(List<Map<String, dynamic>> attachments, bool isUploading) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: SingleChildScrollView(
@@ -1222,13 +1247,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   color: const Color(0xFFF0F0F0),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Center(
+                child: const Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(context.brandPrimary),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
                     ),
                   ),
                 ),
@@ -1236,9 +1261,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             
             // Показываем уже загруженные файлы
             ...attachments.map((attachment) {
-              final fileType = attachment.fileType;
-              final fileName = attachment.fileName;
-              final url = attachment.url;
+              final fileType = attachment['fileType'] as String? ?? '';
+              final fileName = attachment['fileName'] as String? ?? 'file';
+              final url = attachment['url'] as String? ?? '';
               final isImage = fileType.startsWith('image/');
               
               return Container(
@@ -1273,15 +1298,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFE0D0),
+                                color: const Color(0xFFE8F5E9),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.picture_as_pdf,
-                                    color: context.brandPrimary,
+                                    color: Color(0xFF4CAF50),
                                     size: 28,
                                   ),
                                   const SizedBox(height: 4),
@@ -1309,7 +1334,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       right: 4,
                       child: GestureDetector(
                         onTap: () {
-                          ref.read(chatControllerProvider.notifier).removePendingAttachment(attachment.id);
+                          final id = attachment['id']?.toString();
+                          if (id != null) {
+                            ref.read(paymentChatControllerProvider.notifier).removePendingAttachment(id);
+                          }
                         },
                         child: Container(
                           width: 20,
@@ -1355,23 +1383,23 @@ class _QuickActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF5F2),
+          color: const Color(0xFFE8F5E9),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: context.brandPrimary.withValues(alpha: 0.2),
+            color: const Color(0xFF4CAF50).withValues(alpha: 0.2),
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: context.brandPrimary),
+            Icon(icon, size: 18, color: const Color(0xFF4CAF50)),
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: context.brandPrimary,
+                color: Color(0xFF4CAF50),
               ),
             ),
           ],
@@ -1492,8 +1520,8 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
             child: TabBar(
               controller: _tabController,
               indicator: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1538,8 +1566,8 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
     final tracksAsync = ref.watch(tracksSimpleListProvider(clientCode));
 
     return tracksAsync.when(
-      loading: () => Center(
-        child: CircularProgressIndicator(color: context.brandPrimary),
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF4CAF50)),
       ),
       error: (e, _) => Center(child: Text('Ошибка: $e')),
       data: (tracks) {
@@ -1582,8 +1610,8 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
     final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
 
     return invoicesAsync.when(
-      loading: () => Center(
-        child: CircularProgressIndicator(color: context.brandPrimary),
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF4CAF50)),
       ),
       error: (e, _) => Center(child: Text('Ошибка: $e')),
       data: (invoices) {
@@ -1651,12 +1679,12 @@ class _TrackListTile extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF5F2),
+                color: const Color(0xFFE8F5E9),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.local_shipping_rounded,
-                color: context.brandPrimary,
+                color: Color(0xFF4CAF50),
                 size: 20,
               ),
             ),
@@ -1683,8 +1711,8 @@ class _TrackListTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1727,12 +1755,12 @@ class _InvoiceListTile extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF5F2),
+                color: const Color(0xFFE8F5E9),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.receipt_long_rounded,
-                color: context.brandPrimary,
+                color: Color(0xFF4CAF50),
                 size: 20,
               ),
             ),
@@ -1759,8 +1787,8 @@ class _InvoiceListTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1777,13 +1805,13 @@ class _InvoiceListTile extends StatelessWidget {
   }
 }
 
-/// Полноэкранный просмотр изображения
-class _FullScreenImageView extends StatelessWidget {
+/// Полноэкранный просмотр изображения (Payment Chat)
+class _PaymentFullScreenImageView extends StatelessWidget {
   final String imageUrl;
   final String fileName;
   final VoidCallback onDownload;
 
-  const _FullScreenImageView({
+  const _PaymentFullScreenImageView({
     required this.imageUrl,
     required this.fileName,
     required this.onDownload,

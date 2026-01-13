@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../data/news_provider.dart';
@@ -19,12 +22,37 @@ class NewsListScreen extends ConsumerStatefulWidget {
 
 class _NewsListScreenState extends ConsumerState<NewsListScreen>
     with AutoRefreshMixin {
+  // Showcase keys
+  final _showcaseKeyNewsList = GlobalKey();
+
+  bool _showcaseStarted = false;
+
   @override
   void initState() {
     super.initState();
     startAutoRefresh(() {
       ref.invalidate(newsListProvider);
     });
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      final showcaseState = ref.read(showcaseProvider(ShowcasePage.news));
+      if (showcaseState.shouldShow) {
+        ShowCaseWidget.of(showcaseContext).startShowCase([
+          _showcaseKeyNewsList,
+        ]);
+      }
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.news)).markAsSeen();
   }
 
   @override
@@ -38,24 +66,31 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
       await ref.read(newsListProvider.future);
     }
 
-    return asyncItems.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить новости',
-        message: e.toString(),
-      ),
-      data: (items) {
-        if (items.isEmpty) {
-          return const EmptyState(
-            icon: Icons.newspaper_outlined,
-            title: 'Пока нет новостей',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          color: const Color(0xFFfe3301),
-          child: ListView.builder(
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          // Запускаем showcase если нужно
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return asyncItems.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Не удалось загрузить новости',
+              message: e.toString(),
+            ),
+            data: (items) {
+              if (items.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.newspaper_outlined,
+                  title: 'Пока нет новостей',
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: onRefresh,
+                color: context.brandPrimary,
+                child: ListView.builder(
             padding: EdgeInsets.fromLTRB(
               16,
               topPad * 0.7 + 6,
@@ -76,6 +111,24 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                 );
               }
               final item = items[i - 1];
+              if (i == 1) {
+                // Первая карточка новостей - оборачиваем в Showcase
+                return Padding(
+                  padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
+                  child: Showcase(
+                    key: _showcaseKeyNewsList,
+                    title: 'Новости',
+                    description: 'Здесь отображаются последние новости компании. Нажмите на карточку для просмотра полной новости.',
+                    onBarrierClick: () {
+                      if (mounted) _onShowcaseComplete();
+                    },
+                    onToolTipClick: () {
+                      if (mounted) _onShowcaseComplete();
+                    },
+                    child: _NewsCard(item: item),
+                  ),
+                );
+              }
               return Padding(
                 padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
                 child: _NewsCard(item: item),
@@ -83,7 +136,10 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
             },
           ),
         );
-      },
+            },
+          );
+        },
+      ),
     );
   }
 }
