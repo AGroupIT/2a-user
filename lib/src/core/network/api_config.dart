@@ -2,14 +2,28 @@ import 'package:flutter/foundation.dart';
 
 /// Конфигурация API
 class ApiConfig {
-  /// Base URL для API
+  // Можно переопределить через --dart-define=API_BASE_URL=...
+  static const String _defaultBaseUrl = 'https://2alogistic.2a-marketing.ru/api';
+  static const String _defaultMediaUrl = 'https://2alogistic.2a-marketing.ru';
+  
+  /// Base URL для API (из env или дефолт)
   static String get baseUrl {
-    return 'http://188.124.54.40:3333/api';
+    const envUrl = String.fromEnvironment('API_BASE_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    
+    // В debug можно использовать прямой IP для отладки
+    if (kDebugMode) {
+      // Раскомментируйте для локальной отладки:
+      // return 'http://188.124.54.40:3333/api';
+    }
+    return _defaultBaseUrl;
   }
   
-  /// Base URL для статических файлов (uploads)
+  /// Base URL для статических файлов (uploads) - через Nginx
   static String get mediaBaseUrl {
-    return 'http://188.124.54.40:3333';
+    const envUrl = String.fromEnvironment('MEDIA_BASE_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    return _defaultMediaUrl;
   }
   
   /// Формирует полный URL для медиа-файла

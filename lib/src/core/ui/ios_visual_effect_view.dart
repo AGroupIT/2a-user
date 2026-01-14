@@ -38,9 +38,9 @@ class IOSVisualEffectBlur extends StatelessWidget {
         height: height,
         width: width,
         style: style,
-        child: child,
         addTopHairline: addTopHairline,
         addBottomHairline: addBottomHairline,
+        child: child,
       );
     }
 
@@ -49,8 +49,8 @@ class IOSVisualEffectBlur extends StatelessWidget {
       borderRadius: borderRadius,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.0),
+          color: Colors.white.withValues(alpha: 0.08),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.0),
           borderRadius: borderRadius,
         ),
         child: SizedBox(height: height, width: width, child: child),
@@ -111,8 +111,8 @@ class _IOSMaterialSurface extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.35),
-                      Colors.white.withOpacity(0.00),
+                      Colors.white.withValues(alpha: 0.35),
+                      Colors.white.withValues(alpha: 0.00),
                     ],
                   ),
                 ),
@@ -130,8 +130,8 @@ class _IOSMaterialSurface extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.35),
-                      Colors.white.withOpacity(0.00),
+                      Colors.white.withValues(alpha: 0.35),
+                      Colors.white.withValues(alpha: 0.00),
                     ],
                   ),
                 ),

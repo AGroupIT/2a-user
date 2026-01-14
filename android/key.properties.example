@@ -1,0 +1,7 @@
+# Rename this file to key.properties and fill in your values
+# DO NOT commit key.properties to git!
+
+storePassword=your_keystore_password
+keyPassword=your_key_password
+keyAlias=upload
+storeFile=/path/to/your/upload-keystore.jks

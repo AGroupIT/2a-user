@@ -45,6 +45,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   final _showcaseKeyFilters = GlobalKey();
   final _showcaseKeyInvoiceItem = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   // Хранение контекста Showcase для вызова next()
@@ -57,6 +58,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
     
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.invoices));
@@ -129,7 +131,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
     final List<InvoiceStatus> dbStatuses = statusesAsync.when(
       data: (statuses) => statuses,
       loading: () => <InvoiceStatus>[],
-      error: (_, __) => <InvoiceStatus>[],
+      error: (_, _) => <InvoiceStatus>[],
     );
 
     return ShowcaseWrapper(
@@ -157,6 +159,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     16,
                     topPad * 0.7 + 6,
@@ -176,6 +179,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                       title: 'Фильтры счетов',
                       description: 'Фильтруйте счета по статусу оплаты или ищите по номеру счёта.',
                       targetBorderRadius: BorderRadius.circular(20),
+                      targetPadding: const EdgeInsets.all(8),
+                      tooltipPosition: TooltipPosition.bottom,
                       tooltipBackgroundColor: Colors.white,
                       textColor: Colors.black87,
                       titleTextStyle: const TextStyle(
@@ -240,6 +245,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                         title: 'Карточка счёта',
                         description: 'Нажмите на счёт для просмотра деталей. Здесь вы увидите сумму, статус оплаты и сможете скачать PDF.',
                         targetBorderRadius: BorderRadius.circular(18),
+                        targetPadding: const EdgeInsets.all(8),
+                        tooltipPosition: TooltipPosition.bottom,
                         tooltipBackgroundColor: Colors.white,
                         textColor: Colors.black87,
                         titleTextStyle: const TextStyle(
@@ -482,7 +489,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                       ),
                       decoration: BoxDecoration(
                         color: _selectedValue == item.value
-                            ? context.brandPrimary.withOpacity(0.1)
+                            ? context.brandPrimary.withValues(alpha: 0.1)
                             : Colors.transparent,
                       ),
                       child: Text(
@@ -634,25 +641,12 @@ class _InvoiceTile extends StatelessWidget {
     return tariffCost + packagingCost + transshipment + insurance - discount;
   }
 
-  /// Расчёт К оплате RUB = Доставка USD × Курс
-  double _calculateTotalRub() {
-    // Если API вернул готовое значение - используем его
-    if (item.totalCostRub > 0) {
-      return item.totalCostRub;
-    }
-    // Иначе считаем по формуле
-    final deliveryUsd = _calculateDeliveryCostUsd();
-    final rate = item.rate ?? 0;
-    return deliveryUsd * rate;
-  }
-
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final deliveryUsd = _calculateDeliveryCostUsd();
-    final rate = item.rate ?? 0;
 
     return Container(
       decoration: BoxDecoration(

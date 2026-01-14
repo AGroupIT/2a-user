@@ -88,6 +88,14 @@ class PaymentChatRepository {
       final fileName = file.path.split('/').last;
       final extension = fileName.split('.').last.toLowerCase();
       
+      // Читаем файл в память сразу, чтобы избежать проблем с временными файлами iOS
+      final bytes = await file.readAsBytes();
+      
+      if (bytes.isEmpty) {
+        debugPrint('Error: File is empty');
+        return null;
+      }
+      
       // Определяем MIME-тип
       String mimeType;
       String mimeSubtype;
@@ -109,6 +117,11 @@ class PaymentChatRepository {
           mimeType = 'image';
           mimeSubtype = 'webp';
           break;
+        case 'heic':
+        case 'heif':
+          mimeType = 'image';
+          mimeSubtype = 'heic';
+          break;
         case 'pdf':
           mimeType = 'application';
           mimeSubtype = 'pdf';
@@ -119,8 +132,8 @@ class PaymentChatRepository {
       }
       
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          file.path,
+        'file': MultipartFile.fromBytes(
+          bytes,
           filename: fileName,
           contentType: MediaType(mimeType, mimeSubtype),
         ),

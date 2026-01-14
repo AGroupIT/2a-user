@@ -74,7 +74,6 @@ class SearchScreen extends ConsumerStatefulWidget {
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _ctrl = TextEditingController();
   bool _hasSearched = false;
-  bool _showcaseStarted = false;
 
   // Showcase key
   final _showcaseKeySearch = GlobalKey();
@@ -86,16 +85,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _startShowcase(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.search));
-    if (showcaseState.shouldShow) {
-      _showcaseStarted = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ShowCaseWidget.of(showcaseContext).startShowCase([_showcaseKeySearch]);
-      });
-    }
+    if (!showcaseState.shouldShow) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ShowCaseWidget.of(showcaseContext).startShowCase([_showcaseKeySearch]);
+    });
   }
 
   void _onShowcaseComplete() {
@@ -168,6 +164,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 title: 'Поиск треков',
                 description:
                     'Введите минимум 5 символов трек-номера и нажмите "Найти". Можно искать по любой части номера.',
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.bottom,
                 onBarrierClick: () {
                   if (mounted) _onShowcaseComplete();
                 },
@@ -303,7 +301,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     shrinkWrap: true,
                     itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, i) => _SearchResultTile(
                       result: items[i],
                       activeClientCode: activeClientCode,

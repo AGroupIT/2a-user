@@ -19,7 +19,8 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Fix for deprecated plugins missing namespace (flutter_app_badger)
+// Fix for deprecated plugins missing namespace (flutter_app_badger etc.)
+// Also force compileSdk >= 34 for all subprojects to fix lStar issue
 subprojects {
     plugins.withId("com.android.library") {
         val android = project.extensions.getByName("android") as com.android.build.gradle.LibraryExtension
@@ -33,6 +34,8 @@ subprojects {
                 }
             }
         }
+        // Force minimum compileSdk for older plugins
+        android.compileSdk = maxOf(android.compileSdk ?: 34, 34)
     }
 }
 

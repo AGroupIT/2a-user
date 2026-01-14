@@ -5,6 +5,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api_config.dart';
 
+/// Callback для обработки 401 ошибки (unauthorized)
+typedef OnUnauthorizedCallback = void Function();
+
 /// Провайдер для ApiClient
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
@@ -18,6 +21,14 @@ class ApiClient {
   
   // In-memory fallback для web и desktop
   static String? _inMemoryToken;
+  
+  // Callback для обработки 401 unauthorized
+  OnUnauthorizedCallback? _onUnauthorized;
+  
+  /// Установить callback для обработки 401 ошибки
+  void setOnUnauthorizedCallback(OnUnauthorizedCallback callback) {
+    _onUnauthorized = callback;
+  }
 
   ApiClient() {
     _dio = Dio(
@@ -48,9 +59,11 @@ class ApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // Если 401, очищаем токен
+        // Если 401 (unauthorized), очищаем токен и вызываем callback
         if (error.response?.statusCode == 401) {
           await clearToken();
+          // Вызываем callback для logout и редиректа
+          _onUnauthorized?.call();
         }
         return handler.next(error);
       },

@@ -225,7 +225,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 /// Notifier that triggers router refresh when auth state changes
 class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(this._ref) {
-    _ref.listen(authProvider, (_, __) {
+    _ref.listen(authProvider, (_, _) {
       notifyListeners();
     });
   }

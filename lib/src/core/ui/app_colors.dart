@@ -88,7 +88,7 @@ final brandColorsProvider = Provider<BrandColors>((ref) {
       return BrandColors.defaultColors;
     },
     loading: () => BrandColors.defaultColors,
-    error: (_, __) => BrandColors.defaultColors,
+    error: (_, _) => BrandColors.defaultColors,
   );
 });
 

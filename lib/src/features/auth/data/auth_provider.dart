@@ -5,10 +5,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_app_badger/flutter_app_badger.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
+import '../../../core/services/secure_storage_service.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../profile/data/profile_provider.dart';
 
@@ -67,10 +68,12 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   late ApiClient _apiClient;
+  late SecureStorageService _secureStorage;
   
   @override
   AuthState build() {
     _apiClient = ref.read(apiClientProvider);
+    _secureStorage = ref.read(secureStorageProvider);
     _loadAuthState();
     return const AuthState();
   }
@@ -83,9 +86,16 @@ class AuthNotifier extends Notifier<AuthState> {
     final clientId = prefs.getInt(_kClientIdKey);
     final clientName = prefs.getString(_kClientNameKey);
     
-    // Восстанавливаем токен
+    // Migrate from SharedPreferences to secure storage if needed
+    final oldToken = prefs.getString(_kTokenKey);
+    if (oldToken != null && oldToken.isNotEmpty) {
+      await _secureStorage.saveToken(oldToken);
+      await prefs.remove(_kTokenKey);
+    }
+    
+    // Восстанавливаем токен из secure storage
     if (isLoggedIn) {
-      final savedToken = prefs.getString(_kTokenKey);
+      final savedToken = await _secureStorage.getToken();
       if (savedToken != null && savedToken.isNotEmpty) {
         await _apiClient.setToken(savedToken);
       }
@@ -146,6 +156,9 @@ class AuthNotifier extends Notifier<AuthState> {
         // Сохраняем токен в ApiClient
         await _apiClient.setToken(token);
         
+        // Сохраняем токен в secure storage
+        await _secureStorage.saveToken(token);
+        
         // Извлекаем данные клиента
         final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
         final clientName = userData['fullName'] as String? ?? 
@@ -154,12 +167,11 @@ class AuthNotifier extends Notifier<AuthState> {
         final agentData = userData['agent'] as Map<String, dynamic>?;
         final clientDomain = agentData?['domain'] as String? ?? domain;
         
-        // Сохраняем в SharedPreferences
+        // Сохраняем в SharedPreferences (без токена - он в secure storage)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_kIsLoggedInKey, true);
         await prefs.setString(_kUserEmailKey, email);
         await prefs.setString(_kUserDomainKey, clientDomain);
-        await prefs.setString(_kTokenKey, token);
         if (clientId != null) {
           await prefs.setInt(_kClientIdKey, clientId);
         }
@@ -232,6 +244,9 @@ class AuthNotifier extends Notifier<AuthState> {
       // Сохраняем токен в ApiClient
       await _apiClient.setToken(token);
       
+      // Сохраняем токен в secure storage
+      await _secureStorage.saveToken(token);
+      
       // Извлекаем данные клиента
       final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
       final email = userData['email'] as String? ?? '';
@@ -241,12 +256,11 @@ class AuthNotifier extends Notifier<AuthState> {
       final agentData = userData['agent'] as Map<String, dynamic>?;
       final clientDomain = agentData?['domain'] as String? ?? '';
       
-      // Сохраняем в SharedPreferences
+      // Сохраняем в SharedPreferences (без токена - он в secure storage)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kIsLoggedInKey, true);
       await prefs.setString(_kUserEmailKey, email);
       await prefs.setString(_kUserDomainKey, clientDomain);
-      await prefs.setString(_kTokenKey, token);
       if (clientId != null) {
         await prefs.setInt(_kClientIdKey, clientId);
       }
@@ -353,11 +367,14 @@ class AuthNotifier extends Notifier<AuthState> {
     // Очищаем токен в ApiClient
     await _apiClient.clearToken();
     
+    // Очищаем токен из secure storage
+    await _secureStorage.deleteToken();
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kIsLoggedInKey);
     await prefs.remove(_kUserEmailKey);
     await prefs.remove(_kUserDomainKey);
-    await prefs.remove(_kTokenKey);
+    await prefs.remove(_kTokenKey); // legacy cleanup
     await prefs.remove(_kClientIdKey);
     await prefs.remove(_kClientNameKey);
     await prefs.remove(_kClientDataKey);
@@ -365,9 +382,11 @@ class AuthNotifier extends Notifier<AuthState> {
     // Clear notification badge (not supported on Desktop)
     if (!kIsWeb && !Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
       try {
-        FlutterAppBadger.removeBadge();
+        // Очищаем все уведомления и badge
+        final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+        await flutterLocalNotificationsPlugin.cancelAll();
       } catch (e) {
-        debugPrint('Error clearing badge: $e');
+        if (kDebugMode) debugPrint('Error clearing notifications: $e');
       }
     }
 

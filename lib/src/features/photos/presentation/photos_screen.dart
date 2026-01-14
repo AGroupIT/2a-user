@@ -31,6 +31,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   final _showcaseKeyDateFilter = GlobalKey();
   final _showcaseKeyPhotoGrid = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   // Хранение контекста Showcase для вызова next()
@@ -46,6 +47,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
     
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.photos));
@@ -160,6 +162,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
             onRefresh: onRefresh,
             color: context.brandPrimary,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
                 16,
                 topPad * 0.7 + 6,
@@ -180,6 +183,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                   description:
                       'Общее количество фотографий и видео для вашего кода клиента.',
                   targetBorderRadius: BorderRadius.circular(18),
+                  targetPadding: const EdgeInsets.all(8),
+                  tooltipPosition: TooltipPosition.bottom,
                   tooltipBackgroundColor: Colors.white,
                   textColor: Colors.black87,
                   titleTextStyle: const TextStyle(
@@ -207,6 +212,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                   description:
                       'Выберите месяц и год для просмотра фотографий за определённый период.',
                   targetBorderRadius: BorderRadius.circular(14),
+                  targetPadding: const EdgeInsets.all(8),
+                  tooltipPosition: TooltipPosition.bottom,
                   tooltipBackgroundColor: Colors.white,
                   textColor: Colors.black87,
                   titleTextStyle: const TextStyle(
@@ -366,6 +373,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                 title: 'Галерея фото',
                 description:
                     'Здесь отображаются фото и видео за выбранную дату. Нажмите на миниатюру для просмотра.',
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
                   _onShowcaseComplete();
                 },
@@ -413,6 +422,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                                                 builder: (_) =>
                                                     PhotoViewerScreen(
                                                       item: item,
+                                                      allPhotos: items,
+                                                      initialIndex: items.indexOf(item),
                                                     ),
                                               ),
                                             ),
@@ -441,6 +452,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                                                 builder: (_) =>
                                                     PhotoViewerScreen(
                                                       item: item,
+                                                      allPhotos: items,
+                                                      initialIndex: items.indexOf(item),
                                                     ),
                                               ),
                                             ),
@@ -469,6 +482,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                                                 builder: (_) =>
                                                     PhotoViewerScreen(
                                                       item: item,
+                                                      allPhotos: items,
+                                                      initialIndex: items.indexOf(item),
                                                     ),
                                               ),
                                             ),
@@ -685,7 +700,7 @@ class _CalendarGrid extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        _monthName(month) + ' ' + year.toString(),
+                        '${_monthName(month)} $year',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,

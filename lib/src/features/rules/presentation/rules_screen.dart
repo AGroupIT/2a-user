@@ -23,6 +23,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
   // Showcase keys
   final _showcaseKeyRulesList = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   @override
@@ -34,18 +35,20 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.rules));
+    if (!showcaseState.shouldShow) return;
+    
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      final showcaseState = ref.read(showcaseProvider(ShowcasePage.rules));
-      if (showcaseState.shouldShow) {
-        ShowCaseWidget.of(
-          showcaseContext,
-        ).startShowCase([_showcaseKeyRulesList]);
-      }
+      ShowCaseWidget.of(
+        showcaseContext,
+      ).startShowCase([_showcaseKeyRulesList]);
     });
   }
 
@@ -90,6 +93,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                   onRefresh: onRefresh,
                   color: ctx.brandPrimary,
                   child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(
                       16,
                       topPad * 0.7 + 6,
@@ -120,6 +124,8 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                             title: 'Правила оказания услуг',
                             description:
                                 'Список правил и условий работы. Нажмите на карточку для просмотра полного текста правила.',
+                            targetPadding: const EdgeInsets.all(8),
+                            tooltipPosition: TooltipPosition.bottom,
                             onBarrierClick: () {
                               if (mounted) _onShowcaseComplete();
                             },

@@ -25,6 +25,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
   // Showcase keys
   final _showcaseKeyNewsList = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   @override
@@ -36,18 +37,20 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.news));
+    if (!showcaseState.shouldShow) return;
+    
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       
-      final showcaseState = ref.read(showcaseProvider(ShowcasePage.news));
-      if (showcaseState.shouldShow) {
-        ShowCaseWidget.of(showcaseContext).startShowCase([
-          _showcaseKeyNewsList,
-        ]);
-      }
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyNewsList,
+      ]);
     });
   }
 
@@ -91,6 +94,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
               16,
               topPad * 0.7 + 6,
@@ -119,6 +123,8 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                     key: _showcaseKeyNewsList,
                     title: 'Новости',
                     description: 'Здесь отображаются последние новости компании. Нажмите на карточку для просмотра полной новости.',
+                    targetPadding: const EdgeInsets.all(8),
+                    tooltipPosition: TooltipPosition.bottom,
                     onBarrierClick: () {
                       if (mounted) _onShowcaseComplete();
                     },
@@ -211,7 +217,7 @@ class _NewsCard extends StatelessWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFfe3301).withOpacity(0.1),
+                        color: const Color(0xFFfe3301).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(

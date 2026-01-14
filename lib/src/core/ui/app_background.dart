@@ -30,8 +30,8 @@ class AppBackground extends StatelessWidget {
             child: _Blob(
               size: 280,
               colors: [
-                const Color(0xFF4A90E2).withOpacity(0.15),
-                const Color(0xFF4A90E2).withOpacity(0.0),
+                const Color(0xFF4A90E2).withValues(alpha: 0.15),
+                const Color(0xFF4A90E2).withValues(alpha: 0.0),
               ],
             ),
           ),
@@ -41,8 +41,8 @@ class AppBackground extends StatelessWidget {
             child: _Blob(
               size: 320,
               colors: [
-                const Color(0xFF9B59B6).withOpacity(0.12),
-                const Color(0xFF9B59B6).withOpacity(0.0),
+                const Color(0xFF9B59B6).withValues(alpha: 0.12),
+                const Color(0xFF9B59B6).withValues(alpha: 0.0),
               ],
             ),
           ),

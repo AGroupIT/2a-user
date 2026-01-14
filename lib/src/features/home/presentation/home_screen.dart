@@ -35,7 +35,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   final _showcaseKeyQuickCards = GlobalKey();
   final _showcaseKeyDigest = GlobalKey();
   final _showcaseKeyPhotos = GlobalKey();
-  
+
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   // Хранение контекста Showcase для вызова next()
@@ -48,6 +49,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
     
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.home));
@@ -152,6 +154,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
             onRefresh: onRefresh,
             color: context.brandPrimary,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
               children: [
               _GreetingBlock(fullName: clientName),
@@ -161,6 +164,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
                 title: 'Быстрый доступ',
                 description: 'Здесь отображается количество ваших треков, сборок и счетов. Нажмите на карточку для перехода к списку.',
                 targetBorderRadius: BorderRadius.circular(18),
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.bottom,
                 tooltipBackgroundColor: Colors.white,
                 textColor: Colors.black87,
                 titleTextStyle: const TextStyle(
@@ -221,6 +226,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
           title: 'Дайджест треков',
           description: 'Последние обновления по вашим трекам. Нажмите "Смотреть все" для полного списка.',
           targetBorderRadius: BorderRadius.circular(20),
+          targetPadding: const EdgeInsets.all(8),
+          tooltipPosition: TooltipPosition.bottom,
           tooltipBackgroundColor: Colors.white,
           textColor: Colors.black87,
           titleTextStyle: const TextStyle(
@@ -251,6 +258,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
           title: 'Фотоотчёты',
           description: 'Последние фотографии ваших посылок. Здесь вы можете увидеть состояние грузов на складе.',
           targetBorderRadius: BorderRadius.circular(20),
+          targetPadding: const EdgeInsets.all(8),
+          tooltipPosition: TooltipPosition.bottom,
           tooltipBackgroundColor: Colors.white,
           textColor: Colors.black87,
           titleTextStyle: const TextStyle(
@@ -778,11 +787,11 @@ class _PhotoThumb extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: item.url,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(child: Icon(Icons.broken_image_outlined)),
                       ),

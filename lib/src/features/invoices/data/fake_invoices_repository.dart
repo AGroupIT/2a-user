@@ -58,7 +58,7 @@ class FakeInvoicesRepository implements InvoicesRepository {
       final volume = (0.1 + rng.nextDouble() * 1.8);
       final density = weight / volume;
 
-      final deliveryType = deliveryTypes[rng.nextInt(deliveryTypes.length)];
+      final _ = deliveryTypes[rng.nextInt(deliveryTypes.length)];
       final tariffType = tariffTypes[rng.nextInt(tariffTypes.length)];
 
       final tariffCost = (weight * (6 + rng.nextDouble() * 4));

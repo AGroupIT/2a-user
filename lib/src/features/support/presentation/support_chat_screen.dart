@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,7 +18,6 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/services/chat_presence_service.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
@@ -51,6 +50,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   final _showcaseKeyMessages = GlobalKey();
   final _showcaseKeyInput = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   @override
@@ -91,6 +91,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
     
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.support));
@@ -296,6 +297,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
+        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
         await _uploadFile(File(image.path));
@@ -314,6 +316,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
+        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
         await _uploadFile(File(image.path));
@@ -515,6 +518,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   key: _showcaseKeyMessages,
                   title: 'Чат с поддержкой',
                   description: 'Здесь отображается история переписки с поддержкой. Вы можете задать любой вопрос.',
+                  targetPadding: const EdgeInsets.all(8),
+                  tooltipPosition: TooltipPosition.bottom,
                   onTargetClick: () {
                     if (mounted && _showcaseContext != null) {
                       ShowCaseWidget.of(_showcaseContext!).next();
@@ -533,6 +538,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 key: _showcaseKeyInput,
                 title: 'Поле ввода',
                 description: 'Напишите сообщение и нажмите кнопку отправки. Можете прикрепить информацию о треке или счёте.',
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
                   if (mounted) _onShowcaseComplete();
                 },

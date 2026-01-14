@@ -46,7 +46,7 @@ class FakeTracksRepository implements TracksRepository {
     final assemblies = List.generate(2, (gi) {
       final id = rng.nextInt(10000);
       final number = 'ASM-${(clientCode.hashCode ^ gi ^ rng.nextInt(1 << 20)).toRadixString(16)}';
-      final createdAt = now.subtract(Duration(days: 10 + gi * 6 + rng.nextInt(5)));
+      final _ = now.subtract(Duration(days: 10 + gi * 6 + rng.nextInt(5)));
       final status = ['assembling', 'sent', 'arrived'][rng.nextInt(3)];
       final statusName = ['На сборке', 'Отправлен', 'Прибыл на терминал'][rng.nextInt(3)];
 

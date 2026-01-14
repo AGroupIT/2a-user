@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,8 +13,10 @@ import '../../features/notifications/domain/notification_item.dart';
 /// Background message handler (must be top-level)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  debugPrint('🔔 Background FCM message: ${message.messageId}');
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (kDebugMode) {
+    debugPrint('🔔 Background FCM message: ${message.messageId}');
+  }
 }
 
 /// Провайдер для сервиса push-уведомлений
@@ -473,15 +474,16 @@ class PushNotificationService {
       return;
     }
     
+    // Используем flutter_local_notifications для управления badge
+    // На iOS badge управляется через badgeNumber в notification
+    // На Android badges управляются через каналы уведомлений
     try {
-      final isSupported = await FlutterAppBadger.isAppBadgeSupported();
-      if (!isSupported) return;
-
-      if (count > 0) {
-        await FlutterAppBadger.updateBadgeCount(count);
-      } else {
-        await FlutterAppBadger.removeBadge();
+      if (count <= 0) {
+        // Отменяем все уведомления для сброса badge
+        await _notifications.cancelAll();
       }
+      // Примечание: для установки badge count нужно показать notification с badgeNumber
+      // или использовать platform-specific API
     } catch (e) {
       debugPrint('Error updating badge: $e');
     }

@@ -214,7 +214,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       physics: const BouncingScrollPhysics(),
       itemCount: filteredItems.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final item = filteredItems[i];
         return _NotificationTile(

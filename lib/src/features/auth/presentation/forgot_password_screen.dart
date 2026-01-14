@@ -50,6 +50,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   String? _checkId;
   String? _callPhone;
   String? _callPhonePretty;
+  // ignore: unused_field
   DateTime? _expiresAt;
   String? _resetToken;
   Timer? _pollTimer;
@@ -434,7 +435,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       width: 80,
       height: 80,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Icon(icon, size: 40, color: color),
@@ -1007,7 +1008,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           width: 20,
           height: 20,
           decoration: BoxDecoration(
-            color: const Color(0xFFfe3301).withOpacity(0.1),
+            color: const Color(0xFFfe3301).withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Center(

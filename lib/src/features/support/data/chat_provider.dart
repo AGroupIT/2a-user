@@ -71,9 +71,16 @@ class ChatRepository {
       final fileName = file.path.split('/').last;
       final mimeType = _getMimeType(fileName);
       
+      // Читаем файл в память сразу, чтобы избежать проблем с временными файлами iOS
+      final bytes = await file.readAsBytes();
+      
+      if (bytes.isEmpty) {
+        throw Exception('File is empty');
+      }
+      
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          file.path,
+        'file': MultipartFile.fromBytes(
+          bytes,
           filename: fileName,
           contentType: mimeType != null ? MediaType.parse(mimeType) : null,
         ),
@@ -107,6 +114,9 @@ class ChatRepository {
         return 'image/gif';
       case 'webp':
         return 'image/webp';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
       case 'pdf':
         return 'application/pdf';
       default:

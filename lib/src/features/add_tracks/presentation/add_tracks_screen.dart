@@ -97,6 +97,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 key: _showcaseKeyInput,
                 title: 'Поле ввода треков',
                 description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.bottom,
                 onTargetClick: () {
                   if (_showcaseContext != null) {
                     ShowCaseWidget.of(_showcaseContext!).next();
@@ -203,6 +205,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 key: _showcaseKeySubmit,
                 title: 'Кнопка добавления',
                 description: 'Нажмите для добавления введённых треков.',
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
                   _onShowcaseComplete();
                 },
@@ -381,7 +385,7 @@ class _ResultCard extends StatelessWidget {
                     Text(
                       '${result.added} треков добавлено в систему',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 13,
                       ),
                     ),
@@ -516,7 +520,7 @@ class _StatBox extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: iconColor, size: 20),

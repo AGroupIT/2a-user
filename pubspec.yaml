@@ -51,14 +51,12 @@ dependencies:
   excel: ^4.0.6
   file_picker: ^8.1.2
   image_picker: ^1.1.2
-  flutter_markdown: ^0.7.7+1
   flutter_native_splash: ^2.4.4
   flutter_chat_ui: ^2.11.1
   flutter_chat_types: ^3.6.2
   flutter_chat_core: ^2.9.0
   uuid: ^4.5.2
   flutter_local_notifications: ^19.5.0
-  flutter_app_badger: ^1.5.0
   gal: ^2.3.2
   
   # Photo viewer for fullscreen images
@@ -73,6 +71,9 @@ dependencies:
   
   # Phone input mask
   mask_text_input_formatter: ^2.9.0
+  flutter_markdown_plus: ^1.0.7
+  http_parser: ^4.1.2
+  flutter_cache_manager: ^3.4.1
 
 dev_dependencies:
   flutter_test:

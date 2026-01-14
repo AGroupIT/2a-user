@@ -140,6 +140,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   final _showcaseKeyViewMode = GlobalKey();
   final _showcaseKeyTrackItem = GlobalKey();
 
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   // Хранение контекста Showcase для вызова next()
@@ -152,11 +153,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-
+    
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.tracks));
     if (!showcaseState.shouldShow) return;
-
+    
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -384,6 +386,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       }
 
       if (track.id == null || clientId == null) {
+        if (!context.mounted) return;
         _showStyledSnackBar(
           context,
           'Ошибка: нет данных для запроса',
@@ -411,11 +414,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
 
       if (success) {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Запрос фотоотчёта отправлен');
         // Обновляем список треков
         _refreshTracks();
       } else {
         // Откатываем изменения
+        if (!context.mounted) return;
         setState(() {
           _requestedPhotoReports.remove(track.code);
           _photoRequestNotes.remove(track.code);
@@ -523,6 +528,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       },
     );
     if (result == true) {
+      if (!context.mounted) return;
       final now = DateTime.now();
       final question = controller.text.trim();
 
@@ -574,11 +580,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
 
       if (success) {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Вопрос отправлен');
         // Обновляем список треков
         _refreshTracks();
       } else {
         // Откатываем изменения при ошибке
+        if (!context.mounted) return;
         setState(() {
           if (wasEmpty) {
             _askedQuestions.remove(track.code);
@@ -599,6 +607,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     );
 
     if (!confirmed) return;
+    if (!mounted) return;
 
     // Если есть активный запрос из API
     final activeRequest = track.activePhotoRequest;
@@ -607,13 +616,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       final success = await apiService.cancelPhotoRequest(activeRequest.id);
 
       if (success) {
+        if (!mounted) return;
         // Обновляем список треков
         _refreshTracks();
         _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
       } else {
+        if (!mounted) return;
         _showStyledSnackBar(context, 'Ошибка отмены запроса', isError: true);
       }
     } else {
+      if (!mounted) return;
       // Удаляем из локального state
       setState(() {
         _requestedPhotoReports.remove(track.code);
@@ -633,6 +645,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     );
 
     if (!confirmed) return;
+    if (!mounted) return;
 
     // Если есть активный вопрос из API
     final activeQuestion = track.activeQuestion;
@@ -641,13 +654,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       final success = await apiService.cancelTrackQuestion(activeQuestion.id);
 
       if (success) {
+        if (!mounted) return;
         // Обновляем список треков
         _refreshTracks();
         _showStyledSnackBar(context, 'Вопрос отменён');
       } else {
+        if (!mounted) return;
         _showStyledSnackBar(context, 'Ошибка отмены вопроса', isError: true);
       }
     } else {
+      if (!mounted) return;
       // Удаляем из локального state
       setState(() {
         _askedQuestions.remove(track.code);
@@ -755,8 +771,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         );
 
         if (success) {
+          if (!context.mounted) return;
           _showStyledSnackBar(context, 'Заметка сохранена');
         } else {
+          if (!context.mounted) return;
           _showStyledSnackBar(
             context,
             'Заметка сохранена локально',
@@ -764,6 +782,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
           );
         }
       } else {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Заметка сохранена');
       }
     }
@@ -869,8 +888,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
 
       if (success) {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Заметка по сборке сохранена');
       } else {
+        if (!context.mounted) return;
         _showStyledSnackBar(
           context,
           'Ошибка сохранения заметки',
@@ -977,6 +998,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       },
     );
     if (result == true) {
+      if (!context.mounted) return;
       final now = DateTime.now();
       setState(() {
         final wasEmpty = (_groupQuestions[assembly.id.toString()] ?? '')
@@ -999,12 +1021,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
 
     // Загружаем тарифы и типы упаковки
     final tariffs = await ref.read(tariffsProvider.future);
+    if (!context.mounted) return;
     final packagingTypes = await ref.read(packagingTypesProvider.future);
 
     // Выбираем первый тариф по умолчанию
     Tariff? selectedTariff = tariffs.isNotEmpty ? tariffs.first : null;
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -1356,6 +1379,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     );
 
     if (result == true) {
+      if (!context.mounted) return;
       // Получаем данные для API
       final auth = ref.read(authStateProvider);
       final clientId = auth.clientId;
@@ -1403,6 +1427,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       );
 
       if (assembly != null) {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Сборка ${assembly.number} создана');
         setState(() {
           _selectedTracks.clear();
@@ -1412,6 +1437,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         _refreshTracks();
         ref.invalidate(assembliesListProvider(clientCode));
       } else {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Ошибка создания сборки', isError: true);
       }
     }
@@ -1547,7 +1573,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                   child: Image.file(
                                     File(path),
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
+                                    errorBuilder: (_, _, _) =>
                                         const ColoredBox(color: Colors.black12),
                                   ),
                                 ),
@@ -1617,9 +1643,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         );
 
         if (success) {
+          if (!context.mounted) return;
           _showStyledSnackBar(context, 'Информация о товаре сохранена');
           _refreshTracks();
         } else {
+          if (!context.mounted) return;
           _showStyledSnackBar(
             context,
             'Ошибка сохранения на сервере',
@@ -1627,6 +1655,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
           );
         }
       } else {
+        if (!context.mounted) return;
         _showStyledSnackBar(context, 'Информация о товаре сохранена локально');
       }
     }
@@ -1732,6 +1761,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                     return false;
                   },
                   child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(
                       16,
                       topPad * 0.7 + 6,
@@ -1755,6 +1785,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                         description:
                             'Используйте фильтры для поиска треков по статусу или номеру. Строка поиска позволяет быстро найти нужный трек.',
                         targetBorderRadius: BorderRadius.circular(20),
+                        targetPadding: const EdgeInsets.all(8),
+                        tooltipPosition: TooltipPosition.bottom,
                         tooltipBackgroundColor: Colors.white,
                         textColor: Colors.black87,
                         titleTextStyle: const TextStyle(
@@ -1947,6 +1979,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                 description:
                     'Нажмите на карточку, чтобы раскрыть детали. Здесь вы можете запросить фото, задать вопрос или выбрать трек для сборки.',
                 targetBorderRadius: BorderRadius.circular(18),
+                targetPadding: const EdgeInsets.all(8),
+                tooltipPosition: TooltipPosition.bottom,
                 tooltipBackgroundColor: Colors.white,
                 textColor: Colors.black87,
                 titleTextStyle: const TextStyle(

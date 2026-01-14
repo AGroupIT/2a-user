@@ -112,8 +112,9 @@ class _ClientSwitcherSheetState extends ConsumerState<ClientSwitcherSheet> {
                                                   .notifier,
                                             )
                                             .selectClient(code);
-                                        if (context.mounted)
+                                        if (context.mounted) {
                                           Navigator.of(context).pop();
+                                        }
                                       },
                                       borderRadius: BorderRadius.circular(12),
                                       child: Container(

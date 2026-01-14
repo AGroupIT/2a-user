@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../network/api_config.dart';
+
 /// Утилита для конвертации Quill Delta JSON в plain text
 /// 
 /// Delta формат: [{"insert":"Текст\n"},{"insert":"Ещё текст","attributes":{"bold":true}}]
@@ -145,7 +147,9 @@ class DeltaConverter {
           }
           
           if (imageUrl != null && imageUrl.isNotEmpty) {
-            buffer.write('\n\n![]($imageUrl)\n\n');
+            // Преобразуем относительный URL в абсолютный
+            final fullUrl = ApiConfig.getMediaUrl(imageUrl);
+            buffer.write('\n\n![]($fullUrl)\n\n');
           }
         }
       }

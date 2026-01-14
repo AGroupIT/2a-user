@@ -129,15 +129,7 @@ class ShowcaseNotifier extends Notifier<ShowcaseState> {
   
   @override
   ShowcaseState build() {
-    // Этот метод не используется напрямую, состояние инициализируется в _buildForPage
     return const ShowcaseState(shouldShow: false);
-  }
-  
-  /// Инициализация для конкретной страницы
-  ShowcaseState _buildForPage(ShowcasePage page) {
-    _page = page;
-    final service = ref.read(showcaseServiceProvider);
-    return ShowcaseState(shouldShow: service.shouldShowShowcase(page));
   }
   
   /// Запустить showcase
@@ -164,11 +156,6 @@ class ShowcaseNotifier extends Notifier<ShowcaseState> {
     state = state.copyWith(shouldShow: true);
   }
 }
-
-/// Внутренний провайдер для Notifier
-final _showcaseNotifierProvider = NotifierProvider<ShowcaseNotifier, ShowcaseState>(
-  ShowcaseNotifier.new,
-);
 
 /// Провайдер состояния showcase для каждой страницы
 /// Использует Provider.family для простоты
@@ -207,12 +194,16 @@ class _ShowcaseController {
   Future<void> markAsSeen() async {
     final service = _ref.read(showcaseServiceProvider);
     await service.markPageAsSeen(_page);
+    // Инвалидируем провайдер чтобы он перечитал данные из SharedPreferences
+    _ref.invalidate(showcaseProvider(_page));
   }
   
   /// Сбросить (для тестирования)
   Future<void> reset() async {
     final service = _ref.read(showcaseServiceProvider);
     await service.resetShowcase(_page);
+    // Инвалидируем провайдер чтобы он перечитал данные из SharedPreferences
+    _ref.invalidate(showcaseProvider(_page));
   }
 }
 

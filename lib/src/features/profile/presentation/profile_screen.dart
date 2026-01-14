@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:showcaseview/showcaseview.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
 import '../../../core/services/auto_refresh_service.dart';
@@ -106,6 +106,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   final _showcaseKeyStats = GlobalKey();
   final _showcaseKeyExport = GlobalKey();
 
+  // Export button keys for sharePositionOrigin on iPad
+  final _invoicesExportButtonKey = GlobalKey();
+  final _tracksExportButtonKey = GlobalKey();
+
+  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
   // Flag to track if profile was loaded
@@ -118,20 +123,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
+    
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.profile));
+    if (!showcaseState.shouldShow) return;
+    
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       
-      final showcaseState = ref.read(showcaseProvider(ShowcasePage.profile));
-      if (showcaseState.shouldShow) {
-        ShowCaseWidget.of(showcaseContext).startShowCase([
-          _showcaseKeyPersonalData,
-          _showcaseKeyStats,
-          _showcaseKeyExport,
-        ]);
-      }
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyPersonalData,
+        _showcaseKeyStats,
+        _showcaseKeyExport,
+      ]);
     });
   }
 
@@ -224,13 +231,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
               final stats = statsAsync.when(
                 data: (s) => s,
                 loading: () => ClientStats.empty,
-                error: (_, __) => ClientStats.empty,
+                error: (_, _) => ClientStats.empty,
               );
 
               return RefreshIndicator(
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
                   children: [
                   Text(
@@ -246,6 +254,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                     key: _showcaseKeyPersonalData,
                     title: 'Личные данные',
                     description: 'Здесь вы можете редактировать ваши контактные данные и сменить пароль.',
+                    targetPadding: const EdgeInsets.all(8),
+                    tooltipPosition: TooltipPosition.bottom,
                     onTargetClick: () {
                       if (mounted) {
                         ShowCaseWidget.of(showcaseContext).next();
@@ -328,6 +338,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
               key: _showcaseKeyStats,
               title: 'Статистика',
               description: 'Ваша статистика по трек-номерам, счетам, запросам фото и вопросам.',
+              targetPadding: const EdgeInsets.all(8),
+              tooltipPosition: TooltipPosition.bottom,
               onTargetClick: () {
                 if (mounted) {
                   ShowCaseWidget.of(showcaseContext).next();
@@ -354,21 +366,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
               key: _showcaseKeyExport,
               title: 'Выгрузка данных',
               description: 'Экспортируйте счета и треки в Excel файл.',
+              targetPadding: const EdgeInsets.all(8),
+              tooltipPosition: TooltipPosition.top,
               onBarrierClick: _onShowcaseComplete,
               onToolTipClick: _onShowcaseComplete,
               child: _buildSectionCard(
                 title: 'Выгрузка данных',
                 children: [
                   _buildExportButton(
+                    key: _invoicesExportButtonKey,
                     icon: Icons.receipt_long_rounded,
                     label: 'Выгрузить счета в Excel',
-                    onPressed: _exportInvoices,
+                    onPressed: () => _exportInvoices(_invoicesExportButtonKey),
                   ),
                   const SizedBox(height: 10),
                   _buildExportButton(
+                    key: _tracksExportButtonKey,
                     icon: Icons.local_shipping_rounded,
                     label: 'Выгрузить треки в Excel',
-                    onPressed: _exportTracks,
+                    onPressed: () => _exportTracks(_tracksExportButtonKey),
                   ),
                 ],
               ),
@@ -447,8 +463,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         _originalName = newName;
       });
       ref.invalidate(clientProfileProvider);
+      if (!mounted) return;
       _showStyledSnackBar(context, 'ФИО успешно обновлено');
     } catch (e) {
+      if (!mounted) return;
       _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
     } finally {
       setState(() => _savingName = false);
@@ -476,8 +494,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         _originalPhone = newPhone;
       });
       ref.invalidate(clientProfileProvider);
+      if (!mounted) return;
       _showStyledSnackBar(context, 'Телефон успешно обновлён');
     } catch (e) {
+      if (!mounted) return;
       _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
     } finally {
       setState(() => _savingPhone = false);
@@ -503,8 +523,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         _originalEmail = newEmail;
       });
       ref.invalidate(clientProfileProvider);
+      if (!mounted) return;
       _showStyledSnackBar(context, 'Email успешно обновлён');
     } catch (e) {
+      if (!mounted) return;
       _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
     } finally {
       setState(() => _savingEmail = false);
@@ -842,7 +864,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: context.brandPrimary.withOpacity(0.15),
+              color: context.brandPrimary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -860,11 +882,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   }
 
   Widget _buildExportButton({
+    Key? key,
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
   }) {
     return SizedBox(
+      key: key,
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onPressed,
@@ -973,6 +997,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                       if (context.mounted) {
                         Navigator.pop(context);
                       }
+                      if (!mounted) return;
                       _showStyledSnackBar(this.context, 'Пароль успешно изменён');
                     } catch (e) {
                       setModalState(() {
@@ -1025,7 +1050,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
     );
   }
 
-  Future<void> _exportInvoices() async {
+  Rect? _getSharePositionOrigin(GlobalKey key) {
+    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return null;
+    final position = renderBox.localToGlobal(Offset.zero);
+    return Rect.fromLTWH(position.dx, position.dy, renderBox.size.width, renderBox.size.height);
+  }
+
+  Future<void> _exportInvoices(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
       _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
@@ -1035,6 +1067,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
     try {
       // Получаем все счета из реального провайдера
       final invoices = await ref.read(invoicesListProvider(clientCode).future);
+      
+      if (!mounted) return;
       
       if (invoices.isEmpty) {
         _showStyledSnackBar(context, 'Нет счетов для экспорта', isError: true);
@@ -1098,35 +1132,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         return;
       }
       
+      final uint8Bytes = Uint8List.fromList(bytes);
+      
       final dir = await getTemporaryDirectory();
       final fileName = 'Счета_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
       final tempFile = File('${dir.path}/$fileName');
-      await tempFile.writeAsBytes(bytes);
+      await tempFile.writeAsBytes(uint8Bytes);
       
-      // Спрашиваем куда сохранить
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Сохранить счета',
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
+      // Используем Share для экспорта файла (работает на iOS и Android)
+      final result = await Share.shareXFiles(
+        [XFile(tempFile.path)],
+        subject: 'Экспорт счетов',
+        sharePositionOrigin: _getSharePositionOrigin(buttonKey),
       );
       
-      if (savePath == null) {
-        // Пользователь отменил
-        return;
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.success) {
+        _showStyledSnackBar(context, 'Экспортировано ${invoices.length} счетов');
       }
-      
-      // Копируем файл в выбранное место
-      final saveFile = File(savePath);
-      await saveFile.writeAsBytes(bytes);
-      
-      _showStyledSnackBar(context, 'Сохранено ${invoices.length} счетов');
     } catch (e) {
+      if (!mounted) return;
       _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
     }
   }
 
-  Future<void> _exportTracks() async {
+  Future<void> _exportTracks(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
       _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
@@ -1141,6 +1171,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         await notifier.loadInitial();
       }
       final tracks = notifier.state.tracks;
+      
+      if (!mounted) return;
       
       if (tracks.isEmpty) {
         _showStyledSnackBar(context, 'Нет треков для экспорта', isError: true);
@@ -1192,30 +1224,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         return;
       }
       
+      final uint8Bytes = Uint8List.fromList(bytes);
+      
       final dir = await getTemporaryDirectory();
       final fileName = 'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
       final tempFile = File('${dir.path}/$fileName');
-      await tempFile.writeAsBytes(bytes);
+      await tempFile.writeAsBytes(uint8Bytes);
       
-      // Спрашиваем куда сохранить
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Сохранить треки',
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
+      // Используем Share для экспорта файла (работает на iOS и Android)
+      final result = await Share.shareXFiles(
+        [XFile(tempFile.path)],
+        subject: 'Экспорт треков',
+        sharePositionOrigin: _getSharePositionOrigin(buttonKey),
       );
       
-      if (savePath == null) {
-        // Пользователь отменил
-        return;
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.success) {
+        _showStyledSnackBar(context, 'Экспортировано ${tracks.length} треков');
       }
-      
-      // Копируем файл в выбранное место
-      final saveFile = File(savePath);
-      await saveFile.writeAsBytes(bytes);
-      
-      _showStyledSnackBar(context, 'Экспортировано ${tracks.length} треков');
     } catch (e) {
+      if (!mounted) return;
       _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
     }
   }

@@ -65,10 +65,14 @@ void _showStyledSnackBar(
 
 class PhotoViewerScreen extends StatefulWidget {
   final PhotoItem item;
+  final List<PhotoItem>? allPhotos;
+  final int? initialIndex;
 
   const PhotoViewerScreen({
     super.key,
     required this.item,
+    this.allPhotos,
+    this.initialIndex,
   });
 
   @override
@@ -78,6 +82,28 @@ class PhotoViewerScreen extends StatefulWidget {
 class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   bool _isDownloading = false;
   double _swipeDy = 0;
+  late PageController _pageController;
+  late int _currentIndex;
+  
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex ?? 0;
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+  
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+  
+  PhotoItem get _currentItem {
+    if (widget.allPhotos != null && widget.allPhotos!.isNotEmpty) {
+      return widget.allPhotos![_currentIndex];
+    }
+    return widget.item;
+  }
 
   void _onVerticalDragUpdate(DragUpdateDetails details) {
     setState(() {
@@ -99,6 +125,8 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   Future<void> _downloadMedia() async {
     setState(() => _isDownloading = true);
     try {
+      final currentItem = _currentItem;
+      
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       if (!hasAccess) {
@@ -113,19 +141,19 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
 
       String savePath;
       
-      if (!widget.item.isVideo) {
+      if (!currentItem.isVideo) {
         // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(widget.item.url);
+        final file = await DefaultCacheManager().getSingleFile(currentItem.url);
         savePath = file.path;
       } else {
         // Для видео скачиваем через Dio
         final tempDir = await getTemporaryDirectory();
         savePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(widget.item.url, savePath);
+        await Dio().download(currentItem.url, savePath);
       }
       
       // Сохраняем в галерею
-      if (widget.item.isVideo) {
+      if (currentItem.isVideo) {
         await Gal.putVideo(savePath, album: '2A Logistic');
         // Удаляем временный файл только для видео
         try {
@@ -161,25 +189,30 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
 
   Future<void> _shareMedia(BuildContext context) async {
     try {
+      final currentItem = _currentItem;
       String filePath;
       
-      if (!widget.item.isVideo) {
+      // Получаем box ДО async операций
+      final box = context.findRenderObject() as RenderBox?;
+      
+      if (!currentItem.isVideo) {
         // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(widget.item.url);
+        final file = await DefaultCacheManager().getSingleFile(currentItem.url);
         filePath = file.path;
       } else {
         // Для видео скачиваем во временную директорию
         final tempDir = await getTemporaryDirectory();
         filePath = '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(widget.item.url, filePath);
+        await Dio().download(currentItem.url, filePath);
       }
       
+      if (!mounted) return;
+      
       // Шарим файл (sharePositionOrigin нужен для iPad)
-      final box = context.findRenderObject() as RenderBox?;
       await Share.shareXFiles(
         [XFile(filePath)],
-        text: widget.item.trackingNumber != null 
-            ? 'Трек: ${widget.item.trackingNumber}' 
+        text: currentItem.trackingNumber != null 
+            ? 'Трек: ${currentItem.trackingNumber}' 
             : null,
         sharePositionOrigin: box != null 
             ? box.localToGlobal(Offset.zero) & box.size
@@ -187,7 +220,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       );
       
       // Удаляем временный файл для видео после небольшой задержки
-      if (widget.item.isVideo) {
+      if (currentItem.isVideo) {
         Future.delayed(const Duration(seconds: 5), () async {
           try {
             await File(filePath).delete();
@@ -195,24 +228,24 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         });
       }
     } on DioException catch (e) {
-      if (mounted) {
-        String message = 'Ошибка';
-        if (e.response?.statusCode == 403) {
-          message = 'Нет доступа к файлу';
-        } else if (e.response?.statusCode == 404) {
-          message = 'Файл не найден';
-        }
-        _showStyledSnackBar(context, message, isError: true);
+      if (!context.mounted) return;
+      String message = 'Ошибка';
+      if (e.response?.statusCode == 403) {
+        message = 'Нет доступа к файлу';
+      } else if (e.response?.statusCode == 404) {
+        message = 'Файл не найден';
       }
+      _showStyledSnackBar(context, message, isError: true);
     } catch (e) {
-      if (mounted) {
-        _showStyledSnackBar(context, 'Не удалось поделиться', isError: true);
-      }
+      if (!context.mounted) return;
+      _showStyledSnackBar(context, 'Не удалось поделиться', isError: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasMultiplePhotos = widget.allPhotos != null && widget.allPhotos!.length > 1;
+    
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
@@ -224,35 +257,77 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         body: Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(
-                onVerticalDragUpdate: _onVerticalDragUpdate,
-                onVerticalDragEnd: _onVerticalDragEnd,
-                child: Transform.translate(
-                  offset: Offset(0, _swipeDy),
-                  child: Center(
-                    child: widget.item.isVideo
-                        ? _VideoPlayerView(url: widget.item.url)
-                        : InteractiveViewer(
-                            minScale: 1,
-                            maxScale: 4,
-                            child: CachedNetworkImage(
-                              imageUrl: widget.item.url,
-                              fit: BoxFit.contain,
-                              placeholder: (_, _) => const SizedBox(
-                                width: 32,
-                                height: 32,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              ),
-                              errorWidget: (_, _, _) => const Icon(
-                                Icons.broken_image_outlined,
-                                color: Colors.white70,
-                                size: 48,
-                              ),
+              child: hasMultiplePhotos
+                  ? PageView.builder(
+                      controller: _pageController,
+                      itemCount: widget.allPhotos!.length,
+                      onPageChanged: (index) {
+                        setState(() {
+                          _currentIndex = index;
+                        });
+                      },
+                      itemBuilder: (context, index) {
+                        final item = widget.allPhotos![index];
+                        return GestureDetector(
+                          onVerticalDragUpdate: _onVerticalDragUpdate,
+                          onVerticalDragEnd: _onVerticalDragEnd,
+                          child: Transform.translate(
+                            offset: Offset(0, _swipeDy),
+                            child: Center(
+                              child: item.isVideo
+                                  ? _VideoPlayerView(url: item.url)
+                                  : InteractiveViewer(
+                                      minScale: 1,
+                                      maxScale: 4,
+                                      child: CachedNetworkImage(
+                                        imageUrl: item.url,
+                                        fit: BoxFit.contain,
+                                        placeholder: (_, _) => const SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        ),
+                                        errorWidget: (_, _, _) => const Icon(
+                                          Icons.broken_image_outlined,
+                                          color: Colors.white70,
+                                          size: 48,
+                                        ),
+                                      ),
+                                    ),
                             ),
                           ),
-                  ),
-                ),
-              ),
+                        );
+                      },
+                    )
+                  : GestureDetector(
+                      onVerticalDragUpdate: _onVerticalDragUpdate,
+                      onVerticalDragEnd: _onVerticalDragEnd,
+                      child: Transform.translate(
+                        offset: Offset(0, _swipeDy),
+                        child: Center(
+                          child: widget.item.isVideo
+                              ? _VideoPlayerView(url: widget.item.url)
+                              : InteractiveViewer(
+                                  minScale: 1,
+                                  maxScale: 4,
+                                  child: CachedNetworkImage(
+                                    imageUrl: widget.item.url,
+                                    fit: BoxFit.contain,
+                                    placeholder: (_, _) => const SizedBox(
+                                      width: 32,
+                                      height: 32,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    ),
+                                    errorWidget: (_, _, _) => const Icon(
+                                      Icons.broken_image_outlined,
+                                      color: Colors.white70,
+                                      size: 48,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
             ),
             // Top bar
             Positioned(
@@ -286,6 +361,23 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                       ),
                     ),
                     const Spacer(),
+                    if (hasMultiplePhotos)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${_currentIndex + 1} / ${widget.allPhotos!.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    if (hasMultiplePhotos) const Spacer(),
                     IconButton(
                       onPressed: _isDownloading ? null : _downloadMedia,
                       icon: _isDownloading

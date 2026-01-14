@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -16,7 +16,6 @@ import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
@@ -53,6 +52,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   final bool _showQuickActions = false;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+  bool _isInfoBannerExpanded = false;
 
   @override
   void initState() {
@@ -282,6 +282,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
+        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
         await _uploadFile(File(image.path));
@@ -300,6 +301,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
+        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
         await _uploadFile(File(image.path));
@@ -502,8 +504,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           bottom: false,
           child: Column(
             children: [
-              // Отступ сверху для навигации
-              const SizedBox(height: 60),
+              // Отступ сверху для навигации (уменьшен для баннера)
+              const SizedBox(height: 15),
+
+              // Информационный блок о назначении чата (перемещён выше)
+              _buildInfoBanner(),
 
               // Список сообщений
               Expanded(
@@ -569,67 +574,81 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     // Автопрокрутка вниз
     _scrollToBottom();
 
-    return Column(
-      children: [
-        // Информационный блок о назначении чата
-        _buildInfoBanner(),
-        
-        // Список сообщений
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: messages.length,
-            itemBuilder: (context, index) {
-              final message = messages[index];
-              return _buildMessageBubble(message);
-            },
-          ),
-        ),
-      ],
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final message = messages[index];
+        return _buildMessageBubble(message);
+      },
     );
   }
   
   /// Информационный баннер о назначении чата
   Widget _buildInfoBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFCC80)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Важная информация',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade900,
-                  fontSize: 14,
+    return GestureDetector(
+      onTap: () => setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8E1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFFFE0B2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Чат только для оплаты счетов',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange.shade800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _isInfoBannerExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Colors.orange.shade700,
+                    size: 18,
+                  ),
+                ),
+              ],
+            ),
+            AnimatedCrossFade(
+              firstChild: const SizedBox.shrink(),
+              secondChild: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '• Специалист не сможет ответить на вопросы, не касающиеся приёма оплаты\n'
+                  '• Отправьте скриншот платежа для подтверждения\n'
+                  '• Статус счёта обновится после проверки',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.orange.shade800,
+                    height: 1.3,
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '• Этот чат предназначен только для проведения оплаты счетов.\n'
-            '• Другие вопросы здесь не обсуждаются.\n'
-            '• Для подтверждения оплаты отправьте скриншот платежа.\n'
-            '• Статус счёта обновится после проверки менеджером.',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.orange.shade900,
-              height: 1.4,
+              crossFadeState: _isInfoBannerExpanded 
+                  ? CrossFadeState.showSecond 
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 200),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
