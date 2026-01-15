@@ -96,66 +96,87 @@ class PaymentChatRepository {
         return null;
       }
       
-      // Определяем MIME-тип
-      String mimeType;
-      String mimeSubtype;
-      switch (extension) {
-        case 'jpg':
-        case 'jpeg':
-          mimeType = 'image';
-          mimeSubtype = 'jpeg';
-          break;
-        case 'png':
-          mimeType = 'image';
-          mimeSubtype = 'png';
-          break;
-        case 'gif':
-          mimeType = 'image';
-          mimeSubtype = 'gif';
-          break;
-        case 'webp':
-          mimeType = 'image';
-          mimeSubtype = 'webp';
-          break;
-        case 'heic':
-        case 'heif':
-          mimeType = 'image';
-          mimeSubtype = 'heic';
-          break;
-        case 'pdf':
-          mimeType = 'application';
-          mimeSubtype = 'pdf';
-          break;
-        default:
-          mimeType = 'application';
-          mimeSubtype = 'octet-stream';
-      }
-      
-      final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          bytes,
-          filename: fileName,
-          contentType: MediaType(mimeType, mimeSubtype),
-        ),
-        'conversationId': conversationId.toString(),
-      });
-      
-      final response = await _apiClient.post(
-        '/support/attachments',
-        data: formData,
-        options: Options(
-          headers: {'Content-Type': 'multipart/form-data'},
-        ),
-      );
-      
-      if (response.statusCode == 201 && response.data != null) {
-        return response.data as Map<String, dynamic>;
-      }
-      return null;
+      return _uploadAttachmentBytes(bytes, fileName, extension, conversationId);
     } on DioException catch (e) {
       debugPrint('Error uploading payment chat attachment: $e');
       return null;
     }
+  }
+  
+  /// Загрузить файл из bytes в чат (для iOS - обход sandbox ограничений)
+  Future<Map<String, dynamic>?> uploadAttachmentFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+    try {
+      if (bytes.isEmpty) {
+        debugPrint('Error: File is empty');
+        return null;
+      }
+      
+      final extension = fileName.split('.').last.toLowerCase();
+      return _uploadAttachmentBytes(bytes, fileName, extension, conversationId);
+    } on DioException catch (e) {
+      debugPrint('Error uploading payment chat attachment from bytes: $e');
+      return null;
+    }
+  }
+  
+  /// Внутренний метод загрузки bytes
+  Future<Map<String, dynamic>?> _uploadAttachmentBytes(Uint8List bytes, String fileName, String extension, int conversationId) async {
+    // Определяем MIME-тип
+    String mimeType;
+    String mimeSubtype;
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        mimeType = 'image';
+        mimeSubtype = 'jpeg';
+        break;
+      case 'png':
+        mimeType = 'image';
+        mimeSubtype = 'png';
+        break;
+      case 'gif':
+        mimeType = 'image';
+        mimeSubtype = 'gif';
+        break;
+      case 'webp':
+        mimeType = 'image';
+        mimeSubtype = 'webp';
+        break;
+      case 'heic':
+      case 'heif':
+        mimeType = 'image';
+        mimeSubtype = 'heic';
+        break;
+      case 'pdf':
+        mimeType = 'application';
+        mimeSubtype = 'pdf';
+        break;
+      default:
+        mimeType = 'application';
+        mimeSubtype = 'octet-stream';
+    }
+    
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: fileName,
+        contentType: MediaType(mimeType, mimeSubtype),
+      ),
+      'conversationId': conversationId.toString(),
+    });
+    
+    final response = await _apiClient.post(
+      '/support/attachments',
+      data: formData,
+      options: Options(
+        headers: {'Content-Type': 'multipart/form-data'},
+      ),
+    );
+    
+    if (response.statusCode == 201 && response.data != null) {
+      return response.data as Map<String, dynamic>;
+    }
+    return null;
   }
 
   /// Получить новые сообщения после указанного ID (для polling)
@@ -314,6 +335,36 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     
     try {
       final result = await _repository.uploadAttachment(file, conversationId);
+      
+      if (result != null) {
+        // Добавляем в pending attachments
+        state = state.copyWith(
+          isUploading: false,
+          pendingAttachments: [...state.pendingAttachments, result],
+        );
+        return result;
+      }
+      
+      state = state.copyWith(
+        isUploading: false,
+        error: 'Не удалось загрузить файл',
+      );
+      return null;
+    } catch (e) {
+      state = state.copyWith(
+        isUploading: false,
+        error: 'Ошибка при загрузке файла: $e',
+      );
+      return null;
+    }
+  }
+  
+  /// Загрузить файл из bytes на сервер (для iOS - обход sandbox ограничений)
+  Future<Map<String, dynamic>?> uploadFileFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+    state = state.copyWith(isUploading: true, clearError: true);
+    
+    try {
+      final result = await _repository.uploadAttachmentFromBytes(bytes, fileName, conversationId);
       
       if (result != null) {
         // Добавляем в pending attachments

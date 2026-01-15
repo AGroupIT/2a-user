@@ -71,6 +71,9 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    
+    // TODO: Add RuStore Push SDK later when needed
+    // implementation("ru.rustore.sdk:pushclient:VERSION")
 }
 
 flutter {

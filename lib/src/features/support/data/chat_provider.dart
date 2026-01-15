@@ -102,6 +102,39 @@ class ChatRepository {
     }
   }
 
+  /// Загрузить вложение из bytes (для iOS - обход sandbox ограничений)
+  Future<ChatAttachment> uploadAttachmentFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+    try {
+      if (bytes.isEmpty) {
+        throw Exception('File is empty');
+      }
+      
+      final mimeType = _getMimeType(fileName);
+      
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+          contentType: mimeType != null ? MediaType.parse(mimeType) : null,
+        ),
+        'conversationId': conversationId.toString(),
+      });
+
+      final response = await _apiClient.post(
+        '/support/attachments',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 && response.data != null) {
+        return ChatAttachment.fromJson(response.data as Map<String, dynamic>);
+      }
+      throw Exception('Failed to upload attachment');
+    } on DioException catch (e) {
+      debugPrint('Error uploading attachment from bytes: $e');
+      rethrow;
+    }
+  }
+
   String? _getMimeType(String fileName) {
     final ext = fileName.toLowerCase().split('.').last;
     switch (ext) {
@@ -285,6 +318,31 @@ class ChatController extends Notifier<ChatState> {
     
     try {
       final attachment = await _repository.uploadAttachment(file, state.conversation!.id);
+      
+      // Добавляем к pending attachments
+      state = state.copyWith(
+        isUploading: false,
+        pendingAttachments: [...state.pendingAttachments, attachment],
+      );
+      
+      return attachment;
+    } catch (e) {
+      state = state.copyWith(
+        isUploading: false,
+        error: 'Не удалось загрузить файл',
+      );
+      return null;
+    }
+  }
+
+  /// Загрузить файл из bytes и добавить к pending attachments (для iOS)
+  Future<ChatAttachment?> uploadFileFromBytes(Uint8List bytes, String fileName) async {
+    if (state.conversation == null) return null;
+    
+    state = state.copyWith(isUploading: true, clearError: true);
+    
+    try {
+      final attachment = await _repository.uploadAttachmentFromBytes(bytes, fileName, state.conversation!.id);
       
       // Добавляем к pending attachments
       state = state.copyWith(

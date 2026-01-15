@@ -40,6 +40,7 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
     
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.addTracks));

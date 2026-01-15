@@ -285,28 +285,58 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
-        await _uploadFile(File(image.path));
+        // Читаем bytes напрямую из XFile для избежания проблем с iOS sandbox
+        final bytes = await image.readAsBytes();
+        final fileName = image.name.isNotEmpty ? image.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
       _showErrorSnackbar('Ошибка при съёмке: $e');
     }
   }
   
-  /// Выбрать изображение из галереи
+  /// Выбрать изображение из галереи (используем file_picker для обхода iOS HDR проблемы)
   Future<void> _pickImageFromGallery() async {
+    debugPrint('📷 [Gallery] Starting file picker for images...');
     try {
-      final picker = ImagePicker();
-      final image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        imageQuality: 85,
-        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
       );
-      if (image != null) {
-        await _uploadFile(File(image.path));
+      
+      debugPrint('📷 [Gallery] FilePicker returned: ${result != null ? "${result.files.length} files" : "null/cancelled"}');
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        debugPrint('📷 [Gallery] File: ${file.name}, path: ${file.path}, size: ${file.size}');
+        
+        if (file.path != null) {
+          final ioFile = File(file.path!);
+          final exists = await ioFile.exists();
+          debugPrint('📷 [Gallery] File exists: $exists');
+          
+          if (exists) {
+            final bytes = await ioFile.readAsBytes();
+            debugPrint('📷 [Gallery] Read ${bytes.length} bytes');
+            
+            if (bytes.isEmpty) {
+              _showErrorSnackbar('Не удалось прочитать изображение');
+              return;
+            }
+            
+            final fileName = file.name.isNotEmpty 
+                ? file.name 
+                : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+            
+            debugPrint('📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...');
+            await _uploadFileFromBytes(bytes, fileName);
+            debugPrint('📷 [Gallery] Upload completed');
+          }
+        }
       }
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('📷 [Gallery] ERROR: $e');
+      debugPrint('📷 [Gallery] Stack: $stack');
       _showErrorSnackbar('Ошибка при выборе изображения: $e');
     }
   }
@@ -344,6 +374,28 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     }
     
     final result = await ref.read(paymentChatControllerProvider.notifier).uploadFile(file, conversationId);
+    
+    if (result == null) {
+      _showErrorSnackbar('Ошибка при загрузке файла');
+    }
+  }
+  
+  /// Загрузить файл из bytes на сервер (для iOS)
+  Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
+    final chatState = ref.read(paymentChatControllerProvider);
+    final conversationId = chatState.conversation?.id;
+    
+    if (conversationId == null) {
+      _showErrorSnackbar('Чат не инициализирован');
+      return;
+    }
+    
+    if (bytes.isEmpty) {
+      _showErrorSnackbar('Файл пустой');
+      return;
+    }
+    
+    final result = await ref.read(paymentChatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName, conversationId);
     
     if (result == null) {
       _showErrorSnackbar('Ошибка при загрузке файла');

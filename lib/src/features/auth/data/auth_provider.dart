@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/secure_storage_service.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../profile/data/profile_provider.dart';
 
@@ -178,10 +179,11 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
         
-        // Invalidate client codes and profile to reload data
-        ref.invalidate(clientCodesControllerProvider);
-        ref.invalidate(clientProfileProvider);
+        // Сбрасываем showcase чтобы показать обучение при каждом логине
+        final showcaseService = ref.read(showcaseServiceProvider);
+        await showcaseService.resetAllShowcases();
         
+        // Обновляем состояние ПЕРЕД invalidate чтобы избежать циклических зависимостей
         state = AuthState(
           isLoggedIn: true,
           userEmail: email,
@@ -191,6 +193,16 @@ class AuthNotifier extends Notifier<AuthState> {
           clientName: clientName,
           clientData: userData,
         );
+        
+        // Invalidate провайдеры ПОСЛЕ обновления state
+        // НЕ invalidate clientCodesControllerProvider - он сам пересоберётся через watch(authProvider)
+        // Используем Future.microtask чтобы отложить до следующего микротаска
+        Future.microtask(() {
+          ref.invalidate(clientProfileProvider);
+          for (final page in ShowcasePage.values) {
+            ref.invalidate(showcaseProvider(page));
+          }
+        });
         
         // Регистрируем устройство для push-уведомлений
         _registerForPush(clientDomain);
@@ -267,9 +279,18 @@ class AuthNotifier extends Notifier<AuthState> {
       await prefs.setString(_kClientNameKey, clientName);
       await prefs.setString(_kClientDataKey, jsonEncode(userData));
       
+      // Сбрасываем showcase чтобы показать обучение при каждом логине
+      final showcaseService = ref.read(showcaseServiceProvider);
+      await showcaseService.resetAllShowcases();
+      
       // Invalidate client codes and profile to reload data
       ref.invalidate(clientCodesControllerProvider);
       ref.invalidate(clientProfileProvider);
+      
+      // Invalidate все showcase провайдеры чтобы они перечитали состояние
+      for (final page in ShowcasePage.values) {
+        ref.invalidate(showcaseProvider(page));
+      }
       
       state = AuthState(
         isLoggedIn: true,

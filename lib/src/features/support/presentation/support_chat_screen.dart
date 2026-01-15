@@ -139,10 +139,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void dispose() {
     _pollingTimer?.cancel();
-    ref.read(isChatScreenOpenProvider.notifier).set(false);
     
-    // Уведомляем сервер что чат закрыт
-    ref.read(chatPresenceServiceProvider).closeChat(ChatType.support);
+    // Не используем ref в dispose() - это небезопасно
+    // ref.read() выполняется асинхронно при деактивации виджета
     
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
@@ -300,7 +299,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
       );
       if (image != null) {
-        await _uploadFile(File(image.path));
+        // Читаем bytes напрямую из XFile для избежания проблем с iOS sandbox
+        final bytes = await image.readAsBytes();
+        final fileName = image.name.isNotEmpty ? image.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
       _showErrorSnackbar('Ошибка при съёмке: $e');
@@ -309,19 +311,61 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   
   /// Выбрать изображение из галереи
   Future<void> _pickImageFromGallery() async {
+    debugPrint('📷 [Gallery] Starting image picker via file_picker...');
     try {
-      final picker = ImagePicker();
-      final image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        imageQuality: 85,
-        requestFullMetadata: false, // Конвертирует HEIC в JPEG на iOS
+      // Используем file_picker вместо image_picker для обхода проблемы с HDR на iOS
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
       );
-      if (image != null) {
-        await _uploadFile(File(image.path));
+      
+      debugPrint('📷 [Gallery] file_picker returned: ${result != null ? "file selected" : "null/cancelled"}');
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        debugPrint('📷 [Gallery] File name: ${file.name}');
+        debugPrint('📷 [Gallery] File path: ${file.path}');
+        debugPrint('📷 [Gallery] File size: ${file.size}');
+        
+        if (file.path == null) {
+          debugPrint('📷 [Gallery] ERROR: file.path is null');
+          _showErrorSnackbar('Не удалось получить путь к файлу');
+          return;
+        }
+        
+        // Читаем файл напрямую
+        final ioFile = File(file.path!);
+        final exists = await ioFile.exists();
+        debugPrint('📷 [Gallery] File exists: $exists');
+        
+        if (!exists) {
+          debugPrint('📷 [Gallery] ERROR: file does not exist');
+          _showErrorSnackbar('Файл не найден');
+          return;
+        }
+        
+        final bytes = await ioFile.readAsBytes();
+        debugPrint('📷 [Gallery] Bytes read: ${bytes.length}');
+        
+        if (bytes.isEmpty) {
+          debugPrint('📷 [Gallery] ERROR: bytes are empty');
+          _showErrorSnackbar('Не удалось прочитать изображение');
+          return;
+        }
+        
+        // Определяем имя файла
+        String fileName = file.name;
+        if (fileName.isEmpty) {
+          fileName = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        }
+        
+        debugPrint('📷 [Gallery] Uploading ${bytes.length} bytes as $fileName');
+        await _uploadFileFromBytes(bytes, fileName);
+        debugPrint('📷 [Gallery] Upload completed');
       }
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('📷 [Gallery] ERROR: $e');
+      debugPrint('📷 [Gallery] Stack: $stack');
       _showErrorSnackbar('Ошибка при выборе изображения: $e');
     }
   }
@@ -360,6 +404,36 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     
     final result = await ref.read(chatControllerProvider.notifier).uploadFile(file);
     
+    if (result == null) {
+      _showErrorSnackbar('Ошибка при загрузке файла');
+    }
+  }
+  
+  /// Загрузить файл из bytes на сервер (для iOS)
+  Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
+    debugPrint('📤 [Upload] _uploadFileFromBytes called with ${bytes.length} bytes, fileName: $fileName');
+    
+    final chatState = ref.read(chatControllerProvider);
+    final conversationId = chatState.conversation?.id;
+    
+    debugPrint('📤 [Upload] conversationId: $conversationId');
+    
+    if (conversationId == null) {
+      debugPrint('📤 [Upload] ERROR: conversationId is null!');
+      _showErrorSnackbar('Чат не инициализирован');
+      return;
+    }
+    
+    if (bytes.isEmpty) {
+      debugPrint('📤 [Upload] ERROR: bytes are empty!');
+      _showErrorSnackbar('Файл пустой');
+      return;
+    }
+    
+    debugPrint('📤 [Upload] Calling controller.uploadFileFromBytes...');
+    final result = await ref.read(chatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName);
+    
+    debugPrint('📤 [Upload] Result: ${result != null ? "success" : "null/error"}');
     if (result == null) {
       _showErrorSnackbar('Ошибка при загрузке файла');
     }
