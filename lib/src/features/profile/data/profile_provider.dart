@@ -171,6 +171,13 @@ class ClientStats {
 /// Провайдер для получения профиля клиента
 final clientProfileProvider = FutureProvider<ClientProfile?>((ref) async {
   final apiClient = ref.read(apiClientProvider);
+  
+  // Проверяем, есть ли токен перед запросом
+  final hasToken = apiClient.hasToken;
+  if (!hasToken) {
+    debugPrint('🔐 No auth token, skipping profile request');
+    return null;
+  }
 
   try {
     final response = await apiClient.get('/client/profile');

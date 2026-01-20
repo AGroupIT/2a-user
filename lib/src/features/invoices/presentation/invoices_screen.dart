@@ -730,8 +730,9 @@ class _InvoiceTile extends StatelessWidget {
   void _openInvoiceDetailSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
-      useSafeArea: false,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _InvoiceDetailSheet(
         item: item,
@@ -856,9 +857,9 @@ class _InvoiceDetailSheet extends StatelessWidget {
     final totalRub = _calculateTotalRub();
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.85,
+      initialChildSize: 1.0,
       minChildSize: 0.5,
-      maxChildSize: 0.95,
+      maxChildSize: 1.0,
       expand: false,
       builder: (context, scrollController) {
         return Container(

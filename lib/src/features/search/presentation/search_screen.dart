@@ -103,7 +103,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final activeClientCode = ref.watch(activeClientCodeProvider);
     final results = ref.watch(searchControllerProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
@@ -353,15 +353,20 @@ class _SearchResultTileState extends ConsumerState<_SearchResultTile> {
 
   @override
   Widget build(BuildContext context) {
-    final df = DateFormat('dd MMM yyyy', 'ru');
+    final locale = Localizations.localeOf(context).languageCode;
+    final df = DateFormat('dd MMM yyyy', locale);
     final result = widget.result;
     final activeClientCode = widget.activeClientCode;
+    final isZh = locale.toLowerCase().startsWith('zh');
 
     // Используем showBindButton из API, но также проверяем activeClientCode
     final showBindButton = result.showBindButton && activeClientCode != null;
 
     // Парсим цвет статуса
     final statusColor = _parseColor(result.statusColor);
+    final statusText = (isZh && (result.statusZh?.isNotEmpty ?? false))
+        ? result.statusZh!
+        : result.status;
 
     return Container(
       decoration: BoxDecoration(
@@ -390,7 +395,7 @@ class _SearchResultTileState extends ConsumerState<_SearchResultTile> {
                   ),
                 ),
               ),
-              StatusPill(text: result.status, color: statusColor),
+              StatusPill(text: statusText, color: statusColor),
             ],
           ),
           const SizedBox(height: 6),

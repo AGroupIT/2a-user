@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/network/api_client.dart';
+import '../core/services/app_language_service.dart';
 import '../core/services/chat_presence_service.dart';
 import '../core/ui/app_colors.dart';
 import '../features/auth/data/auth_provider.dart';
@@ -61,6 +62,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final router = ref.watch(routerProvider);
     // Загружаем брендовые цвета из профиля агента
     final brandColors = ref.watch(brandColorsProvider);
+    final language = ref.watch(appLanguageProvider);
     
     return MaterialApp.router(
       title: '2A Logistic',
@@ -72,8 +74,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       ],
       supportedLocales: const [
         Locale('ru'),
-        Locale('en'),
+        Locale('zh'),
       ],
+      locale: language.locale,
       theme: AppTheme.lightWithColors(brandColors),
       routerConfig: router,
     );

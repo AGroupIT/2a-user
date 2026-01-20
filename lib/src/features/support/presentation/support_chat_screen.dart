@@ -26,6 +26,7 @@ import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import '../data/chat_provider.dart';
 import '../data/chat_models.dart';
+import '../../../core/utils/locale_text.dart';
 
 class SupportChatScreen extends ConsumerStatefulWidget {
   final String? initialMessage;
@@ -223,9 +224,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Прикрепить файл',
-              style: TextStyle(
+            Text(
+              tr(context, ru: 'Прикрепить файл', zh: '附加文件'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -241,8 +242,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
                 child: const Icon(Icons.camera_alt, color: Colors.blue),
               ),
-              title: const Text('Камера', style: TextStyle(color: Colors.white)),
-              subtitle: Text('Сделать фото', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(tr(context, ru: 'Камера', zh: '相机'), style: const TextStyle(color: Colors.white)),
+              subtitle: Text(tr(context, ru: 'Сделать фото', zh: '拍照'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromCamera();
@@ -257,8 +258,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
                 child: const Icon(Icons.photo_library, color: Colors.green),
               ),
-              title: const Text('Галерея', style: TextStyle(color: Colors.white)),
-              subtitle: Text('Выбрать изображение', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(tr(context, ru: 'Галерея', zh: '相册'), style: const TextStyle(color: Colors.white)),
+              subtitle: Text(tr(context, ru: 'Выбрать изображение', zh: '选择图片'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromGallery();
@@ -273,8 +274,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
                 child: const Icon(Icons.picture_as_pdf, color: Colors.orange),
               ),
-              title: const Text('PDF документ', style: TextStyle(color: Colors.white)),
-              subtitle: Text('Выбрать файл', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(tr(context, ru: 'PDF документ', zh: 'PDF文档'), style: const TextStyle(color: Colors.white)),
+              subtitle: Text(tr(context, ru: 'Выбрать файл', zh: '选择文件'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
               onTap: () {
                 Navigator.pop(context);
                 _pickPdfFile();
@@ -305,7 +306,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
-      _showErrorSnackbar('Ошибка при съёмке: $e');
+      _showErrorSnackbar(tr(context, ru: 'Ошибка при съёмке: $e', zh: '拍照错误：$e'));
     }
   }
   
@@ -329,7 +330,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         
         if (file.path == null) {
           debugPrint('📷 [Gallery] ERROR: file.path is null');
-          _showErrorSnackbar('Не удалось получить путь к файлу');
+          _showErrorSnackbar(tr(context, ru: 'Не удалось получить путь к файлу', zh: '无法获取文件路径'));
           return;
         }
         
@@ -340,7 +341,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         
         if (!exists) {
           debugPrint('📷 [Gallery] ERROR: file does not exist');
-          _showErrorSnackbar('Файл не найден');
+          _showErrorSnackbar(tr(context, ru: 'Файл не найден', zh: '未找到文件'));
           return;
         }
         
@@ -349,7 +350,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         
         if (bytes.isEmpty) {
           debugPrint('📷 [Gallery] ERROR: bytes are empty');
-          _showErrorSnackbar('Не удалось прочитать изображение');
+          _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать изображение', zh: '无法读取图片'));
           return;
         }
         
@@ -366,7 +367,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     } catch (e, stack) {
       debugPrint('📷 [Gallery] ERROR: $e');
       debugPrint('📷 [Gallery] Stack: $stack');
-      _showErrorSnackbar('Ошибка при выборе изображения: $e');
+      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе изображения: $e', zh: '选择图片错误：$e'));
     }
   }
   
@@ -382,13 +383,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         // Проверка размера (10MB)
         final size = await file.length();
         if (size > 10 * 1024 * 1024) {
-          _showErrorSnackbar('Файл слишком большой. Максимум 10 МБ');
+          _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大 10 MB'));
           return;
         }
         await _uploadFile(file);
       }
     } catch (e) {
-      _showErrorSnackbar('Ошибка при выборе файла: $e');
+      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе файла: $e', zh: '选择文件错误：$e'));
     }
   }
   
@@ -398,14 +399,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final conversationId = chatState.conversation?.id;
     
     if (conversationId == null) {
-      _showErrorSnackbar('Чат не инициализирован');
+      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
       return;
     }
     
     final result = await ref.read(chatControllerProvider.notifier).uploadFile(file);
     
     if (result == null) {
-      _showErrorSnackbar('Ошибка при загрузке файла');
+      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'));
     }
   }
   
@@ -420,13 +421,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     
     if (conversationId == null) {
       debugPrint('📤 [Upload] ERROR: conversationId is null!');
-      _showErrorSnackbar('Чат не инициализирован');
+      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
       return;
     }
     
     if (bytes.isEmpty) {
       debugPrint('📤 [Upload] ERROR: bytes are empty!');
-      _showErrorSnackbar('Файл пустой');
+      _showErrorSnackbar(tr(context, ru: 'Файл пустой', zh: '文件为空'));
       return;
     }
     
@@ -435,7 +436,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     
     debugPrint('📤 [Upload] Result: ${result != null ? "success" : "null/error"}');
     if (result == null) {
-      _showErrorSnackbar('Ошибка при загрузке файла');
+      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'));
     }
   }
   
@@ -480,30 +481,50 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
     final buffer = StringBuffer();
 
-    buffer.writeln('📦 **Информация о треке**');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('🔢 Номер: ${track.code}');
-    buffer.writeln('📊 Статус: ${track.status}');
-    buffer.writeln('📅 Дата: ${dateFormat.format(track.date)}');
-
-    if (track.comment != null) {
-      buffer.writeln('💬 Комментарий: ${track.comment}');
-    }
-
-    if (track.assembly != null) {
-      buffer.writeln('');
-      buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
-      buffer.writeln('   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}');
-    }
-
-    if (track.photoReportUrls.isNotEmpty) {
-      buffer.writeln('');
-      buffer.writeln('📸 Фото отчёт: ${track.photoReportUrls.length} фото');
-    }
-
-    final activePhoto = track.activePhotoRequest;
-    if (activePhoto != null) {
-      buffer.writeln('📷 Запрос фото: ${activePhoto.status}');
+    if (isZh(context)) {
+      buffer.writeln('📦 **运单信息**');
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('🔢 单号: ${track.code}');
+      buffer.writeln('📊 状态: ${track.status}');
+      buffer.writeln('📅 日期: ${dateFormat.format(track.date)}');
+      if (track.comment != null) {
+        buffer.writeln('💬 备注: ${track.comment}');
+      }
+      if (track.assembly != null) {
+        buffer.writeln('');
+        buffer.writeln('📁 **集包:** ${track.assembly!.number}');
+        buffer.writeln('   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}');
+      }
+      if (track.photoReportUrls.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('📸 照片报告: ${track.photoReportUrls.length} 张照片');
+      }
+      final activePhoto = track.activePhotoRequest;
+      if (activePhoto != null) {
+        buffer.writeln('📷 照片请求: ${activePhoto.status}');
+      }
+    } else {
+      buffer.writeln('📦 **Информация о треке**');
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('🔢 Номер: ${track.code}');
+      buffer.writeln('📊 Статус: ${track.status}');
+      buffer.writeln('📅 Дата: ${dateFormat.format(track.date)}');
+      if (track.comment != null) {
+        buffer.writeln('💬 Комментарий: ${track.comment}');
+      }
+      if (track.assembly != null) {
+        buffer.writeln('');
+        buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
+        buffer.writeln('   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}');
+      }
+      if (track.photoReportUrls.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('📸 Фото отчёт: ${track.photoReportUrls.length} фото');
+      }
+      final activePhoto = track.activePhotoRequest;
+      if (activePhoto != null) {
+        buffer.writeln('📷 Запрос фото: ${activePhoto.status}');
+      }
     }
 
     _handleMessageSend(buffer.toString());
@@ -513,47 +534,86 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final dateFormat = DateFormat('dd.MM.yyyy');
     final buffer = StringBuffer();
 
-    buffer.writeln('🧾 **Информация о счёте**');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
-    buffer.writeln('📊 Статус: ${invoice.status}');
-    buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate)}');
-    buffer.writeln('');
-    buffer.writeln('📦 **Параметры груза:**');
-    buffer.writeln('   • Мест: ${invoice.placesCount}');
-    buffer.writeln('   • Вес: ${invoice.weight.toStringAsFixed(1)} кг');
-    buffer.writeln('   • Объём: ${invoice.volume.toStringAsFixed(2)} м³');
-    buffer.writeln(
-      '   • Плотность: ${invoice.density.toStringAsFixed(0)} кг/м³',
-    );
-
-    if (invoice.tariffName != null) {
-      buffer.writeln('   • Тариф: ${invoice.tariffName}');
-    }
-
-    buffer.writeln('');
-    buffer.writeln('💰 **Стоимость:**');
-    if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-      buffer.writeln('   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг');
-    }
-    if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
-      buffer.writeln(
-        '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
-      );
-    }
-    if (invoice.packagings.isNotEmpty) {
-      final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
-      buffer.writeln(
-        '   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}',
-      );
-    }
-    buffer.writeln(
-      '   • **Итого:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
-    );
-
-    if (invoice.scalePhotoUrls.isNotEmpty) {
+    if (isZh(context)) {
+      buffer.writeln('🧾 **发票信息**');
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('🔢 单号: ${invoice.invoiceNumber}');
+      buffer.writeln('📊 状态: ${invoice.status}');
+      buffer.writeln('📅 发送日期: ${dateFormat.format(invoice.sendDate)}');
       buffer.writeln('');
-      buffer.writeln('📸 Фото: ${invoice.scalePhotoUrls.length} шт.');
+      buffer.writeln('📦 **货物参数:**');
+      buffer.writeln('   • 件数: ${invoice.placesCount}');
+      buffer.writeln('   • 重量: ${invoice.weight.toStringAsFixed(1)} 公斤');
+      buffer.writeln('   • 体积: ${invoice.volume.toStringAsFixed(2)} 立方米');
+      buffer.writeln(
+        '   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米',
+      );
+      if (invoice.tariffName != null) {
+        buffer.writeln('   • 资费: ${invoice.tariffName}');
+      }
+      buffer.writeln('');
+      buffer.writeln('💰 **费用:**');
+      if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
+        buffer.writeln('   • 资费: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤');
+      }
+      if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
+        buffer.writeln(
+          '   • 保险: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
+        );
+      }
+      if (invoice.packagings.isNotEmpty) {
+        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
+        buffer.writeln(
+          '   • 包装: \$${packagingTotal.toStringAsFixed(2)}',
+        );
+      }
+      buffer.writeln(
+        '   • **总计:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
+      );
+      if (invoice.scalePhotoUrls.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('📸 照片: ${invoice.scalePhotoUrls.length} 张');
+      }
+    } else {
+      buffer.writeln('🧾 **Информация о счёте**');
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
+      buffer.writeln('📊 Статус: ${invoice.status}');
+      buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate)}');
+      buffer.writeln('');
+      buffer.writeln('📦 **Параметры груза:**');
+      buffer.writeln('   • Мест: ${invoice.placesCount}');
+      buffer.writeln('   • Вес: ${invoice.weight.toStringAsFixed(1)} кг');
+      buffer.writeln('   • Объём: ${invoice.volume.toStringAsFixed(2)} м³');
+      buffer.writeln(
+        '   • Плотность: ${invoice.density.toStringAsFixed(0)} кг/м³',
+      );
+      if (invoice.tariffName != null) {
+        buffer.writeln('   • Тариф: ${invoice.tariffName}');
+      }
+      buffer.writeln('');
+      buffer.writeln('💰 **Стоимость:**');
+      if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
+        buffer.writeln('   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг');
+      }
+      if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
+        buffer.writeln(
+          '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
+        );
+      }
+      if (invoice.packagings.isNotEmpty) {
+        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
+        buffer.writeln(
+          '   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}',
+        );
+      }
+      buffer.writeln(
+        '   • **Итого:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
+      );
+      if (invoice.scalePhotoUrls.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('📸 Фото: ${invoice.scalePhotoUrls.length} шт.');
+      }
     }
 
     _handleMessageSend(buffer.toString());
@@ -590,8 +650,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               Expanded(
                 child: Showcase(
                   key: _showcaseKeyMessages,
-                  title: 'Чат с поддержкой',
-                  description: 'Здесь отображается история переписки с поддержкой. Вы можете задать любой вопрос.',
+                  title: tr(context, ru: 'Чат с поддержкой', zh: '客服聊天'),
+                  description: tr(context, ru: 'Здесь отображается история переписки с поддержкой. Вы можете задать любой вопрос.', zh: '这里显示与客服的聊天记录。您可以提出任何问题。'),
                   targetPadding: const EdgeInsets.all(8),
                   tooltipPosition: TooltipPosition.bottom,
                   onTargetClick: () {
@@ -610,8 +670,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               // Поле ввода
               Showcase(
                 key: _showcaseKeyInput,
-                title: 'Поле ввода',
-                description: 'Напишите сообщение и нажмите кнопку отправки. Можете прикрепить информацию о треке или счёте.',
+                title: tr(context, ru: 'Поле ввода', zh: '输入框'),
+                description: tr(context, ru: 'Напишите сообщение и нажмите кнопку отправки. Можете прикрепить информацию о треке или счёте.', zh: '输入消息并点击发送按钮。可以附加运单或发票信息。'),
                 targetPadding: const EdgeInsets.all(8),
                 tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
@@ -663,7 +723,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: context.brandPrimary,
               ),
-              child: const Text('Повторить', style: TextStyle(color: Colors.white)),
+              child: Text(tr(context, ru: 'Повторить', zh: '重试'), style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -1026,19 +1086,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     try {
       // Показываем индикатор загрузки
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
-              SizedBox(width: 12),
-              Text('Загрузка файла...'),
+              const SizedBox(width: 12),
+              Text(tr(context, ru: 'Загрузка файла...', zh: '正在下载文件...')),
             ],
           ),
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1056,11 +1116,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Файл сохранён: $fileName'),
+          content: Text(tr(context, ru: 'Файл сохранён: $fileName', zh: '文件已保存：$fileName')),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
-            label: 'Открыть',
+            label: tr(context, ru: 'Открыть', zh: '打开'),
             textColor: Colors.white,
             onPressed: () {
               // Открываем файл
@@ -1074,7 +1134,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Ошибка загрузки: $e'),
+          content: Text(tr(context, ru: 'Ошибка загрузки: $e', zh: '下载错误：$e')),
           backgroundColor: Colors.red.shade700,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1105,21 +1165,21 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Чат поддержки',
-            style: TextStyle(
+          Text(
+            tr(context, ru: 'Чат поддержки', zh: '客服聊天'),
+            style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
           ),
           const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 48),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              'Напишите нам и мы поможем решить любой вопрос',
+              tr(context, ru: 'Напишите нам и мы поможем решить любой вопрос', zh: '给我们写信，我们会帮您解决任何问题'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black54),
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
             ),
           ),
         ],
@@ -1139,7 +1199,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           Expanded(
             child: _QuickActionButton(
               icon: Icons.local_shipping_rounded,
-              label: 'Отправить трек',
+              label: tr(context, ru: 'Отправить трек', zh: '发送运单'),
               onTap: _showQuickSendSheet,
             ),
           ),
@@ -1147,7 +1207,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           Expanded(
             child: _QuickActionButton(
               icon: Icons.receipt_long_rounded,
-              label: 'Отправить счёт',
+              label: tr(context, ru: 'Отправить счёт', zh: '发送发票'),
               onTap: _showQuickSendSheet,
             ),
           ),
@@ -1223,11 +1283,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     child: TextField(
                       controller: _textController,
                       focusNode: _focusNode,
-                      decoration: const InputDecoration(
-                        hintText: 'Введите ваше сообщение...',
-                        hintStyle: TextStyle(color: Colors.black38, fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: tr(context, ru: 'Введите ваше сообщение...', zh: '输入您的消息...'),
+                        hintStyle: const TextStyle(color: Colors.black38, fontSize: 15),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
@@ -1523,13 +1583,13 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                const Text(
-                  'Быстрая отправка',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                Text(
+                  tr(context, ru: 'Быстрая отправка', zh: '快速发送'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Выберите трек или счёт для отправки в чат',
+                  tr(context, ru: 'Выберите трек или счёт для отправки в чат', zh: '选择运单或发票发送到聊天'),
                   style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                 ),
               ],
@@ -1548,7 +1608,7 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
                 controller: _searchController,
                 onChanged: (value) => setState(() => _searchQuery = value),
                 decoration: InputDecoration(
-                  hintText: 'Поиск по номеру...',
+                  hintText: tr(context, ru: 'Поиск по номеру...', zh: '按单号搜索...'),
                   hintStyle: TextStyle(color: Colors.grey[500]),
                   prefixIcon: const Icon(
                     Icons.search_rounded,
@@ -1591,9 +1651,9 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
               padding: const EdgeInsets.all(4),
-              tabs: const [
-                Tab(text: 'Треки'),
-                Tab(text: 'Счета'),
+              tabs: [
+                Tab(text: tr(context, ru: 'Треки', zh: '运单')),
+                Tab(text: tr(context, ru: 'Счета', zh: '发票')),
               ],
             ),
           ),
@@ -1622,7 +1682,7 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
       loading: () => Center(
         child: CircularProgressIndicator(color: context.brandPrimary),
       ),
-      error: (e, _) => Center(child: Text('Ошибка: $e')),
+      error: (e, _) => Center(child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e'))),
       data: (tracks) {
         final filtered = tracks
             .where(
@@ -1633,10 +1693,10 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
             .toList();
 
         if (filtered.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
-              'Треки не найдены',
-              style: TextStyle(color: Colors.grey),
+              tr(context, ru: 'Треки не найдены', zh: '未找到运单'),
+              style: const TextStyle(color: Colors.grey),
             ),
           );
         }
@@ -1666,7 +1726,7 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
       loading: () => Center(
         child: CircularProgressIndicator(color: context.brandPrimary),
       ),
-      error: (e, _) => Center(child: Text('Ошибка: $e')),
+      error: (e, _) => Center(child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e'))),
       data: (invoices) {
         final filtered = invoices
             .where(
@@ -1679,10 +1739,10 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
             .toList();
 
         if (filtered.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
-              'Счета не найдены',
-              style: TextStyle(color: Colors.grey),
+              tr(context, ru: 'Счета не найдены', zh: '未找到发票'),
+              style: const TextStyle(color: Colors.grey),
             ),
           );
         }

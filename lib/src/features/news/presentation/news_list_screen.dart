@@ -10,6 +10,7 @@ import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/locale_text.dart';
 import '../data/news_provider.dart';
 import '../domain/news_item.dart';
 
@@ -62,7 +63,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
   Widget build(BuildContext context) {
     final asyncItems = ref.watch(newsListProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     Future<void> onRefresh() async {
       ref.invalidate(newsListProvider);
@@ -80,14 +81,14 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => EmptyState(
               icon: Icons.error_outline_rounded,
-              title: 'Не удалось загрузить новости',
+              title: tr(context, ru: 'Не удалось загрузить новости', zh: '无法加载新闻'),
               message: e.toString(),
             ),
             data: (items) {
               if (items.isEmpty) {
-                return const EmptyState(
+                return EmptyState(
                   icon: Icons.newspaper_outlined,
-                  title: 'Пока нет новостей',
+                  title: tr(context, ru: 'Пока нет новостей', zh: '暂无新闻'),
                 );
               }
               return RefreshIndicator(
@@ -107,7 +108,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
                   child: Text(
-                    'Новости',
+                    tr(context, ru: 'Новости', zh: '新闻'),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -121,8 +122,8 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                   padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
                   child: Showcase(
                     key: _showcaseKeyNewsList,
-                    title: 'Новости',
-                    description: 'Здесь отображаются последние новости компании. Нажмите на карточку для просмотра полной новости.',
+                    title: tr(context, ru: 'Новости', zh: '新闻'),
+                    description: tr(context, ru: 'Здесь отображаются последние новости компании. Нажмите на карточку для просмотра полной новости.', zh: '这里显示公司的最新新闻。点击卡片查看完整新闻。'),
                     targetPadding: const EdgeInsets.all(8),
                     tooltipPosition: TooltipPosition.bottom,
                     onBarrierClick: () {
@@ -156,7 +157,8 @@ class _NewsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final df = DateFormat('dd MMM yyyy', 'ru');
+    final locale = isZh(context) ? 'zh' : 'ru';
+    final df = DateFormat('dd MMM yyyy', locale);
 
     return Container(
       decoration: BoxDecoration(
@@ -259,7 +261,7 @@ class _NewsCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          'Читать далее',
+                          tr(context, ru: 'Читать далее', zh: '阅读更多'),
                           style: TextStyle(
                             color: const Color(0xFFfe3301),
                             fontWeight: FontWeight.w700,

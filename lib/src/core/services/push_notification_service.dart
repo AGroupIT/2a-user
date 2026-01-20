@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -9,6 +7,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../firebase_options.dart';
 import '../../features/notifications/domain/notification_item.dart';
+import 'platform_helper.dart';
+
+/// Проверка платформы (безопасно для Web)
+bool get _isMobilePlatform => isMobilePlatformImpl();
+
+/// Проверка iOS (безопасно для Web)
+bool get _isIOS => isIOSImpl();
+
+/// Проверка Desktop (безопасно для Web)
+bool get _isDesktop => isDesktopImpl();
 
 /// Background message handler (must be top-level)
 @pragma('vm:entry-point')
@@ -78,8 +86,8 @@ class PushNotificationService {
         );
       }
       
-      // Firebase Messaging не поддерживается на Windows Desktop
-      if (kIsWeb || (!kIsWeb && (Platform.isAndroid || Platform.isIOS))) {
+      // Firebase Messaging поддерживается на Web, Android, iOS
+      if (kIsWeb || _isMobilePlatform) {
         _messaging = FirebaseMessaging.instance;
         
         // Запрос разрешений
@@ -147,9 +155,16 @@ class PushNotificationService {
     );
   }
   
+  /// VAPID Key для Web Push (Firebase Console → Project Settings → Cloud Messaging)
+  static const String _vapidKey = 'BN84z0kGwWRFRalLMJ-HlMPVYBp5Tu7QnsGiACoT-ODg7VkwtFV_kdDhFHapsr5BguDgeBs0E6Pe2aY2_0fMshQ';
+  
   /// Получить FCM токен
   static Future<String?> getFCMToken() async {
     try {
+      // Для Web нужен VAPID ключ
+      if (kIsWeb) {
+        return await _messaging?.getToken(vapidKey: _vapidKey);
+      }
       return await _messaging?.getToken();
     } catch (e) {
       debugPrint('🔔 Error getting FCM token: $e');
@@ -159,6 +174,11 @@ class PushNotificationService {
   
   /// Подписаться на топик
   static Future<void> subscribeToTopic(String topic) async {
+    // Topic subscription не поддерживается на Web
+    if (kIsWeb) {
+      debugPrint('🔔 Topic subscription not supported on Web');
+      return;
+    }
     try {
       await _messaging?.subscribeToTopic(topic);
       debugPrint('🔔 Subscribed to: $topic');
@@ -169,6 +189,11 @@ class PushNotificationService {
   
   /// Отписаться от топика
   static Future<void> unsubscribeFromTopic(String topic) async {
+    // Topic unsubscription не поддерживается на Web
+    if (kIsWeb) {
+      debugPrint('🔔 Topic unsubscription not supported on Web');
+      return;
+    }
     try {
       await _messaging?.unsubscribeFromTopic(topic);
     } catch (e) {
@@ -205,7 +230,7 @@ class PushNotificationService {
     );
 
     // Request permissions on iOS
-    if (!kIsWeb && Platform.isIOS) {
+    if (_isIOS) {
       await _notifications
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
@@ -470,7 +495,7 @@ class PushNotificationService {
   /// Обновить badge на иконке приложения
   Future<void> updateBadgeCount(int count) async {
     // Badge не поддерживается на Desktop
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (_isDesktop) {
       return;
     }
     

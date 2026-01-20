@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -8,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/secure_storage_service.dart';
 import '../../../core/services/showcase_service.dart';
@@ -325,21 +325,8 @@ class AuthNotifier extends Notifier<AuthState> {
       if (fcmToken != null) {
         debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
         
-        // Определяем платформу
-        String platform = 'web';
-        if (!kIsWeb) {
-          if (Platform.isAndroid) {
-            platform = 'android';
-          } else if (Platform.isIOS) {
-            platform = 'ios';
-          } else if (Platform.isWindows) {
-            platform = 'windows';
-          } else if (Platform.isMacOS) {
-            platform = 'macos';
-          } else if (Platform.isLinux) {
-            platform = 'linux';
-          }
-        }
+        // Определяем платформу через хелпер
+        final platform = getPlatformNameImpl();
         
         // Отправляем токен на сервер
         try {
@@ -401,7 +388,7 @@ class AuthNotifier extends Notifier<AuthState> {
     await prefs.remove(_kClientDataKey);
 
     // Clear notification badge (not supported on Desktop)
-    if (!kIsWeb && !Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+    if (!kIsWeb && !isDesktopImpl()) {
       try {
         // Очищаем все уведомления и badge
         final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -422,19 +409,21 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final domain = state.userDomain;
       
-      // Деактивируем устройство на сервере
-      final fcmToken = await PushNotificationService.getFCMToken();
-      if (fcmToken != null) {
-        try {
-          await _apiClient.delete(
-            '/devices',
-            data: {
-              'token': fcmToken,
-            },
-          );
-          debugPrint('🔔 Device deactivated successfully');
-        } catch (e) {
-          debugPrint('🔔 Error deactivating device: $e');
+      // Деактивируем устройство на сервере только если есть токен
+      if (_apiClient.hasToken) {
+        final fcmToken = await PushNotificationService.getFCMToken();
+        if (fcmToken != null) {
+          try {
+            await _apiClient.delete(
+              '/devices',
+              data: {
+                'token': fcmToken,
+              },
+            );
+            debugPrint('🔔 Device deactivated successfully');
+          } catch (e) {
+            debugPrint('🔔 Error deactivating device: $e');
+          }
         }
       }
       

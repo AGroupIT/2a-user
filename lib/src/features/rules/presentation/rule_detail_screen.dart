@@ -9,6 +9,7 @@ import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/locale_text.dart';
 import '../data/rules_provider.dart';
 
 class RuleDetailScreen extends ConsumerWidget {
@@ -19,20 +20,20 @@ class RuleDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncItem = ref.watch(ruleItemProvider(slug));
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return asyncItem.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => EmptyState(
         icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить правило',
+        title: tr(context, ru: 'Не удалось загрузить правило', zh: '无法加载规则'),
         message: e.toString(),
       ),
       data: (item) {
         if (item == null) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.article_outlined,
-            title: 'Правило не найдено',
+            title: tr(context, ru: 'Правило не найдено', zh: '未找到规则'),
           );
         }
 

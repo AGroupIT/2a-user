@@ -10,6 +10,7 @@ import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/locale_text.dart';
 import '../data/news_provider.dart';
 
 class NewsDetailScreen extends ConsumerWidget {
@@ -20,24 +21,25 @@ class NewsDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncItem = ref.watch(newsItemProvider(slug));
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return asyncItem.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => EmptyState(
         icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить статью',
+        title: tr(context, ru: 'Не удалось загрузить статью', zh: '无法加载文章'),
         message: e.toString(),
       ),
       data: (item) {
         if (item == null) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.article_outlined,
-            title: 'Статья не найдена',
+            title: tr(context, ru: 'Статья не найдена', zh: '未找到文章'),
           );
         }
 
-        final df = DateFormat('dd MMM yyyy', 'ru');
+        final locale = isZh(context) ? 'zh' : 'ru';
+        final df = DateFormat('dd MMM yyyy', locale);
 
         return ListView(
           padding: EdgeInsets.fromLTRB(

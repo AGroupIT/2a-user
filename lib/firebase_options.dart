@@ -61,8 +61,8 @@ class DefaultFirebaseOptions {
   // Windows Desktop configuration (uses Web config)
   // Firebase for Windows Desktop uses web SDK internally
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM',
-    appId: '1:949693718080:web:c3e09cea22b5d8379a49a5', // Web app ID format
+    apiKey: 'AIzaSyDpIETRJbo2aMr0qELkpxZ0dacTiZrrG_0',
+    appId: '1:949693718080:web:83f29ac197174e289a49a5',
     messagingSenderId: '949693718080',
     projectId: 'a-user',
     storageBucket: 'a-user.firebasestorage.app',
@@ -71,8 +71,8 @@ class DefaultFirebaseOptions {
 
   // Linux Desktop configuration (uses Web config)
   static const FirebaseOptions linux = FirebaseOptions(
-    apiKey: 'AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM',
-    appId: '1:949693718080:web:c3e09cea22b5d8379a49a5', // Web app ID format
+    apiKey: 'AIzaSyDpIETRJbo2aMr0qELkpxZ0dacTiZrrG_0',
+    appId: '1:949693718080:web:83f29ac197174e289a49a5',
     messagingSenderId: '949693718080',
     projectId: 'a-user',
     storageBucket: 'a-user.firebasestorage.app',
@@ -81,11 +81,12 @@ class DefaultFirebaseOptions {
 
   // Web configuration
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyD5d71JdVd3__JAaoQSlQzXsA1Jpbz3nnM',
-    appId: '1:949693718080:web:c3e09cea22b5d8379a49a5', // Web app ID format
+    apiKey: 'AIzaSyDpIETRJbo2aMr0qELkpxZ0dacTiZrrG_0',
+    appId: '1:949693718080:web:83f29ac197174e289a49a5',
     messagingSenderId: '949693718080',
     projectId: 'a-user',
     storageBucket: 'a-user.firebasestorage.app',
     authDomain: 'a-user.firebaseapp.com',
+    measurementId: 'G-KXFX1L6V3W',
   );
 }

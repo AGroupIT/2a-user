@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:showcaseview/showcaseview.dart';
 
+import '../persistence/shared_preferences_provider.dart';
+
 /// Обёртка для экранов, использующих Showcase
 /// Каждый экран с Showcase должен быть обёрнут в этот виджет
 class ShowcaseWrapper extends StatelessWidget {
@@ -89,11 +91,6 @@ class ShowcaseService {
     await _prefs.remove('$_prefix${page.name}');
   }
 }
-
-/// Провайдер для SharedPreferences
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('SharedPreferences должен быть инициализирован в main()');
-});
 
 /// Провайдер для ShowcaseService
 final showcaseServiceProvider = Provider<ShowcaseService>((ref) {

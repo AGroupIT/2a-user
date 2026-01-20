@@ -6,7 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../domain/search_result.dart';
 
 abstract class SearchRepository {
-  Future<List<SearchResult>> searchTracks(String query);
+  Future<List<SearchResult>> searchTracks(String query, {String? clientCode});
   Future<void> requestBinding({
     required int trackId,
     required String trackNumber,
@@ -28,22 +28,37 @@ class RealSearchRepository implements SearchRepository {
   ApiClient get _api => _ref.read(apiClientProvider);
 
   @override
-  Future<List<SearchResult>> searchTracks(String query) async {
+  Future<List<SearchResult>> searchTracks(String query, {String? clientCode}) async {
     final q = query.trim();
     if (q.length < 5) return const [];
 
     try {
       final response = await _api.get(
         '/client/search',
-        queryParameters: {'query': q},
+        queryParameters: {
+          'query': q,
+          if (clientCode != null && clientCode.trim().isNotEmpty)
+            'clientCode': clientCode.trim(),
+        },
       );
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final results = data['results'] as List<dynamic>? ?? [];
-        return results
-            .map((json) => SearchResult.fromJson(json as Map<String, dynamic>))
-            .toList();
+        final body = response.data;
+        if (body is List) {
+          return body
+              .whereType<Map<String, dynamic>>()
+              .map(SearchResult.fromJson)
+              .toList();
+        }
+        if (body is Map<String, dynamic>) {
+          final list = body['data'] ?? body['results'] ?? body['items'];
+          if (list is List) {
+            return list
+                .whereType<Map<String, dynamic>>()
+                .map(SearchResult.fromJson)
+                .toList();
+          }
+        }
       }
       return [];
     } on DioException catch (e) {

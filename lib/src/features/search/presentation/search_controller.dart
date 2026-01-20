@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../clients/application/client_codes_controller.dart';
 import '../data/fake_search_repository.dart';
 import '../domain/search_result.dart';
 
@@ -17,10 +18,12 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
       return;
     }
 
+    final activeClientCode = ref.read(activeClientCodeProvider);
+
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final repo = ref.read(searchRepositoryProvider);
-      return repo.searchTracks(trimmed);
+      return repo.searchTracks(trimmed, clientCode: activeClientCode);
     });
   }
 

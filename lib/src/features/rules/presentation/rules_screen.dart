@@ -8,6 +8,7 @@ import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/locale_text.dart';
 import '../data/rules_provider.dart';
 import '../domain/rule_item.dart';
 
@@ -60,7 +61,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
   Widget build(BuildContext context) {
     final asyncItems = ref.watch(rulesListProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     Future<void> onRefresh() async {
       ref.invalidate(rulesListProvider);
@@ -78,14 +79,14 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => EmptyState(
               icon: Icons.error_outline_rounded,
-              title: 'Не удалось загрузить правила',
+              title: tr(context, ru: 'Не удалось загрузить правила', zh: '无法加载规则'),
               message: e.toString(),
             ),
             data: (items) {
               if (items.isEmpty) {
-                return const EmptyState(
+                return EmptyState(
                   icon: Icons.rule_folder_outlined,
-                  title: 'Правила не найдены',
+                  title: tr(context, ru: 'Правила не найдены', zh: '未找到规则'),
                 );
               }
               return Builder(
@@ -106,7 +107,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 18),
                           child: Text(
-                            'Правила оказания услуг',
+                            tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
                             style: Theme.of(context).textTheme.headlineSmall
                                 ?.copyWith(fontWeight: FontWeight.w900),
                           ),
@@ -121,9 +122,10 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                           ),
                           child: Showcase(
                             key: _showcaseKeyRulesList,
-                            title: 'Правила оказания услуг',
-                            description:
-                                'Список правил и условий работы. Нажмите на карточку для просмотра полного текста правила.',
+                            title: tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
+                            description: tr(context, 
+                                ru: 'Список правил и условий работы. Нажмите на карточку для просмотра полного текста правила.',
+                                zh: '规则和条款列表。点击卡片查看完整规则内容。'),
                             targetPadding: const EdgeInsets.all(8),
                             tooltipPosition: TooltipPosition.bottom,
                             onBarrierClick: () {

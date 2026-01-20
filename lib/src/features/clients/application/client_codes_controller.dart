@@ -23,7 +23,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
 
   @override
   Future<ClientCodesState> build() async {
-    final prefs = await ref.watch(sharedPreferencesProvider.future);
+    final prefs = ref.watch(sharedPreferencesProvider);
     final authState = ref.watch(authProvider);
     
     // Если авторизация ещё грузится - ждём
@@ -79,7 +79,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
     if (!current.codes.contains(code)) return;
 
     state = AsyncValue.data(current.copyWith(activeCode: code));
-    final prefs = await ref.read(sharedPreferencesProvider.future);
+    final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_activeKey, code);
   }
 
@@ -128,7 +128,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
 
       state = AsyncValue.data(nextState);
 
-      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final prefs = ref.read(sharedPreferencesProvider);
       await prefs.setString(_activeKey, trimmedCode);
       await prefs.setStringList(_codesKey, nextCodes);
       
@@ -161,7 +161,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
   }
 
   Future<void> logout() async {
-    final prefs = await ref.read(sharedPreferencesProvider.future);
+    final prefs = ref.read(sharedPreferencesProvider);
     await prefs.remove(_activeKey);
     // По UX после выхода оставим пустой список и null активный код
     state = const AsyncValue.data(ClientCodesState(codes: [], activeCode: null));

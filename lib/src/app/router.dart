@@ -23,10 +23,13 @@ import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
 import 'widgets/app_scaffold.dart';
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
   
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
     refreshListenable: _AuthRefreshNotifier(ref),
     redirect: (context, state) {
@@ -128,6 +131,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/search',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
           title: 'Поиск',
           showSearch: false,
@@ -136,6 +140,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/support',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final initialMessage = state.extra as String?;
           return AppScaffold(
@@ -146,6 +151,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/payment-chat',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           String? initialMessage;
           String? invoiceId;
@@ -175,6 +181,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/news',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
           title: 'Новости',
           child: NewsListScreen(),
@@ -182,6 +189,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: ':slug',
+            parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
               final slug = state.pathParameters['slug'] ?? '';
               return AppScaffold(
@@ -194,6 +202,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/profile',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
           title: 'Профиль',
           child: ProfileScreen(),
@@ -201,6 +210,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/rules',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
           title: 'Правила',
           child: RulesScreen(),
@@ -208,6 +218,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: ':slug',
+            parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
               final slug = state.pathParameters['slug'] ?? '';
               return AppScaffold(

@@ -16,7 +16,15 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 /// Клиент для работы с API
 class ApiClient {
   late final Dio _dio;
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  // На мобильных платформах используем FlutterSecureStorage с правильными настройками
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
   static const String _tokenKey = 'auth_token';
   
   // In-memory fallback для web и desktop
@@ -129,6 +137,9 @@ class ApiClient {
            defaultTargetPlatform == TargetPlatform.linux ||
            defaultTargetPlatform == TargetPlatform.macOS;
   }
+  
+  /// Проверка наличия токена (синхронная, проверяет in-memory)
+  bool get hasToken => _inMemoryToken != null && _inMemoryToken!.isNotEmpty;
 
   // HTTP methods
   

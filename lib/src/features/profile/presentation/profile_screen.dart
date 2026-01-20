@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:path_provider/path_provider.dart';
@@ -7,8 +6,10 @@ import 'package:intl/intl.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/app_language_service.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../auth/data/auth_provider.dart';
@@ -77,30 +78,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshMixin {
-  // Controllers for editable fields
-  final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-
-  // Edit mode flags
-  bool _editingName = false;
-  bool _editingPhone = false;
-  bool _editingEmail = false;
-
-  // Phone validation error
-  String? _phoneError;
-
-  // Saving states
-  bool _savingName = false;
-  bool _savingPhone = false;
-  bool _savingEmail = false;
-
-  // Original values for cancel
-  String _originalName = '';
-  String _originalPhone = '';
-  String _originalEmail = '';
-
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with AutoRefreshMixin {
   // Showcase keys
   final _showcaseKeyPersonalData = GlobalKey();
   final _showcaseKeyStats = GlobalKey();
@@ -112,9 +91,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
 
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
-
-  // Flag to track if profile was loaded
-  bool _profileLoaded = false;
 
   @override
   void initState() {
@@ -155,30 +131,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
   }
 
   @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    _emailCtrl.dispose();
-    super.dispose();
-  }
-
-  /// Загрузить данные профиля в контроллеры
-  void _loadProfileIntoControllers(ClientProfile profile) {
-    if (!_profileLoaded) {
-      _nameCtrl.text = profile.fullName;
-      _phoneCtrl.text = profile.phone ?? '';
-      _emailCtrl.text = profile.email;
-      _originalName = profile.fullName;
-      _originalPhone = profile.phone ?? '';
-      _originalEmail = profile.email;
-      _profileLoaded = true;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = AppLayout.bottomScrollPadding(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
     final clientCode = ref.watch(activeClientCodeProvider);
     
     // Загружаем профиль и статистику
@@ -188,7 +143,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
     Future<void> onRefresh() async {
       ref.invalidate(clientProfileProvider);
       ref.invalidate(clientStatsProvider(clientCode));
-      _profileLoaded = false; // Сбросим флаг чтобы перезагрузить данные
       await Future.wait([
         ref.read(clientProfileProvider.future),
         ref.read(clientStatsProvider(clientCode).future),
@@ -221,9 +175,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                 return const Center(child: Text('Профиль не найден'));
               }
               
-              // Загружаем данные профиля в контроллеры
-              _loadProfileIntoControllers(profile);
-              
               // Запускаем showcase если нужно
               _startShowcaseIfNeeded(showcaseContext);
               
@@ -233,6 +184,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                 loading: () => ClientStats.empty,
                 error: (_, _) => ClientStats.empty,
               );
+              final appLanguage = ref.watch(appLanguageProvider);
 
               return RefreshIndicator(
                 onRefresh: onRefresh,
@@ -253,7 +205,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                   Showcase(
                     key: _showcaseKeyPersonalData,
                     title: 'Личные данные',
-                    description: 'Здесь вы можете редактировать ваши контактные данные и сменить пароль.',
+                    description: 'Ваши контактные данные (только просмотр).',
                     targetPadding: const EdgeInsets.all(8),
                     tooltipPosition: TooltipPosition.bottom,
                     onTargetClick: () {
@@ -265,70 +217,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
                     child: _buildSectionCard(
                       title: 'Личные данные',
                       children: [
-                        _buildEditableField(
-                          label: 'ФИО',
-                          controller: _nameCtrl,
-                          isEditing: _editingName,
-                          isSaving: _savingName,
-                          onEdit: () {
-                            _originalName = _nameCtrl.text;
-                            setState(() => _editingName = true);
-                          },
-                          onSave: () => _saveName(),
-                    onCancel: () => setState(() {
-                      _nameCtrl.text = _originalName;
-                      _editingName = false;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildEditableField(
-                    label: 'Телефон',
-                    controller: _phoneCtrl,
-                    isEditing: _editingPhone,
-                    isSaving: _savingPhone,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [_PhoneInputFormatter()],
-                    error: _phoneError,
-                    onEdit: () {
-                      _originalPhone = _phoneCtrl.text;
-                      setState(() => _editingPhone = true);
-                    },
-                    onSave: () => _savePhone(),
-                    onCancel: () => setState(() {
-                      _phoneCtrl.text = _originalPhone;
-                      _editingPhone = false;
-                      _phoneError = null;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildEditableField(
-                    label: 'Email',
-                    controller: _emailCtrl,
-                    isEditing: _editingEmail,
-                    isSaving: _savingEmail,
-                    keyboardType: TextInputType.emailAddress,
-                    onEdit: () {
-                      _originalEmail = _emailCtrl.text;
-                      setState(() => _editingEmail = true);
-                    },
-                    onSave: () => _saveEmail(),
-                    onCancel: () => setState(() {
-                      _emailCtrl.text = _originalEmail;
-                      _editingEmail = false;
-                    }),
+                        _buildReadonlyField(label: 'ФИО', value: profile.fullName),
+                        const SizedBox(height: 12),
+                        _buildReadonlyField(
+                          label: 'Телефон',
+                          value: (profile.phone?.isNotEmpty ?? false) ? profile.phone! : '—',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildReadonlyField(label: 'Email', value: profile.email),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  _buildChangePasswordButton(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
             // Company Info Section
             _buildSectionCard(
               title: 'Компания',
               children: [
                 _buildReadonlyField(label: 'Домен компании', value: companyDomain),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Language Section
+            _buildSectionCard(
+              title: 'Язык',
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFDDDDDD)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<AppLanguage>(
+                      value: appLanguage,
+                      isExpanded: true,
+                      items: AppLanguage.values
+                          .map(
+                            (lang) => DropdownMenuItem(
+                              value: lang,
+                              child: Text(
+                                lang.labelRu,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        ref.read(appLanguageProvider.notifier).setLanguage(value);
+                      },
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -445,94 +390,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
     );
   }
 
-  /// Сохранить ФИО
-  Future<void> _saveName() async {
-    final newName = _nameCtrl.text.trim();
-    if (newName.length < 2) {
-      _showStyledSnackBar(context, 'ФИО должно содержать минимум 2 символа', isError: true);
-      return;
-    }
-
-    setState(() => _savingName = true);
-    try {
-      final repo = ref.read(profileRepositoryProvider);
-      await repo.updateProfile(fullName: newName);
-      
-      setState(() {
-        _editingName = false;
-        _originalName = newName;
-      });
-      ref.invalidate(clientProfileProvider);
-      if (!mounted) return;
-      _showStyledSnackBar(context, 'ФИО успешно обновлено');
-    } catch (e) {
-      if (!mounted) return;
-      _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
-    } finally {
-      setState(() => _savingName = false);
-    }
-  }
-
-  /// Сохранить телефон
-  Future<void> _savePhone() async {
-    final newPhone = _phoneCtrl.text.trim();
-    if (!_validatePhone(newPhone)) {
-      setState(() => _phoneError = 'Неверный формат телефона');
-      return;
-    }
-
-    setState(() {
-      _savingPhone = true;
-      _phoneError = null;
-    });
-    try {
-      final repo = ref.read(profileRepositoryProvider);
-      await repo.updateProfile(phone: newPhone);
-      
-      setState(() {
-        _editingPhone = false;
-        _originalPhone = newPhone;
-      });
-      ref.invalidate(clientProfileProvider);
-      if (!mounted) return;
-      _showStyledSnackBar(context, 'Телефон успешно обновлён');
-    } catch (e) {
-      if (!mounted) return;
-      _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
-    } finally {
-      setState(() => _savingPhone = false);
-    }
-  }
-
-  /// Сохранить email
-  Future<void> _saveEmail() async {
-    final newEmail = _emailCtrl.text.trim();
-    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-    if (!emailRegex.hasMatch(newEmail)) {
-      _showStyledSnackBar(context, 'Неверный формат email', isError: true);
-      return;
-    }
-
-    setState(() => _savingEmail = true);
-    try {
-      final repo = ref.read(profileRepositoryProvider);
-      await repo.updateProfile(email: newEmail);
-      
-      setState(() {
-        _editingEmail = false;
-        _originalEmail = newEmail;
-      });
-      ref.invalidate(clientProfileProvider);
-      if (!mounted) return;
-      _showStyledSnackBar(context, 'Email успешно обновлён');
-    } catch (e) {
-      if (!mounted) return;
-      _showStyledSnackBar(context, e.toString().replaceFirst('Exception: ', ''), isError: true);
-    } finally {
-      setState(() => _savingEmail = false);
-    }
-  }
-
   void _logout() {
     showModalBottomSheet(
       context: context,
@@ -632,129 +489,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
     );
   }
 
-  Widget _buildEditableField({
-    required String label,
-    required TextEditingController controller,
-    required bool isEditing,
-    required VoidCallback onEdit,
-    required VoidCallback onSave,
-    required VoidCallback onCancel,
-    bool isSaving = false,
-    TextInputType? keyboardType,
-    List<TextInputFormatter>? inputFormatters,
-    String? error,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFF666666),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        if (isEditing)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.all(1.5),
-                child: Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10.5),
-                  ),
-                  child: TextField(
-                    controller: controller,
-                    keyboardType: keyboardType,
-                    inputFormatters: inputFormatters,
-                    enabled: !isSaving,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                    ),
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ),
-              ),
-              if (error != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  error,
-                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: isSaving ? null : onCancel,
-                      child: const Text('Отмена'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: isSaving ? null : onSave,
-                      child: isSaving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Сохранить'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  controller.text,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: onEdit,
-                icon: const Icon(Icons.edit_rounded, size: 20),
-                color: context.brandPrimary,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
-
   Widget _buildReadonlyField({required String label, required String value}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,14 +521,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildChangePasswordButton() {
-    return OutlinedButton.icon(
-      onPressed: _showChangePasswordDialog,
-      icon: const Icon(Icons.lock_rounded, size: 18),
-      label: const Text('Изменить пароль'),
     );
   }
 
@@ -894,158 +620,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
         onPressed: onPressed,
         icon: Icon(icon, size: 20),
         label: Text(label),
-      ),
-    );
-  }
-
-  bool _validatePhone(String phone) {
-    // Simple validation: must have at least 10 digits
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 10;
-  }
-
-  void _showChangePasswordDialog() {
-    final currentPassCtrl = TextEditingController();
-    final newPassCtrl = TextEditingController();
-    final confirmPassCtrl = TextEditingController();
-    String? error;
-    bool isSaving = false;
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        final bottomPadding = MediaQuery.paddingOf(context).bottom;
-        final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
-
-        return StatefulBuilder(
-          builder: (context, setModalState) => Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              16,
-              20,
-              20 + bottomPadding + keyboardHeight,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Изменить пароль',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 20),
-                _buildPasswordField(currentPassCtrl, 'Текущий пароль'),
-                const SizedBox(height: 12),
-                _buildPasswordField(newPassCtrl, 'Новый пароль'),
-                const SizedBox(height: 12),
-                _buildPasswordField(confirmPassCtrl, 'Подтвердите пароль'),
-                if (error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    error!,
-                    style: TextStyle(color: Colors.red.shade700, fontSize: 13),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: isSaving ? null : () async {
-                    if (currentPassCtrl.text.isEmpty) {
-                      setModalState(() => error = 'Введите текущий пароль');
-                      return;
-                    }
-                    if (newPassCtrl.text.length < 6) {
-                      setModalState(
-                        () => error = 'Пароль должен быть не менее 6 символов',
-                      );
-                      return;
-                    }
-                    if (newPassCtrl.text != confirmPassCtrl.text) {
-                      setModalState(() => error = 'Пароли не совпадают');
-                      return;
-                    }
-                    
-                    setModalState(() {
-                      isSaving = true;
-                      error = null;
-                    });
-                    
-                    try {
-                      final repo = ref.read(profileRepositoryProvider);
-                      await repo.changePassword(
-                        currentPassword: currentPassCtrl.text,
-                        newPassword: newPassCtrl.text,
-                      );
-                      
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                      }
-                      if (!mounted) return;
-                      _showStyledSnackBar(this.context, 'Пароль успешно изменён');
-                    } catch (e) {
-                      setModalState(() {
-                        isSaving = false;
-                        error = e.toString().replaceFirst('Exception: ', '');
-                      });
-                    }
-                  },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Сохранить'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPasswordField(TextEditingController controller, String hint) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFDDDDDD)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: true,
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 14),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
-          ),
-        ),
       ),
     );
   }
@@ -1246,57 +820,5 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with AutoRefreshM
       if (!mounted) return;
       _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
     }
-  }
-}
-
-class _PhoneInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final text = newValue.text;
-    final digits = text.replaceAll(RegExp(r'\D'), '');
-
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-
-    final buffer = StringBuffer();
-    int index = 0;
-
-    // Format as +7 (XXX) XXX-XX-XX
-    if (digits.isNotEmpty) {
-      buffer.write('+');
-      buffer.write(digits[index++]);
-    }
-    if (index < digits.length) {
-      buffer.write(' (');
-      for (int i = 0; i < 3 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-      buffer.write(')');
-    }
-    if (index < digits.length) {
-      buffer.write(' ');
-      for (int i = 0; i < 3 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-    if (index < digits.length) {
-      buffer.write('-');
-      for (int i = 0; i < 2 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-    if (index < digits.length) {
-      buffer.write('-');
-      for (int i = 0; i < 2 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-
-    return TextEditingValue(
-      text: buffer.toString(),
-      selection: TextSelection.collapsed(offset: buffer.length),
-    );
   }
 }
