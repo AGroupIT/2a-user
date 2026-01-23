@@ -35,31 +35,121 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    // Закрываем клавиатуру перед началом
+    FocusScope.of(context).unfocus();
+
     setState(() => _isLoading = true);
 
-    final success = await ref
-        .read(authProvider.notifier)
-        .login(
-          email: _loginCtrl.text.trim(),
-          domain: _domainCtrl.text.trim(),
-          password: _passwordCtrl.text,
-        );
+    try {
+      final success = await ref
+          .read(authProvider.notifier)
+          .login(
+            email: _loginCtrl.text.trim(),
+            domain: _domainCtrl.text.trim(),
+            password: _passwordCtrl.text,
+          );
 
-    if (!mounted) return;
-    
-    setState(() => _isLoading = false);
+      if (!mounted) return;
 
-    if (!success) {
-      // Показываем ошибку из authProvider
-      final authState = ref.read(authProvider);
-      _showError(authState.error ?? 'Ошибка авторизации');
+      if (!success) {
+        // Небольшая задержка чтобы пользователь увидел что была попытка
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (!mounted) return;
+
+        setState(() => _isLoading = false);
+
+        // Показываем ошибку из authProvider
+        final authState = ref.read(authProvider);
+        final errorMessage = authState.error ?? 'Ошибка авторизации';
+        debugPrint('❌ Login failed: $errorMessage');
+
+        // Ждём завершения анимации loader'а перед показом SnackBar
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        if (mounted) {
+          _showError(errorMessage);
+        }
+      } else {
+        debugPrint('✅ Login successful');
+        setState(() => _isLoading = false);
+      }
+      // Router will automatically redirect to / on successful login
+    } catch (e) {
+      if (!mounted) return;
+
+      // Небольшая задержка чтобы пользователь увидел что была попытка
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      debugPrint('❌ Login exception: $e');
+
+      // Ждём завершения анимации loader'а
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (mounted) {
+        _showError('Произошла ошибка при входе. Попробуйте ещё раз');
+      }
     }
-    // Router will automatically redirect to / on successful login
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+      SnackBar(
+        content: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Ошибка входа',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        duration: const Duration(seconds: 5),
+        elevation: 8,
+      ),
     );
   }
 
@@ -136,6 +226,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       label: 'Домен партнёра',
                       hint: 'example-company',
                       prefixIcon: Icons.business_rounded,
+                      keyboardType: TextInputType.url,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -152,6 +243,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       hint: '••••••••',
                       prefixIcon: Icons.lock_rounded,
                       obscureText: _obscurePassword,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _login(),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -224,6 +318,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     bool obscureText = false,
     Widget? suffixIcon,
     List<TextInputFormatter>? inputFormatters,
+    TextInputAction? textInputAction,
+    void Function(String)? onSubmitted,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,6 +343,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             keyboardType: keyboardType,
             obscureText: obscureText,
             inputFormatters: inputFormatters,
+            textInputAction: textInputAction,
+            onSubmitted: onSubmitted,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(

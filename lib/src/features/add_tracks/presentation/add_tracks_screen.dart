@@ -64,15 +64,37 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final clientCode = ref.watch(activeClientCodeProvider);
-    if (clientCode == null) {
-      return const EmptyState(
-        icon: Icons.badge_outlined,
-        title: 'Выберите код клиента',
-        message:
-            'Сначала выберите код клиента в шапке, затем добавляйте треки.',
+    try {
+      final clientCode = ref.watch(activeClientCodeProvider);
+      if (clientCode == null) {
+        return const EmptyState(
+          icon: Icons.badge_outlined,
+          title: 'Выберите код клиента',
+          message:
+              'Сначала выберите код клиента в шапке, затем добавляйте треки.',
+        );
+      }
+
+      return _buildContent(context, clientCode);
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error building AddTracksScreen: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      return EmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Ошибка загрузки',
+        message: 'Произошла ошибка при загрузке экрана. Попробуйте ещё раз.',
+        actionLabel: 'Обновить',
+        onAction: () {
+          setState(() {
+            // Trigger rebuild
+          });
+        },
       );
     }
+  }
+
+  Widget _buildContent(BuildContext context, String clientCode) {
 
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -84,9 +106,16 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
           _showcaseContext = showcaseContext;
           _startShowcaseIfNeeded(showcaseContext);
 
-          return ListView(
-            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 100 + bottomPad),
-            children: [
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 6,
+              16,
+              100 + bottomPad + MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Text(
                 'Добавить треки',
                 style: Theme.of(
@@ -98,7 +127,7 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 key: _showcaseKeyInput,
                 title: 'Поле ввода треков',
                 description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
-                targetPadding: const EdgeInsets.all(8),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
                 onTargetClick: () {
                   if (_showcaseContext != null) {
@@ -206,7 +235,7 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 key: _showcaseKeySubmit,
                 title: 'Кнопка добавления',
                 description: 'Нажмите для добавления введённых треков.',
-                targetPadding: const EdgeInsets.all(8),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
                   _onShowcaseComplete();
@@ -239,7 +268,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
             onClose: () => setState(() => _result = null),
           ),
         ],
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -247,6 +277,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   }
 
   Future<void> _submit(String clientCode) async {
+    if (!mounted) return;
+
     setState(() {
       _error = null;
       _result = null;
@@ -255,21 +287,33 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
     try {
       final raw = _ctrl.text;
+      if (raw.trim().isEmpty) {
+        throw Exception('Введите хотя бы один трек-номер');
+      }
+
       final codes = raw
           .split(RegExp(r'[\n,;]+'))
           .map((s) => s.trim().toUpperCase()) // Приводим к верхнему регистру
           .where((s) => s.isNotEmpty)
           .toSet() // Убираем дубликаты в самом вводе
           .toList();
+
       if (codes.isEmpty) {
         throw Exception('Введите хотя бы один трек-номер');
       }
+
+      debugPrint('📦 Adding ${codes.length} tracks for client $clientCode');
 
       final repo = ref.read(addTracksRepositoryProvider);
       final res = await repo.addTracks(
         clientCode: clientCode,
         trackCodes: codes,
       );
+
+      if (!mounted) return;
+
+      debugPrint('✅ Tracks added: ${res.added}, skipped: ${res.skipped.length}');
+
       setState(() {
         _result = res;
         _ctrl.clear();
@@ -277,18 +321,59 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
       // Инвалидируем список треков, чтобы обновить его на странице треков
       if (res.added > 0) {
-        // Обновляем пагинированный список
-        ref.read(paginatedTracksProvider(clientCode)).refresh();
+        try {
+          // Обновляем пагинированный список
+          ref.read(paginatedTracksProvider(clientCode)).refresh();
+        } catch (e) {
+          debugPrint('⚠️ Error refreshing tracks list: $e');
+          // Не критично, продолжаем
+        }
       }
 
       // Show success notification
       if (mounted) {
         _showResultNotification(res);
       }
-    } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error adding tracks: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (!mounted) return;
+
+      final errorMessage = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _error = errorMessage);
+
+      // Показать SnackBar с ошибкой
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Ошибка: $errorMessage',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 

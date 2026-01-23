@@ -9,6 +9,7 @@ import 'package:gal/gal.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:io';
 
+import '../../../core/network/api_config.dart';
 import '../domain/photo_item.dart';
 
 void _showStyledSnackBar(
@@ -140,16 +141,17 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       }
 
       String savePath;
-      
+      final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
+
       if (!currentItem.isVideo) {
         // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(currentItem.url);
+        final file = await DefaultCacheManager().getSingleFile(fullUrl);
         savePath = file.path;
       } else {
         // Для видео скачиваем через Dio
         final tempDir = await getTemporaryDirectory();
         savePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(currentItem.url, savePath);
+        await Dio().download(fullUrl, savePath);
       }
       
       // Сохраняем в галерею
@@ -191,19 +193,20 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     try {
       final currentItem = _currentItem;
       String filePath;
-      
+      final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
+
       // Получаем box ДО async операций
       final box = context.findRenderObject() as RenderBox?;
-      
+
       if (!currentItem.isVideo) {
         // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(currentItem.url);
+        final file = await DefaultCacheManager().getSingleFile(fullUrl);
         filePath = file.path;
       } else {
         // Для видео скачиваем во временную директорию
         final tempDir = await getTemporaryDirectory();
         filePath = '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(currentItem.url, filePath);
+        await Dio().download(fullUrl, filePath);
       }
       
       if (!mounted) return;
@@ -275,12 +278,12 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                             offset: Offset(0, _swipeDy),
                             child: Center(
                               child: item.isVideo
-                                  ? _VideoPlayerView(url: item.url)
+                                  ? _VideoPlayerView(url: ApiConfig.getMediaUrl(item.url))
                                   : InteractiveViewer(
                                       minScale: 1,
                                       maxScale: 4,
                                       child: CachedNetworkImage(
-                                        imageUrl: item.url,
+                                        imageUrl: ApiConfig.getMediaUrl(item.url),
                                         fit: BoxFit.contain,
                                         placeholder: (_, _) => const SizedBox(
                                           width: 32,
@@ -306,12 +309,12 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                         offset: Offset(0, _swipeDy),
                         child: Center(
                           child: widget.item.isVideo
-                              ? _VideoPlayerView(url: widget.item.url)
+                              ? _VideoPlayerView(url: ApiConfig.getMediaUrl(widget.item.url))
                               : InteractiveViewer(
                                   minScale: 1,
                                   maxScale: 4,
                                   child: CachedNetworkImage(
-                                    imageUrl: widget.item.url,
+                                    imageUrl: ApiConfig.getMediaUrl(widget.item.url),
                                     fit: BoxFit.contain,
                                     placeholder: (_, _) => const SizedBox(
                                       width: 32,

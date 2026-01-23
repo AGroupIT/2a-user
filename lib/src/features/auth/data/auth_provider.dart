@@ -5,12 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../../../core/config/sentry_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
-import '../../../core/services/secure_storage_service.dart';
 import '../../../core/services/showcase_service.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../profile/data/profile_provider.dart';
 
@@ -69,39 +71,40 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   late ApiClient _apiClient;
-  late SecureStorageService _secureStorage;
-  
+
   @override
   AuthState build() {
     _apiClient = ref.read(apiClientProvider);
-    _secureStorage = ref.read(secureStorageProvider);
     _loadAuthState();
     return const AuthState();
   }
 
   Future<void> _loadAuthState() async {
+    debugPrint('🔄 Loading auth state...');
+
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool(_kIsLoggedInKey) ?? false;
     final userEmail = prefs.getString(_kUserEmailKey);
     final userDomain = prefs.getString(_kUserDomainKey);
     final clientId = prefs.getInt(_kClientIdKey);
     final clientName = prefs.getString(_kClientNameKey);
-    
-    // Migrate from SharedPreferences to secure storage if needed
-    final oldToken = prefs.getString(_kTokenKey);
-    if (oldToken != null && oldToken.isNotEmpty) {
-      await _secureStorage.saveToken(oldToken);
-      await prefs.remove(_kTokenKey);
-    }
-    
-    // Восстанавливаем токен из secure storage
+
+    debugPrint('🔍 isLoggedIn from SharedPreferences: $isLoggedIn');
+    debugPrint('🔍 userEmail: $userEmail');
+
+    // Проверяем есть ли токен в ApiClient (он сам знает откуда читать: localStorage на web, SecureStorage на мобильных)
     if (isLoggedIn) {
-      final savedToken = await _secureStorage.getToken();
-      if (savedToken != null && savedToken.isNotEmpty) {
-        await _apiClient.setToken(savedToken);
+      final hasToken = await _apiClient.hasTokenAsync();
+      debugPrint('🔍 hasToken from ApiClient: $hasToken');
+
+      if (!hasToken) {
+        // Если токен потерян, разлогиниваем
+        debugPrint('🔐 Token lost, logging out');
+        await logout();
+        return;
       }
     }
-    
+
     // Восстанавливаем данные клиента
     Map<String, dynamic>? clientData;
     final clientDataJson = prefs.getString(_kClientDataKey);
@@ -122,6 +125,8 @@ class AuthNotifier extends Notifier<AuthState> {
       clientName: clientName,
       clientData: clientData,
     );
+
+    debugPrint('✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail');
   }
 
   Future<bool> login({
@@ -154,11 +159,8 @@ class AuthNotifier extends Notifier<AuthState> {
           return false;
         }
         
-        // Сохраняем токен в ApiClient
+        // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
         await _apiClient.setToken(token);
-        
-        // Сохраняем токен в secure storage
-        await _secureStorage.saveToken(token);
         
         // Извлекаем данные клиента
         final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
@@ -216,27 +218,43 @@ class AuthNotifier extends Notifier<AuthState> {
         return false;
       }
     } on DioException catch (e) {
-      String errorMessage = 'Ошибка подключения к серверу';
-      
-      if (e.response?.statusCode == 401) {
+      String errorMessage;
+
+      // Специфичные ошибки авторизации
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
         errorMessage = 'Неверный email или пароль';
       } else if (e.response?.statusCode == 404) {
-        errorMessage = 'Пользователь не найден';
-      } else if (e.type == DioExceptionType.connectionTimeout ||
-                 e.type == DioExceptionType.receiveTimeout) {
-        errorMessage = 'Превышено время ожидания. Проверьте подключение';
-      } else if (e.type == DioExceptionType.connectionError) {
-        errorMessage = 'Нет подключения к серверу';
+        errorMessage = 'Пользователь не найден. Проверьте данные для входа';
+      } else {
+        // Используем ErrorUtils для остальных ошибок
+        final errorInfo = ErrorUtils.getErrorInfo(e);
+        errorMessage = errorInfo.message;
       }
-      
+
       debugPrint('Login error: $e');
+      debugPrint('Error message shown to user: $errorMessage');
+
       state = state.copyWith(
         isLoading: false,
         error: errorMessage,
       );
       return false;
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Login error: $e');
+
+      // Отправляем в Sentry только неожиданные ошибки
+      if (SentryConfig.enabled) {
+        await Sentry.captureException(
+          e,
+          stackTrace: stackTrace,
+          hint: Hint.withMap({
+            'type': 'login_error',
+            'email': email,
+            'domain': domain,
+          }),
+        );
+      }
+
       state = state.copyWith(
         isLoading: false,
         error: 'Произошла ошибка: $e',
@@ -253,11 +271,8 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
     
     try {
-      // Сохраняем токен в ApiClient
+      // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
       await _apiClient.setToken(token);
-      
-      // Сохраняем токен в secure storage
-      await _secureStorage.saveToken(token);
       
       // Извлекаем данные клиента
       final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
@@ -369,39 +384,74 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
-    // Отписываемся от push-уведомлений
-    await _unregisterFromPush();
-    
-    // Очищаем токен в ApiClient
-    await _apiClient.clearToken();
-    
-    // Очищаем токен из secure storage
-    await _secureStorage.deleteToken();
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kIsLoggedInKey);
-    await prefs.remove(_kUserEmailKey);
-    await prefs.remove(_kUserDomainKey);
-    await prefs.remove(_kTokenKey); // legacy cleanup
-    await prefs.remove(_kClientIdKey);
-    await prefs.remove(_kClientNameKey);
-    await prefs.remove(_kClientDataKey);
+    try {
+      debugPrint('🚪 Starting logout process...');
 
-    // Clear notification badge (not supported on Desktop)
-    if (!kIsWeb && !isDesktopImpl()) {
+      // Отписываемся от push-уведомлений
       try {
-        // Очищаем все уведомления и badge
-        final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-        await flutterLocalNotificationsPlugin.cancelAll();
+        await _unregisterFromPush();
+        debugPrint('✅ Unregistered from push');
       } catch (e) {
-        if (kDebugMode) debugPrint('Error clearing notifications: $e');
+        debugPrint('⚠️ Error unregistering from push: $e');
+        // Продолжаем logout даже если отписка от push не удалась
       }
-    }
 
-    state = const AuthState(
-      isLoggedIn: false,
-      isLoading: false,
-    );
+      // Очищаем токен в ApiClient (он сам очистит и localStorage на web, и SecureStorage на мобильных)
+      try {
+        await _apiClient.clearToken();
+        debugPrint('✅ Token cleared from ApiClient');
+      } catch (e) {
+        debugPrint('⚠️ Error clearing token: $e');
+      }
+
+      // Очищаем SharedPreferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_kIsLoggedInKey);
+        await prefs.remove(_kUserEmailKey);
+        await prefs.remove(_kUserDomainKey);
+        await prefs.remove(_kTokenKey); // legacy cleanup
+        await prefs.remove(_kClientIdKey);
+        await prefs.remove(_kClientNameKey);
+        await prefs.remove(_kClientDataKey);
+        debugPrint('✅ SharedPreferences cleared');
+
+        // Verify it was actually removed
+        final stillLoggedIn = prefs.getBool(_kIsLoggedInKey);
+        debugPrint('🔍 After logout, isLoggedIn key = $stillLoggedIn (should be null)');
+      } catch (e) {
+        debugPrint('⚠️ Error clearing SharedPreferences: $e');
+      }
+
+      // Clear notification badge (not supported on Desktop)
+      if (!kIsWeb && !isDesktopImpl()) {
+        try {
+          // Очищаем все уведомления и badge
+          final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+          await flutterLocalNotificationsPlugin.cancelAll();
+          debugPrint('✅ Notifications cleared');
+        } catch (e) {
+          debugPrint('⚠️ Error clearing notifications: $e');
+        }
+      }
+
+      // Обновляем состояние
+      state = const AuthState(
+        isLoggedIn: false,
+        isLoading: false,
+      );
+
+      debugPrint('✅ Logout completed successfully');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Critical error during logout: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      // Все равно устанавливаем состояние "разлогинен" даже если была ошибка
+      state = const AuthState(
+        isLoggedIn: false,
+        isLoading: false,
+      );
+    }
   }
   
   /// Отписка от push-уведомлений

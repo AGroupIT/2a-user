@@ -10,6 +10,7 @@ import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/news_provider.dart';
 import '../domain/news_item.dart';
@@ -24,7 +25,8 @@ class NewsListScreen extends ConsumerStatefulWidget {
 class _NewsListScreenState extends ConsumerState<NewsListScreen>
     with AutoRefreshMixin {
   // Showcase keys
-  final _showcaseKeyNewsList = GlobalKey();
+  final _showcaseKeyHeader = GlobalKey();
+  final _showcaseKeyNewsCard = GlobalKey();
 
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
@@ -50,7 +52,8 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
       if (!mounted) return;
       
       ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyNewsList,
+        _showcaseKeyHeader,
+        _showcaseKeyNewsCard,
       ]);
     });
   }
@@ -79,11 +82,14 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
 
           return asyncItems.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: tr(context, ru: 'Не удалось загрузить новости', zh: '无法加载新闻'),
-              message: e.toString(),
-            ),
+            error: (e, _) {
+              final errorInfo = ErrorUtils.getErrorInfo(e);
+              return EmptyState(
+                icon: errorInfo.icon,
+                title: errorInfo.title,
+                message: errorInfo.message,
+              );
+            },
             data: (items) {
               if (items.isEmpty) {
                 return EmptyState(
@@ -107,10 +113,39 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
               if (i == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
-                  child: Text(
-                    tr(context, ru: 'Новости', zh: '新闻'),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+                  child: Showcase(
+                    key: _showcaseKeyHeader,
+                    title: tr(context, ru: '📰 Лента новостей', zh: '📰 新闻动态'),
+                    description: tr(
+                      context,
+                      ru: 'Актуальные новости и объявления от компании:\n• Новые услуги и тарифы\n• Изменения в работе\n• Важные уведомления\n• Акции и предложения\n• Потяните вниз для обновления ⬇️',
+                      zh: '公司的最新新闻和公告：\n• 新服务和费率\n• 工作变化\n• 重要通知\n• 促销和优惠\n• 下拉刷新 ⬇️',
+                    ),
+                    targetPadding: getShowcaseTargetPadding(),
+                    tooltipPosition: TooltipPosition.bottom,
+                    tooltipBackgroundColor: Colors.white,
+                    textColor: Colors.black87,
+                    titleTextStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    descTextStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                    onTargetClick: () {
+                      if (mounted) {
+                        ShowCaseWidget.of(showcaseContext).next();
+                      }
+                    },
+                    disposeOnTap: false,
+                    child: Text(
+                      tr(context, ru: 'Новости', zh: '新闻'),
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 );
@@ -121,17 +156,29 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                 return Padding(
                   padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
                   child: Showcase(
-                    key: _showcaseKeyNewsList,
-                    title: tr(context, ru: 'Новости', zh: '新闻'),
-                    description: tr(context, ru: 'Здесь отображаются последние новости компании. Нажмите на карточку для просмотра полной новости.', zh: '这里显示公司的最新新闻。点击卡片查看完整新闻。'),
-                    targetPadding: const EdgeInsets.all(8),
+                    key: _showcaseKeyNewsCard,
+                    title: tr(context, ru: '📄 Карточка новости', zh: '📄 新闻卡片'),
+                    description: tr(
+                      context,
+                      ru: 'Каждая новость содержит:\n• 🖼️ Обложку с изображением (если есть)\n• 📅 Дату публикации\n• 📝 Заголовок и краткое описание\n• 👆 Нажмите для чтения полной версии\n• Полный текст откроется на отдельной странице',
+                      zh: '每条新闻包含：\n• 🖼️ 封面图片（如有）\n• 📅 发布日期\n• 📝 标题和简短描述\n• 👆 点击阅读完整版本\n• 完整文本将在单独页面打开',
+                    ),
+                    targetPadding: getShowcaseTargetPadding(),
                     tooltipPosition: TooltipPosition.bottom,
-                    onBarrierClick: () {
-                      if (mounted) _onShowcaseComplete();
-                    },
-                    onToolTipClick: () {
-                      if (mounted) _onShowcaseComplete();
-                    },
+                    tooltipBackgroundColor: Colors.white,
+                    textColor: Colors.black87,
+                    titleTextStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    descTextStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                    onBarrierClick: _onShowcaseComplete,
+                    onToolTipClick: _onShowcaseComplete,
                     child: _NewsCard(item: item),
                   ),
                 );

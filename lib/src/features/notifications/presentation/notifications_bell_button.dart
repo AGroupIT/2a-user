@@ -20,7 +20,7 @@ class NotificationsBellButton extends ConsumerWidget {
       );
     }
 
-    final itemsAsync = ref.watch(notificationsControllerProvider(clientCode));
+    final itemsAsync = ref.watch(notificationsControllerProvider);
     final unreadCount = itemsAsync.value?.where((n) => !n.isRead).length ?? 0;
 
     return Stack(
@@ -44,7 +44,7 @@ class NotificationsBellButton extends ConsumerWidget {
                 clientCode: clientCode,
                 onNavigate: (route) {
                   Navigator.of(context).pop();
-                  context.go(route);
+                  context.push(route);
                 },
                 controller: controller,
               ),

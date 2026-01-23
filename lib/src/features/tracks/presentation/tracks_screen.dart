@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:showcaseview/showcaseview.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/services/showcase_service.dart';
@@ -14,11 +17,13 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../auth/data/auth_provider.dart';
 import '../data/tracks_provider.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
+import 'add_tracks_dialog.dart';
 
 // Alias для authStateProvider
 final authStateProvider = authProvider;
@@ -137,8 +142,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
 
   // Showcase keys
   final _showcaseKeyFilters = GlobalKey();
+  final _showcaseKeySearch = GlobalKey();
   final _showcaseKeyViewMode = GlobalKey();
   final _showcaseKeyTrackItem = GlobalKey();
+  final _showcaseKeyAddButton = GlobalKey();
 
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
@@ -166,8 +173,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
 
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyFilters,
+        _showcaseKeySearch,
         _showcaseKeyViewMode,
         _showcaseKeyTrackItem,
+        _showcaseKeyAddButton,
       ]);
     });
   }
@@ -348,6 +357,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -507,6 +518,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -738,6 +751,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -856,6 +871,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -1019,6 +1036,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     String? selectedInsurance;
     String? insuranceAmount;
 
+    // Создаём контроллер ДО StatefulBuilder чтобы не терять фокус
+    final insuranceAmountController = TextEditingController();
+
     // Загружаем тарифы и типы упаковки
     final tariffs = await ref.read(tariffsProvider.future);
     if (!context.mounted) return;
@@ -1129,13 +1149,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                               style: TextStyle(color: Colors.grey),
                             )
                           else
-                            GridView.count(
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 8,
-                              crossAxisSpacing: 8,
-                              childAspectRatio: 3.0,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
                               children: packagingTypes.map((packing) {
                                 final isSelected = selectedPackingIds.contains(
                                   packing.id,
@@ -1152,6 +1168,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                     });
                                   },
                                   child: Container(
+                                    constraints: BoxConstraints(
+                                      minWidth: (MediaQuery.of(sheetContext).size.width - 48) / 2,
+                                      maxWidth: (MediaQuery.of(sheetContext).size.width - 48) / 2,
+                                    ),
                                     decoration: BoxDecoration(
                                       gradient: isSelected
                                           ? LinearGradient(
@@ -1174,9 +1194,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                     ),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
-                                      vertical: 8,
+                                      vertical: 10,
                                     ),
                                     child: Column(
+                                      mainAxisSize: MainAxisSize.min,
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
@@ -1192,10 +1213,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                             fontSize: 13,
                                           ),
                                           textAlign: TextAlign.center,
-                                          maxLines: 1,
+                                          maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                        const SizedBox(height: 2),
+                                        const SizedBox(height: 4),
                                         Text(
                                           '${packing.baseCost.toStringAsFixed(0)} ¥',
                                           style: TextStyle(
@@ -1337,34 +1358,33 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                             const SizedBox(height: 6),
                             _outlinedInput(
                               context,
-                              TextEditingController(
-                                text: insuranceAmount ?? '',
-                              ),
+                              insuranceAmountController,
                               hint: 'Например: 5000',
                               keyboardType: TextInputType.number,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
                               onChanged: (value) {
-                                setSheetState(() {
-                                  insuranceAmount = value;
-                                });
+                                insuranceAmount = value;
                               },
                             ),
                           ],
                           const SizedBox(height: 20),
-                          FilledButton(
-                            onPressed:
-                                selectedPackingIds.isNotEmpty &&
-                                    selectedInsurance != null &&
-                                    selectedTariff != null &&
-                                    (selectedInsurance == 'no' ||
-                                        (selectedInsurance == 'yes' &&
-                                            insuranceAmount?.isNotEmpty ==
-                                                true))
-                                ? () => Navigator.of(sheetContext).pop(true)
-                                : null,
-                            child: const Text('Отправить на сборку'),
+                          SizedBox(
+                            width: MediaQuery.of(sheetContext).size.width * 0.8 - 32, // 80% ширины минус padding (16*2)
+                            child: FilledButton(
+                              onPressed:
+                                  selectedPackingIds.isNotEmpty &&
+                                      selectedInsurance != null &&
+                                      selectedTariff != null &&
+                                      (selectedInsurance == 'no' ||
+                                          (selectedInsurance == 'yes' &&
+                                              insuranceAmount?.isNotEmpty ==
+                                                  true))
+                                  ? () => Navigator.of(sheetContext).pop(true)
+                                  : null,
+                              child: const Text('Отправить на сборку'),
+                            ),
                           ),
                         ],
                       ),
@@ -1448,11 +1468,21 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     TrackItem track,
   ) async {
     final existing = _productInfos[track.code];
-    final nameController = TextEditingController(text: existing?.name ?? '');
+    final nameController = TextEditingController(text: existing?.name ?? track.productInfo?.name ?? '');
     final qtyController = TextEditingController(
-      text: existing?.quantity?.toString() ?? '',
+      text: existing?.quantity?.toString() ?? track.productInfo?.quantity.toString() ?? '',
     );
+
+    // Список путей/URL для отображения
     final images = List<String>.from(existing?.images ?? const []);
+    if (track.productInfo?.imageUrl != null && track.productInfo!.imageUrl!.isNotEmpty) {
+      if (!images.contains(track.productInfo!.imageUrl)) {
+        images.insert(0, track.productInfo!.imageUrl!);
+      }
+    }
+
+    // Новые выбранные файлы (XFile)
+    final List<XFile> newFiles = [];
     final result = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -1530,11 +1560,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                               final pickedFiles = await picker.pickMultiImage(
                                 imageQuality: 85,
                               );
-                              final paths = pickedFiles
-                                  .map((file) => file.path)
-                                  .toList();
-                              if (paths.isNotEmpty) {
-                                setSheetState(() => images.addAll(paths));
+                              if (pickedFiles.isNotEmpty) {
+                                setSheetState(() => newFiles.addAll(pickedFiles));
                               }
                             } catch (e) {
                               if (context.mounted) {
@@ -1549,11 +1576,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                         ),
                       ),
                       const SizedBox(height: 8),
+                      // Существующие изображения (URL с сервера)
                       if (images.isNotEmpty)
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: images.map((path) {
+                            // URL с сервера
+                            final isUrl = path.startsWith('http') || path.startsWith('/');
+
                             return Stack(
                               children: [
                                 Container(
@@ -1570,20 +1601,93 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                     ],
                                   ),
                                   clipBehavior: Clip.antiAlias,
-                                  child: Image.file(
-                                    File(path),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) =>
-                                        const ColoredBox(color: Colors.black12),
-                                  ),
+                                  child: isUrl
+                                      ? CachedNetworkImage(
+                                          imageUrl: ApiConfig.getMediaUrl(path),
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, _) => const Center(
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          ),
+                                          errorWidget: (_, _, _) =>
+                                              const ColoredBox(color: Colors.black12),
+                                        )
+                                      : (!kIsWeb
+                                          ? Image.file(
+                                              File(path),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, _, _) =>
+                                                  const ColoredBox(color: Colors.black12),
+                                            )
+                                          : const ColoredBox(color: Colors.black12)),
                                 ),
                                 Positioned(
                                   right: 2,
                                   top: 2,
                                   child: InkWell(
-                                    onTap: () => setSheetState(
-                                      () => images.remove(path),
+                                    onTap: () => setSheetState(() => images.remove(path)),
+                                    child: const CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Colors.white,
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        size: 16,
+                                      ),
                                     ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      // Новые выбранные файлы
+                      if (newFiles.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: newFiles.map((file) {
+                            return Stack(
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        blurRadius: 10,
+                                        offset: Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: kIsWeb
+                                      ? FutureBuilder<Uint8List>(
+                                          future: file.readAsBytes(),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.hasData) {
+                                              return Image.memory(
+                                                snapshot.data!,
+                                                fit: BoxFit.cover,
+                                              );
+                                            }
+                                            return const Center(
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            );
+                                          },
+                                        )
+                                      : Image.file(
+                                          File(file.path),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) =>
+                                              const ColoredBox(color: Colors.black12),
+                                        ),
+                                ),
+                                Positioned(
+                                  right: 2,
+                                  top: 2,
+                                  child: InkWell(
+                                    onTap: () => setSheetState(() => newFiles.remove(file)),
                                     child: const CircleAvatar(
                                       radius: 12,
                                       backgroundColor: Colors.white,
@@ -1621,7 +1725,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         _productInfos[track.code] = _ProductInfo(
           name: productName,
           quantity: quantity,
-          images: images,
+          images: [...images, if (!kIsWeb) ...newFiles.map((f) => f.path)],
         );
       });
 
@@ -1629,17 +1733,39 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       if (track.id != null) {
         final apiService = ref.read(tracksApiServiceProvider);
 
-        // Загружаем первое изображение если есть
         File? imageFile;
-        if (images.isNotEmpty) {
-          imageFile = File(images.first);
+        String? uploadedImageUrl;
+
+        // Загружаем первое новое изображение
+        if (newFiles.isNotEmpty) {
+          try {
+            if (kIsWeb) {
+              // На Web загружаем через байты
+              final bytes = await newFiles.first.readAsBytes();
+              uploadedImageUrl = await apiService.uploadImageFromBytes(
+                bytes,
+                newFiles.first.name,
+                'product-info',
+              );
+              if (uploadedImageUrl != null) {
+                debugPrint('Image uploaded successfully: $uploadedImageUrl');
+              }
+            } else {
+              // На нативных платформах используем File
+              imageFile = File(newFiles.first.path);
+            }
+          } catch (e) {
+            debugPrint('Failed to upload image ${newFiles.first.name}: $e');
+          }
         }
 
+        // Обновляем информацию о товаре
         final success = await apiService.updateProductInfo(
           trackId: track.id!,
           productName: productName,
           quantity: quantity,
-          imageFile: imageFile,
+          imageFile: imageFile, // Для native платформ
+          imageUrl: uploadedImageUrl, // Для Web платформы
         );
 
         if (success) {
@@ -1781,11 +1907,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       const SizedBox(height: 18),
                       Showcase(
                         key: _showcaseKeyFilters,
-                        title: 'Фильтры и поиск',
+                        title: '🎯 Фильтры по статусу',
                         description:
-                            'Используйте фильтры для поиска треков по статусу или номеру. Строка поиска позволяет быстро найти нужный трек.',
+                            'Быстрая фильтрация треков по состоянию:\n• Все - показать все посылки\n• На складе - товары прибыли на склад\n• Отправлен - в пути к вам\n• Прибыл на терминал - готов к выдаче\n• Сформирован к выдаче - ждёт получения\n\nВыберите статус из выпадающего списка "Статус" для фильтрации.',
                         targetBorderRadius: BorderRadius.circular(20),
-                        targetPadding: const EdgeInsets.all(8),
+                        targetPadding: getShowcaseTargetPadding(),
                         tooltipPosition: TooltipPosition.bottom,
                         tooltipBackgroundColor: Colors.white,
                         textColor: Colors.black87,
@@ -1829,6 +1955,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                 _onViewModeChanged(v, clientCode),
                             onQueryChanged: (v) =>
                                 _onSearchChanged(v, clientCode),
+                            showcaseSearchKey: _showcaseKeySearch,
                             showcaseViewModeKey: _showcaseKeyViewMode,
                           ),
                         ),
@@ -1852,24 +1979,62 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   ),
                 ),
               ),
-              if (_selectedTracks.isNotEmpty)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom:
-                      AppLayout.bottomBarHeight +
-                      AppLayout.bottomBarBottomMargin -
-                      75,
-                  child: SafeArea(
-                    top: false,
-                    child: FilledButton(
-                      onPressed: _selectedStatus == null
-                          ? null
-                          : () => _bulkAction(context),
-                      child: Text(_actionLabel()),
-                    ),
-                  ),
+              // Нижние кнопки: "Отправка на сборку" (если выбраны треки) + FAB "Добавить треки"
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: AppLayout.bottomBarHeight +
+                    AppLayout.bottomBarBottomMargin +
+                    35, // Минимальный отступ от нижнего меню
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end, // FAB справа по умолчанию
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Кнопка "Отправка на сборку" с анимацией (показывается только когда выбраны треки)
+                    if (_selectedTracks.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: FilledButton(
+                          onPressed: _selectedStatus == null
+                              ? null
+                              : () => _bulkAction(context),
+                          child: Text(_actionLabel()),
+                        ),
+                      ),
+                    // FAB кнопка для добавления треков (всегда справа)
+                    Showcase(
+                        key: _showcaseKeyAddButton,
+                        title: '➕ Добавить треки',
+                        description:
+                            'Кнопка для добавления новых треков в систему:\n• Введите номера треков (каждый с новой строки)\n• Можно добавить несколько треков одновременно\n• Треки появятся в списке после обработки\n\nНажмите кнопку ➕ для открытия формы добавления.',
+                        targetBorderRadius: BorderRadius.circular(28),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.top,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        onToolTipClick: _onShowcaseComplete,
+                        onBarrierClick: _onShowcaseComplete,
+                        child: FloatingActionButton(
+                          onPressed: () => showAddTracksDialog(context, ref),
+                          backgroundColor: context.brandPrimary,
+                          foregroundColor: Colors.white,
+                          elevation: 8,
+                          child: const Icon(Icons.add_box_rounded, size: 28),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ],
           );
         },
@@ -1891,10 +2056,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
 
     // Показываем ошибку
     if (tracksState.error != null && tracksState.tracks.isEmpty) {
+      final errorInfo = ErrorUtils.getErrorInfo(tracksState.error!);
       return EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Не удалось загрузить треки',
-        message: tracksState.error!,
+        icon: errorInfo.icon,
+        title: errorInfo.title,
+        message: errorInfo.message,
       );
     }
 
@@ -1975,11 +2141,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
               padding: const EdgeInsets.only(bottom: 10),
               child: Showcase(
                 key: _showcaseKeyTrackItem,
-                title: 'Карточка трека',
+                title: '📦 Карточка трека',
                 description:
-                    'Нажмите на карточку, чтобы раскрыть детали. Здесь вы можете запросить фото, задать вопрос или выбрать трек для сборки.',
+                    'Полная информация о вашей посылке:\n• Номер трека и текущий статус\n• Дата последнего обновления\n• Информация о товаре (если заполнена)\n• Комментарии и заметки\n\nНажмите на карточку для раскрытия деталей. Доступные действия:\n• Запросить фотоотчёт - получить фото товара на складе\n• Задать вопрос - уточнить любую информацию\n• Добавить заметку - личный комментарий\n• О товаре - заполнить данные о содержимом',
                 targetBorderRadius: BorderRadius.circular(18),
-                targetPadding: const EdgeInsets.all(8),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
                 tooltipBackgroundColor: Colors.white,
                 textColor: Colors.black87,
@@ -2186,6 +2352,8 @@ class _FiltersState extends State<_Filters> {
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
@@ -2241,6 +2409,7 @@ class _FiltersNew extends StatefulWidget {
   final ValueChanged<String?> onStatusChanged;
   final ValueChanged<ViewMode> onViewModeChanged;
   final ValueChanged<String> onQueryChanged;
+  final GlobalKey? showcaseSearchKey;
   final GlobalKey? showcaseViewModeKey;
 
   const _FiltersNew({
@@ -2251,6 +2420,7 @@ class _FiltersNew extends StatefulWidget {
     required this.onStatusChanged,
     required this.onViewModeChanged,
     required this.onQueryChanged,
+    this.showcaseSearchKey,
     this.showcaseViewModeKey,
   });
 
@@ -2317,10 +2487,12 @@ class _FiltersNewState extends State<_FiltersNew> {
     if (widget.showcaseViewModeKey != null) {
       viewModeDropdown = Showcase(
         key: widget.showcaseViewModeKey!,
-        title: 'Режим отображения',
+        title: '📋 Режим отображения',
         description:
-            'Переключайтесь между режимами: все треки, только сборки или одиночные посылки.',
+            'Переключение между видами треков:\n• Все - все посылки и сборки вместе\n• Сборки - только консолидированные отправки (несколько треков в одной посылке)\n• Одиночные - только отдельные посылки\n\nВыберите режим для удобной навигации по списку.',
         targetBorderRadius: BorderRadius.circular(14),
+        targetPadding: getShowcaseTargetPadding(),
+        tooltipPosition: TooltipPosition.bottom,
         tooltipBackgroundColor: Colors.white,
         textColor: Colors.black87,
         titleTextStyle: const TextStyle(
@@ -2341,66 +2513,101 @@ class _FiltersNewState extends State<_FiltersNew> {
       );
     }
 
+    // Виджет поля поиска
+    Widget searchField = Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [context.brandPrimary, context.brandSecondary],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.all(1.5),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: context.brandPrimary,
+              size: 20,
+            ),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF999999),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      _searchController.clear();
+                      widget.onQueryChanged('');
+                    },
+                  )
+                : null,
+            hintText: 'Поиск по треку',
+            hintStyle: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF999999),
+              fontWeight: FontWeight.w500,
+            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (value) {
+            setState(() {});
+            widget.onQueryChanged(value);
+          },
+        ),
+      ),
+    );
+
+    // Оборачиваем в Showcase если ключ передан
+    if (widget.showcaseSearchKey != null) {
+      searchField = Showcase(
+        key: widget.showcaseSearchKey!,
+        title: '🔍 Поиск по номеру трека',
+        description:
+            'Быстрый поиск конкретного трека:\n• Введите полный или частичный номер трека\n• Поиск работает в реальном времени\n• Нажмите ✕ справа для очистки поля\n\nНапример: "TRK-12345" или просто "12345".',
+        targetBorderRadius: BorderRadius.circular(14),
+        targetPadding: getShowcaseTargetPadding(),
+        tooltipPosition: TooltipPosition.bottom,
+        tooltipBackgroundColor: Colors.white,
+        textColor: Colors.black87,
+        titleTextStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF1A1A1A),
+        ),
+        descTextStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.grey.shade600,
+        ),
+        onTargetClick: () {
+          ShowCaseWidget.of(context).next();
+        },
+        disposeOnTap: false,
+        child: searchField,
+      );
+    }
+
     return Column(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [context.brandPrimary, context.brandSecondary],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.all(1.5),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: context.brandPrimary,
-                  size: 20,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          widget.onQueryChanged('');
-                        },
-                      )
-                    : null,
-                hintText: 'Поиск по треку',
-                hintStyle: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF999999),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {});
-                widget.onQueryChanged(value);
-              },
-            ),
-          ),
-        ),
+        searchField,
         const SizedBox(height: 10),
         Row(
           children: [
@@ -3157,7 +3364,12 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                       child: ListView(
                         padding: EdgeInsets.zero,
                         shrinkWrap: true,
-                        children: widget.items.map((item) {
+                        children: widget.items.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          final isFirst = index == 0;
+                          final isLast = index == widget.items.length - 1;
+
                           return InkWell(
                             onTap: () {
                               setState(() {
@@ -3167,6 +3379,11 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                               _overlayEntry?.remove();
                               _overlayEntry = null;
                             },
+                            // Добавляем borderRadius для InkWell эффекта
+                            borderRadius: BorderRadius.vertical(
+                              top: isFirst ? const Radius.circular(14) : Radius.zero,
+                              bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                            ),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -3178,6 +3395,11 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                                         alpha: 0.1,
                                       )
                                     : Colors.transparent,
+                                // Добавляем borderRadius для первого/последнего элемента
+                                borderRadius: BorderRadius.vertical(
+                                  top: isFirst ? const Radius.circular(14) : Radius.zero,
+                                  bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                                ),
                               ),
                               child: Text(
                                 item.label,
@@ -3248,28 +3470,33 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF999999),
-                      fontWeight: FontWeight.w500,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF999999),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedLabel,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 2),
+                    Text(
+                      selectedLabel,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Icon(
                 _overlayEntry != null

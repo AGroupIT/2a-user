@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
-import '../../support/data/chat_models.dart';
+import '../../../core/services/websocket_provider.dart';
 
 // ==================== Payment Chat Repository ====================
 
@@ -266,28 +268,108 @@ class PaymentChatState {
 /// Контроллер чата по оплате
 class PaymentChatController extends Notifier<PaymentChatState> {
   late final PaymentChatRepository _repository;
+  late final WebSocketService _wsService;
+  StreamSubscription<Map<String, dynamic>>? _messageSubscription;
+  Timer? _fallbackPollingTimer;
 
   @override
   PaymentChatState build() {
     _repository = ref.read(paymentChatRepositoryProvider);
+    _wsService = ref.watch(webSocketServiceProvider);
+    _listenToWebSocket();
+
+    // Cleanup при dispose
+    ref.onDispose(() {
+      _messageSubscription?.cancel();
+      _fallbackPollingTimer?.cancel();
+      if (state.conversation != null) {
+        _wsService.leaveConversation(state.conversation!.id);
+        _wsService.sendPresence(state.conversation!.id, false);
+      }
+    });
+
     return const PaymentChatState();
+  }
+
+  /// Слушать WebSocket события
+  void _listenToWebSocket() {
+    // Слушаем статус подключения для fallback
+    ref.listen<AsyncValue<SocketConnectionStatus>>(
+      webSocketConnectionStatusProvider,
+      (previous, next) {
+        next.whenData((status) {
+          if (status == SocketConnectionStatus.connected) {
+            _fallbackPollingTimer?.cancel();
+          } else if (status == SocketConnectionStatus.disconnected) {
+            _startFallbackPolling();
+          }
+        });
+      },
+    );
+
+    // Слушаем новые сообщения
+    _messageSubscription = _wsService.messages.listen((data) {
+      try {
+        final message = ChatMessage.fromJson(data);
+
+        if (state.conversation != null &&
+            message.conversationId == state.conversation!.id) {
+          final existingIds = state.messages.map((m) => m.id).toSet();
+          if (!existingIds.contains(message.id)) {
+            final newMessages = [...state.messages, message];
+            state = state.copyWith(
+              messages: newMessages,
+              lastMessageId: message.id,
+            );
+
+            if (message.isFromSupport) {
+              final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
+              if (!isChatOpen) {
+                final notificationService = ref.read(pushNotificationServiceProvider);
+                notificationService.showChatMessageNotification(
+                  senderName: message.senderName,
+                  message: message.content,
+                  notificationId: message.id,
+                );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[WebSocket] Error parsing payment message: $e');
+      }
+    });
+  }
+
+  /// Fallback polling если WebSocket не работает
+  void _startFallbackPolling() {
+    _fallbackPollingTimer?.cancel();
+    _fallbackPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_wsService.currentStatus != SocketConnectionStatus.connected) {
+        pollNewMessages();
+      }
+    });
   }
 
   /// Загрузить диалог
   Future<void> loadConversation() async {
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       final conversation = await _repository.getConversation();
       final messages = conversation.messages;
       final lastId = messages.isNotEmpty ? messages.last.id : null;
-      
+
       state = state.copyWith(
         conversation: conversation,
         messages: messages,
         isLoading: false,
         lastMessageId: lastId,
       );
+
+      // Присоединяемся к WebSocket комнате
+      _wsService.joinConversation(conversation.id);
+      _wsService.sendPresence(conversation.id, true);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,

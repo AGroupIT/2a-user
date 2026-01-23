@@ -662,24 +662,25 @@ class TracksApiService {
     required String productName,
     required int quantity,
     File? imageFile,
+    String? imageUrl,
   }) async {
     try {
-      // Сначала загружаем изображение если есть
-      String? imageUrl;
+      // Сначала загружаем изображение если есть файл
+      String? uploadedImageUrl = imageUrl;
       if (imageFile != null) {
         final uploadResponse = await _uploadImage(imageFile, 'product-info');
-        imageUrl = uploadResponse;
+        uploadedImageUrl = uploadResponse;
       }
-      
+
       // Используем PUT /api/tracks/{id} с productInfo в теле
       final response = await _apiClient.put('/tracks/$trackId', data: {
         'productInfo': {
           'name': productName,
           'quantity': quantity,
-          if (imageUrl != null) 'imageUrl': imageUrl,
+          if (uploadedImageUrl != null) 'imageUrl': uploadedImageUrl,
         },
       });
-      
+
       debugPrint('updateProductInfo response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
@@ -700,11 +701,43 @@ class TracksApiService {
         ),
         'type': type,
       });
-      
+
       final response = await _apiClient.post('/photos/upload', data: formData);
-      
+
       debugPrint('Upload image response: ${response.statusCode}');
-      
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data as Map<String, dynamic>;
+        return data['url'] as String?;
+      }
+      return null;
+    } on DioException catch (e) {
+      debugPrint('Error uploading image: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return null;
+    }
+  }
+
+  /// Загрузить изображение из байтов (для Web платформы)
+  /// [type] - тип загружаемого изображения: 'product-info', 'general', etc.
+  Future<String?> uploadImageFromBytes(
+    Uint8List bytes,
+    String fileName, [
+    String type = 'general',
+  ]) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+        ),
+        'type': type,
+      });
+
+      final response = await _apiClient.post('/photos/upload', data: formData);
+
+      debugPrint('Upload image response: ${response.statusCode}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
         return data['url'] as String?;

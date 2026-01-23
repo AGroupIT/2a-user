@@ -1,11 +1,11 @@
 {
-    "name": "Личный кабинет - 2A",
-    "short_name": "2A Кабинет",
+    "name": "Карго Китай",
+    "short_name": "Карго Китай",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
     "theme_color": "#FFFFFF",
-    "description": "Личный кабинет - 2A",
+    "description": "Карго Китай - личный кабинет клиента",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

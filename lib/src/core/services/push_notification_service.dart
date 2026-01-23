@@ -80,35 +80,53 @@ class PushNotificationService {
   /// Статическая инициализация Firebase (вызывать из main)
   static Future<void> initializeFirebase() async {
     try {
+      debugPrint('🔔 Starting Firebase initialization...');
+
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
           options: DefaultFirebaseOptions.currentPlatform,
         );
+        debugPrint('🔔 Firebase app initialized');
+      } else {
+        debugPrint('🔔 Firebase app already initialized');
       }
-      
+
       // Firebase Messaging поддерживается на Web, Android, iOS
       if (kIsWeb || _isMobilePlatform) {
         _messaging = FirebaseMessaging.instance;
-        
+        debugPrint('🔔 Firebase Messaging instance created');
+
         // Запрос разрешений
         final settings = await _messaging!.requestPermission(
           alert: true,
           badge: true,
           sound: true,
         );
-        
+
         debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
-        
+
+        // Получить токен сразу после инициализации
+        try {
+          final token = await getFCMToken();
+          if (token != null) {
+            debugPrint('🔔 Initial FCM token obtained successfully');
+          } else {
+            debugPrint('🔔 Warning: Initial FCM token is null');
+          }
+        } catch (e) {
+          debugPrint('🔔 Error getting initial FCM token: $e');
+        }
+
         // Background handler
         FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-        
+
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
           debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
           onFCMMessageReceived?.call(message);
           _showFCMNotification(message);
         });
-        
+
         // Message opened app
         FirebaseMessaging.onMessageOpenedApp.listen((message) {
           debugPrint('🔔 FCM opened app: ${message.notification?.title}');
@@ -117,7 +135,7 @@ class PushNotificationService {
       } else {
         debugPrint('🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)');
       }
-      
+
       debugPrint('🔔 Firebase initialized');
     } catch (e) {
       debugPrint('🔔 Firebase init error: $e');
@@ -162,10 +180,20 @@ class PushNotificationService {
   static Future<String?> getFCMToken() async {
     try {
       // Для Web нужен VAPID ключ
+      String? token;
       if (kIsWeb) {
-        return await _messaging?.getToken(vapidKey: _vapidKey);
+        token = await _messaging?.getToken(vapidKey: _vapidKey);
+      } else {
+        token = await _messaging?.getToken();
       }
-      return await _messaging?.getToken();
+
+      if (token != null) {
+        debugPrint('🔔 FCM Token получен: ${token.substring(0, 20)}...');
+      } else {
+        debugPrint('🔔 FCM Token не получен (null)');
+      }
+
+      return token;
     } catch (e) {
       debugPrint('🔔 Error getting FCM token: $e');
       return null;
@@ -522,8 +550,14 @@ class PushNotificationService {
   /// Отменить все уведомления
   Future<void> cancelAllNotifications() async {
     if (!_isInitialized) return;
-    await _notifications.cancelAll();
-    await clearBadge();
+    // На Web flutter_local_notifications не работает
+    if (kIsWeb) return;
+    try {
+      await _notifications.cancelAll();
+      await clearBadge();
+    } catch (e) {
+      debugPrint('⚠️ Error canceling notifications: $e');
+    }
   }
 
   /// Отменить конкретное уведомление

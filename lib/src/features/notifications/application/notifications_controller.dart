@@ -33,9 +33,8 @@ class NotificationsState {
 }
 
 /// Провайдер для уведомлений с поддержкой clientCode
-/// Riverpod 3.x: family provider с конструктором, принимающим arg
-final notificationsControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<NotificationsController, List<NotificationItem>, String>(
+final notificationsControllerProvider = AsyncNotifierProvider.autoDispose<
+    NotificationsController, List<NotificationItem>>(
   NotificationsController.new,
 );
 
@@ -48,19 +47,19 @@ void initializePushNotificationsHandler(WidgetRef ref) {
 
 void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
   debugPrint('🔔 FCM received in notifications handler: ${message.data}');
-  
+
   // Получаем активный clientCode
   final clientCode = ref.read(activeClientCodeProvider);
   if (clientCode == null) {
     debugPrint('🔔 No active clientCode, skipping notification update');
     return;
   }
-  
+
   // Пробуем создать NotificationItem из FCM данных
   try {
     final data = message.data;
     final notification = message.notification;
-    
+
     // Создаём уведомление из push данных
     final item = NotificationItem(
       id: data['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
@@ -74,14 +73,14 @@ void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
       oldStatus: data['old_status'],
       newStatus: data['new_status'],
     );
-    
+
     // Добавляем в контроллер
-    ref.read(notificationsControllerProvider(clientCode).notifier).addNotification(item);
+    ref.read(notificationsControllerProvider.notifier).addNotification(item);
     debugPrint('🔔 Notification added to list: ${item.title}');
   } catch (e) {
     debugPrint('🔔 Error parsing FCM message: $e');
     // Если не удалось распарсить - просто обновляем список
-    ref.read(notificationsControllerProvider(clientCode).notifier).refresh();
+    ref.read(notificationsControllerProvider.notifier).refresh();
   }
 }
 
@@ -113,14 +112,19 @@ NotificationType _parseNotificationType(String? type) {
 
 /// Контроллер уведомлений
 class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
-  final String clientCode;
-  
-  NotificationsController(this.clientCode);
+  String? _clientCode;
 
   @override
   Future<List<NotificationItem>> build() async {
+    // В Riverpod 3.x family notifier получает arg через специальный механизм
+    // Мы используем workaround через активный clientCode
+    _clientCode = ref.watch(activeClientCodeProvider);
+    if (_clientCode == null) {
+      return [];
+    }
+
     final repo = ref.watch(notificationsRepositoryProvider);
-    final items = await repo.fetchNotifications(clientCode: clientCode);
+    final items = await repo.fetchNotifications(clientCode: _clientCode!);
     _updateBadge(items);
     return items;
   }
@@ -130,8 +134,12 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     ref.read(unreadNotificationsCountProvider.notifier).set(unreadCount);
 
     // Обновляем badge на иконке приложения
-    final pushService = ref.read(pushNotificationServiceProvider);
-    pushService.updateBadgeCount(unreadCount);
+    try {
+      final pushService = ref.read(pushNotificationServiceProvider);
+      pushService.updateBadgeCount(unreadCount);
+    } catch (e) {
+      debugPrint('🔔 Badge update skipped: $e');
+    }
   }
 
   Future<void> markRead(String id) async {
@@ -147,7 +155,7 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     next[idx] = next[idx].copyWith(isRead: true);
     state = AsyncData(next);
     _updateBadge(next);
-    
+
     // Отправляем на сервер
     try {
       final repo = ref.read(notificationsRepositoryProvider);
@@ -173,7 +181,7 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     ];
     state = AsyncData(next);
     _updateBadge(next);
-    
+
     // Отправляем на сервер
     try {
       final repo = ref.read(notificationsRepositoryProvider);
@@ -186,10 +194,12 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
   }
 
   Future<void> refresh() async {
+    if (_clientCode == null) return;
+
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final repo = ref.read(notificationsRepositoryProvider);
-      final items = await repo.fetchNotifications(clientCode: clientCode);
+      final items = await repo.fetchNotifications(clientCode: _clientCode!);
       _updateBadge(items);
       return items;
     });
@@ -205,7 +215,7 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
 }
 
 /// Провайдер для подсчёта непрочитанных уведомлений
-final unreadCountProvider = Provider.family<int, String>((ref, clientCode) {
-  final itemsAsync = ref.watch(notificationsControllerProvider(clientCode));
+final unreadCountProvider = Provider<int>((ref) {
+  final itemsAsync = ref.watch(notificationsControllerProvider);
   return itemsAsync.value?.where((n) => !n.isRead).length ?? 0;
 });

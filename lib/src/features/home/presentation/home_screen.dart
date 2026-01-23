@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:showcaseview/showcaseview.dart';
 
+import '../../../core/network/api_config.dart';
 import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
@@ -39,6 +40,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
+  // Флаг для показа диалога принятия правил
+  bool _termsDialogShown = false;
+
   // Хранение контекста Showcase для вызова next()
   BuildContext? _showcaseContext;
 
@@ -46,20 +50,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   void initState() {
     super.initState();
     _setupAutoRefresh();
+    _checkAndShowTermsDialog();
+  }
+
+  /// Проверить и показать диалог принятия правил если нужно
+  void _checkAndShowTermsDialog() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _termsDialogShown) return;
+
+      final showcaseService = ref.read(showcaseServiceProvider);
+      // Показываем диалог только если пользователь еще не принял правила
+      if (!showcaseService.hasAcceptedTerms) {
+        _termsDialogShown = true;
+        _showTermsDialog();
+      }
+    });
+  }
+
+  /// Показать диалог принятия правил
+  Future<void> _showTermsDialog() async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _TermsAcceptanceDialog(),
+    );
+
+    // После того как пользователь принял правила, запускаем showcase
+    if (mounted && _showcaseContext != null) {
+      // Сбрасываем флаг чтобы showcase мог запуститься
+      _showcaseStarted = false;
+      // Даем время на анимацию закрытия диалога
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (mounted) {
+        _startShowcaseIfNeeded(_showcaseContext!);
+      }
+    }
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
     // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
+
+    // Проверяем что пользователь уже принял правила
+    final showcaseService = ref.read(showcaseServiceProvider);
+    if (!showcaseService.hasAcceptedTerms) return;
+
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.home));
     if (!showcaseState.shouldShow) return;
-    
+
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
+
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyQuickCards,
         _showcaseKeyDigest,
@@ -156,15 +201,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+              // Увеличиваем область кэширования для плавного скролла
+              cacheExtent: 500,
               children: [
               _GreetingBlock(fullName: clientName),
               const SizedBox(height: 14),
               Showcase(
                 key: _showcaseKeyQuickCards,
-                title: 'Быстрый доступ',
-                description: 'Здесь отображается количество ваших треков, сборок и счетов. Нажмите на карточку для перехода к списку.',
+                title: '📊 Быстрый доступ к данным',
+                description: 'Три карточки показывают количество:\n• Треки - ваши посылки в пути\n• Сборки - готовые к отправке\n• Счета - документы на оплату\n\nНажмите на любую карточку для перехода к подробному списку.',
                 targetBorderRadius: BorderRadius.circular(18),
-                targetPadding: const EdgeInsets.all(8),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
                 tooltipBackgroundColor: Colors.white,
                 textColor: Colors.black87,
@@ -223,10 +270,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
         const SizedBox(height: 10),
         Showcase(
           key: _showcaseKeyDigest,
-          title: 'Дайджест треков',
-          description: 'Последние обновления по вашим трекам. Нажмите "Смотреть все" для полного списка.',
+          title: '📦 Дайджест треков',
+          description: 'Лента последних обновлений по вашим посылкам:\n• Статус трека (в пути, на складе, получен)\n• Дата последнего обновления\n• Информация о товаре\n\nНажмите "Смотреть все" справа для перехода к полному списку треков с фильтрами и поиском.',
           targetBorderRadius: BorderRadius.circular(20),
-          targetPadding: const EdgeInsets.all(8),
+          targetPadding: getShowcaseTargetPadding(),
           tooltipPosition: TooltipPosition.bottom,
           tooltipBackgroundColor: Colors.white,
           textColor: Colors.black87,
@@ -255,10 +302,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
         const SizedBox(height: 12),
         Showcase(
           key: _showcaseKeyPhotos,
-          title: 'Фотоотчёты',
-          description: 'Последние фотографии ваших посылок. Здесь вы можете увидеть состояние грузов на складе.',
+          title: '📸 Фотоотчёты товаров',
+          description: 'Галерея фотографий ваших посылок на складе:\n• Фото упаковки\n• Фото весов с весом груза\n• Состояние товара\n\nНажмите на фото для просмотра в полном размере. Кнопка "Смотреть все" откроет полную галерею с возможностью скачивания.',
           targetBorderRadius: BorderRadius.circular(20),
-          targetPadding: const EdgeInsets.all(8),
+          targetPadding: getShowcaseTargetPadding(),
           tooltipPosition: TooltipPosition.bottom,
           tooltipBackgroundColor: Colors.white,
           textColor: Colors.black87,
@@ -577,16 +624,19 @@ class _TracksDigest extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (var i = 0; i < top.length; i++) ...[
-                  ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    title: Text(top[i].code, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text(df.format(top[i].date)),
-                    trailing: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: StatusPill(
-                        text: top[i].status,
-                        color: _trackStatusColor(context, top[i].status, top[i].statusColor),
+                  // RepaintBoundary предотвращает лишние перерисовки
+                  RepaintBoundary(
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      title: Text(top[i].code, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(df.format(top[i].date)),
+                      trailing: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: StatusPill(
+                          text: top[i].status,
+                          color: _trackStatusColor(context, top[i].status, top[i].statusColor),
+                        ),
                       ),
                     ),
                   ),
@@ -754,53 +804,61 @@ class _PhotoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onOpen,
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (item.isVideo)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.45),
-                            Colors.black.withValues(alpha: 0.15),
-                          ],
+    // RepaintBoundary предотвращает перерисовку при скролле
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onOpen,
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (item.isVideo)
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.45),
+                              Colors.black.withValues(alpha: 0.15),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      CachedNetworkImage(
+                        imageUrl: ApiConfig.getMediaUrl(item.url),
+                        fit: BoxFit.cover,
+                        // Оптимизация: уменьшаем размер загружаемого изображения
+                        maxHeightDiskCache: 400,
+                        maxWidthDiskCache: 400,
+                        memCacheHeight: 200,
+                        memCacheWidth: 200,
+                        placeholder: (_, __) => Container(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          child: const Center(child: Icon(Icons.broken_image_outlined)),
                         ),
                       ),
-                    )
-                  else
-                    CachedNetworkImage(
-                      imageUrl: item.url,
-                      fit: BoxFit.cover,
-                      placeholder: (_, _) => Container(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (item.isVideo)
+                      const Center(
+                        child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 34),
                       ),
-                      errorWidget: (_, _, _) => Container(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        child: const Center(child: Icon(Icons.broken_image_outlined)),
-                      ),
-                    ),
-                  if (item.isVideo)
-                    const Center(
-                      child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 34),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -903,47 +961,50 @@ class _InvoicesDigest extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (var i = 0; i < top.length; i++) ...[
-                  Builder(
-                    builder: (context) {
-                      final invoice = top[i];
-                      final deliveryUsd = _calculateDeliveryCostUsd(invoice);
-                      final totalRub = _calculateTotalRub(invoice);
-                      
-                      return ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        title: Text(invoice.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(df.format(invoice.sendDate)),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                if (deliveryUsd > 0) ...[
+                  // RepaintBoundary предотвращает лишние перерисовки
+                  RepaintBoundary(
+                    child: Builder(
+                      builder: (context) {
+                        final invoice = top[i];
+                        final deliveryUsd = _calculateDeliveryCostUsd(invoice);
+                        final totalRub = _calculateTotalRub(invoice);
+
+                        return ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          title: Text(invoice.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(df.format(invoice.sendDate)),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  if (deliveryUsd > 0) ...[
+                                    Text(
+                                      '\$${money.format(deliveryUsd.round())}',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF2563EB)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
                                   Text(
-                                    '\$${money.format(deliveryUsd.round())}',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF2563EB)),
+                                    '${money.format(totalRub.round())} ₽',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                                   ),
-                                  const SizedBox(width: 8),
                                 ],
-                                Text(
-                                  '${money.format(totalRub.round())} ₽',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: StatusPill(
-                            text: invoice.statusName ?? invoice.status,
-                            color: _invoiceStatusColor(context, invoice.statusName ?? invoice.status, invoice.statusColor),
+                              ),
+                            ],
                           ),
-                        ),
-                      );
-                    },
+                          trailing: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: StatusPill(
+                              text: invoice.statusName ?? invoice.status,
+                              color: _invoiceStatusColor(context, invoice.statusName ?? invoice.status, invoice.statusColor),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                   if (i != top.length - 1)
                     const Divider(
@@ -974,5 +1035,243 @@ class _InvoicesDigest extends StatelessWidget {
     if (s.contains('требует')) return const Color(0xFFB45309);
     if (s.contains('новый')) return const Color(0xFF2563EB);
     return Theme.of(context).colorScheme.primary;
+  }
+}
+
+/// Диалог принятия правил оказания услуг при первом входе
+class _TermsAcceptanceDialog extends ConsumerWidget {
+  const _TermsAcceptanceDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Получаем название компании из профиля клиента (agent.name)
+    final profile = ref.watch(clientProfileProvider);
+    final companyName = profile.asData?.value?.agent?.name ?? '2A Logistic';
+
+    return PopScope(
+      canPop: false, // Запрещаем закрытие диалога свайпом или кнопкой "назад"
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero, // Убираем отступы по бокам
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24), // Добавляем margin вместо insetPadding
+          constraints: const BoxConstraints(maxWidth: 500),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Заголовок с иконкой
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: context.brandPrimary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Icon(
+                        Icons.description_rounded,
+                        size: 48,
+                        color: context.brandPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Добро пожаловать!',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Контент
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Прежде чем продолжить',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Для использования приложения необходимо ознакомиться и принять правила оказания услуг компании $companyName.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade700,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Блок с основными пунктами
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInfoItem(
+                            icon: Icons.check_circle_outline_rounded,
+                            text: 'Условия оказания услуг',
+                            color: context.brandPrimary,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInfoItem(
+                            icon: Icons.verified_user_outlined,
+                            text: 'Права и обязанности клиентов',
+                            color: context.brandPrimary,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInfoItem(
+                            icon: Icons.inventory_2_outlined,
+                            text: 'Правила упаковки и маркировки',
+                            color: context.brandPrimary,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInfoItem(
+                            icon: Icons.policy_outlined,
+                            text: 'Порядок работы и процедуры',
+                            color: context.brandPrimary,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Кнопка "Ознакомиться с правилами"
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        // Открываем правила поверх диалога
+                        await context.push('/rules');
+                        // После возврата пользователь снова видит диалог
+                      },
+                      icon: const Icon(Icons.article_outlined, size: 20),
+                      label: const Text('Ознакомиться с правилами'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: context.brandPrimary,
+                        side: BorderSide(color: context.brandPrimary, width: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Кнопка "Соглашаюсь"
+                    FilledButton.icon(
+                      onPressed: () async {
+                        // Отмечаем что пользователь принял правила
+                        final service = ref.read(showcaseServiceProvider);
+                        await service.acceptTerms();
+
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(Icons.done_rounded, size: 22),
+                      label: const Text(
+                        'Соглашаюсь',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: context.brandPrimary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 18,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Мелкий текст
+                    Text(
+                      'Нажимая кнопку "Соглашаюсь", вы подтверждаете, что ознакомились с правилами оказания услуг и обязуетесь их соблюдать.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 20,
+          color: color,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

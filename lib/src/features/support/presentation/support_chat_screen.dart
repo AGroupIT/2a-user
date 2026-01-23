@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,7 +26,7 @@ import '../../invoices/domain/invoice_item.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import '../data/chat_provider.dart';
-import '../data/chat_models.dart';
+import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import '../../../core/utils/locale_text.dart';
 
 class SupportChatScreen extends ConsumerStatefulWidget {
@@ -49,6 +50,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   // Showcase keys
   final _showcaseKeyMessages = GlobalKey();
+  final _showcaseKeyQuickActions = GlobalKey();
+  final _showcaseKeyAttachments = GlobalKey();
   final _showcaseKeyInput = GlobalKey();
 
   // Флаг чтобы showcase не запускался повторно при rebuild
@@ -105,6 +108,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyMessages,
+        _showcaseKeyQuickActions,
+        _showcaseKeyAttachments,
         _showcaseKeyInput,
       ]);
     });
@@ -306,7 +311,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при съёмке: $e', zh: '拍照错误：$e'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Ошибка при съёмке: $e', zh: '拍照错误：$e'));
+      }
     }
   }
   
@@ -325,35 +332,23 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         debugPrint('📷 [Gallery] File name: ${file.name}');
-        debugPrint('📷 [Gallery] File path: ${file.path}');
         debugPrint('📷 [Gallery] File size: ${file.size}');
-        
-        if (file.path == null) {
-          debugPrint('📷 [Gallery] ERROR: file.path is null');
-          _showErrorSnackbar(tr(context, ru: 'Не удалось получить путь к файлу', zh: '无法获取文件路径'));
+
+        // Для веб-версии используем bytes, для мобильных - path
+        final bytes = kIsWeb
+            ? file.bytes
+            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+
+        if (bytes == null || bytes.isEmpty) {
+          debugPrint('📷 [Gallery] ERROR: could not read file bytes');
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+          }
           return;
         }
-        
-        // Читаем файл напрямую
-        final ioFile = File(file.path!);
-        final exists = await ioFile.exists();
-        debugPrint('📷 [Gallery] File exists: $exists');
-        
-        if (!exists) {
-          debugPrint('📷 [Gallery] ERROR: file does not exist');
-          _showErrorSnackbar(tr(context, ru: 'Файл не найден', zh: '未找到文件'));
-          return;
-        }
-        
-        final bytes = await ioFile.readAsBytes();
+
         debugPrint('📷 [Gallery] Bytes read: ${bytes.length}');
-        
-        if (bytes.isEmpty) {
-          debugPrint('📷 [Gallery] ERROR: bytes are empty');
-          _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать изображение', zh: '无法读取图片'));
-          return;
-        }
-        
+
         // Определяем имя файла
         String fileName = file.name;
         if (fileName.isEmpty) {
@@ -367,10 +362,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     } catch (e, stack) {
       debugPrint('📷 [Gallery] ERROR: $e');
       debugPrint('📷 [Gallery] Stack: $stack');
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе изображения: $e', zh: '选择图片错误：$e'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе изображения: $e', zh: '选择图片错误：$e'));
+      }
     }
   }
-  
+
   /// Выбрать PDF файл
   Future<void> _pickPdfFile() async {
     try {
@@ -378,38 +375,40 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         type: FileType.custom,
         allowedExtensions: ['pdf'],
       );
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        // Проверка размера (10MB)
-        final size = await file.length();
-        if (size > 10 * 1024 * 1024) {
-          _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大 10 MB'));
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+
+        // Для веб-версии используем bytes, для мобильных - path
+        final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+
+        if (bytes == null || bytes.isEmpty) {
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+          }
           return;
         }
-        await _uploadFile(file);
+
+        // Проверка размера (10MB)
+        if (bytes.length > 10 * 1024 * 1024) {
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大 10 MB'));
+          }
+          return;
+        }
+
+        final fileName = file.name.isNotEmpty
+            ? file.name
+            : 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+        await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе файла: $e', zh: '选择文件错误：$e'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе файла: $e', zh: '选择文件错误：$e'));
+      }
     }
   }
-  
-  /// Загрузить файл на сервер
-  Future<void> _uploadFile(File file) async {
-    final chatState = ref.read(chatControllerProvider);
-    final conversationId = chatState.conversation?.id;
-    
-    if (conversationId == null) {
-      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
-      return;
-    }
-    
-    final result = await ref.read(chatControllerProvider.notifier).uploadFile(file);
-    
-    if (result == null) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'));
-    }
-  }
-  
+
   /// Загрузить файл из bytes на сервер (для iOS)
   Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
     debugPrint('📤 [Upload] _uploadFileFromBytes called with ${bytes.length} bytes, fileName: $fileName');
@@ -421,21 +420,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     
     if (conversationId == null) {
       debugPrint('📤 [Upload] ERROR: conversationId is null!');
-      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+      }
       return;
     }
-    
+
     if (bytes.isEmpty) {
       debugPrint('📤 [Upload] ERROR: bytes are empty!');
-      _showErrorSnackbar(tr(context, ru: 'Файл пустой', zh: '文件为空'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Файл пустой', zh: '文件为空'));
+      }
       return;
     }
-    
+
     debugPrint('📤 [Upload] Calling controller.uploadFileFromBytes...');
     final result = await ref.read(chatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName);
-    
+
     debugPrint('📤 [Upload] Result: ${result != null ? "success" : "null/error"}');
-    if (result == null) {
+    if (result == null && mounted) {
       _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'));
     }
   }
@@ -640,20 +643,30 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               const Positioned.fill(child: AppBackground()),
 
         SafeArea(
+          top: false, // Контент скроллится под топ-меню
           bottom: false,
           child: Column(
             children: [
-              // Отступ сверху для навигации
-              const SizedBox(height: 60),
-
               // Список сообщений
               Expanded(
                 child: Showcase(
                   key: _showcaseKeyMessages,
-                  title: tr(context, ru: 'Чат с поддержкой', zh: '客服聊天'),
-                  description: tr(context, ru: 'Здесь отображается история переписки с поддержкой. Вы можете задать любой вопрос.', zh: '这里显示与客服的聊天记录。您可以提出任何问题。'),
-                  targetPadding: const EdgeInsets.all(8),
+                  title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
+                  description: tr(context, ru: 'Здесь отображается вся история общения с поддержкой:\n• Ваши сообщения справа (голубой фон)\n• Ответы поддержки слева (белый фон)\n• Время отправки каждого сообщения\n• Статус доставки (✓ или ✓✓)\n\nВы можете:\n• Скопировать текст долгим нажатием\n• Открыть вложения (изображения, файлы)\n• Прокручивать вниз к новым сообщениям', zh: '这里显示与客服的所有聊天记录：\n• 您的消息在右侧（蓝色背景）\n• 客服回复在左侧（白色背景）\n• 每条消息的发送时间\n• 发送状态（✓ 或 ✓✓）\n\n您可以：\n• 长按复制文本\n• 打开附件（图片、文件）\n• 向下滚动查看新消息'),
+                  targetPadding: getShowcaseTargetPadding(),
                   tooltipPosition: TooltipPosition.bottom,
+                  tooltipBackgroundColor: Colors.white,
+                  textColor: Colors.black87,
+                  titleTextStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                  descTextStyle: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
+                  ),
                   onTargetClick: () {
                     if (mounted && _showcaseContext != null) {
                       ShowCaseWidget.of(_showcaseContext!).next();
@@ -665,15 +678,53 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               ),
 
               // Панель быстрых действий
-              if (_showQuickActions) _buildQuickActionsBar(),
+              if (_showQuickActions)
+                Showcase(
+                  key: _showcaseKeyQuickActions,
+                  title: tr(context, ru: '⚡ Быстрые действия', zh: '⚡ 快速操作'),
+                  description: tr(context, ru: 'Кнопки для быстрой отправки информации:\n• Отправить трек - выберите трек из списка, чтобы поделиться информацией с поддержкой\n• Отправить счёт - выберите счёт из списка для обсуждения оплаты\n\nПосле выбора трека или счёта, вся информация автоматически отправится в чат.', zh: '快速发送信息的按钮：\n• 发送运单 - 从列表中选择运单与客服分享信息\n• 发送发票 - 从列表中选择发票讨论付款\n\n选择运单或发票后，所有信息将自动发送到聊天中。'),
+                  targetPadding: getShowcaseTargetPadding(),
+                  tooltipPosition: TooltipPosition.top,
+                  tooltipBackgroundColor: Colors.white,
+                  textColor: Colors.black87,
+                  titleTextStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                  descTextStyle: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
+                  ),
+                  onTargetClick: () {
+                    if (mounted && _showcaseContext != null) {
+                      ShowCaseWidget.of(_showcaseContext!).next();
+                    }
+                  },
+                  disposeOnTap: false,
+                  child: _buildQuickActionsBar(),
+                ),
 
               // Поле ввода
               Showcase(
                 key: _showcaseKeyInput,
-                title: tr(context, ru: 'Поле ввода', zh: '输入框'),
-                description: tr(context, ru: 'Напишите сообщение и нажмите кнопку отправки. Можете прикрепить информацию о треке или счёте.', zh: '输入消息并点击发送按钮。可以附加运单或发票信息。'),
-                targetPadding: const EdgeInsets.all(8),
+                title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
+                description: tr(context, ru: 'Поле для ввода и отправки сообщений:\n• Введите текст вашего вопроса или сообщения\n• Нажмите Enter или кнопку ➤ для отправки\n• Сообщение отправится со всеми прикреплёнными файлами\n• Индикатор загрузки покажет процесс отправки\n\nПоддержка отвечает обычно в течение 5-15 минут в рабочее время.', zh: '输入和发送消息的字段：\n• 输入您的问题或消息文本\n• 按Enter或➤按钮发送\n• 消息将与所有附加文件一起发送\n• 加载指示器将显示发送过程\n\n客服通常在工作时间5-15分钟内回复。'),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.top,
+                tooltipBackgroundColor: Colors.white,
+                textColor: Colors.black87,
+                titleTextStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+                descTextStyle: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
                 onBarrierClick: () {
                   if (mounted) _onShowcaseComplete();
                 },
@@ -945,9 +996,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
-        final fullUrl = attachment.url.startsWith('http') 
-            ? attachment.url 
-            : '${ApiConfig.mediaBaseUrl}${attachment.url}';
+        final fullUrl = ApiConfig.getMediaUrl(attachment.url);
         
         if (isImage) {
           return GestureDetector(
@@ -1085,24 +1134,26 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   Future<void> _downloadFile(String url, String fileName) async {
     try {
       // Показываем индикатор загрузки
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Text(tr(context, ru: 'Загрузка файла...', zh: '正在下载文件...')),
-            ],
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Text(tr(context, ru: 'Загрузка файла...', zh: '正在下载文件...')),
+              ],
+            ),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
           ),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      
+        );
+      }
+
       // Получаем директорию для сохранения
       final directory = await getApplicationDocumentsDirectory();
       final filePath = '${directory.path}/$fileName';
@@ -1250,24 +1301,49 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             Row(
               children: [
                 // Кнопка прикрепления файла
-                GestureDetector(
-                  onTap: _showAttachmentPicker,
-                  onLongPress: _showQuickSendSheet,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                Showcase(
+                  key: _showcaseKeyAttachments,
+                  title: tr(context, ru: '📎 Прикрепить файлы', zh: '📎 附加文件'),
+                  description: tr(context, ru: 'Кнопка для прикрепления файлов к сообщению:\n• Нажмите для выбора типа вложения:\n  - Фото из галереи\n  - Снимок с камеры\n  - Файл (PDF, документы)\n• Можно прикрепить несколько файлов\n• Поддерживаются изображения до 10 МБ\n\nДолгое нажатие открывает быстрые действия (отправка трека/счёта).', zh: '附加文件到消息的按钮：\n• 点击选择附件类型：\n  - 相册照片\n  - 相机拍照\n  - 文件（PDF、文档）\n• 可附加多个文件\n• 支持最大10MB的图片\n\n长按打开快速操作（发送运单/发票）。'),
+                  targetPadding: getShowcaseTargetPadding(),
+                  tooltipPosition: TooltipPosition.top,
+                  tooltipBackgroundColor: Colors.white,
+                  textColor: Colors.black87,
+                  titleTextStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                  descTextStyle: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
+                  ),
+                  onTargetClick: () {
+                    if (mounted && _showcaseContext != null) {
+                      ShowCaseWidget.of(_showcaseContext!).next();
+                    }
+                  },
+                  disposeOnTap: false,
+                  child: GestureDetector(
+                    onTap: _showAttachmentPicker,
+                    onLongPress: _showQuickSendSheet,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [context.brandPrimary, context.brandSecondary],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.attach_file_rounded,
-                      color: Colors.white,
-                      size: 22,
+                      child: const Icon(
+                        Icons.attach_file_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),

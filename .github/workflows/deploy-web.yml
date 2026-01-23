@@ -1,0 +1,85 @@
+name: Deploy Web
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      sentry_dsn:
+        description: 'Sentry DSN for error tracking'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    name: Build and Deploy Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build web
+        run: |
+          SENTRY_DSN="${{ secrets.SENTRY_DSN || inputs.sentry_dsn }}"
+          if [ -n "$SENTRY_DSN" ]; then
+            flutter build web --release --dart-define=SENTRY_DSN="$SENTRY_DSN"
+          else
+            flutter build web --release
+          fi
+
+      - name: Copy firebase-messaging-sw.js
+        run: |
+          if [ -f web/firebase-messaging-sw.js ]; then
+            cp web/firebase-messaging-sw.js build/web/
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+          retention-days: 7
+
+      - name: Deploy to FTP
+        if: ${{ secrets.FTP_HOST != '' }}
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: build/web/
+          server-dir: ${{ secrets.FTP_SERVER_DIR || '/home/administrator_cabinetapp/' }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+      - name: Deployment summary
+        run: |
+          echo "### Deployment Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build:** Successful ✓" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ secrets.FTP_HOST }}" ]; then
+            echo "- **FTP Deploy:** Completed ✓" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **FTP Deploy:** Skipped (no credentials)" >> $GITHUB_STEP_SUMMARY
+          fi

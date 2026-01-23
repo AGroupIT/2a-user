@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/utils/error_utils.dart';
 import '../domain/add_tracks_result.dart';
 
 abstract class AddTracksRepository {
@@ -59,6 +60,7 @@ class RealAddTracksRepository implements AddTracksRepository {
     } on DioException catch (e) {
       debugPrint('Error adding tracks: $e');
 
+      // Специфичные ошибки для добавления треков
       if (e.response?.statusCode == 401) {
         throw Exception('Необходимо авторизоваться');
       }
@@ -69,8 +71,19 @@ class RealAddTracksRepository implements AddTracksRepository {
         throw Exception('Код клиента не найден');
       }
 
-      final errorMessage = e.response?.data?['error'] as String?;
-      throw Exception(errorMessage ?? 'Ошибка сети при добавлении треков');
+      // Проверяем кастомное сообщение от сервера
+      final serverErrorMessage = e.response?.data?['error'] as String?;
+      if (serverErrorMessage != null && serverErrorMessage.isNotEmpty) {
+        throw Exception(serverErrorMessage);
+      }
+
+      // Используем ErrorUtils для остальных ошибок
+      final errorInfo = ErrorUtils.getErrorInfo(e);
+      throw Exception(errorInfo.message);
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error adding tracks: $e');
+      debugPrint('Stack trace: $stackTrace');
+      throw Exception('Произошла непредвиденная ошибка. Попробуйте ещё раз');
     }
   }
 }

@@ -57,11 +57,16 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
   }
 
   void _startPolling() {
+    // Первый запрос сразу при открытии
+    debugPrint('🔔 Initial notifications load...');
+    ref.read(notificationsControllerProvider.notifier).refresh();
+
+    // Затем каждые 30 секунд
     _pollingTimer = Timer.periodic(_kPollingInterval, (_) {
       if (!mounted) return;
       debugPrint('🔔 Polling notifications...');
       ref
-          .read(notificationsControllerProvider(widget.clientCode).notifier)
+          .read(notificationsControllerProvider.notifier)
           .refresh();
     });
   }
@@ -70,7 +75,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final itemsAsync = ref.watch(
-      notificationsControllerProvider(widget.clientCode),
+      notificationsControllerProvider,
     );
     final selectedFilter = ref.watch(_selectedFilterProvider);
 
@@ -93,11 +98,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
                 TextButton(
                   onPressed: itemsAsync.value?.any((n) => !n.isRead) == true
                       ? () => ref
-                            .read(
-                              notificationsControllerProvider(
-                                widget.clientCode,
-                              ).notifier,
-                            )
+                            .read(notificationsControllerProvider.notifier)
                             .markAllRead()
                       : null,
                   child: const Text('Прочитать всё'),
@@ -157,11 +158,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
                       const SizedBox(height: 12),
                       FilledButton(
                         onPressed: () => ref
-                            .read(
-                              notificationsControllerProvider(
-                                widget.clientCode,
-                              ).notifier,
-                            )
+                            .read(notificationsControllerProvider.notifier)
                             .refresh(),
                         child: const Text('Повторить'),
                       ),
@@ -188,49 +185,76 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
         : items;
 
     if (filteredItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              selectedFilter?.icon ?? Icons.notifications_off_outlined,
-              size: 64,
-              color: Colors.grey.shade400,
+      return RefreshIndicator(
+        onRefresh: () async {
+          debugPrint('🔔 Pull-to-refresh triggered');
+          await ref
+              .read(notificationsControllerProvider.notifier)
+              .refresh();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.5,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selectedFilter?.icon ?? Icons.notifications_off_outlined,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    selectedFilter != null
+                        ? 'Нет уведомлений типа "${selectedFilter.displayName}"'
+                        : 'Пока нет уведомлений',
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Потяните вниз для обновления',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              selectedFilter != null
-                  ? 'Нет уведомлений типа "${selectedFilter.displayName}"'
-                  : 'Пока нет уведомлений',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return ListView.separated(
-      controller: widget.controller,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      physics: const BouncingScrollPhysics(),
-      itemCount: filteredItems.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final item = filteredItems[i];
-        return _NotificationTile(
-          item: item,
-          onTap: () async {
-            await ref
-                .read(
-                  notificationsControllerProvider(widget.clientCode).notifier,
-                )
-                .markRead(item.id);
-            final route = item.route;
-            if (route == null) return;
-            widget.onNavigate(route);
-          },
-        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        debugPrint('🔔 Pull-to-refresh triggered');
+        await ref
+            .read(notificationsControllerProvider.notifier)
+            .refresh();
       },
+      child: ListView.separated(
+        controller: widget.controller,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: filteredItems.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final item = filteredItems[i];
+          return _NotificationTile(
+            item: item,
+            onTap: () async {
+              await ref
+                  .read(
+                    notificationsControllerProvider.notifier,
+                  )
+                  .markRead(item.id);
+              final route = item.route;
+              if (route == null) return;
+              widget.onNavigate(route);
+            },
+          );
+        },
+      ),
     );
   }
 }

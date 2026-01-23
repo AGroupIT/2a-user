@@ -8,6 +8,7 @@ import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/rules_provider.dart';
 import '../domain/rule_item.dart';
@@ -22,7 +23,8 @@ class RulesScreen extends ConsumerStatefulWidget {
 class _RulesScreenState extends ConsumerState<RulesScreen>
     with AutoRefreshMixin {
   // Showcase keys
-  final _showcaseKeyRulesList = GlobalKey();
+  final _showcaseKeyHeader = GlobalKey();
+  final _showcaseKeyRuleCard = GlobalKey();
 
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
@@ -49,7 +51,10 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
 
       ShowCaseWidget.of(
         showcaseContext,
-      ).startShowCase([_showcaseKeyRulesList]);
+      ).startShowCase([
+        _showcaseKeyHeader,
+        _showcaseKeyRuleCard,
+      ]);
     });
   }
 
@@ -77,11 +82,14 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
 
           return asyncItems.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: tr(context, ru: 'Не удалось загрузить правила', zh: '无法加载规则'),
-              message: e.toString(),
-            ),
+            error: (e, _) {
+              final errorInfo = ErrorUtils.getErrorInfo(e);
+              return EmptyState(
+                icon: errorInfo.icon,
+                title: errorInfo.title,
+                message: errorInfo.message,
+              );
+            },
             data: (items) {
               if (items.isEmpty) {
                 return EmptyState(
@@ -106,10 +114,39 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                       if (i == 0) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 18),
-                          child: Text(
-                            tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w900),
+                          child: Showcase(
+                            key: _showcaseKeyHeader,
+                            title: tr(context, ru: '📋 Правила и условия', zh: '📋 规则和条款'),
+                            description: tr(
+                              context,
+                              ru: 'Важные правила работы с компанией:\n• Условия оказания услуг\n• Права и обязанности клиентов\n• Порядок работы и процедуры\n• Правила упаковки и маркировки\n• Потяните вниз для обновления ⬇️',
+                              zh: '与公司合作的重要规则：\n• 服务条款\n• 客户的权利和义务\n• 工作流程和程序\n• 包装和标记规则\n• 下拉刷新 ⬇️',
+                            ),
+                            targetPadding: getShowcaseTargetPadding(),
+                            tooltipPosition: TooltipPosition.bottom,
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            onTargetClick: () {
+                              if (mounted) {
+                                ShowCaseWidget.of(showcaseContext).next();
+                              }
+                            },
+                            disposeOnTap: false,
+                            child: Text(
+                              tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            ),
                           ),
                         );
                       }
@@ -121,19 +158,29 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                             bottom: i == items.length ? 0 : 12,
                           ),
                           child: Showcase(
-                            key: _showcaseKeyRulesList,
-                            title: tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
-                            description: tr(context, 
-                                ru: 'Список правил и условий работы. Нажмите на карточку для просмотра полного текста правила.',
-                                zh: '规则和条款列表。点击卡片查看完整规则内容。'),
-                            targetPadding: const EdgeInsets.all(8),
+                            key: _showcaseKeyRuleCard,
+                            title: tr(context, ru: '📄 Карточка правила', zh: '📄 规则卡片'),
+                            description: tr(
+                              context,
+                              ru: 'Каждое правило содержит:\n• 🔢 Номер правила в порядке важности\n• 📝 Название и краткое описание\n• 👆 Нажмите для чтения полного текста\n• Полная версия с форматированием и изображениями\n• Важно ознакомиться со всеми правилами',
+                              zh: '每条规则包含：\n• 🔢 按重要性排序的规则编号\n• 📝 名称和简短描述\n• 👆 点击阅读完整文本\n• 带格式和图片的完整版本\n• 熟悉所有规则很重要',
+                            ),
+                            targetPadding: getShowcaseTargetPadding(),
                             tooltipPosition: TooltipPosition.bottom,
-                            onBarrierClick: () {
-                              if (mounted) _onShowcaseComplete();
-                            },
-                            onToolTipClick: () {
-                              if (mounted) _onShowcaseComplete();
-                            },
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            onBarrierClick: _onShowcaseComplete,
+                            onToolTipClick: _onShowcaseComplete,
                             child: _RuleCard(item: item),
                           ),
                         );

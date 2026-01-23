@@ -5,6 +5,14 @@ import 'package:showcaseview/showcaseview.dart';
 
 import '../persistence/shared_preferences_provider.dart';
 
+/// Helper для правильного позиционирования showcase
+/// Возвращает стандартные отступы для всех платформ
+EdgeInsets getShowcaseTargetPadding({EdgeInsets base = const EdgeInsets.all(8)}) {
+  // Используем стандартные отступы без платформо-специфичной логики
+  // Проблема смещения решается через другие параметры showcase
+  return base;
+}
+
 /// Обёртка для экранов, использующих Showcase
 /// Каждый экран с Showcase должен быть обёрнут в этот виджет
 class ShowcaseWrapper extends StatelessWidget {
@@ -44,6 +52,7 @@ enum ShowcasePage {
   photos,
   addTracks,
   support,
+  paymentChat,
   search,
   news,
   rules,
@@ -55,9 +64,10 @@ enum ShowcasePage {
 class ShowcaseService {
   static const String _prefix = 'showcase_seen_';
   static const String _firstLoginKey = 'showcase_first_login_done';
-  
+  static const String _termsAcceptedKey = 'terms_accepted';
+
   final SharedPreferences _prefs;
-  
+
   ShowcaseService(this._prefs);
   
   /// Проверить, нужно ли показывать showcase для страницы
@@ -77,13 +87,22 @@ class ShowcaseService {
   Future<void> markFirstLoginDone() async {
     await _prefs.setBool(_firstLoginKey, true);
   }
-  
+
+  /// Проверить, принял ли пользователь правила оказания услуг
+  bool get hasAcceptedTerms => _prefs.getBool(_termsAcceptedKey) ?? false;
+
+  /// Отметить что пользователь принял правила
+  Future<void> acceptTerms() async {
+    await _prefs.setBool(_termsAcceptedKey, true);
+  }
+
   /// Сбросить все просмотренные страницы (для тестирования)
   Future<void> resetAllShowcases() async {
     for (final page in ShowcasePage.values) {
       await _prefs.remove('$_prefix${page.name}');
     }
     await _prefs.remove(_firstLoginKey);
+    await _prefs.remove(_termsAcceptedKey);
   }
   
   /// Сбросить showcase для конкретной страницы

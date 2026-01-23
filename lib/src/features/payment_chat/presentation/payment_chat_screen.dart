@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,14 +17,16 @@ import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/locale_text.dart';
+import 'package:showcaseview/showcaseview.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
-import '../../support/data/chat_models.dart';
+import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import '../data/payment_chat_provider.dart';
 
 class PaymentChatScreen extends ConsumerStatefulWidget {
@@ -54,6 +57,17 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   final bool _showQuickActions = false;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   bool _isInfoBannerExpanded = false;
+
+  // Showcase keys
+  final _showcaseKeyInfoBanner = GlobalKey();
+  final _showcaseKeyMessages = GlobalKey();
+  final _showcaseKeyInput = GlobalKey();
+
+  // Флаг чтобы showcase не запускался повторно при rebuild
+  bool _showcaseStarted = false;
+
+  // Хранение контекста Showcase для вызова next()
+  BuildContext? _showcaseContext;
 
   @override
   void initState() {
@@ -93,6 +107,30 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ChatType.payment,
       conversationId: conversationId,
     );
+  }
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
+    if (_showcaseStarted) return;
+
+    final showcaseState = ref.read(showcaseProvider(ShowcasePage.paymentChat));
+    if (!showcaseState.shouldShow) return;
+
+    _showcaseStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      ShowCaseWidget.of(showcaseContext).startShowCase([
+        _showcaseKeyInfoBanner,
+        _showcaseKeyMessages,
+        _showcaseKeyInput,
+      ]);
+    });
+  }
+
+  void _onShowcaseComplete() {
+    ref.read(showcaseNotifierProvider(ShowcasePage.paymentChat)).markAsSeen();
   }
 
   void _startPolling() {
@@ -292,7 +330,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при съёмке', zh: '拍照时出错') + ': $e');
+      if (mounted) {
+        _showErrorSnackbar('${tr(context, ru: 'Ошибка при съёмке', zh: '拍照时出错')}: $e');
+      }
     }
   }
   
@@ -309,36 +349,37 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        debugPrint('📷 [Gallery] File: ${file.name}, path: ${file.path}, size: ${file.size}');
-        
-        if (file.path != null) {
-          final ioFile = File(file.path!);
-          final exists = await ioFile.exists();
-          debugPrint('📷 [Gallery] File exists: $exists');
-          
-          if (exists) {
-            final bytes = await ioFile.readAsBytes();
-            debugPrint('📷 [Gallery] Read ${bytes.length} bytes');
-            
-            if (bytes.isEmpty) {
-              _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать изображение', zh: '无法读取图片'));
-              return;
-            }
-            
-            final fileName = file.name.isNotEmpty 
-                ? file.name 
-                : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-            
-            debugPrint('📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...');
-            await _uploadFileFromBytes(bytes, fileName);
-            debugPrint('📷 [Gallery] Upload completed');
+        debugPrint('📷 [Gallery] File: ${file.name}, size: ${file.size}');
+
+        // Для веб-версии используем bytes, для мобильных - path
+        final bytes = kIsWeb
+            ? file.bytes
+            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+
+        if (bytes == null || bytes.isEmpty) {
+          debugPrint('📷 [Gallery] ERROR: could not read file bytes');
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
           }
+          return;
         }
+
+        debugPrint('📷 [Gallery] Read ${bytes.length} bytes');
+
+        final fileName = file.name.isNotEmpty
+            ? file.name
+            : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        debugPrint('📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...');
+        await _uploadFileFromBytes(bytes, fileName);
+        debugPrint('📷 [Gallery] Upload completed');
       }
     } catch (e, stack) {
       debugPrint('📷 [Gallery] ERROR: $e');
       debugPrint('📷 [Gallery] Stack: $stack');
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе изображения', zh: '选择图片时出错') + ': $e');
+      if (mounted) {
+        _showErrorSnackbar('${tr(context, ru: 'Ошибка при выборе изображения', zh: '选择图片时出错')}: $e');
+      }
     }
   }
   
@@ -349,56 +390,64 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         type: FileType.custom,
         allowedExtensions: ['pdf'],
       );
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        // Проверка размера (10MB)
-        final size = await file.length();
-        if (size > 10 * 1024 * 1024) {
-          _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大10 MB'));
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+
+        // Для веб-версии используем bytes, для мобильных - path
+        final bytes = kIsWeb
+            ? file.bytes
+            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+
+        if (bytes == null || bytes.isEmpty) {
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+          }
           return;
         }
-        await _uploadFile(file);
+
+        // Проверка размера (10MB)
+        if (bytes.length > 10 * 1024 * 1024) {
+          if (mounted) {
+            _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大10 MB'));
+          }
+          return;
+        }
+
+        final fileName = file.name.isNotEmpty
+            ? file.name
+            : 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+        await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе файла', zh: '选择文件时出错') + ': $e');
+      if (mounted) {
+        _showErrorSnackbar('${tr(context, ru: 'Ошибка при выборе файла', zh: '选择文件时出错')}: $e');
+      }
     }
   }
-  
-  /// Загрузить файл на сервер
-  Future<void> _uploadFile(File file) async {
-    final chatState = ref.read(paymentChatControllerProvider);
-    final conversationId = chatState.conversation?.id;
-    
-    if (conversationId == null) {
-      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
-      return;
-    }
-    
-    final result = await ref.read(paymentChatControllerProvider.notifier).uploadFile(file, conversationId);
-    
-    if (result == null) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '文件上传失败'));
-    }
-  }
-  
+
   /// Загрузить файл из bytes на сервер (для iOS)
   Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
     final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    
+
     if (conversationId == null) {
-      _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+      }
       return;
     }
-    
+
     if (bytes.isEmpty) {
-      _showErrorSnackbar(tr(context, ru: 'Файл пустой', zh: '文件为空'));
+      if (mounted) {
+        _showErrorSnackbar(tr(context, ru: 'Файл пустой', zh: '文件为空'));
+      }
       return;
     }
-    
+
     final result = await ref.read(paymentChatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName, conversationId);
-    
-    if (result == null) {
+
+    if (result == null && mounted) {
       _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '文件上传失败'));
     }
   }
@@ -621,35 +670,120 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
 
-    return Stack(
-      children: [
-        // Градиентный фон как на других страницах
-        const Positioned.fill(child: AppBackground()),
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      child: Builder(
+        builder: (showcaseContext) {
+          _showcaseContext = showcaseContext;
+          _startShowcaseIfNeeded(showcaseContext);
 
-        SafeArea(
-          bottom: false,
-          child: Column(
+          return Stack(
             children: [
-              // Отступ сверху для навигации (уменьшен для баннера)
-              const SizedBox(height: 15),
+              // Градиентный фон как на других страницах
+              const Positioned.fill(child: AppBackground()),
 
-              // Информационный блок о назначении чата (перемещён выше)
-              _buildInfoBanner(),
+              SafeArea(
+                top: false, // Контент скроллится под топ-меню
+                bottom: false,
+                child: Column(
+                  children: [
+                    // Отступ от верха экрана
+                    const SizedBox(height: 65),
+                    // Информационный блок о назначении чата (перемещён выше)
+                    Showcase(
+                      key: _showcaseKeyInfoBanner,
+                      title: tr(context, ru: '💰 Чат по вопросам оплаты', zh: '💰 付款问题聊天'),
+                      description: tr(context, ru: 'Специализированный чат для решения финансовых вопросов:\n• Вопросы по оплате счетов\n• Уточнение реквизитов\n• Подтверждение платежей\n• Обсуждение рассрочки или скидок\n\nВся переписка сохраняется для вашего удобства.', zh: '用于解决财务问题的专用聊天：\n• 发票付款问题\n• 确认付款详情\n• 付款确认\n• 讨论分期付款或折扣\n\n所有聊天记录都会保存以方便您使用。'),
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.bottom,
+                      tooltipBackgroundColor: Colors.white,
+                      textColor: Colors.black87,
+                      titleTextStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      descTextStyle: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
+                      ),
+                      onTargetClick: () {
+                        if (mounted && _showcaseContext != null) {
+                          ShowCaseWidget.of(_showcaseContext!).next();
+                        }
+                      },
+                      disposeOnTap: false,
+                      child: _buildInfoBanner(),
+                    ),
 
-              // Список сообщений
-              Expanded(
-                child: _buildMessagesList(),
+                    // Список сообщений
+                    Expanded(
+                      child: Showcase(
+                        key: _showcaseKeyMessages,
+                        title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
+                        description: tr(context, ru: 'Здесь отображается переписка по финансовым вопросам:\n• Ваши сообщения справа (зелёный фон)\n• Ответы бухгалтерии слева (белый фон)\n• Время отправки и статус доставки\n• Вложения (чеки, платёжные поручения)\n\nВы можете отправлять подтверждения оплаты прикрепляя файлы.', zh: '这里显示财务问题的聊天记录：\n• 您的消息在右侧（绿色背景）\n• 会计回复在左侧（白色背景）\n• 发送时间和发送状态\n• 附件（收据、付款单）\n\n您可以通过附加文件发送付款确认。'),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.bottom,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        onTargetClick: () {
+                          if (mounted && _showcaseContext != null) {
+                            ShowCaseWidget.of(_showcaseContext!).next();
+                          }
+                        },
+                        disposeOnTap: false,
+                        child: _buildMessagesList(),
+                      ),
+                    ),
+
+                    // Панель быстрых действий
+                    if (_showQuickActions) _buildQuickActionsBar(),
+
+                    // Поле ввода
+                    Showcase(
+                      key: _showcaseKeyInput,
+                      title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
+                      description: tr(context, ru: 'Поле для связи с бухгалтерией:\n• Напишите вопрос или уточнение по оплате\n• Прикрепите скриншот или файл платёжки (📎)\n• Нажмите ➤ для отправки\n\nОтветы по финансовым вопросам обычно приходят в течение рабочего дня.', zh: '与会计沟通的字段：\n• 写下付款问题或澄清\n• 附加截图或付款文件（📎）\n• 按➤发送\n\n财务问题的答复通常在工作日内到达。'),
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.top,
+                      tooltipBackgroundColor: Colors.white,
+                      textColor: Colors.black87,
+                      titleTextStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      descTextStyle: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
+                      ),
+                      onBarrierClick: () {
+                        if (mounted) _onShowcaseComplete();
+                      },
+                      onToolTipClick: () {
+                        if (mounted) _onShowcaseComplete();
+                      },
+                      child: _buildInputField(bottomInset),
+                    ),
+                  ],
+                ),
               ),
-
-              // Панель быстрых действий
-              if (_showQuickActions) _buildQuickActionsBar(),
-
-              // Поле ввода
-              _buildInputField(bottomInset),
             ],
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 
@@ -717,7 +851,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       onTap: () => setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xFFFFF8E1),
@@ -978,9 +1112,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
-        final fullUrl = attachment.url.startsWith('http') 
-            ? attachment.url 
-            : '${ApiConfig.mediaBaseUrl}${attachment.url}';
+        final fullUrl = ApiConfig.getMediaUrl(attachment.url);
         
         if (isImage) {
           return GestureDetector(

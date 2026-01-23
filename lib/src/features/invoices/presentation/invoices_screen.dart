@@ -11,6 +11,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/invoices_provider.dart';
 import '../domain/invoice_item.dart';
@@ -43,6 +44,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
 
   // Showcase keys
   final _showcaseKeyFilters = GlobalKey();
+  final _showcaseKeySearch = GlobalKey();
   final _showcaseKeyInvoiceItem = GlobalKey();
 
   // Флаг чтобы showcase не запускался повторно при rebuild
@@ -71,6 +73,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
       
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyFilters,
+        _showcaseKeySearch,
         _showcaseKeyInvoiceItem,
       ]);
     });
@@ -142,11 +145,14 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
 
           return invoicesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: 'Не удалось загрузить счета',
-              message: e.toString(),
-            ),
+            error: (e, _) {
+              final errorInfo = ErrorUtils.getErrorInfo(e);
+              return EmptyState(
+                icon: errorInfo.icon,
+                title: errorInfo.title,
+                message: errorInfo.message,
+              );
+            },
             data: (items) {
               final filtered = _applyFilters(items);
 
@@ -176,10 +182,10 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                     const SizedBox(height: 18),
                     Showcase(
                       key: _showcaseKeyFilters,
-                      title: 'Фильтры счетов',
-                      description: 'Фильтруйте счета по статусу оплаты или ищите по номеру счёта.',
+                      title: '💳 Фильтр по статусу оплаты',
+                      description: 'Быстрая фильтрация счетов по состоянию:\n• Все - показать все счета\n• Ожидает оплаты - неоплаченные счета\n• Оплачен - успешно оплаченные\n• Частично оплачен - требуется доплата\n• Просрочен - истёк срок оплаты\n\nВыберите статус из выпадающего списка для фильтрации.',
                       targetBorderRadius: BorderRadius.circular(20),
-                      targetPadding: const EdgeInsets.all(8),
+                      targetPadding: getShowcaseTargetPadding(),
                       tooltipPosition: TooltipPosition.bottom,
                       tooltipBackgroundColor: Colors.white,
                       textColor: Colors.black87,
@@ -219,6 +225,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                     onStatusChanged: (code) =>
                         setState(() => _selectedStatusCode = code),
                     onQueryChanged: (v) => setState(() => _query = v),
+                    showcaseSearchKey: _showcaseKeySearch,
                   ),
                 ),
               ),
@@ -242,10 +249,10 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Showcase(
                         key: _showcaseKeyInvoiceItem,
-                        title: 'Карточка счёта',
-                        description: 'Нажмите на счёт для просмотра деталей. Здесь вы увидите сумму, статус оплаты и сможете скачать PDF.',
+                        title: '📄 Карточка счёта',
+                        description: 'Полная информация о счёте на оплату:\n• Номер счёта и дата выставления\n• Текущий статус оплаты (цветной индикатор)\n• Общая сумма к оплате\n• Название тарифа и услуг\n• Дата последнего обновления\n\nНажмите на карточку для просмотра деталей:\n• Подробный состав услуг\n• История изменений статуса\n• Возможность скачать PDF счёт\n• Реквизиты для оплаты',
                         targetBorderRadius: BorderRadius.circular(18),
-                        targetPadding: const EdgeInsets.all(8),
+                        targetPadding: getShowcaseTargetPadding(),
                         tooltipPosition: TooltipPosition.bottom,
                         tooltipBackgroundColor: Colors.white,
                         textColor: Colors.black87,
@@ -288,6 +295,7 @@ class _Filters extends StatefulWidget {
   final String query;
   final ValueChanged<String?> onStatusChanged;
   final ValueChanged<String> onQueryChanged;
+  final GlobalKey? showcaseSearchKey;
 
   const _Filters({
     required this.selectedStatusCode,
@@ -295,6 +303,7 @@ class _Filters extends StatefulWidget {
     required this.query,
     required this.onStatusChanged,
     required this.onQueryChanged,
+    this.showcaseSearchKey,
   });
 
   @override
@@ -327,66 +336,101 @@ class _FiltersState extends State<_Filters> {
 
   @override
   Widget build(BuildContext context) {
+    // Виджет поля поиска
+    Widget searchField = Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [context.brandPrimary, context.brandSecondary],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.all(1.5),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: context.brandPrimary,
+              size: 20,
+            ),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF999999),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      _searchController.clear();
+                      widget.onQueryChanged('');
+                    },
+                  )
+                : null,
+            hintText: 'Поиск по номеру счёта',
+            hintStyle: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF999999),
+              fontWeight: FontWeight.w500,
+            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (value) {
+            setState(() {});
+            widget.onQueryChanged(value);
+          },
+        ),
+      ),
+    );
+
+    // Оборачиваем в Showcase если ключ передан
+    if (widget.showcaseSearchKey != null) {
+      searchField = Showcase(
+        key: widget.showcaseSearchKey!,
+        title: '🔍 Поиск по номеру счёта',
+        description:
+            'Быстрый поиск конкретного счёта:\n• Введите полный или частичный номер\n• Поиск работает в реальном времени\n• Нажмите ✕ справа для очистки\n\nНапример: "INV-2024-001" или просто "001".',
+        targetBorderRadius: BorderRadius.circular(14),
+        targetPadding: getShowcaseTargetPadding(),
+        tooltipPosition: TooltipPosition.bottom,
+        tooltipBackgroundColor: Colors.white,
+        textColor: Colors.black87,
+        titleTextStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF1A1A1A),
+        ),
+        descTextStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.grey.shade600,
+        ),
+        onTargetClick: () {
+          ShowCaseWidget.of(context).next();
+        },
+        disposeOnTap: false,
+        child: searchField,
+      );
+    }
+
     return Column(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [context.brandPrimary, context.brandSecondary],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.all(1.5),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: context.brandPrimary,
-                  size: 20,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          widget.onQueryChanged('');
-                        },
-                      )
-                    : null,
-                hintText: 'Поиск по номеру счёта',
-                hintStyle: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF999999),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {});
-                widget.onQueryChanged(value);
-              },
-            ),
-          ),
-        ),
+        searchField,
         const SizedBox(height: 10),
         _CustomDropdown<String?>(
           value: widget.selectedStatusCode,
@@ -472,7 +516,12 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
               child: ListView(
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
-                children: widget.items.map((item) {
+                children: widget.items.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  final isFirst = index == 0;
+                  final isLast = index == widget.items.length - 1;
+
                   return InkWell(
                     onTap: () {
                       setState(() {
@@ -482,6 +531,11 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                       _overlayEntry?.remove();
                       _overlayEntry = null;
                     },
+                    // Добавляем borderRadius для InkWell эффекта
+                    borderRadius: BorderRadius.vertical(
+                      top: isFirst ? const Radius.circular(14) : Radius.zero,
+                      bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                    ),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -491,6 +545,11 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                         color: _selectedValue == item.value
                             ? context.brandPrimary.withValues(alpha: 0.1)
                             : Colors.transparent,
+                        // Добавляем borderRadius для первого/последнего элемента
+                        borderRadius: BorderRadius.vertical(
+                          top: isFirst ? const Radius.circular(14) : Radius.zero,
+                          bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                        ),
                       ),
                       child: Text(
                         item.label,

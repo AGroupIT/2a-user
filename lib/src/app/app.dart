@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/network/api_client.dart';
 import '../core/services/app_language_service.dart';
 import '../core/services/chat_presence_service.dart';
+import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/notifications/application/notifications_controller.dart';
@@ -27,6 +28,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initializePushNotificationsHandler(ref);
       _setupUnauthorizedHandler();
+      // Инициализируем WebSocket подключение
+      ref.read(webSocketAutoConnectProvider);
     });
   }
   
@@ -65,7 +68,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final language = ref.watch(appLanguageProvider);
     
     return MaterialApp.router(
-      title: '2A Logistic',
+      title: 'Карго',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

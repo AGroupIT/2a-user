@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Интервал автоматического обновления данных (30 секунд)
-const kAutoRefreshInterval = Duration(seconds: 30);
+/// Интервал автоматического обновления данных (60 секунд)
+const kAutoRefreshInterval = Duration(seconds: 60);
 
 /// Провайдер для глобального интервала обновления
 final autoRefreshIntervalProvider = Provider<Duration>((ref) {

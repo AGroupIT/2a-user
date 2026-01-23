@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -82,8 +83,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with AutoRefreshMixin {
   // Showcase keys
   final _showcaseKeyPersonalData = GlobalKey();
+  final _showcaseKeyLanguage = GlobalKey();
   final _showcaseKeyStats = GlobalKey();
   final _showcaseKeyExport = GlobalKey();
+  final _showcaseKeyLogout = GlobalKey();
 
   // Export button keys for sharePositionOrigin on iPad
   final _invoicesExportButtonKey = GlobalKey();
@@ -112,8 +115,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyPersonalData,
+        _showcaseKeyLanguage,
         _showcaseKeyStats,
         _showcaseKeyExport,
+        _showcaseKeyLogout,
       ]);
     });
   }
@@ -204,10 +209,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   // Personal Info Section
                   Showcase(
                     key: _showcaseKeyPersonalData,
-                    title: 'Личные данные',
-                    description: 'Ваши контактные данные (только просмотр).',
-                    targetPadding: const EdgeInsets.all(8),
+                    title: '👤 Личные данные',
+                    description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Домен вашей компании\n• Все поля доступны только для просмотра 🔒\n• Для изменения обратитесь к администратору',
+                    targetPadding: getShowcaseTargetPadding(),
                     tooltipPosition: TooltipPosition.bottom,
+                    tooltipBackgroundColor: Colors.white,
+                    textColor: Colors.black87,
+                    titleTextStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    descTextStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
                     onTargetClick: () {
                       if (mounted) {
                         ShowCaseWidget.of(showcaseContext).next();
@@ -240,51 +257,88 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             const SizedBox(height: 16),
 
             // Language Section
-            _buildSectionCard(
-              title: 'Язык',
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFDDDDDD)),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<AppLanguage>(
-                      value: appLanguage,
-                      isExpanded: true,
-                      items: AppLanguage.values
-                          .map(
-                            (lang) => DropdownMenuItem(
-                              value: lang,
-                              child: Text(
-                                lang.labelRu,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
+            Showcase(
+              key: _showcaseKeyLanguage,
+              title: '🌍 Выбор языка',
+              description: 'Выберите удобный для вас язык интерфейса:\n• Русский - для русскоязычных пользователей\n• 中文 (Китайский) - для китайских клиентов\n• Настройка сохраняется автоматически\n• Применяется ко всему приложению',
+              targetPadding: getShowcaseTargetPadding(),
+              tooltipPosition: TooltipPosition.bottom,
+              tooltipBackgroundColor: Colors.white,
+              textColor: Colors.black87,
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A1A1A),
+              ),
+              descTextStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+              onTargetClick: () {
+                if (mounted) {
+                  ShowCaseWidget.of(showcaseContext).next();
+                }
+              },
+              disposeOnTap: false,
+              child: _buildSectionCard(
+                title: 'Язык',
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFDDDDDD)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<AppLanguage>(
+                        value: appLanguage,
+                        isExpanded: true,
+                        items: AppLanguage.values
+                            .map(
+                              (lang) => DropdownMenuItem(
+                                value: lang,
+                                child: Text(
+                                  lang.labelRu,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        ref.read(appLanguageProvider.notifier).setLanguage(value);
-                      },
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          ref.read(appLanguageProvider.notifier).setLanguage(value);
+                        },
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
             // Statistics Section
             Showcase(
               key: _showcaseKeyStats,
-              title: 'Статистика',
-              description: 'Ваша статистика по трек-номерам, счетам, запросам фото и вопросам.',
-              targetPadding: const EdgeInsets.all(8),
+              title: '📊 Статистика',
+              description: 'Ваша полная статистика по всем операциям:\n• Трек-номера - сгруппированы по статусам\n• Счета - количество по статусам оплаты\n• Запросы фото - активные и выполненные\n• Заданные вопросы - ваши обращения\n• Обновляется в реальном времени',
+              targetPadding: getShowcaseTargetPadding(),
               tooltipPosition: TooltipPosition.bottom,
+              tooltipBackgroundColor: Colors.white,
+              textColor: Colors.black87,
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A1A1A),
+              ),
+              descTextStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
               onTargetClick: () {
                 if (mounted) {
                   ShowCaseWidget.of(showcaseContext).next();
@@ -309,12 +363,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             // Export Section
             Showcase(
               key: _showcaseKeyExport,
-              title: 'Выгрузка данных',
-              description: 'Экспортируйте счета и треки в Excel файл.',
-              targetPadding: const EdgeInsets.all(8),
+              title: '📥 Выгрузка данных',
+              description: 'Экспортируйте ваши данные в Excel для удобного анализа:\n• Выгрузить счета - все счета с деталями\n• Выгрузить треки - все треки с информацией\n• Формат XLSX совместим с Excel и Google Sheets\n• Включает все поля и актуальные данные\n• Можно поделиться или сохранить локально',
+              targetPadding: getShowcaseTargetPadding(),
               tooltipPosition: TooltipPosition.top,
-              onBarrierClick: _onShowcaseComplete,
-              onToolTipClick: _onShowcaseComplete,
+              tooltipBackgroundColor: Colors.white,
+              textColor: Colors.black87,
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A1A1A),
+              ),
+              descTextStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+              onTargetClick: () {
+                if (mounted) {
+                  ShowCaseWidget.of(showcaseContext).next();
+                }
+              },
+              disposeOnTap: false,
               child: _buildSectionCard(
                 title: 'Выгрузка данных',
                 children: [
@@ -337,44 +407,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             const SizedBox(height: 16),
 
             // Logout Button
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ],
+            Showcase(
+              key: _showcaseKeyLogout,
+              title: '🚪 Выход из аккаунта',
+              description: 'Безопасный выход из приложения:\n• Нажмите для завершения сеанса\n• Потребуется подтверждение действия\n• Все данные сохранены на сервере\n• После выхода потребуется снова войти\n• Рекомендуется выходить на чужих устройствах',
+              targetPadding: getShowcaseTargetPadding(),
+              tooltipPosition: TooltipPosition.top,
+              tooltipBackgroundColor: Colors.white,
+              textColor: Colors.black87,
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A1A1A),
               ),
-              child: Material(
-                type: MaterialType.transparency,
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
+              descTextStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+              onBarrierClick: _onShowcaseComplete,
+              onToolTipClick: _onShowcaseComplete,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  onTap: _logout,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.logout_rounded,
-                          color: Colors.red.shade600,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Выйти из аккаунта',
-                          style: TextStyle(
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 24,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  type: MaterialType.transparency,
+                  borderRadius: BorderRadius.circular(20),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _logout,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.logout_rounded,
                             color: Colors.red.shade600,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
+                            size: 20,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 10),
+                          Text(
+                            'Выйти из аккаунта',
+                            style: TextStyle(
+                              color: Colors.red.shade600,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -391,6 +482,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   void _logout() {
+    // Сохраняем context перед открытием bottom sheet
+    final navigatorContext = context;
+
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
@@ -439,9 +533,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: () {
+                      onPressed: () async {
+                        // Закрываем bottom sheet
                         Navigator.pop(context);
-                        ref.read(authProvider.notifier).logout();
+
+                        // Вызываем logout
+                        await ref.read(authProvider.notifier).logout();
+
+                        // Используем сохранённый context для навигации
+                        if (navigatorContext.mounted) {
+                          navigatorContext.go('/login');
+                        }
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.red.shade600,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:showcaseview/showcaseview.dart';
 
+import '../../../core/network/api_config.dart';
 import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/services/showcase_service.dart';
@@ -179,11 +180,11 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                 const SizedBox(height: 12),
                 Showcase(
                   key: _showcaseKeyStats,
-                  title: 'Статистика фото',
+                  title: '📊 Статистика фотоотчётов',
                   description:
-                      'Общее количество фотографий и видео для вашего кода клиента.',
+                      'Общее количество фото и видео по вашему коду клиента:\n• Фото упаковки товаров\n• Фото весов с весом груза\n• Видео процесса упаковки\n\nВсе файлы доступны для просмотра и скачивания.',
                   targetBorderRadius: BorderRadius.circular(18),
-                  targetPadding: const EdgeInsets.all(8),
+                  targetPadding: getShowcaseTargetPadding(),
                   tooltipPosition: TooltipPosition.bottom,
                   tooltipBackgroundColor: Colors.white,
                   textColor: Colors.black87,
@@ -208,11 +209,11 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                 const SizedBox(height: 18),
                 Showcase(
                   key: _showcaseKeyDateFilter,
-                  title: 'Фильтр по дате',
+                  title: '📅 Фильтр по месяцу и году',
                   description:
-                      'Выберите месяц и год для просмотра фотографий за определённый период.',
+                      'Выберите период для просмотра фотографий:\n• Стрелки ◀ ▶ для переключения месяцев\n• Текущий месяц выделен синим\n• Доступные даты показаны под фильтром\n\nФотографии группируются по дням съёмки на складе.',
                   targetBorderRadius: BorderRadius.circular(14),
-                  targetPadding: const EdgeInsets.all(8),
+                  targetPadding: getShowcaseTargetPadding(),
                   tooltipPosition: TooltipPosition.bottom,
                   tooltipBackgroundColor: Colors.white,
                   textColor: Colors.black87,
@@ -370,10 +371,10 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
 
               return Showcase(
                 key: _showcaseKeyPhotoGrid,
-                title: 'Галерея фото',
+                title: '📸 Галерея фотоотчётов',
                 description:
-                    'Здесь отображаются фото и видео за выбранную дату. Нажмите на миниатюру для просмотра.',
-                targetPadding: const EdgeInsets.all(8),
+                    'Галерея файлов за выбранную дату:\n• Нажмите на миниатюру для полноэкранного просмотра\n• Увеличивайте фото жестами\n• Скачивайте фото на устройство\n• Делитесь ссылками\n\nФото и видео добавляются после обработки груза на складе.',
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.top,
                 onBarrierClick: () {
                   _onShowcaseComplete();
@@ -843,7 +844,7 @@ class _PhotoThumbnail extends StatelessWidget {
                     )
                   else
                     CachedNetworkImage(
-                      imageUrl: item.url,
+                      imageUrl: ApiConfig.getMediaUrl(item.url),
                       fit: BoxFit.cover,
                       placeholder: (_, _) => Container(
                         color: Colors.black.withValues(alpha: 0.06),

@@ -32,9 +32,7 @@ class SecureStorageService {
     // FlutterSecureStorage используется только на мобильных платформах
     if (!_useSharedPreferences) {
       _storage = const FlutterSecureStorage(
-        aOptions: AndroidOptions(
-          encryptedSharedPreferences: true,
-        ),
+        aOptions: AndroidOptions(),
         iOptions: IOSOptions(
           accessibility: KeychainAccessibility.first_unlock_this_device,
         ),

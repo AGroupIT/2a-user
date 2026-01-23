@@ -9,35 +9,37 @@ import FirebaseMessaging
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Firebase инициализируется автоматически через FlutterFire
-    
+    // Явная инициализация Firebase
+    FirebaseApp.configure()
+
     // Регистрация для push-уведомлений
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self
     }
-    
+
     GeneratedPluginRegistrant.register(with: self)
     if let registrar = self.registrar(forPlugin: "com.twoa.visual_effect_view") {
       registrar.register(VisualEffectViewFactory(messenger: registrar.messenger()), withId: "com.twoa.visual_effect_view")
     }
-    
+
     // Регистрация для удалённых уведомлений
     application.registerForRemoteNotifications()
-    
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
   
   // Получение APNs токена
   override func application(_ application: UIApplication,
                             didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    print("📱 APNs device token received")
     Messaging.messaging().apnsToken = deviceToken
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
-  
+
   // Ошибка регистрации
   override func application(_ application: UIApplication,
                             didFailToRegisterForRemoteNotificationsWithError error: Error) {
-    print("Failed to register for remote notifications: \(error)")
+    print("❌ Failed to register for remote notifications: \(error)")
   }
 }
 

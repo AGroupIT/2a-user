@@ -9,6 +9,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/help_dialog.dart';
 import '../../../core/ui/status_pill.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../domain/search_result.dart';
@@ -164,7 +165,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 title: 'Поиск треков',
                 description:
                     'Введите минимум 5 символов трек-номера и нажмите "Найти". Можно искать по любой части номера.',
-                targetPadding: const EdgeInsets.all(8),
+                targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
                 onBarrierClick: () {
                   if (mounted) _onShowcaseComplete();
@@ -260,11 +261,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => EmptyState(
-                  icon: Icons.error_outline_rounded,
-                  title: 'Ошибка поиска',
-                  message: e.toString(),
-                ),
+                error: (e, _) {
+                  final errorInfo = ErrorUtils.getErrorInfo(e);
+                  return EmptyState(
+                    icon: errorInfo.icon,
+                    title: errorInfo.title,
+                    message: errorInfo.message,
+                  );
+                },
                 data: (items) {
                   final q = _ctrl.text.trim();
                   if (q.isEmpty) {

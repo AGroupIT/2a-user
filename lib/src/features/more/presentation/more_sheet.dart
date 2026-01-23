@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../auth/data/auth_provider.dart';
-import '../../clients/application/client_codes_controller.dart';
 
 import '../../../core/ui/app_colors.dart';
 
@@ -74,9 +71,6 @@ class MoreSheet extends StatelessWidget {
                       title: 'Правила оказания услуг',
                       onTap: () => _go(context, '/rules'),
                     ),
-                    const SizedBox(height: 16),
-                    _LogoutButton(),
-                    const SizedBox(height: 8),
                   ],
                 ),
               ),
@@ -146,46 +140,3 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-class _LogoutButton extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () async {
-          // Очищаем сохранённые коды/активный код
-          await ref.read(clientCodesControllerProvider.notifier).logout();
-          // Выходим из аккаунта
-          await ref.read(authProvider.notifier).logout();
-          // Закрываем лист
-          if (context.mounted) Navigator.of(context).pop();
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: context.brandPrimary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: context.brandSecondary),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.logout_rounded, color: context.brandSecondary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Выйти',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: context.brandSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

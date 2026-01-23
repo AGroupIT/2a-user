@@ -7,7 +7,6 @@ import '../../core/ui/app_layout.dart';
 import '../../core/ui/glass_surface.dart';
 import '../../features/clients/presentation/client_switcher_button.dart';
 import '../../features/notifications/presentation/notifications_bell_button.dart';
-import '../../features/more/presentation/more_button.dart';
 
 class AppScaffold extends StatelessWidget {
   final String title;
@@ -193,7 +192,6 @@ class _ActionsPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const MoreButton(),
               Builder(
                 builder: (context) => IconButton(
                   tooltip: 'Домой',

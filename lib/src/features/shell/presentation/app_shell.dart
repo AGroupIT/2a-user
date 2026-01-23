@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/widgets/app_scaffold.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../more/presentation/more_sheet.dart';
 
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -17,7 +18,7 @@ class AppShell extends StatelessWidget {
     'Фото',
     'Треки',
     'Счета',
-    'Добавить треки',
+    'Ещё',
   ];
 
   @override
@@ -52,7 +53,8 @@ class AppShell extends StatelessWidget {
             }
             // Swipe left: next tab
             else if (v < -250) {
-              if (currentIndex < _titles.length - 1) {
+              // Не позволяем свайпать на последнюю вкладку "Ещё" (она открывается только по тапу)
+              if (currentIndex < _titles.length - 2) {
                 HapticFeedback.lightImpact();
                 navigationShell.goBranch(currentIndex + 1, initialLocation: false);
               }
@@ -116,7 +118,7 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
     (icon: CupertinoIcons.photo, selectedIcon: CupertinoIcons.photo_fill, label: 'Фото'),
     (icon: CupertinoIcons.cube_box, selectedIcon: CupertinoIcons.cube_box_fill, label: 'Треки'),
     (icon: CupertinoIcons.doc, selectedIcon: CupertinoIcons.doc_fill, label: 'Счета'),
-    (icon: CupertinoIcons.plus_app, selectedIcon: CupertinoIcons.plus_app_fill, label: 'Добавить'),
+    (icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'Ещё'),
   ];
 
   @override
@@ -160,7 +162,8 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
     }
     // Swipe left - go to next item
     else if (delta < -20) {
-      if (nextIndex < _items.length - 1) {
+      // Не позволяем свайпать на последнюю вкладку "Ещё" (она открывается только по тапу)
+      if (nextIndex < _items.length - 2) {
         HapticFeedback.lightImpact();
         widget.onTap(nextIndex + 1);
       }
@@ -244,7 +247,19 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
                           child: InkWell(
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              widget.onTap(index);
+                              // Если нажали на кнопку "Ещё" (последняя), показываем модальное окно
+                              if (index == _items.length - 1) {
+                                showModalBottomSheet<void>(
+                                  context: context,
+                                  backgroundColor: Colors.white,
+                                  barrierColor: Colors.black.withValues(alpha: 0.22),
+                                  useSafeArea: true,
+                                  isScrollControlled: true,
+                                  builder: (_) => const MoreSheet(),
+                                );
+                              } else {
+                                widget.onTap(index);
+                              }
                             },
                             borderRadius: BorderRadius.circular(18),
                             child: Center(

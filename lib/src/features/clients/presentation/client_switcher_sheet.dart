@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
-
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/error_utils.dart';
 import '../application/client_codes_controller.dart';
 
 class ClientSwitcherSheet extends ConsumerStatefulWidget {
@@ -64,11 +64,14 @@ class _ClientSwitcherSheetState extends ConsumerState<ClientSwitcherSheet> {
               child: CircularProgressIndicator(),
             ),
           ),
-          error: (e, _) => EmptyState(
-            icon: Icons.error_outline_rounded,
-            title: 'Не удалось загрузить коды',
-            message: e.toString(),
-          ),
+          error: (e, _) {
+            final errorInfo = ErrorUtils.getErrorInfo(e);
+            return EmptyState(
+              icon: errorInfo.icon,
+              title: errorInfo.title,
+              message: errorInfo.message,
+            );
+          },
           data: (state) => SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: GestureDetector(
