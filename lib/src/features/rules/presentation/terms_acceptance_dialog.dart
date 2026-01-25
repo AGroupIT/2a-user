@@ -30,11 +30,15 @@ class TermsAcceptanceDialog extends ConsumerWidget {
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Заголовок с иконкой
-              Container(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Заголовок с иконкой
+                Container(
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -78,11 +82,12 @@ class TermsAcceptanceDialog extends ConsumerWidget {
                 ),
               ),
 
-              // Контент
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              // Контент (скроллируемый)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
                       'Прежде чем продолжить',
@@ -217,8 +222,10 @@ class TermsAcceptanceDialog extends ConsumerWidget {
                     ),
                   ],
                 ),
+                ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

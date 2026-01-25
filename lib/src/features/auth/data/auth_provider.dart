@@ -13,8 +13,13 @@ import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/utils/error_utils.dart';
+import '../../assemblies/data/assemblies_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../invoices/data/invoices_provider.dart';
+import '../../notifications/application/notifications_controller.dart';
 import '../../profile/data/profile_provider.dart';
+import '../../sp_finance/data/sp_provider.dart';
+import '../../tracks/data/tracks_provider.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
 const _kUserEmailKey = 'user_email';
@@ -441,6 +446,9 @@ class AuthNotifier extends Notifier<AuthState> {
         isLoading: false,
       );
 
+      // Invalidate all data providers to clear cached data
+      _invalidateAllProviders();
+
       debugPrint('✅ Logout completed successfully');
     } catch (e, stackTrace) {
       debugPrint('❌ Critical error during logout: $e');
@@ -451,6 +459,42 @@ class AuthNotifier extends Notifier<AuthState> {
         isLoggedIn: false,
         isLoading: false,
       );
+
+      // Invalidate providers even on error
+      _invalidateAllProviders();
+    }
+  }
+
+  /// Инвалидация всех провайдеров данных при logout
+  void _invalidateAllProviders() {
+    try {
+      debugPrint('🗑️ Invalidating all data providers...');
+
+      // Profile & Stats
+      ref.invalidate(clientProfileProvider);
+
+      // Client codes
+      ref.invalidate(clientCodesControllerProvider);
+
+      // Tracks
+      ref.invalidate(tracksCountProvider);
+
+      // Invoices
+      ref.invalidate(invoicesCountProvider);
+
+      // Assemblies
+      ref.invalidate(assembliesCountProvider);
+
+      // Notifications
+      ref.invalidate(notificationsControllerProvider);
+      ref.invalidate(unreadCountProvider);
+
+      // SP Finance
+      ref.invalidate(spAssembliesControllerProvider);
+
+      debugPrint('✅ All providers invalidated');
+    } catch (e) {
+      debugPrint('⚠️ Error invalidating providers: $e');
     }
   }
   

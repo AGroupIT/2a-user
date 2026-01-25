@@ -1,3 +1,5 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:showcaseview/showcaseview.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
@@ -1031,6 +1034,257 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     }
   }
 
+  Future<void> _showDeliverySheet(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) async {
+    // Текущий метод доставки
+    String? selectedMethod = assembly.deliveryMethod;
+    final nameController = TextEditingController(text: assembly.recipientName ?? '');
+    final cityController = TextEditingController(text: assembly.recipientCity ?? '');
+    final transportCompanyController = TextEditingController(text: assembly.transportCompanyName ?? '');
+
+    // Маска для телефона: +7 (999) 123-45-67
+    final phoneMask = MaskTextInputFormatter(
+      mask: '+# (###) ###-##-##',
+      filter: {'#': RegExp(r'[0-9]')},
+      type: MaskAutoCompletionType.lazy,
+    );
+
+    // Если уже есть сохраненный телефон, форматируем его
+    final phoneController = TextEditingController();
+    if (assembly.recipientPhone != null && assembly.recipientPhone!.isNotEmpty) {
+      // Убираем все нецифровые символы и форматируем через маску
+      final digits = assembly.recipientPhone!.replaceAll(RegExp(r'[^\d]'), '');
+      phoneMask.formatEditUpdate(
+        const TextEditingValue(text: ''),
+        TextEditingValue(text: digits),
+      );
+      phoneController.text = phoneMask.getMaskedText();
+    }
+
+    final result = await showModalBottomSheet<Map<String, dynamic>?>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (sheetContext, scrollController) {
+          return StatefulBuilder(
+            builder: (sheetContext, setSheetState) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+                ),
+                child: Column(
+                  children: [
+                    const SheetHandle(),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.only(top: 12),
+                        children: [
+                          Text(
+                            'Способ получения',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 16),
+                          // Самовывоз
+                          _DeliveryOptionCard(
+                            title: 'Самовывоз',
+                            subtitle: 'Забрать на терминале',
+                            icon: Icons.store_outlined,
+                            isSelected: selectedMethod == 'self_pickup',
+                            onTap: () {
+                              setSheetState(() => selectedMethod = 'self_pickup');
+                            },
+                          ),
+                          if (selectedMethod == 'self_pickup') ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3CD),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFFFE69C)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.warning_amber_rounded,
+                                    color: Color(0xFF856404),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Доступ на терминал платный. Для уточнения условий свяжитесь с поддержкой.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: const Color(0xFF856404),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          // Транспортная компания
+                          _DeliveryOptionCard(
+                            title: 'Транспортная компания',
+                            subtitle: 'Доставка до двери или пункта выдачи',
+                            icon: Icons.local_shipping_outlined,
+                            isSelected: selectedMethod == 'transport_company',
+                            onTap: () {
+                              setSheetState(() => selectedMethod = 'transport_company');
+                            },
+                          ),
+                          if (selectedMethod == 'transport_company') ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'Транспортная компания',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _outlinedInput(
+                              context,
+                              transportCompanyController,
+                              hint: 'Название ТК (СДЭК, ПЭК, и т.д.)',
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Данные получателя',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _outlinedInput(
+                              context,
+                              nameController,
+                              hint: 'ФИО получателя',
+                            ),
+                            const SizedBox(height: 10),
+                            _outlinedInput(
+                              context,
+                              phoneController,
+                              hint: '+7 (999) 123-45-67',
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [phoneMask],
+                            ),
+                            const SizedBox(height: 10),
+                            _outlinedInput(
+                              context,
+                              cityController,
+                              hint: 'Город',
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: selectedMethod == null
+                            ? null
+                            : () {
+                                // Валидация для ТК
+                                if (selectedMethod == 'transport_company') {
+                                  if (nameController.text.trim().isEmpty) {
+                                    _showStyledSnackBar(
+                                      sheetContext,
+                                      'Укажите ФИО получателя',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+                                  // Проверяем что введено минимум 11 цифр
+                                  final phoneDigits = phoneMask.getUnmaskedText();
+                                  if (phoneDigits.length < 11) {
+                                    _showStyledSnackBar(
+                                      sheetContext,
+                                      'Введите полный номер телефона',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+                                  if (cityController.text.trim().isEmpty) {
+                                    _showStyledSnackBar(
+                                      sheetContext,
+                                      'Укажите город получателя',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+                                }
+                                Navigator.of(sheetContext).pop({
+                                  'method': selectedMethod,
+                                  'recipientName': nameController.text.trim(),
+                                  'recipientPhone': phoneMask.getMaskedText(),
+                                  'recipientCity': cityController.text.trim(),
+                                  'transportCompanyName': transportCompanyController.text.trim(),
+                                });
+                              },
+                        child: const Text('Сохранить'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+
+    if (result != null && context.mounted) {
+      final apiService = ref.read(assembliesApiServiceProvider);
+      final success = await apiService.updateAssemblyDelivery(
+        assemblyId: assembly.id,
+        deliveryMethod: result['method'] as String,
+        recipientName: result['recipientName'] as String?,
+        recipientPhone: result['recipientPhone'] as String?,
+        recipientCity: result['recipientCity'] as String?,
+        transportCompanyName: result['transportCompanyName'] as String?,
+      );
+
+      if (success) {
+        if (!context.mounted) return;
+        final methodLabel = result['method'] == 'self_pickup'
+            ? 'Самовывоз'
+            : 'Транспортная компания';
+        _showStyledSnackBar(context, 'Способ получения: $methodLabel');
+        // Обновляем треки чтобы отобразить изменения
+        _refreshTracks();
+      } else {
+        if (!context.mounted) return;
+        _showStyledSnackBar(
+          context,
+          'Ошибка сохранения способа получения',
+          isError: true,
+        );
+      }
+    }
+  }
+
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
     String? selectedInsurance;
@@ -1120,7 +1374,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                       (t) => _DropdownItem(
                                         value: t.id,
                                         label:
-                                            '${t.name} — ${t.baseCost.toStringAsFixed(0)} ¥/кг',
+                                            '${t.name} — ${t.baseCost.toStringAsFixed(0)} \$/кг',
                                       ),
                                     )
                                     .toList(),
@@ -1218,7 +1472,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${packing.baseCost.toStringAsFixed(0)} ¥',
+                                          '${packing.baseCost.toStringAsFixed(0)} \$',
                                           style: TextStyle(
                                             color: isSelected
                                                 ? Colors.white70
@@ -2006,7 +2260,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                         key: _showcaseKeyAddButton,
                         title: '➕ Добавить треки',
                         description:
-                            'Кнопка для добавления новых треков в систему:\n• Введите номера треков (каждый с новой строки)\n• Можно добавить несколько треков одновременно\n• Треки появятся в списке после обработки\n\nНажмите кнопку ➕ для открытия формы добавления.',
+                            'Нажмите для добавления новых треков.\nВведите номера треков, каждый с новой строки.',
                         targetBorderRadius: BorderRadius.circular(28),
                         targetPadding: getShowcaseTargetPadding(),
                         tooltipPosition: TooltipPosition.top,
@@ -2133,6 +2387,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                 _showGroupCommentSheet(context, assembly),
             onAskGroupQuestion: (assembly) =>
                 _showGroupQuestionSheet(context, assembly),
+            onSelectDelivery: (assembly) =>
+                _showDeliverySheet(context, assembly),
           );
 
           // Первый элемент оборачиваем в Showcase
@@ -2581,7 +2837,7 @@ class _FiltersNewState extends State<_FiltersNew> {
         key: widget.showcaseSearchKey!,
         title: '🔍 Поиск по номеру трека',
         description:
-            'Быстрый поиск конкретного трека:\n• Введите полный или частичный номер трека\n• Поиск работает в реальном времени\n• Нажмите ✕ справа для очистки поля\n\nНапример: "TRK-12345" или просто "12345".',
+            'Введите полный или частичный номер для поиска.\nНажмите ✕ для очистки поля.',
         targetBorderRadius: BorderRadius.circular(14),
         targetPadding: getShowcaseTargetPadding(),
         tooltipPosition: TooltipPosition.bottom,
@@ -2657,6 +2913,7 @@ class _TrackGroupCard extends StatelessWidget {
   final Map<String, DateTime> groupQuestionUpdatedAt;
   final ValueChanged<TrackAssembly> onEditGroupComment;
   final ValueChanged<TrackAssembly> onAskGroupQuestion;
+  final ValueChanged<TrackAssembly> onSelectDelivery;
 
   const _TrackGroupCard({
     required this.assembly,
@@ -2687,6 +2944,7 @@ class _TrackGroupCard extends StatelessWidget {
     required this.groupQuestionUpdatedAt,
     required this.onEditGroupComment,
     required this.onAskGroupQuestion,
+    required this.onSelectDelivery,
   });
 
   @override
@@ -2746,10 +3004,11 @@ class _TrackGroupCard extends StatelessWidget {
                       assembly!.name!,
                       style: const TextStyle(color: Colors.black54),
                     ),
-                  // Отображение тарифа, упаковки и страховки
+                  // Отображение тарифа, упаковки, страховки и доставки
                   if (assembly!.tariffName != null ||
                       assembly!.packagingTypes.isNotEmpty ||
-                      assembly!.hasInsurance) ...[
+                      assembly!.hasInsurance ||
+                      assembly!.deliveryMethod != null) ...[
                     const SizedBox(height: 10),
                     Container(
                       width: double.infinity,
@@ -2777,11 +3036,14 @@ class _TrackGroupCard extends StatelessWidget {
                                     fontSize: 13,
                                   ),
                                 ),
-                                Text(
-                                  assembly!.tariffName!,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                                Flexible(
+                                  child: Text(
+                                    assembly!.tariffName!,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 if (assembly!.tariffCost != null) ...[
@@ -2790,7 +3052,7 @@ class _TrackGroupCard extends StatelessWidget {
                                     style: TextStyle(color: Colors.black54),
                                   ),
                                   Text(
-                                    '${assembly!.tariffCost!.toStringAsFixed(0)} ¥/кг',
+                                    '${assembly!.tariffCost!.toStringAsFixed(0)} \$/кг',
                                     style: const TextStyle(
                                       color: Colors.green,
                                       fontWeight: FontWeight.w600,
@@ -2821,11 +3083,31 @@ class _TrackGroupCard extends StatelessWidget {
                                   ),
                                 ),
                                 Expanded(
-                                  child: Text(
-                                    assembly!.packagingTypes.join(', '),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: assembly!.packagingTypes.join(', '),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        if (assembly!.packagingCost != null) ...[
+                                          const TextSpan(
+                                            text: ' — ',
+                                            style: TextStyle(color: Colors.black54),
+                                          ),
+                                          TextSpan(
+                                            text: '${assembly!.packagingCost!.toStringAsFixed(0)} \$',
+                                            style: const TextStyle(
+                                              color: Colors.green,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -2859,6 +3141,69 @@ class _TrackGroupCard extends StatelessWidget {
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
                                     color: Colors.blue,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          // Доставка
+                          if (assembly!.deliveryMethod != null) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  assembly!.deliveryMethod == 'self_pickup'
+                                      ? Icons.store_outlined
+                                      : Icons.local_shipping_outlined,
+                                  size: 16,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        assembly!.deliveryMethod == 'self_pickup'
+                                            ? 'Самовывоз'
+                                            : assembly!.transportCompanyName != null && assembly!.transportCompanyName!.isNotEmpty
+                                                ? 'ТК: ${assembly!.transportCompanyName}'
+                                                : 'Транспортная компания',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                      if (assembly!.deliveryMethod == 'transport_company' &&
+                                          assembly!.recipientName != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${assembly!.recipientName}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        if (assembly!.recipientPhone != null)
+                                          Text(
+                                            assembly!.recipientPhone!,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        if (assembly!.recipientCity != null)
+                                          Text(
+                                            assembly!.recipientCity!,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ],
@@ -2930,9 +3275,20 @@ class _TrackGroupCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  _ActionChipButton(
-                    label: 'Добавить заметку',
-                    onPressed: () => onEditGroupComment(assembly!),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ActionChipButton(
+                        label: 'Добавить заметку',
+                        onPressed: () => onEditGroupComment(assembly!),
+                      ),
+                      _ActionChipButton(
+                        icon: Icons.local_shipping_outlined,
+                        label: 'Доставка',
+                        onPressed: () => onSelectDelivery(assembly!),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -3671,4 +4027,87 @@ class _ProductInfo {
     required this.quantity,
     required this.images,
   });
+}
+
+class _DeliveryOptionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _DeliveryOptionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? context.brandPrimary.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? context.brandPrimary : const Color(0xFFE0E0E0),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? context.brandPrimary.withValues(alpha: 0.15)
+                    : const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? context.brandPrimary : Colors.black54,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: isSelected ? context.brandPrimary : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: context.brandPrimary,
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

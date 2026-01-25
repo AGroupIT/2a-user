@@ -1,4 +1,6 @@
-﻿import 'package:cached_network_image/cached_network_image.dart';
+﻿// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -844,7 +846,7 @@ class _PhotoThumb extends StatelessWidget {
                         maxWidthDiskCache: 400,
                         memCacheHeight: 200,
                         memCacheWidth: 200,
-                        placeholder: (_, __) => Container(
+                        placeholder: (context, url) => Container(
                           color: Colors.black.withValues(alpha: 0.06),
                           child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         ),
@@ -1067,12 +1069,16 @@ class _TermsAcceptanceDialog extends ConsumerWidget {
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Заголовок с иконкой
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Заголовок с иконкой
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 child: Column(
                   children: [
                     Container(
@@ -1101,14 +1107,15 @@ class _TermsAcceptanceDialog extends ConsumerWidget {
                 ),
               ),
 
-              // Контент
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Прежде чем продолжить',
+              // Контент (скроллируемый)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Прежде чем продолжить',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -1238,10 +1245,12 @@ class _TermsAcceptanceDialog extends ConsumerWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

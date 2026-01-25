@@ -266,7 +266,7 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
                               child: Icon(
                                 isSelected ? item.selectedIcon : item.icon,
                                 size: 26,
-                                color: isSelected ? Colors.white : const Color(0xFFff5f02),
+                                color: isSelected ? Colors.white : context.brandPrimary,
                               ),
                             ),
                           ),

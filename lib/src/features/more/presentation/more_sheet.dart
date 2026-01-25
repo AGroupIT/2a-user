@@ -71,6 +71,13 @@ class MoreSheet extends StatelessWidget {
                       title: 'Правила оказания услуг',
                       onTap: () => _go(context, '/rules'),
                     ),
+                    const SizedBox(height: 8),
+                    _MenuItem(
+                      icon: Icons.shopping_bag_rounded,
+                      title: 'Совместные покупки',
+                      iconColor: const Color(0xFF9C27B0),
+                      onTap: () => _go(context, '/sp-finance'),
+                    ),
                   ],
                 ),
               ),

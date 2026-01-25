@@ -39,23 +39,15 @@ void main() async {
 
         // Удалить чувствительные данные из user
         if (event.user != null) {
-          event = event.copyWith(
-            user: event.user?.copyWith(
-              email: null,
-              username: null,
-              ipAddress: null,
-            ),
-          );
+          event.user!.email = null;
+          event.user!.username = null;
+          event.user!.ipAddress = null;
         }
 
         // Удалить Authorization headers
         if (event.request?.headers != null) {
-          final headers = Map<String, String>.from(event.request!.headers);
-          headers.remove('authorization');
-          headers.remove('Authorization');
-          event = event.copyWith(
-            request: event.request?.copyWith(headers: headers),
-          );
+          event.request!.headers.remove('authorization');
+          event.request!.headers.remove('Authorization');
         }
 
         return event;

@@ -1,3 +1,5 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -211,7 +213,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                   key: _showcaseKeyDateFilter,
                   title: '📅 Фильтр по месяцу и году',
                   description:
-                      'Выберите период для просмотра фотографий:\n• Стрелки ◀ ▶ для переключения месяцев\n• Текущий месяц выделен синим\n• Доступные даты показаны под фильтром\n\nФотографии группируются по дням съёмки на складе.',
+                      'Используйте стрелки ◀ ▶ для переключения месяцев.\nФотографии группируются по дням съёмки.',
                   targetBorderRadius: BorderRadius.circular(14),
                   targetPadding: getShowcaseTargetPadding(),
                   tooltipPosition: TooltipPosition.bottom,

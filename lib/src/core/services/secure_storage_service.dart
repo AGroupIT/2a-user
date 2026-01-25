@@ -34,7 +34,7 @@ class SecureStorageService {
       _storage = const FlutterSecureStorage(
         aOptions: AndroidOptions(),
         iOptions: IOSOptions(
-          accessibility: KeychainAccessibility.first_unlock_this_device,
+          accessibility: KeychainAccessibility.first_unlock,
         ),
       );
     }

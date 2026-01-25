@@ -1,3 +1,5 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,6 +34,7 @@ class ShowcaseWrapper extends StatelessWidget {
     return ShowCaseWidget(
       blurValue: 1,
       autoPlayDelay: const Duration(seconds: 3),
+      enableAutoScroll: true,
       onComplete: (index, key) {
         onComplete?.call();
       },
@@ -57,6 +60,9 @@ enum ShowcasePage {
   news,
   rules,
   notifications,
+  spAssemblies,
+  spAssemblyDetail,
+  spTrackEdit,
 }
 
 /// Сервис для управления showcase туториалами
@@ -223,31 +229,30 @@ class _ShowcaseController {
   }
 }
 
-/// Кастомный виджет для showcase tooltip
-class ShowcaseTooltip extends StatelessWidget {
+/// Кастомный виджет для showcase tooltip с прокручиваемым описанием
+/// и явной кнопкой "Далее" для удобства пользователей
+class ScrollableShowcaseTooltip extends StatelessWidget {
   final String title;
   final String description;
-  final VoidCallback? onNext;
-  final VoidCallback? onSkip;
   final bool isLast;
   final int currentStep;
   final int totalSteps;
+  final VoidCallback? onSkip;
 
-  const ShowcaseTooltip({
+  const ScrollableShowcaseTooltip({
     super.key,
     required this.title,
     required this.description,
-    this.onNext,
-    this.onSkip,
     this.isLast = false,
     this.currentStep = 1,
     this.totalSteps = 1,
+    this.onSkip,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 300),
+      constraints: const BoxConstraints(maxWidth: 300, maxHeight: 350),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -265,46 +270,30 @@ class ShowcaseTooltip extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Progress indicator
-          Row(
-            children: [
-              ...List.generate(totalSteps, (index) {
-                final isActive = index < currentStep;
-                final isCurrent = index == currentStep - 1;
-                return Expanded(
-                  child: Container(
-                    height: 3,
-                    margin: EdgeInsets.only(right: index < totalSteps - 1 ? 4 : 0),
-                    decoration: BoxDecoration(
-                      color: isActive 
-                          ? const Color(0xFFfe3301) 
-                          : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: isCurrent
-                        ? TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0, end: 1),
-                            duration: const Duration(milliseconds: 300),
-                            builder: (context, value, child) {
-                              return FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: value,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFfe3301),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ),
-                              );
-                            },
-                          )
-                        : null,
-                  ),
-                );
-              }),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
+          if (totalSteps > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  ...List.generate(totalSteps, (index) {
+                    final isActive = index < currentStep;
+                    return Expanded(
+                      child: Container(
+                        height: 3,
+                        margin: EdgeInsets.only(right: index < totalSteps - 1 ? 4 : 0),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? const Color(0xFFfe3301)
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+
           // Title
           Text(
             title,
@@ -314,21 +303,31 @@ class ShowcaseTooltip extends StatelessWidget {
               color: Color(0xFF1A1A1A),
             ),
           ),
-          const SizedBox(height: 6),
-          
-          // Description
-          Text(
-            description,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey.shade600,
-              height: 1.4,
+          const SizedBox(height: 8),
+
+          // Scrollable Description
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  child: Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
-          
-          // Buttons
+
+          // Buttons row
           Row(
             children: [
               // Skip button
@@ -345,10 +344,12 @@ class ShowcaseTooltip extends StatelessWidget {
                   ),
                 ),
               const Spacer(),
-              
+
               // Next/Finish button
               FilledButton(
-                onPressed: onNext,
+                onPressed: () {
+                            ShowCaseWidget.of(context).next();
+                },
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFFfe3301),
                   foregroundColor: Colors.white,
@@ -357,12 +358,114 @@ class ShowcaseTooltip extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  isLast ? 'Готово' : 'Далее',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isLast ? 'Готово' : 'Далее',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (!isLast) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_rounded, size: 16),
+                    ],
+                  ],
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Упрощённый виджет для showcase с кнопкой "Далее"
+/// Используется когда описание короткое и не требует прокрутки
+class SimpleShowcaseTooltip extends StatelessWidget {
+  final String title;
+  final String description;
+  final bool isLast;
+
+  const SimpleShowcaseTooltip({
+    super.key,
+    required this.title,
+    required this.description,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Description
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade600,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Button
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: () {
+                        ShowCaseWidget.of(context).next();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFfe3301),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isLast ? 'Готово' : 'Далее',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (!isLast) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_rounded, size: 16),
+                  ],
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -424,4 +527,23 @@ class ShowcaseKeys {
   // Notifications keys
   static final notificationsFilter = GlobalKey(debugLabel: 'notifications_filter');
   static final notificationsList = GlobalKey(debugLabel: 'notifications_list');
+
+  // SP Assemblies screen keys
+  static final spAssembliesList = GlobalKey(debugLabel: 'sp_assemblies_list');
+  static final spAssemblyCard = GlobalKey(debugLabel: 'sp_assembly_card');
+  static final spPaymentStatus = GlobalKey(debugLabel: 'sp_payment_status');
+
+  // SP Assembly Detail screen keys
+  static final spStats = GlobalKey(debugLabel: 'sp_stats');
+  static final spParticipants = GlobalKey(debugLabel: 'sp_participants');
+  static final spParticipantPayment = GlobalKey(debugLabel: 'sp_participant_payment');
+  static final spTracks = GlobalKey(debugLabel: 'sp_tracks');
+  static final spTrackCard = GlobalKey(debugLabel: 'sp_track_card');
+
+  // SP Track Edit screen keys
+  static final spTrackParticipant = GlobalKey(debugLabel: 'sp_track_participant');
+  static final spTrackPrices = GlobalKey(debugLabel: 'sp_track_prices');
+  static final spTrackWeight = GlobalKey(debugLabel: 'sp_track_weight');
+  static final spTrackCalculation = GlobalKey(debugLabel: 'sp_track_calculation');
+  static final spTrackSave = GlobalKey(debugLabel: 'sp_track_save');
 }

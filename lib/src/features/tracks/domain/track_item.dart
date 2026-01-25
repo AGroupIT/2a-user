@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class TrackItem {
   final int? id;
   final String code;
@@ -91,7 +93,14 @@ class TrackItem {
     // Парсим сборку
     TrackAssembly? assembly;
     if (json['assembly'] != null) {
-      assembly = TrackAssembly.fromJson(json['assembly'] as Map<String, dynamic>);
+      final assemblyJson = json['assembly'] as Map<String, dynamic>;
+      // DEBUG: Логируем данные сборки от API
+      if (assemblyJson['deliveryMethod'] != null) {
+        debugPrint('[DEBUG] Assembly ${assemblyJson['id']} from API: deliveryMethod=${assemblyJson['deliveryMethod']}, recipientCity=${assemblyJson['recipientCity']}');
+      } else {
+        debugPrint('[DEBUG] Assembly ${assemblyJson['id']} from API: NO deliveryMethod! Keys: ${assemblyJson.keys.toList()}');
+      }
+      assembly = TrackAssembly.fromJson(assemblyJson);
     }
     
     // Парсим информацию о товаре (productInfo - массив, берем первый)
@@ -160,6 +169,13 @@ class TrackAssembly {
   final bool hasInsurance;
   final double? insuranceAmount;
 
+  // Способ получения
+  final String? deliveryMethod; // 'self_pickup' или 'transport_company'
+  final String? recipientName;
+  final String? recipientPhone;
+  final String? recipientCity;
+  final String? transportCompanyName; // Название транспортной компании
+
   const TrackAssembly({
     required this.id,
     required this.number,
@@ -174,12 +190,22 @@ class TrackAssembly {
     this.packagingCost,
     this.hasInsurance = false,
     this.insuranceAmount,
+    this.deliveryMethod,
+    this.recipientName,
+    this.recipientPhone,
+    this.recipientCity,
+    this.transportCompanyName,
   });
 
   factory TrackAssembly.fromJson(Map<String, dynamic> json) {
-    // Парсим типы упаковки (API возвращает packagingNames)
+    // Парсим типы упаковки (API может возвращать packagingTypes или packagingNames)
     List<String> packagingTypes = [];
-    if (json['packagingNames'] != null && json['packagingNames'] is List) {
+    if (json['packagingTypes'] != null && json['packagingTypes'] is List) {
+      packagingTypes = (json['packagingTypes'] as List)
+          .map((e) => e.toString())
+          .toList();
+    } else if (json['packagingNames'] != null && json['packagingNames'] is List) {
+      // Fallback для старого формата API
       packagingTypes = (json['packagingNames'] as List)
           .map((e) => e.toString())
           .toList();
@@ -209,6 +235,11 @@ class TrackAssembly {
       packagingCost: parseDouble(json['packagingCost']),
       hasInsurance: json['hasInsurance'] == true || json['hasInsurance'] == 'true',
       insuranceAmount: parseDouble(json['insuranceAmount']),
+      deliveryMethod: json['deliveryMethod']?.toString(),
+      recipientName: json['recipientName']?.toString(),
+      recipientPhone: json['recipientPhone']?.toString(),
+      recipientCity: json['recipientCity']?.toString(),
+      transportCompanyName: json['transportCompanyName']?.toString(),
     );
   }
 }

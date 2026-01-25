@@ -1,3 +1,5 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';

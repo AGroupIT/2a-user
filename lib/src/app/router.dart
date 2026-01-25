@@ -18,6 +18,9 @@ import '../features/rules/presentation/rule_detail_screen.dart';
 import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/search_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
+import '../features/sp_finance/presentation/sp_assemblies_screen.dart';
+import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
+import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
@@ -224,6 +227,44 @@ final routerProvider = Provider<GoRouter>((ref) {
               return AppScaffold(
                 title: 'Правило',
                 child: RuleDetailScreen(slug: slug),
+              );
+            },
+          ),
+        ],
+      ),
+      // SP Finance routes
+      GoRoute(
+        path: '/sp-finance',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Совместные покупки',
+          child: SpAssembliesScreen(),
+        ),
+        routes: [
+          GoRoute(
+            path: 'assemblies/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              return AppScaffold(
+                title: 'Детали сборки',
+                child: SpAssemblyDetailScreen(assemblyId: id),
+              );
+            },
+          ),
+          GoRoute(
+            path: 'tracks/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              final assemblyId = extra?['assemblyId'] as int;
+              return AppScaffold(
+                title: 'Редактирование трека',
+                child: SpTrackEditScreen(
+                  trackId: id,
+                  assemblyId: assemblyId,
+                ),
               );
             },
           ),

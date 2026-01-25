@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 /// Конфигурация API
 class ApiConfig {
@@ -27,26 +27,26 @@ class ApiConfig {
   }
   
   /// Формирует полный URL для медиа-файла
-  /// На Web использует /api/uploads/ endpoint с CORS поддержкой
+  /// Использует /api/uploads/ endpoint для надёжной работы на всех платформах
   static String getMediaUrl(String path) {
     if (path.isEmpty) return '';
     if (path.startsWith('http://') || path.startsWith('https://')) {
-      // Для Web преобразуем прямые ссылки на uploads через API
-      if (kIsWeb && path.contains('/uploads/')) {
-        // Заменяем /uploads/ на /api/uploads/ для CORS
+      // Преобразуем прямые ссылки на uploads через API (для всех платформ)
+      if (path.contains('/uploads/') && !path.contains('/api/uploads/')) {
+        // Заменяем /uploads/ на /api/uploads/
         return path.replaceFirst('/uploads/', '/api/uploads/');
       }
       return path;
     }
-    
+
     // Для относительных путей
     final cleanPath = path.startsWith('/') ? path.substring(1) : path;
-    
-    // На Web используем API endpoint для CORS
-    if (kIsWeb && cleanPath.startsWith('uploads/')) {
+
+    // Используем API endpoint для всех платформ (включая iOS)
+    if (cleanPath.startsWith('uploads/')) {
       return '$mediaBaseUrl/api/$cleanPath';
     }
-    
+
     return '$mediaBaseUrl/$cleanPath';
   }
 

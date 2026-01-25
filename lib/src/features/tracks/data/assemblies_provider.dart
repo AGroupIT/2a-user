@@ -19,10 +19,16 @@ class Assembly {
   final String? tariffName;
   final double tariffCost;
   final List<String> packagingNames;
+  final double packagingCost; // Сумма стоимости упаковок
   final int trackCount;
   final List<AssemblyTrack> tracks;
   final String? scalePhotoUrl;
   final String? comment;
+  final String? deliveryMethod; // Способ доставки: self_pickup или transport_company
+  final String? recipientName; // Имя получателя (для ТК)
+  final String? recipientPhone; // Телефон получателя (для ТК)
+  final String? recipientCity; // Город получателя (для ТК)
+  final String? transportCompanyName; // Название транспортной компании
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -40,10 +46,16 @@ class Assembly {
     this.tariffName,
     this.tariffCost = 0,
     this.packagingNames = const [],
+    this.packagingCost = 0,
     this.trackCount = 0,
     this.tracks = const [],
     this.scalePhotoUrl,
     this.comment,
+    this.deliveryMethod,
+    this.recipientName,
+    this.recipientPhone,
+    this.recipientCity,
+    this.transportCompanyName,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -81,10 +93,18 @@ class Assembly {
           ? double.tryParse(json['tariffCost'].toString()) ?? 0
           : 0,
       packagingNames: packagingNames,
+      packagingCost: json['packagingCost'] != null
+          ? double.tryParse(json['packagingCost'].toString()) ?? 0
+          : 0,
       trackCount: json['trackCount'] as int? ?? tracks.length,
       tracks: tracks,
       scalePhotoUrl: json['scalePhotoUrl'] as String?,
       comment: json['comment'] as String?,
+      deliveryMethod: json['deliveryMethod'] as String?,
+      recipientName: json['recipientName'] as String?,
+      recipientPhone: json['recipientPhone'] as String?,
+      recipientCity: json['recipientCity'] as String?,
+      transportCompanyName: json['transportCompanyName'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -317,6 +337,33 @@ class AssembliesApiService {
       return response.statusCode == 200;
     } on DioException catch (e) {
       debugPrint('Error updating assembly insurance: $e');
+      return false;
+    }
+  }
+
+  /// Обновить способ доставки сборки
+  Future<bool> updateAssemblyDelivery({
+    required int assemblyId,
+    required String deliveryMethod,
+    String? recipientName,
+    String? recipientPhone,
+    String? recipientCity,
+    String? transportCompanyName,
+  }) async {
+    try {
+      final response = await _apiClient.patch(
+        '/assemblies/$assemblyId',
+        data: {
+          'deliveryMethod': deliveryMethod,
+          if (recipientName != null) 'recipientName': recipientName,
+          if (recipientPhone != null) 'recipientPhone': recipientPhone,
+          if (recipientCity != null) 'recipientCity': recipientCity,
+          if (transportCompanyName != null) 'transportCompanyName': transportCompanyName,
+        },
+      );
+      return response.statusCode == 200;
+    } on DioException catch (e) {
+      debugPrint('Error updating assembly delivery: $e');
       return false;
     }
   }

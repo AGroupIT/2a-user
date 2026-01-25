@@ -1,16 +1,17 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
-import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:showcaseview/showcaseview.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:io';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:typed_data';
 
+import '../../../core/utils/file_download_helper.dart';
+
 import '../../../core/services/auto_refresh_service.dart';
-import '../../../core/services/app_language_service.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../auth/data/auth_provider.dart';
@@ -83,7 +84,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with AutoRefreshMixin {
   // Showcase keys
   final _showcaseKeyPersonalData = GlobalKey();
-  final _showcaseKeyLanguage = GlobalKey();
   final _showcaseKeyStats = GlobalKey();
   final _showcaseKeyExport = GlobalKey();
   final _showcaseKeyLogout = GlobalKey();
@@ -115,7 +115,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyPersonalData,
-        _showcaseKeyLanguage,
         _showcaseKeyStats,
         _showcaseKeyExport,
         _showcaseKeyLogout,
@@ -189,7 +188,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 loading: () => ClientStats.empty,
                 error: (_, _) => ClientStats.empty,
               );
-              final appLanguage = ref.watch(appLanguageProvider);
 
               return RefreshIndicator(
                 onRefresh: onRefresh,
@@ -256,69 +254,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ),
             const SizedBox(height: 16),
 
-            // Language Section
-            Showcase(
-              key: _showcaseKeyLanguage,
-              title: '🌍 Выбор языка',
-              description: 'Выберите удобный для вас язык интерфейса:\n• Русский - для русскоязычных пользователей\n• 中文 (Китайский) - для китайских клиентов\n• Настройка сохраняется автоматически\n• Применяется ко всему приложению',
-              targetPadding: getShowcaseTargetPadding(),
-              tooltipPosition: TooltipPosition.bottom,
-              tooltipBackgroundColor: Colors.white,
-              textColor: Colors.black87,
-              titleTextStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
-              ),
-              descTextStyle: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              onTargetClick: () {
-                if (mounted) {
-                  ShowCaseWidget.of(showcaseContext).next();
-                }
-              },
-              disposeOnTap: false,
-              child: _buildSectionCard(
-                title: 'Язык',
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFDDDDDD)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<AppLanguage>(
-                        value: appLanguage,
-                        isExpanded: true,
-                        items: AppLanguage.values
-                            .map(
-                              (lang) => DropdownMenuItem(
-                                value: lang,
-                                child: Text(
-                                  lang.labelRu,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value == null) return;
-                          ref.read(appLanguageProvider.notifier).setLanguage(value);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
             // Statistics Section
             Showcase(
@@ -470,6 +405,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   ),
                 ),
               ),
+            ),
+
+            // App version
+            const SizedBox(height: 24),
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const SizedBox.shrink();
+                final info = snapshot.data!;
+                return Center(
+                  child: Text(
+                    'Версия ${info.version} (${info.buildNumber})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
                 ),
@@ -726,13 +680,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  Rect? _getSharePositionOrigin(GlobalKey key) {
-    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return null;
-    final position = renderBox.localToGlobal(Offset.zero);
-    return Rect.fromLTWH(position.dx, position.dy, renderBox.size.width, renderBox.size.height);
-  }
-
   Future<void> _exportInvoices(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
@@ -745,9 +692,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       final invoices = await ref.read(invoicesListProvider(clientCode).future);
       
       if (!mounted) return;
-      
+
       if (invoices.isEmpty) {
-        _showStyledSnackBar(context, 'Нет счетов для экспорта', isError: true);
+        if (mounted) _showStyledSnackBar(context, 'Нет счетов для экспорта', isError: true);
         return;
       }
 
@@ -804,31 +751,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       // Сохраняем
       final bytes = excel.encode();
       if (bytes == null) {
-        _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        if (mounted) _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
         return;
       }
-      
+
       final uint8Bytes = Uint8List.fromList(bytes);
-      
-      final dir = await getTemporaryDirectory();
       final fileName = 'Счета_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
-      final tempFile = File('${dir.path}/$fileName');
-      await tempFile.writeAsBytes(uint8Bytes);
-      
-      // Используем Share для экспорта файла (работает на iOS и Android)
-      final result = await Share.shareXFiles(
-        [XFile(tempFile.path)],
-        subject: 'Экспорт счетов',
-        sharePositionOrigin: _getSharePositionOrigin(buttonKey),
-      );
-      
+
       if (!mounted) return;
-      if (result.status == ShareResultStatus.success) {
+
+      final success = await downloadFile(
+        bytes: uint8Bytes,
+        fileName: fileName,
+        shareButtonKey: buttonKey,
+      );
+
+      if (!mounted) return;
+      if (success) {
         _showStyledSnackBar(context, 'Экспортировано ${invoices.length} счетов');
       }
     } catch (e) {
-      if (!mounted) return;
-      _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
+      if (mounted) {
+        _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
+      }
     }
   }
 
@@ -838,7 +783,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
       return;
     }
-    
+
     try {
       // Получаем все треки - используем пагинированный провайдер
       final notifier = ref.read(paginatedTracksProvider(clientCode));
@@ -847,80 +792,221 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         await notifier.loadInitial();
       }
       final tracks = notifier.state.tracks;
-      
+
       if (!mounted) return;
-      
+
       if (tracks.isEmpty) {
-        _showStyledSnackBar(context, 'Нет треков для экспорта', isError: true);
+        if (mounted) _showStyledSnackBar(context, 'Нет треков для экспорта', isError: true);
         return;
       }
 
-      // Создаём Excel файл
+      // Создаём Excel файл по шаблону
       final excel = xls.Excel.createExcel();
       final sheet = excel['Треки'];
-      
-      // Заголовки
-      sheet.appendRow([
-        xls.TextCellValue('Трек-номер'),
-        xls.TextCellValue('Статус'),
-        xls.TextCellValue('Дата создания'),
-        xls.TextCellValue('Дата обновления'),
-        xls.TextCellValue('Сборка'),
-        xls.TextCellValue('Комментарий'),
-        xls.TextCellValue('Товары'),
-      ]);
-      
-      // Данные
-      final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
+
+      // Стиль для заголовков
+      final headerStyle = xls.CellStyle(
+        bold: true,
+        horizontalAlign: xls.HorizontalAlign.Center,
+        verticalAlign: xls.VerticalAlign.Center,
+        textWrapping: xls.TextWrapping.WrapText,
+      );
+
+      // Row 1: Основные заголовки
+      // A1: Трек номер (merged A1:A2)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+        ..value = xls.TextCellValue('Трек номер')
+        ..cellStyle = headerStyle;
+
+      // B1: Статус (merged B1:B2)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0))
+        ..value = xls.TextCellValue('Статус')
+        ..cellStyle = headerStyle;
+
+      // C1: О товаре (merged C1:D1)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 0))
+        ..value = xls.TextCellValue('О товаре')
+        ..cellStyle = headerStyle;
+
+      // E1: Вопрос по треку (merged E1:F1)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 0))
+        ..value = xls.TextCellValue('Вопрос по треку')
+        ..cellStyle = headerStyle;
+
+      // G1: Комментарий по треку (merged G1:G2)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: 0))
+        ..value = xls.TextCellValue('Комментарий по треку')
+        ..cellStyle = headerStyle;
+
+      // H1: Сборка (merged H1:L1)
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 0))
+        ..value = xls.TextCellValue('Сборка')
+        ..cellStyle = headerStyle;
+
+      // Row 2: Подзаголовки
+      // C2: Наименование
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 1))
+        ..value = xls.TextCellValue('Наименование')
+        ..cellStyle = headerStyle;
+
+      // D2: Количество
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 1))
+        ..value = xls.TextCellValue('Количество')
+        ..cellStyle = headerStyle;
+
+      // E2: Вопрос
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 1))
+        ..value = xls.TextCellValue('Вопрос')
+        ..cellStyle = headerStyle;
+
+      // F2: Ответ
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: 1))
+        ..value = xls.TextCellValue('Ответ')
+        ..cellStyle = headerStyle;
+
+      // H2: Наименование сборки
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 1))
+        ..value = xls.TextCellValue('Наименование сборки')
+        ..cellStyle = headerStyle;
+
+      // I2: Наименование тарифа
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: 1))
+        ..value = xls.TextCellValue('Наименование тарифа')
+        ..cellStyle = headerStyle;
+
+      // J2: Стоимость тарифа
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: 1))
+        ..value = xls.TextCellValue('Стоимость тарифа')
+        ..cellStyle = headerStyle;
+
+      // K2: Тип упаковки
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: 1))
+        ..value = xls.TextCellValue('Тип упаковки')
+        ..cellStyle = headerStyle;
+
+      // L2: Стоимость упаковки
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 1))
+        ..value = xls.TextCellValue('Стоимость упаковки')
+        ..cellStyle = headerStyle;
+
+      // Merge cells для заголовков
+      sheet.merge(xls.CellIndex.indexByString('A1'), xls.CellIndex.indexByString('A2')); // Трек номер
+      sheet.merge(xls.CellIndex.indexByString('B1'), xls.CellIndex.indexByString('B2')); // Статус
+      sheet.merge(xls.CellIndex.indexByString('C1'), xls.CellIndex.indexByString('D1')); // О товаре
+      sheet.merge(xls.CellIndex.indexByString('E1'), xls.CellIndex.indexByString('F1')); // Вопрос по треку
+      sheet.merge(xls.CellIndex.indexByString('G1'), xls.CellIndex.indexByString('G2')); // Комментарий
+      sheet.merge(xls.CellIndex.indexByString('H1'), xls.CellIndex.indexByString('L1')); // Сборка
+
+      // Данные начинаются с row 3 (index 2)
+      int rowIndex = 2;
       for (final track in tracks) {
-        // Собираем информацию о товарах
-        String productsInfo = '';
-        if (track.productInfo != null) {
-          productsInfo = '${track.productInfo!.name ?? ''} (${track.productInfo!.quantity} шт)';
-        }
-        
-        sheet.appendRow([
-          xls.TextCellValue(track.code),
-          xls.TextCellValue(track.status),
-          xls.TextCellValue(dateFormat.format(track.createdAt)),
-          xls.TextCellValue(dateFormat.format(track.updatedAt)),
-          xls.TextCellValue(track.assembly?.number ?? ''),
-          xls.TextCellValue(track.comment ?? ''),
-          xls.TextCellValue(productsInfo),
-        ]);
+        // A: Трек номер
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
+          .value = xls.TextCellValue(track.code);
+
+        // B: Статус
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
+          .value = xls.TextCellValue(track.status);
+
+        // C: Наименование товара
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
+          .value = xls.TextCellValue(track.productInfo?.name ?? '');
+
+        // D: Количество
+        final quantity = track.productInfo?.quantity ?? 0;
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
+          .value = quantity > 0 ? xls.IntCellValue(quantity) : xls.TextCellValue('');
+
+        // E: Вопрос (собираем все вопросы)
+        final questions = track.questions
+            .where((q) => q.status != 'cancelled')
+            .map((q) => q.question)
+            .join('\n');
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
+          .value = xls.TextCellValue(questions);
+
+        // F: Ответ (собираем все ответы)
+        final answers = track.questions
+            .where((q) => q.status != 'cancelled' && q.answer != null && q.answer!.isNotEmpty)
+            .map((q) => q.answer!)
+            .join('\n');
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex))
+          .value = xls.TextCellValue(answers);
+
+        // G: Комментарий по треку
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: rowIndex))
+          .value = xls.TextCellValue(track.comment ?? '');
+
+        // H: Наименование сборки
+        final assemblyName = track.assembly?.name ?? track.assembly?.number ?? '';
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: rowIndex))
+          .value = xls.TextCellValue(assemblyName);
+
+        // I: Наименование тарифа
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: rowIndex))
+          .value = xls.TextCellValue(track.assembly?.tariffName ?? '');
+
+        // J: Стоимость тарифа
+        final tariffCost = track.assembly?.tariffCost;
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: rowIndex))
+          .value = tariffCost != null ? xls.DoubleCellValue(tariffCost) : xls.TextCellValue('');
+
+        // K: Тип упаковки
+        final packagingTypes = track.assembly?.packagingTypes.join(', ') ?? '';
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: rowIndex))
+          .value = xls.TextCellValue(packagingTypes);
+
+        // L: Стоимость упаковки
+        final packagingCost = track.assembly?.packagingCost;
+        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: rowIndex))
+          .value = packagingCost != null ? xls.DoubleCellValue(packagingCost) : xls.TextCellValue('');
+
+        rowIndex++;
       }
-      
+
+      // Устанавливаем ширину колонок
+      sheet.setColumnWidth(0, 20);  // A: Трек номер
+      sheet.setColumnWidth(1, 15);  // B: Статус
+      sheet.setColumnWidth(2, 25);  // C: Наименование
+      sheet.setColumnWidth(3, 12);  // D: Количество
+      sheet.setColumnWidth(4, 30);  // E: Вопрос
+      sheet.setColumnWidth(5, 30);  // F: Ответ
+      sheet.setColumnWidth(6, 25);  // G: Комментарий
+      sheet.setColumnWidth(7, 20);  // H: Наименование сборки
+      sheet.setColumnWidth(8, 20);  // I: Наименование тарифа
+      sheet.setColumnWidth(9, 15);  // J: Стоимость тарифа
+      sheet.setColumnWidth(10, 25); // K: Тип упаковки
+      sheet.setColumnWidth(11, 18); // L: Стоимость упаковки
+
       // Удаляем дефолтный лист
       excel.delete('Sheet1');
-      
+
       // Сохраняем
       final bytes = excel.encode();
       if (bytes == null) {
-        _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        if (mounted) _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
         return;
       }
-      
+
       final uint8Bytes = Uint8List.fromList(bytes);
-      
-      final dir = await getTemporaryDirectory();
       final fileName = 'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
-      final tempFile = File('${dir.path}/$fileName');
-      await tempFile.writeAsBytes(uint8Bytes);
-      
-      // Используем Share для экспорта файла (работает на iOS и Android)
-      final result = await Share.shareXFiles(
-        [XFile(tempFile.path)],
-        subject: 'Экспорт треков',
-        sharePositionOrigin: _getSharePositionOrigin(buttonKey),
-      );
-      
+
       if (!mounted) return;
-      if (result.status == ShareResultStatus.success) {
+
+      final success = await downloadFile(
+        bytes: uint8Bytes,
+        fileName: fileName,
+        shareButtonKey: buttonKey,
+      );
+
+      if (!mounted) return;
+      if (success) {
         _showStyledSnackBar(context, 'Экспортировано ${tracks.length} треков');
       }
     } catch (e) {
-      if (!mounted) return;
-      _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
+      if (mounted) {
+        _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
+      }
     }
   }
 }
