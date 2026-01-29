@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import '../../assemblies/domain/box.dart';
+import '../../sp_finance/data/sp_models.dart';
 
 class TrackItem {
   final int? id;
@@ -94,12 +95,6 @@ class TrackItem {
     TrackAssembly? assembly;
     if (json['assembly'] != null) {
       final assemblyJson = json['assembly'] as Map<String, dynamic>;
-      // DEBUG: Логируем данные сборки от API
-      if (assemblyJson['deliveryMethod'] != null) {
-        debugPrint('[DEBUG] Assembly ${assemblyJson['id']} from API: deliveryMethod=${assemblyJson['deliveryMethod']}, recipientCity=${assemblyJson['recipientCity']}');
-      } else {
-        debugPrint('[DEBUG] Assembly ${assemblyJson['id']} from API: NO deliveryMethod! Keys: ${assemblyJson.keys.toList()}');
-      }
       assembly = TrackAssembly.fromJson(assemblyJson);
     }
     
@@ -176,6 +171,12 @@ class TrackAssembly {
   final String? recipientCity;
   final String? transportCompanyName; // Название транспортной компании
 
+  // Коробки (новое)
+  final List<Box> boxes;
+
+  // Фото на весах (старые, для обратной совместимости)
+  final List<ScalePhoto> scalePhotos;
+
   const TrackAssembly({
     required this.id,
     required this.number,
@@ -195,6 +196,8 @@ class TrackAssembly {
     this.recipientPhone,
     this.recipientCity,
     this.transportCompanyName,
+    this.boxes = const [],
+    this.scalePhotos = const [],
   });
 
   factory TrackAssembly.fromJson(Map<String, dynamic> json) {
@@ -220,7 +223,18 @@ class TrackAssembly {
       if (value is String) return double.tryParse(value);
       return null;
     }
-    
+
+    final scalePhotosList = (json['scalePhotos'] as List<dynamic>?)
+            ?.map((e) => ScalePhoto.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // Парсим коробки
+    final boxesList = (json['boxes'] as List<dynamic>?)
+            ?.map((e) => Box.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
     return TrackAssembly(
       id: json['id'] is int ? json['id'] as int : int.parse(json['id'].toString()),
       number: json['number']?.toString() ?? '',
@@ -240,6 +254,8 @@ class TrackAssembly {
       recipientPhone: json['recipientPhone']?.toString(),
       recipientCity: json['recipientCity']?.toString(),
       transportCompanyName: json['transportCompanyName']?.toString(),
+      boxes: boxesList,
+      scalePhotos: scalePhotosList,
     );
   }
 }

@@ -1,13 +1,17 @@
 // TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
 // ignore_for_file: deprecated_member_use
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:showcaseview/showcaseview.dart';
 
+import '../../../core/network/api_config.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/utils/locale_text.dart';
+import '../../assemblies/domain/box.dart';
 import '../data/sp_models.dart';
 import '../data/sp_provider.dart';
 
@@ -152,6 +156,13 @@ class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen>
                     child: _StatsSection(assembly: assembly),
                   ),
                   const SizedBox(height: 24),
+
+                  // Коробки
+                  if (assembly.boxes.isNotEmpty) ...[
+                    _BoxesSection(assembly: assembly),
+                    const SizedBox(height: 24),
+                  ],
+
                   Showcase(
                     key: ShowcaseKeys.spParticipants,
                     title: '👥 Участники СП',
@@ -1196,6 +1207,275 @@ class _FinanceItem extends StatelessWidget {
             color: value != null ? color : Colors.grey.shade400,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
             fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Секция с фото на весах
+class _BoxesSection extends StatelessWidget {
+  final SpAssembly assembly;
+
+  const _BoxesSection({required this.assembly});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.inventory_2_outlined, size: 20, color: Color(0xFFfe3301)),
+                    const SizedBox(width: 8),
+                    Text(
+                      tr(context, ru: 'Коробки', zh: '箱子'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  '${assembly.boxes.length} шт.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Отображаем каждую коробку
+            ...assembly.boxes.asMap().entries.map((entry) {
+              final index = entry.key;
+              final box = entry.value;
+              return Padding(
+                padding: EdgeInsets.only(bottom: index < assembly.boxes.length - 1 ? 12 : 0),
+                child: _buildBoxCard(context, box),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBoxCard(BuildContext context, Box box) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Заголовок с номером коробки
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFfe3301).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    '#${box.number}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Color(0xFFfe3301),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                box.displayName(context),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Параметры коробки в сетке 2x2
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildBoxParam(
+                        context,
+                        icon: Icons.straighten,
+                        label: tr(context, ru: 'Габариты', zh: '尺寸'),
+                        value: box.dimensionsDisplay,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildBoxParam(
+                        context,
+                        icon: Icons.scale,
+                        label: tr(context, ru: 'Вес', zh: '重量'),
+                        value: box.weightDisplay,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildBoxParam(
+                        context,
+                        icon: Icons.inventory_2_outlined,
+                        label: tr(context, ru: 'Объём', zh: '体积'),
+                        value: box.volumeDisplay,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildBoxParam(
+                        context,
+                        icon: Icons.compress,
+                        label: tr(context, ru: 'Плотность', zh: '密度'),
+                        value: box.densityDisplay,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Фото на весах
+          if (box.photos.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              tr(context, ru: 'Фото на весах (${box.photos.length})', zh: '称重照片 (${box.photos.length})'),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 90,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: box.photos.length,
+                itemBuilder: (context, index) {
+                  final photo = box.photos[index];
+                  final photoUrl = ApiConfig.getMediaUrl(photo.url);
+
+                  return Padding(
+                    padding: EdgeInsets.only(right: index < box.photos.length - 1 ? 10 : 0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            // TODO: Добавить просмотр фото
+                          },
+                          child: Container(
+                            width: 90,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: CachedNetworkImage(
+                              imageUrl: photoUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, _) => Container(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                child: const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                child: const Center(
+                                  child: Icon(Icons.broken_image_outlined, size: 24),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoxParam(BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 15, color: Colors.black45),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
           ),
         ),
       ],

@@ -34,6 +34,8 @@
 	<string>Нужен доступ для сохранения фотографий в галерею</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Нужен доступ к галерее для выбора фото товаров</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Мы используем данные для улучшения качества приложения и персонализации вашего опыта</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -6,6 +6,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'src/app/app.dart';
 import 'src/core/config/sentry_config.dart';
 import 'src/core/persistence/shared_preferences_provider.dart';
+import 'src/core/services/analytics_service.dart';
 import 'src/core/services/push_notification_service.dart';
 
 void main() async {
@@ -13,6 +14,9 @@ void main() async {
 
   // Инициализация Firebase для push-уведомлений
   await PushNotificationService.initializeFirebase();
+
+  // Инициализация AppMetrica для аналитики
+  await AnalyticsService.initialize();
 
   // Инициализация SharedPreferences для showcase
   final sharedPreferences = await SharedPreferences.getInstance();

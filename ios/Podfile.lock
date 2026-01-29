@@ -1,4 +1,102 @@
 PODS:
+  - appmetrica_plugin (3.4.0):
+    - AppMetricaAnalytics (~> 5.14)
+    - AppMetricaLibraryAdapter (~> 5.14)
+    - Flutter
+  - AppMetricaAdSupport (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreExtension (= 5.16.0)
+  - AppMetricaAnalytics (5.16.0):
+    - AppMetricaAdSupport (= 5.16.0)
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCrashes (= 5.16.0)
+    - AppMetricaIDSync (= 5.16.0)
+    - AppMetricaScreenshot (= 5.16.0)
+    - AppMetricaWebKit (= 5.16.0)
+  - AppMetricaCore (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaEncodingUtils (= 5.16.0)
+    - AppMetricaFMDB (= 5.16.0)
+    - AppMetricaHostState (= 5.16.0)
+    - AppMetricaIdentifiers (= 5.16.0)
+    - AppMetricaKeychain (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaNetwork (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+    - AppMetricaProtobuf (= 5.16.0)
+    - AppMetricaProtobufUtils (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+  - AppMetricaCoreExtension (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+  - AppMetricaCoreUtils (5.16.0):
+    - AppMetricaLog (= 5.16.0)
+  - AppMetricaCrashes (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreExtension (= 5.16.0)
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaEncodingUtils (= 5.16.0)
+    - AppMetricaHostState (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+    - AppMetricaProtobufUtils (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+    - KSCrash/Recording (< 2.2.0, >= 2.1.0)
+  - AppMetricaEncodingUtils (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+  - AppMetricaFMDB (5.16.0)
+  - AppMetricaHostState (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+  - AppMetricaIdentifiers (5.16.0):
+    - AppMetricaKeychain (= 5.16.0)
+    - AppMetricaLogSwift (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+    - AppMetricaSynchronization (= 5.16.0)
+  - AppMetricaIDSync (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreExtension (= 5.16.0)
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaNetwork (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+  - AppMetricaKeychain (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+  - AppMetricaLibraryAdapter (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreExtension (= 5.16.0)
+  - AppMetricaLog (5.16.0)
+  - AppMetricaLogSwift (5.16.0):
+    - AppMetricaLog (= 5.16.0)
+  - AppMetricaNetwork (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+    - AppMetricaPlatform (= 5.16.0)
+  - AppMetricaPlatform (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+  - AppMetricaProtobuf (5.16.0)
+  - AppMetricaProtobufUtils (5.16.0):
+    - AppMetricaProtobuf (= 5.16.0)
+  - AppMetricaScreenshot (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreExtension (= 5.16.0)
+    - AppMetricaStorageUtils (= 5.16.0)
+  - AppMetricaStorageUtils (5.16.0):
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
+  - AppMetricaSynchronization (5.16.0):
+    - AppMetricaLogSwift (= 5.16.0)
+  - AppMetricaWebKit (5.16.0):
+    - AppMetricaCore (= 5.16.0)
+    - AppMetricaCoreUtils (= 5.16.0)
+    - AppMetricaLog (= 5.16.0)
   - DKImagePickerController/Core (4.3.9):
     - DKImagePickerController/ImageDataManager
     - DKImagePickerController/Resource
@@ -103,6 +201,11 @@ PODS:
     - GoogleUtilities/Privacy
   - image_picker_ios (0.0.1):
     - Flutter
+  - KSCrash/Core (2.1.2)
+  - KSCrash/Recording (2.1.2):
+    - KSCrash/RecordingCore
+  - KSCrash/RecordingCore (2.1.2):
+    - KSCrash/Core
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
     - nanopb/encode (= 3.30910.0)
@@ -138,6 +241,7 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - appmetrica_plugin (from `.symlinks/plugins/appmetrica_plugin/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
@@ -158,6 +262,29 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - AppMetricaAdSupport
+    - AppMetricaAnalytics
+    - AppMetricaCore
+    - AppMetricaCoreExtension
+    - AppMetricaCoreUtils
+    - AppMetricaCrashes
+    - AppMetricaEncodingUtils
+    - AppMetricaFMDB
+    - AppMetricaHostState
+    - AppMetricaIdentifiers
+    - AppMetricaIDSync
+    - AppMetricaKeychain
+    - AppMetricaLibraryAdapter
+    - AppMetricaLog
+    - AppMetricaLogSwift
+    - AppMetricaNetwork
+    - AppMetricaPlatform
+    - AppMetricaProtobuf
+    - AppMetricaProtobufUtils
+    - AppMetricaScreenshot
+    - AppMetricaStorageUtils
+    - AppMetricaSynchronization
+    - AppMetricaWebKit
     - DKImagePickerController
     - DKPhotoGallery
     - Firebase
@@ -167,6 +294,7 @@ SPEC REPOS:
     - FirebaseMessaging
     - GoogleDataTransport
     - GoogleUtilities
+    - KSCrash
     - nanopb
     - PromisesObjC
     - SDWebImage
@@ -174,6 +302,8 @@ SPEC REPOS:
     - SwiftyGif
 
 EXTERNAL SOURCES:
+  appmetrica_plugin:
+    :path: ".symlinks/plugins/appmetrica_plugin/ios"
   file_picker:
     :path: ".symlinks/plugins/file_picker/ios"
   firebase_core:
@@ -208,6 +338,30 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
+  appmetrica_plugin: 2a19122bfdc28fae59ab170d7b30a9d712434c5c
+  AppMetricaAdSupport: b1f4371eb11db6386dd021d9470029900e3eb26c
+  AppMetricaAnalytics: 59679f27df598fd82109401059acb079a6982e3d
+  AppMetricaCore: 22721f501af9959747d289b2c7c2aeb6c7d24a27
+  AppMetricaCoreExtension: 45a2b2e691256b8390012684ed663ecbc0c076dc
+  AppMetricaCoreUtils: 0d50f3d4cd7c2c0d521d070e0cc2af4d9892b10d
+  AppMetricaCrashes: 059614d0a488af9ad4eeb24ecf870ed8fd7c26e4
+  AppMetricaEncodingUtils: 2c69440565bed6ce13150825443e90aeede39a79
+  AppMetricaFMDB: 5c05b5f7b4fcc2ef63749df069050d07c129d8d8
+  AppMetricaHostState: b3bfb7fa920ce5172a365fd37974f436ee6fb9fe
+  AppMetricaIdentifiers: 13bf75fa7fe0ba180f673b76024f9db7445706ef
+  AppMetricaIDSync: 53ad71e0f7bb7c5ebfa7f4e9ceb370cd67210362
+  AppMetricaKeychain: 9ce8e22af9792732c2a5f913cbd24b702cc542e1
+  AppMetricaLibraryAdapter: d6d24b8e11cd879ed458be14364e5f2328488dcd
+  AppMetricaLog: b570ba93b6cbdb2c43189edf00c9afa0adb84ee9
+  AppMetricaLogSwift: 7dc596d8c90ce2dee1bda678b6ae1840a37d3ff9
+  AppMetricaNetwork: 6132d1a0686c884790bc28409bb650b1315824b9
+  AppMetricaPlatform: 16237b1e9877d7d9dcb1e3c088f366b8160fa8f5
+  AppMetricaProtobuf: bcbc3129457aeeaae860c6d818f4ea416bffc0ce
+  AppMetricaProtobufUtils: a54dfffbae870daad8a73d2bd8f0d328da94717b
+  AppMetricaScreenshot: 4582401cf9e5c85bd22b2c0adbae96249c9a6eb0
+  AppMetricaStorageUtils: defb3063fbf63c18aab8d54d87269348325816dc
+  AppMetricaSynchronization: 459495f1c9bc10754375ef2b84e427085b3060a6
+  AppMetricaWebKit: ea18edee9a1f742f0015888ec97b64e215f88b65
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
@@ -225,6 +379,7 @@ SPEC CHECKSUMS:
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
+  KSCrash: bd950ede6c40a50bfc9f246c38a7f3408705fa3c
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880

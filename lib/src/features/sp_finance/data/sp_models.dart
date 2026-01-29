@@ -1,3 +1,5 @@
+import '../../assemblies/domain/box.dart';
+
 /// Участник совместной покупки с агрегированными данными
 class SpParticipant {
   final String name;
@@ -156,6 +158,21 @@ class SpPhoto {
       url: json['url'] as String,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}
+
+/// Фото на весах для сборки
+class ScalePhoto {
+  final String id;
+  final String url;
+
+  const ScalePhoto({required this.id, required this.url});
+
+  factory ScalePhoto.fromJson(Map<String, dynamic> json) {
+    return ScalePhoto(
+      id: json['id']?.toString() ?? '',
+      url: json['url'] as String? ?? '',
     );
   }
 }
@@ -445,6 +462,8 @@ class SpAssembly {
   final SpStats stats;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final List<Box> boxes; // Коробки (новое)
+  final List<ScalePhoto> scalePhotos; // Фото на весах (старые, для обратной совместимости)
 
   const SpAssembly({
     required this.id,
@@ -458,6 +477,8 @@ class SpAssembly {
     required this.stats,
     required this.createdAt,
     this.updatedAt,
+    this.boxes = const [],
+    this.scalePhotos = const [],
   });
 
   /// Отображаемое название сборки
@@ -493,6 +514,14 @@ class SpAssembly {
       stats: SpStats.fromJson(json['stats'] as Map<String, dynamic>),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
+      boxes: (json['boxes'] as List<dynamic>?)
+              ?.map((e) => Box.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      scalePhotos: (json['scalePhotos'] as List<dynamic>?)
+              ?.map((e) => ScalePhoto.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 
@@ -501,6 +530,7 @@ class SpAssembly {
     double? defaultPurchaseRate,
     List<SpTrack>? tracks,
     SpStats? stats,
+    List<ScalePhoto>? scalePhotos,
   }) {
     return SpAssembly(
       id: id,
@@ -514,6 +544,7 @@ class SpAssembly {
       stats: stats ?? this.stats,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      scalePhotos: scalePhotos ?? this.scalePhotos,
     );
   }
 }

@@ -40,7 +40,12 @@ class AppShell extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: () => FocusScope.of(context).unfocus(),
           onHorizontalDragEnd: (details) {
-            // Only allow tab-swipe when we're at the root of a branch (no inner pages)
+            // Проверяем, что shell - активный маршрут (нет внутренних страниц поверх)
+            // Используем rootNavigator чтобы проверить есть ли страницы поверх shell
+            final rootNavigator = Navigator.of(context, rootNavigator: true);
+            if (rootNavigator.canPop()) return; // Есть внутренняя страница - не обрабатываем свайп
+
+            // Дополнительная проверка для shell navigator
             if (Navigator.of(context).canPop()) return;
 
             final v = details.primaryVelocity ?? 0;

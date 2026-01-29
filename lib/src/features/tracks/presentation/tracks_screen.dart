@@ -21,11 +21,15 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/utils/error_utils.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../auth/data/auth_provider.dart';
 import '../data/tracks_provider.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
+import '../../assemblies/domain/box.dart';
+import '../../photos/presentation/photo_viewer_screen.dart';
+import '../../photos/domain/photo_item.dart';
 import 'add_tracks_dialog.dart';
 
 // Alias для authStateProvider
@@ -2313,8 +2317,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       final errorInfo = ErrorUtils.getErrorInfo(tracksState.error!);
       return EmptyState(
         icon: errorInfo.icon,
-        title: errorInfo.title,
-        message: errorInfo.message,
+        title: errorInfo.getTitle(context),
+        message: errorInfo.getMessage(context),
       );
     }
 
@@ -2884,7 +2888,7 @@ class _FiltersNewState extends State<_FiltersNew> {
   }
 }
 
-class _TrackGroupCard extends StatelessWidget {
+class _TrackGroupCard extends StatefulWidget {
   final TrackAssembly? assembly;
   final List<TrackItem> tracks;
   final Set<String> selectedTrackCodes;
@@ -2948,20 +2952,28 @@ class _TrackGroupCard extends StatelessWidget {
   });
 
   @override
+  State<_TrackGroupCard> createState() => _TrackGroupCardState();
+}
+
+class _TrackGroupCardState extends State<_TrackGroupCard> {
+  bool _showAssemblyDetails = false;
+  bool _showBoxes = false;
+
+  @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd MMM yyyy', 'ru');
     // Используем комментарий из локального кэша или из данных сборки
-    final groupComment = assembly != null
-        ? (groupComments[assembly!.id.toString()] ?? assembly!.comment ?? '')
+    final groupComment = widget.assembly != null
+        ? (widget.groupComments[widget.assembly!.id.toString()] ?? widget.assembly!.comment ?? '')
         : '';
-    final groupQuestion = assembly != null
-        ? (groupQuestions[assembly!.id.toString()] ?? '')
+    final groupQuestion = widget.assembly != null
+        ? (widget.groupQuestions[widget.assembly!.id.toString()] ?? '')
         : '';
-    final groupQuestionCreated = assembly != null
-        ? groupQuestionCreatedAt[assembly!.id.toString()]
+    final groupQuestionCreated = widget.assembly != null
+        ? widget.groupQuestionCreatedAt[widget.assembly!.id.toString()]
         : null;
-    final groupQuestionUpdated = assembly != null
-        ? groupQuestionUpdatedAt[assembly!.id.toString()]
+    final groupQuestionUpdated = widget.assembly != null
+        ? widget.groupQuestionUpdatedAt[widget.assembly!.id.toString()]
         : null;
     return Container(
       decoration: const BoxDecoration(
@@ -2978,7 +2990,7 @@ class _TrackGroupCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (assembly != null) ...[
+          if (widget.assembly != null) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: Column(
@@ -2988,228 +3000,255 @@ class _TrackGroupCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Сборка ${assembly!.number}',
+                          'Сборка ${widget.assembly!.number}',
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                       ),
                       StatusPill(
-                        text: assembly!.statusName ?? assembly!.status,
-                        color: parseHexColor(assembly!.statusColor),
+                        text: widget.assembly!.statusName ?? widget.assembly!.status,
+                        color: parseHexColor(widget.assembly!.statusColor),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  if (assembly!.name != null && assembly!.name!.isNotEmpty)
+                  if (widget.assembly!.name != null && widget.assembly!.name!.isNotEmpty)
                     Text(
-                      assembly!.name!,
+                      widget.assembly!.name!,
                       style: const TextStyle(color: Colors.black54),
                     ),
                   // Отображение тарифа, упаковки, страховки и доставки
-                  if (assembly!.tariffName != null ||
-                      assembly!.packagingTypes.isNotEmpty ||
-                      assembly!.hasInsurance ||
-                      assembly!.deliveryMethod != null) ...[
+                  if (widget.assembly!.tariffName != null ||
+                      widget.assembly!.packagingTypes.isNotEmpty ||
+                      widget.assembly!.hasInsurance ||
+                      widget.assembly!.deliveryMethod != null) ...[
                     const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5F5F5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (assembly!.tariffName != null) ...[
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showAssemblyDetails = !_showAssemblyDetails;
+                        });
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Row(
                               children: [
-                                const Icon(
-                                  Icons.local_shipping_outlined,
-                                  size: 16,
-                                  color: Colors.black54,
-                                ),
-                                const SizedBox(width: 6),
                                 const Text(
-                                  'Тариф: ',
+                                  'Детали сборки',
                                   style: TextStyle(
-                                    color: Colors.black54,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                Flexible(
-                                  child: Text(
-                                    assembly!.tariffName!,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (assembly!.tariffCost != null) ...[
-                                  const Text(
-                                    ' — ',
-                                    style: TextStyle(color: Colors.black54),
-                                  ),
-                                  Text(
-                                    '${assembly!.tariffCost!.toStringAsFixed(0)} \$/кг',
-                                    style: const TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                          if (assembly!.packagingTypes.isNotEmpty) ...[
-                            if (assembly!.tariffName != null)
-                              const SizedBox(height: 8),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 16,
-                                  color: Colors.black54,
-                                ),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  'Упаковка: ',
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: assembly!.packagingTypes.join(', '),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        if (assembly!.packagingCost != null) ...[
-                                          const TextSpan(
-                                            text: ' — ',
-                                            style: TextStyle(color: Colors.black54),
-                                          ),
-                                          TextSpan(
-                                            text: '${assembly!.packagingCost!.toStringAsFixed(0)} \$',
-                                            style: const TextStyle(
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                          if (assembly!.hasInsurance) ...[
-                            if (assembly!.tariffName != null ||
-                                assembly!.packagingTypes.isNotEmpty)
-                              const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.verified_user_outlined,
-                                  size: 16,
-                                  color: Colors.blue,
-                                ),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  'Страховка: ',
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                Text(
-                                  assembly!.insuranceAmount != null
-                                      ? 'от ${assembly!.insuranceAmount!.toStringAsFixed(0)} ¥'
-                                      : 'Да',
-                                  style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
-                                    color: Colors.blue,
                                   ),
+                                ),
+                                const Spacer(),
+                                Icon(
+                                  _showAssemblyDetails ? Icons.expand_less : Icons.expand_more,
+                                  size: 20,
+                                  color: Colors.black54,
                                 ),
                               ],
                             ),
-                          ],
-                          // Доставка
-                          if (assembly!.deliveryMethod != null) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  assembly!.deliveryMethod == 'self_pickup'
-                                      ? Icons.store_outlined
-                                      : Icons.local_shipping_outlined,
-                                  size: 16,
-                                  color: Colors.orange,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        assembly!.deliveryMethod == 'self_pickup'
-                                            ? 'Самовывоз'
-                                            : assembly!.transportCompanyName != null && assembly!.transportCompanyName!.isNotEmpty
-                                                ? 'ТК: ${assembly!.transportCompanyName}'
-                                                : 'Транспортная компания',
+                            if (_showAssemblyDetails) ...[
+                              const SizedBox(height: 8),
+                              if (widget.assembly!.tariffName != null) ...[
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.local_shipping_outlined,
+                                      size: 16,
+                                      color: Colors.black54,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Тариф: ',
+                                      style: TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    Flexible(
+                                      child: Text(
+                                        widget.assembly!.tariffName!,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w600,
                                           fontSize: 13,
-                                          color: Colors.orange,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (widget.assembly!.tariffCost != null) ...[
+                                      const Text(
+                                        ' — ',
+                                        style: TextStyle(color: Colors.black54),
+                                      ),
+                                      Text(
+                                        '${widget.assembly!.tariffCost!.toStringAsFixed(0)} \$/кг',
+                                        style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
                                         ),
                                       ),
-                                      if (assembly!.deliveryMethod == 'transport_company' &&
-                                          assembly!.recipientName != null) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '${assembly!.recipientName}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.black87,
-                                          ),
-                                        ),
-                                        if (assembly!.recipientPhone != null)
-                                          Text(
-                                            assembly!.recipientPhone!,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.black54,
-                                            ),
-                                          ),
-                                        if (assembly!.recipientCity != null)
-                                          Text(
-                                            assembly!.recipientCity!,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.black54,
-                                            ),
-                                          ),
-                                      ],
                                     ],
-                                  ),
+                                  ],
                                 ),
                               ],
-                            ),
+                              if (widget.assembly!.packagingTypes.isNotEmpty) ...[
+                                if (widget.assembly!.tariffName != null)
+                                  const SizedBox(height: 8),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.inventory_2_outlined,
+                                      size: 16,
+                                      color: Colors.black54,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Упаковка: ',
+                                      style: TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text.rich(
+                                        TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: widget.assembly!.packagingTypes.join(', '),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            if (widget.assembly!.packagingCost != null) ...[
+                                              const TextSpan(
+                                                text: ' — ',
+                                                style: TextStyle(color: Colors.black54),
+                                              ),
+                                              TextSpan(
+                                                text: '${widget.assembly!.packagingCost!.toStringAsFixed(0)} \$',
+                                                style: const TextStyle(
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (widget.assembly!.hasInsurance) ...[
+                                if (widget.assembly!.tariffName != null ||
+                                    widget.assembly!.packagingTypes.isNotEmpty)
+                                  const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.verified_user_outlined,
+                                      size: 16,
+                                      color: Colors.blue,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Страховка: ',
+                                      style: TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    Text(
+                                      widget.assembly!.insuranceAmount != null
+                                          ? 'от ${widget.assembly!.insuranceAmount!.toStringAsFixed(0)} ¥'
+                                          : 'Да',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              // Доставка
+                              if (widget.assembly!.deliveryMethod != null) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      widget.assembly!.deliveryMethod == 'self_pickup'
+                                          ? Icons.store_outlined
+                                          : Icons.local_shipping_outlined,
+                                      size: 16,
+                                      color: Colors.orange,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            widget.assembly!.deliveryMethod == 'self_pickup'
+                                                ? 'Самовывоз'
+                                                : widget.assembly!.transportCompanyName != null && widget.assembly!.transportCompanyName!.isNotEmpty
+                                                    ? 'ТК: ${widget.assembly!.transportCompanyName}'
+                                                    : 'Транспортная компания',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                              color: Colors.orange,
+                                            ),
+                                          ),
+                                          if (widget.assembly!.deliveryMethod == 'transport_company' &&
+                                              widget.assembly!.recipientName != null) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${widget.assembly!.recipientName}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            if (widget.assembly!.recipientPhone != null)
+                                              Text(
+                                                widget.assembly!.recipientPhone!,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.black54,
+                                                ),
+                                              ),
+                                            if (widget.assembly!.recipientCity != null)
+                                              Text(
+                                                widget.assembly!.recipientCity!,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.black54,
+                                                ),
+                                              ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ],
@@ -3274,6 +3313,47 @@ class _TrackGroupCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                  // Коробки
+                  if (widget.assembly!.boxes.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showBoxes = !_showBoxes;
+                        });
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.inventory_2_outlined, size: 16, color: Colors.black54),
+                                const SizedBox(width: 6),
+                                Text(
+                                  tr(context, ru: 'Коробки (${widget.assembly!.boxes.length})', zh: '箱子 (${widget.assembly!.boxes.length})'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Icon(
+                                  _showBoxes ? Icons.expand_less : Icons.expand_more,
+                                  size: 20,
+                                  color: Colors.black54,
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Отображаем каждую коробку
+                          if (_showBoxes)
+                            ...widget.assembly!.boxes.map((box) => _buildBoxCard(context, box)),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -3281,12 +3361,12 @@ class _TrackGroupCard extends StatelessWidget {
                     children: [
                       _ActionChipButton(
                         label: 'Добавить заметку',
-                        onPressed: () => onEditGroupComment(assembly!),
+                        onPressed: () => widget.onEditGroupComment(widget.assembly!),
                       ),
                       _ActionChipButton(
                         icon: Icons.local_shipping_outlined,
                         label: 'Доставка',
-                        onPressed: () => onSelectDelivery(assembly!),
+                        onPressed: () => widget.onSelectDelivery(widget.assembly!),
                       ),
                     ],
                   ),
@@ -3295,13 +3375,13 @@ class _TrackGroupCard extends StatelessWidget {
             ),
             const Divider(height: 1),
           ],
-          ...tracks.asMap().entries.map((entry) {
+          ...widget.tracks.asMap().entries.map((entry) {
             final index = entry.key;
             final track = entry.value;
             final canSelect = track.status == 'На складе';
             final allowedByStatus =
-                selectedStatus == null || selectedStatus == track.status;
-            final isSelected = selectedTrackCodes.contains(track.code);
+                widget.selectedStatus == null || widget.selectedStatus == track.status;
+            final isSelected = widget.selectedTrackCodes.contains(track.code);
 
             final availablePhotoReport = track.status == 'На складе';
             final canAskQuestion = track.status == 'На складе';
@@ -3313,18 +3393,18 @@ class _TrackGroupCard extends StatelessWidget {
             final activeQuestion = track.activeQuestion;
             final isPhotoRequested =
                 activePhoto != null ||
-                requestedPhotoReports.contains(track.code);
-            final commentText = overrideComments[track.code] ?? track.comment;
+                widget.requestedPhotoReports.contains(track.code);
+            final commentText = widget.overrideComments[track.code] ?? track.comment;
             final hasQuestion =
                 activeQuestion != null ||
-                (askedQuestions[track.code] ?? '').trim().isNotEmpty;
+                (widget.askedQuestions[track.code] ?? '').trim().isNotEmpty;
             final photoCreated =
-                activePhoto?.createdAt ?? photoRequestCreatedAt[track.code];
+                activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
             final photoUpdated =
-                activePhoto?.completedAt ?? photoRequestUpdatedAt[track.code];
+                activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
             // Используем productInfo из API или локальной карты
             final apiProductInfo = track.productInfo;
-            final localProductInfo = productInfos[track.code];
+            final localProductInfo = widget.productInfos[track.code];
             // Объединяем данные: приоритет у API, затем локальные данные
             final productInfoName =
                 apiProductInfo?.name ?? localProductInfo?.name ?? '';
@@ -3338,9 +3418,9 @@ class _TrackGroupCard extends StatelessWidget {
 
             final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
             final questionCreated =
-                activeQuestion?.createdAt ?? questionCreatedAt[track.code];
+                activeQuestion?.createdAt ?? widget.questionCreatedAt[track.code];
             final questionUpdated =
-                activeQuestion?.answeredAt ?? questionUpdatedAt[track.code];
+                activeQuestion?.answeredAt ?? widget.questionUpdatedAt[track.code];
 
             final List<Widget> infoSections = [];
             final commentValue = (commentText ?? '').trim();
@@ -3367,7 +3447,17 @@ class _TrackGroupCard extends StatelessWidget {
             }
 
             if (activePhoto != null || isPhotoRequested) {
-              final photoNote = photoRequestNotes[track.code] ?? '';
+              final photoNote = widget.photoRequestNotes[track.code] ?? '';
+
+              // Собираем все фото/видео из разных источников
+              final allMediaUrls = <String>[];
+              if (activePhoto?.mediaUrls != null && activePhoto!.mediaUrls.isNotEmpty) {
+                allMediaUrls.addAll(activePhoto.mediaUrls);
+              }
+              if (track.photoReportUrls.isNotEmpty) {
+                allMediaUrls.addAll(track.photoReportUrls);
+              }
+
               infoSections.add(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3405,6 +3495,99 @@ class _TrackGroupCard extends StatelessWidget {
                         style: const TextStyle(color: Colors.black45),
                       ),
                     ],
+                    // Отображение фото/видео
+                    if (allMediaUrls.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: allMediaUrls.length,
+                          itemBuilder: (context, mediaIndex) {
+                            final mediaUrl = allMediaUrls[mediaIndex];
+                            final fullUrl = ApiConfig.getMediaUrl(mediaUrl);
+                            final isVideo = _isVideoUrl(fullUrl);
+
+                            return Padding(
+                              padding: EdgeInsets.only(right: mediaIndex < allMediaUrls.length - 1 ? 8 : 0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      // Конвертируем в PhotoItem для просмотра
+                                      final allPhotos = allMediaUrls.map((url) => PhotoItem(
+                                        url: url,
+                                        date: photoCreated ?? DateTime.now(),
+                                        trackingNumber: track.code,
+                                      )).toList();
+
+                                      Navigator.of(
+                                        context,
+                                        rootNavigator: true,
+                                      ).push(
+                                        MaterialPageRoute<void>(
+                                          fullscreenDialog: true,
+                                          builder: (_) => PhotoViewerScreen(
+                                            item: allPhotos[mediaIndex],
+                                            allPhotos: allPhotos,
+                                            initialIndex: mediaIndex,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Container(
+                                      width: 80,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.03),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          CachedNetworkImage(
+                                            imageUrl: fullUrl,
+                                            fit: BoxFit.cover,
+                                            placeholder: (_, _) => Container(
+                                              color: Colors.black.withValues(alpha: 0.06),
+                                              child: const Center(
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              ),
+                                            ),
+                                            errorWidget: (_, _, _) => Container(
+                                              color: Colors.black.withValues(alpha: 0.06),
+                                              child: const Center(
+                                                child: Icon(Icons.broken_image_outlined, size: 20),
+                                              ),
+                                            ),
+                                          ),
+                                          if (isVideo)
+                                            Center(
+                                              child: Container(
+                                                padding: const EdgeInsets.all(6),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withValues(alpha: 0.6),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.play_arrow_rounded,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               );
@@ -3412,13 +3595,13 @@ class _TrackGroupCard extends StatelessWidget {
 
             if (hasQuestion) {
               final questionText =
-                  activeQuestion?.question ?? askedQuestions[track.code] ?? '';
+                  activeQuestion?.question ?? widget.askedQuestions[track.code] ?? '';
               final qStatus =
                   activeQuestion?.statusLabel ??
-                  questionStatus[track.code] ??
+                  widget.questionStatus[track.code] ??
                   'Новый';
               final qAnswer =
-                  activeQuestion?.answer ?? questionAnswers[track.code] ?? '';
+                  activeQuestion?.answer ?? widget.questionAnswers[track.code] ?? '';
               infoSections.add(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3526,7 +3709,7 @@ class _TrackGroupCard extends StatelessWidget {
                               offset: const Offset(-5, 0),
                               child: Checkbox(
                                 value: isSelected,
-                                onChanged: (_) => onToggle(track),
+                                onChanged: (_) => widget.onToggle(track),
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
                                 visualDensity: VisualDensity.compact,
@@ -3591,8 +3774,8 @@ class _TrackGroupCard extends StatelessWidget {
                                   icon: Icons.photo_camera_rounded,
                                   iconOnly: true,
                                   onPressed: () => isPhotoRequested
-                                      ? onCancelPhotoRequest(track)
-                                      : onPhotoRequest(track),
+                                      ? widget.onCancelPhotoRequest(track)
+                                      : widget.onPhotoRequest(track),
                                 ),
                                 const SizedBox(width: 6),
                               ],
@@ -3601,8 +3784,8 @@ class _TrackGroupCard extends StatelessWidget {
                                   icon: Icons.help_outline_rounded,
                                   iconOnly: true,
                                   onPressed: () => hasQuestion
-                                      ? onCancelQuestion(track)
-                                      : onAskQuestion(track),
+                                      ? widget.onCancelQuestion(track)
+                                      : widget.onAskQuestion(track),
                                 ),
                               ],
                             ],
@@ -3619,12 +3802,12 @@ class _TrackGroupCard extends StatelessWidget {
                                 children: [
                                   _ActionChipButton(
                                     label: 'Заметка',
-                                    onPressed: () => onEditComment(track),
+                                    onPressed: () => widget.onEditComment(track),
                                   ),
                                   if (availableFillInfo)
                                     _ActionChipButton(
                                       label: 'О товаре',
-                                      onPressed: () => onEditProduct(track),
+                                      onPressed: () => widget.onEditProduct(track),
                                     ),
                                 ],
                               ),
@@ -3641,6 +3824,219 @@ class _TrackGroupCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildBoxCard(BuildContext context, Box box) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Заголовок с номером коробки
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    '#${box.number}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: context.brandPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                box.displayName(context),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Параметры коробки
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                // Габариты
+                _buildBoxParam(
+                  context,
+                  icon: Icons.straighten,
+                  label: tr(context, ru: 'Габариты', zh: '尺寸'),
+                  value: box.dimensionsDisplay,
+                ),
+                const SizedBox(height: 8),
+                // Вес
+                _buildBoxParam(
+                  context,
+                  icon: Icons.scale,
+                  label: tr(context, ru: 'Вес', zh: '重量'),
+                  value: box.weightDisplay,
+                ),
+                const SizedBox(height: 8),
+                // Объём
+                _buildBoxParam(
+                  context,
+                  icon: Icons.inventory_2_outlined,
+                  label: tr(context, ru: 'Объём', zh: '体积'),
+                  value: box.volumeDisplay,
+                ),
+                const SizedBox(height: 8),
+                // Плотность
+                _buildBoxParam(
+                  context,
+                  icon: Icons.compress,
+                  label: tr(context, ru: 'Плотность', zh: '密度'),
+                  value: box.densityDisplay,
+                ),
+              ],
+            ),
+          ),
+
+          // Фото на весах
+          if (box.photos.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              tr(context, ru: 'Фото на весах (${box.photos.length})', zh: '称重照片 (${box.photos.length})'),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 80,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: box.photos.length,
+                itemBuilder: (context, index) {
+                  final photo = box.photos[index];
+                  final photoUrl = ApiConfig.getMediaUrl(photo.url);
+
+                  return Padding(
+                    padding: EdgeInsets.only(right: index < box.photos.length - 1 ? 8 : 0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            // Конвертируем фото коробки в PhotoItem для просмотра
+                            final allPhotos = box.photos.map((p) => PhotoItem(
+                              url: p.url,
+                              date: DateTime.now(),
+                            )).toList();
+
+                            Navigator.of(
+                              context,
+                              rootNavigator: true,
+                            ).push(
+                              MaterialPageRoute<void>(
+                                fullscreenDialog: true,
+                                builder: (_) => PhotoViewerScreen(
+                                  item: allPhotos[index],
+                                  allPhotos: allPhotos,
+                                  initialIndex: index,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: CachedNetworkImage(
+                              imageUrl: photoUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, _) => Container(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                child: const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                child: const Center(
+                                  child: Icon(Icons.broken_image_outlined, size: 20),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoxParam(BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.black45),
+        const SizedBox(width: 8),
+        Text(
+          '$label:',
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.black54,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Определяет, является ли URL видео-файлом
+  bool _isVideoUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.m4v') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.mov');
   }
 }
 
@@ -3710,17 +4106,21 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                   child: Material(
                     elevation: 8,
                     borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: menuWidth,
-                      constraints: const BoxConstraints(maxHeight: 280),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: ListView(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        children: widget.items.asMap().entries.map((entry) {
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: menuWidth,
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.4, // 40% of screen height
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                        ),
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          physics: const ClampingScrollPhysics(),
+                          children: widget.items.asMap().entries.map((entry) {
                           final index = entry.key;
                           final item = entry.value;
                           final isFirst = index == 0;
@@ -3772,6 +4172,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                             ),
                           );
                         }).toList(),
+                        ),
                       ),
                     ),
                   ),

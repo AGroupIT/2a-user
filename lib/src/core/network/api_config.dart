@@ -30,11 +30,23 @@ class ApiConfig {
   /// Использует /api/uploads/ endpoint для надёжной работы на всех платформах
   static String getMediaUrl(String path) {
     if (path.isEmpty) return '';
+
+    if (kDebugMode) {
+      print('📸 getMediaUrl input: "$path"');
+    }
+
     if (path.startsWith('http://') || path.startsWith('https://')) {
       // Преобразуем прямые ссылки на uploads через API (для всех платформ)
       if (path.contains('/uploads/') && !path.contains('/api/uploads/')) {
         // Заменяем /uploads/ на /api/uploads/
-        return path.replaceFirst('/uploads/', '/api/uploads/');
+        final result = path.replaceFirst('/uploads/', '/api/uploads/');
+        if (kDebugMode) {
+          print('📸 getMediaUrl output (replaced /uploads/): "$result"');
+        }
+        return result;
+      }
+      if (kDebugMode) {
+        print('📸 getMediaUrl output (already full URL): "$path"');
       }
       return path;
     }
@@ -44,10 +56,18 @@ class ApiConfig {
 
     // Используем API endpoint для всех платформ (включая iOS)
     if (cleanPath.startsWith('uploads/')) {
-      return '$mediaBaseUrl/api/$cleanPath';
+      final result = '$mediaBaseUrl/api/$cleanPath';
+      if (kDebugMode) {
+        print('📸 getMediaUrl output (uploads path): "$result"');
+      }
+      return result;
     }
 
-    return '$mediaBaseUrl/$cleanPath';
+    final result = '$mediaBaseUrl/$cleanPath';
+    if (kDebugMode) {
+      print('📸 getMediaUrl output (other path): "$result"');
+    }
+    return result;
   }
 
   /// Таймаут для запросов
