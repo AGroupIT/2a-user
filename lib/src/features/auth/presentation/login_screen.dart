@@ -302,6 +302,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                 ),
               ),
+
+              const SizedBox(height: 24),
+
+              // Registration link
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Нет аккаунта? ',
+                    style: TextStyle(color: Color(0xFF666666)),
+                  ),
+                  GestureDetector(
+                    onTap: () => context.push('/register'),
+                    child: const Text(
+                      'Подать заявку',
+                      style: TextStyle(
+                        color: Color(0xFFfe3301),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 
 import 'src/app/app.dart';
 import 'src/core/config/sentry_config.dart';
@@ -9,11 +12,30 @@ import 'src/core/persistence/shared_preferences_provider.dart';
 import 'src/core/services/analytics_service.dart';
 import 'src/core/services/push_notification_service.dart';
 
+/// Запрос разрешения на отслеживание (ATT) для iOS
+Future<void> _requestTrackingPermission() async {
+  if (!Platform.isIOS) return;
+
+  try {
+    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
+    if (status == TrackingStatus.notDetermined) {
+      // Небольшая задержка для корректного отображения диалога на iOS
+      await Future.delayed(const Duration(milliseconds: 500));
+      await AppTrackingTransparency.requestTrackingAuthorization();
+    }
+  } catch (e) {
+    debugPrint('ATT: Ошибка запроса разрешения - $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Инициализация Firebase для push-уведомлений
   await PushNotificationService.initializeFirebase();
+
+  // Запрос разрешения на отслеживание (ATT) - ОБЯЗАТЕЛЬНО до AppMetrica
+  await _requestTrackingPermission();
 
   // Инициализация AppMetrica для аналитики
   await AnalyticsService.initialize();

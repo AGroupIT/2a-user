@@ -1,4 +1,6 @@
 PODS:
+  - app_tracking_transparency (0.0.1):
+    - Flutter
   - appmetrica_plugin (3.4.0):
     - AppMetricaAnalytics (~> 5.14)
     - AppMetricaLibraryAdapter (~> 5.14)
@@ -241,6 +243,7 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - app_tracking_transparency (from `.symlinks/plugins/app_tracking_transparency/ios`)
   - appmetrica_plugin (from `.symlinks/plugins/appmetrica_plugin/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
@@ -302,6 +305,8 @@ SPEC REPOS:
     - SwiftyGif
 
 EXTERNAL SOURCES:
+  app_tracking_transparency:
+    :path: ".symlinks/plugins/app_tracking_transparency/ios"
   appmetrica_plugin:
     :path: ".symlinks/plugins/appmetrica_plugin/ios"
   file_picker:
@@ -338,6 +343,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
+  app_tracking_transparency: 3d84f147f67ca82d3c15355c36b1fa6b66ca7c92
   appmetrica_plugin: 2a19122bfdc28fae59ab170d7b30a9d712434c5c
   AppMetricaAdSupport: b1f4371eb11db6386dd021d9470029900e3eb26c
   AppMetricaAnalytics: 59679f27df598fd82109401059acb079a6982e3d

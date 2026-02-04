@@ -1,87 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/ui/help_dialog.dart';
+import '../data/registration_provider.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _domainCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _confirmPasswordCtrl = TextEditingController();
-  final _domainCtrl = TextEditingController();
+  final _companyCtrl = TextEditingController();
+  final _commentCtrl = TextEditingController();
 
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _isLoading = false;
-
-  bool _agreePersonalData = false;
-  bool _agreePrivacyPolicy = false;
+  @override
+  void initState() {
+    super.initState();
+    // Сбрасываем состояние при входе на экран
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(registrationProvider.notifier).reset();
+    });
+  }
 
   @override
   void dispose() {
+    _domainCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    _confirmPasswordCtrl.dispose();
-    _domainCtrl.dispose();
+    _companyCtrl.dispose();
+    _commentCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _register() async {
-    if (_nameCtrl.text.isEmpty ||
-        _phoneCtrl.text.isEmpty ||
-        _emailCtrl.text.isEmpty ||
-        _passwordCtrl.text.isEmpty ||
-        _domainCtrl.text.isEmpty) {
-      _showError('Заполните все поля');
+  Future<void> _submit() async {
+    // Валидация
+    if (_domainCtrl.text.trim().isEmpty) {
+      _showError('Введите домен партнёра');
       return;
     }
 
-    if (_passwordCtrl.text.length < 6) {
-      _showError('Пароль должен быть не менее 6 символов');
+    if (_nameCtrl.text.trim().isEmpty) {
+      _showError('Введите ваше ФИО');
       return;
     }
 
-    if (_passwordCtrl.text != _confirmPasswordCtrl.text) {
-      _showError('Пароли не совпадают');
+    if (_phoneCtrl.text.trim().isEmpty) {
+      _showError('Введите номер телефона');
       return;
     }
 
-    if (!_agreePersonalData) {
-      _showError('Необходимо согласие на обработку персональных данных');
-      return;
-    }
+    final success = await ref.read(registrationProvider.notifier).submitRequest(
+          fullName: _nameCtrl.text,
+          phone: _phoneCtrl.text,
+          domain: _domainCtrl.text,
+          email: _emailCtrl.text,
+          companyName: _companyCtrl.text,
+          comment: _commentCtrl.text,
+        );
 
-    if (!_agreePrivacyPolicy) {
-      _showError('Необходимо согласие с политикой обработки данных');
-      return;
-    }
+    if (!mounted) return;
 
-    setState(() => _isLoading = true);
-
-    // Demo: simulate registration
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() => _isLoading = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Регистрация успешна! Войдите в систему.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      context.go('/login');
+    if (!success) {
+      final error = ref.read(registrationProvider).error;
+      _showError(error ?? 'Не удалось отправить заявку');
     }
   }
 
@@ -91,104 +80,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  void _showPersonalDataConsent() {
-    showHelpDialog(
-      context,
-      title: 'Согласие на обработку персональных данных',
-      content: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Я даю согласие на обработку моих персональных данных в соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ «О персональных данных».',
-            style: TextStyle(height: 1.5),
-          ),
-          SizedBox(height: 12),
-          Text(
-            'Персональные данные включают:',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 8),
-          Text('• Фамилия, имя, отчество'),
-          Text('• Номер телефона'),
-          Text('• Адрес электронной почты'),
-          SizedBox(height: 12),
-          Text(
-            'Данные обрабатываются в целях:',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 8),
-          Text('• Идентификации пользователя'),
-          Text('• Оказания услуг по доставке грузов'),
-          Text('• Связи с пользователем'),
-          Text('• Направления уведомлений о статусе грузов'),
-          SizedBox(height: 12),
-          Text(
-            'Согласие действует до момента его отзыва путём направления письменного уведомления.',
-            style: TextStyle(height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPrivacyPolicy() {
-    showHelpDialog(
-      context,
-      title: 'Политика обработки персональных данных',
-      content: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '1. Общие положения',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Настоящая политика определяет порядок обработки персональных данных пользователей сервиса 2A Logistic.',
-            style: TextStyle(height: 1.5),
-          ),
-          SizedBox(height: 12),
-          Text('2. Сбор данных', style: TextStyle(fontWeight: FontWeight.w700)),
-          SizedBox(height: 8),
-          Text(
-            'Мы собираем только те данные, которые необходимы для оказания услуг: ФИО, контактные данные, информация о грузах.',
-            style: TextStyle(height: 1.5),
-          ),
-          SizedBox(height: 12),
-          Text(
-            '3. Хранение данных',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Данные хранятся на защищённых серверах и не передаются третьим лицам без согласия пользователя, за исключением случаев, предусмотренных законом.',
-            style: TextStyle(height: 1.5),
-          ),
-          SizedBox(height: 12),
-          Text(
-            '4. Права пользователя',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 8),
-          Text('• Получение информации о своих данных'),
-          Text('• Изменение или удаление данных'),
-          Text('• Отзыв согласия на обработку'),
-          SizedBox(height: 12),
-          Text('5. Контакты', style: TextStyle(fontWeight: FontWeight.w700)),
-          SizedBox(height: 8),
-          Text(
-            'По вопросам обработки данных: privacy@2a-logistics.ru',
-            style: TextStyle(height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(registrationProvider);
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
+
+    // Показываем экран успеха
+    if (state.isSuccess) {
+      return _buildSuccessScreen(topPadding, bottomPadding);
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
@@ -208,7 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: GestureDetector(
-                  onTap: () => context.pop(),
+                  onTap: () => context.go('/login'),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -249,15 +150,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Logo
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.local_shipping_rounded,
+                      color: Colors.white,
+                      size: 42,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // Title
               const Text(
-                'Регистрация',
+                'Заявка на регистрацию',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Создайте аккаунт для доступа к личному кабинету',
+                'Заполните форму и мы свяжемся с вами',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Color(0xFF666666)),
               ),
@@ -281,15 +206,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildTextField(
+                      controller: _domainCtrl,
+                      label: 'Домен партнёра *',
+                      hint: 'example-company',
+                      prefixIcon: Icons.business_rounded,
+                      keyboardType: TextInputType.url,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
                       controller: _nameCtrl,
-                      label: 'ФИО',
+                      label: 'ФИО *',
                       hint: 'Иванов Иван Иванович',
                       prefixIcon: Icons.person_rounded,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
                       controller: _phoneCtrl,
-                      label: 'Номер телефона',
+                      label: 'Телефон *',
                       hint: '+7 (999) 123-45-67',
                       prefixIcon: Icons.phone_rounded,
                       keyboardType: TextInputType.phone,
@@ -299,82 +232,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _buildTextField(
                       controller: _emailCtrl,
                       label: 'Email',
-                      hint: 'user@example.com',
+                      hint: 'example@mail.com',
                       prefixIcon: Icons.email_rounded,
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
-                      controller: _passwordCtrl,
-                      label: 'Пароль',
-                      hint: 'Минимум 6 символов',
-                      prefixIcon: Icons.lock_rounded,
-                      obscureText: _obscurePassword,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          color: const Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
+                      controller: _companyCtrl,
+                      label: 'Название компании',
+                      hint: 'ООО "Компания"',
+                      prefixIcon: Icons.store_rounded,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
-                      controller: _confirmPasswordCtrl,
-                      label: 'Подтверждение пароля',
-                      hint: 'Повторите пароль',
-                      prefixIcon: Icons.lock_outline_rounded,
-                      obscureText: _obscureConfirmPassword,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          color: const Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureConfirmPassword =
-                              !_obscureConfirmPassword,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _domainCtrl,
-                      label: 'Домен компании',
-                      hint: 'example-company',
-                      prefixIcon: Icons.business_rounded,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Checkboxes
-                    _buildCheckbox(
-                      value: _agreePersonalData,
-                      onChanged: (v) =>
-                          setState(() => _agreePersonalData = v ?? false),
-                      label: 'Согласие на обработку персональных данных',
-                      onTapLink: _showPersonalDataConsent,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildCheckbox(
-                      value: _agreePrivacyPolicy,
-                      onChanged: (v) =>
-                          setState(() => _agreePrivacyPolicy = v ?? false),
-                      label:
-                          'Политика в отношении обработки персональных данных',
-                      onTapLink: _showPrivacyPolicy,
+                      controller: _commentCtrl,
+                      label: 'Комментарий',
+                      hint: 'Дополнительная информация...',
+                      prefixIcon: Icons.comment_rounded,
+                      maxLines: 3,
                     ),
                     const SizedBox(height: 24),
-
                     FilledButton(
-                      onPressed: _isLoading ? null : _register,
-                      child: _isLoading
+                      onPressed: state.isLoading ? null : _submit,
+                      child: state.isLoading
                           ? const SizedBox(
                               height: 20,
                               width: 20,
@@ -384,7 +264,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             )
                           : const Text(
-                              'Зарегистрироваться',
+                              'Отправить заявку',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
@@ -423,15 +303,118 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  Widget _buildSuccessScreen(double topPadding, double bottomPadding) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F8F8),
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          topPadding + 60,
+          24,
+          bottomPadding + 24,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Success icon
+            Center(
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  size: 80,
+                  color: Colors.green.shade600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // Title
+            const Text(
+              'Заявка отправлена!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Message
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Column(
+                children: [
+                  Icon(
+                    Icons.phone_callback_rounded,
+                    size: 48,
+                    color: Color(0xFFfe3301),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Ожидайте звонка менеджера',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Мы свяжемся с вами в ближайшее время для уточнения деталей и создания аккаунта.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF666666),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // Back to login button
+            FilledButton(
+              onPressed: () => context.go('/login'),
+              child: const Text(
+                'Вернуться ко входу',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required String hint,
     required IconData prefixIcon,
     TextInputType? keyboardType,
-    bool obscureText = false,
-    Widget? suffixIcon,
     List<TextInputFormatter>? inputFormatters,
+    int maxLines = 1,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,8 +436,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: TextField(
             controller: controller,
             keyboardType: keyboardType,
-            obscureText: obscureText,
             inputFormatters: inputFormatters,
+            maxLines: maxLines,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(
@@ -466,58 +449,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 color: const Color(0xFF999999),
                 size: 20,
               ),
-              suffixIcon: suffixIcon,
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 14,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCheckbox({
-    required bool value,
-    required ValueChanged<bool?> onChanged,
-    required String label,
-    required VoidCallback onTapLink,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 24,
-          height: 24,
-          child: Checkbox(
-            value: value,
-            onChanged: onChanged,
-            activeColor: const Color(0xFFfe3301),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: GestureDetector(
-            onTap: onTapLink,
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFFfe3301),
-                      decoration: TextDecoration.underline,
-                      decorationColor: Color(0xFFfe3301),
-                      height: 1.4,
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
