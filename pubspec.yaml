@@ -91,6 +91,9 @@ dependencies:
   # App version info
   package_info_plus: ^8.3.0
 
+  # QR code generation for USDT payments
+  qr_flutter: ^4.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

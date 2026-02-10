@@ -73,5 +73,18 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.2alogistic.user</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>twoalogistic</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

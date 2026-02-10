@@ -95,10 +95,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
+  // Editing state
+  bool _isEditing = false;
+  bool _isSaving = false;
+  final _fullNameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+
+  // Password change state
+  bool _isChangingPassword = false;
+  bool _isSavingPassword = false;
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
+
   @override
   void initState() {
     super.initState();
     _setupAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
@@ -208,7 +236,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   Showcase(
                     key: _showcaseKeyPersonalData,
                     title: '👤 Личные данные',
-                    description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Домен вашей компании\n• Все поля доступны только для просмотра 🔒\n• Для изменения обратитесь к администратору',
+                    description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Нажмите кнопку редактирования для изменения',
                     targetPadding: getShowcaseTargetPadding(),
                     tooltipPosition: TooltipPosition.bottom,
                     tooltipBackgroundColor: Colors.white,
@@ -229,20 +257,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       }
                     },
                     disposeOnTap: false,
-                    child: _buildSectionCard(
-                      title: 'Личные данные',
-                      children: [
-                        _buildReadonlyField(label: 'ФИО', value: profile.fullName),
-                        const SizedBox(height: 12),
-                        _buildReadonlyField(
-                          label: 'Телефон',
-                          value: (profile.phone?.isNotEmpty ?? false) ? profile.phone! : '—',
-                        ),
-                        const SizedBox(height: 12),
-                        _buildReadonlyField(label: 'Email', value: profile.email),
-                      ],
-                    ),
+                    child: _buildPersonalDataSection(profile),
                   ),
+                  const SizedBox(height: 16),
+
+                  // Password Change Section
+                  _buildPasswordSection(),
                   const SizedBox(height: 16),
 
             // Company Info Section
@@ -433,6 +453,441 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         },
       ),
     );
+  }
+
+  // ===== PERSONAL DATA EDITING =====
+
+  void _startEditing(ClientProfile profile) {
+    setState(() {
+      _isEditing = true;
+      _fullNameController.text = profile.fullName;
+      _phoneController.text = profile.phone ?? '';
+      _emailController.text = profile.email;
+    });
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  Future<void> _saveProfile() async {
+    final fullName = _fullNameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final email = _emailController.text.trim();
+
+    if (fullName.isEmpty) {
+      _showStyledSnackBar(context, 'Введите ФИО', isError: true);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      await ref.read(profileRepositoryProvider).updateProfile(
+        fullName: fullName,
+        phone: phone,
+        email: email,
+      );
+
+      ref.invalidate(clientProfileProvider);
+
+      if (mounted) {
+        setState(() {
+          _isEditing = false;
+          _isSaving = false;
+        });
+        _showStyledSnackBar(context, 'Профиль обновлён');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showStyledSnackBar(context, 'Ошибка: $e', isError: true);
+      }
+    }
+  }
+
+  Widget _buildPersonalDataSection(ClientProfile profile) {
+    if (_isEditing) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 24,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Личные данные',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _cancelEditing,
+                  child: const Text('Отмена'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _buildEditableField(
+              controller: _fullNameController,
+              label: 'ФИО',
+              icon: Icons.person_outline_rounded,
+            ),
+            const SizedBox(height: 12),
+            _buildEditableField(
+              controller: _phoneController,
+              label: 'Телефон',
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 12),
+            _buildEditableField(
+              controller: _emailController,
+              label: 'Email',
+              icon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _isSaving ? null : _saveProfile,
+                style: FilledButton.styleFrom(
+                  backgroundColor: context.brandPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Сохранить',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Личные данные',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton(
+                onPressed: () => _startEditing(profile),
+                icon: Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: context.brandPrimary,
+                ),
+                tooltip: 'Редактировать',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildReadonlyField(label: 'ФИО', value: profile.fullName),
+          const SizedBox(height: 12),
+          _buildReadonlyField(
+            label: 'Телефон',
+            value: (profile.phone?.isNotEmpty ?? false) ? profile.phone! : '—',
+          ),
+          const SizedBox(height: 12),
+          _buildReadonlyField(label: 'Email', value: profile.email),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditableField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: context.brandPrimary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+    );
+  }
+
+  // ===== PASSWORD CHANGE =====
+
+  Widget _buildPasswordSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Безопасность',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Icon(
+                Icons.shield_outlined,
+                size: 20,
+                color: Colors.grey.shade400,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (_isChangingPassword) ...[
+            _buildPasswordField(
+              controller: _currentPasswordController,
+              label: 'Текущий пароль',
+              obscure: _obscureCurrentPassword,
+              onToggle: () => setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+            ),
+            const SizedBox(height: 12),
+            _buildPasswordField(
+              controller: _newPasswordController,
+              label: 'Новый пароль',
+              obscure: _obscureNewPassword,
+              onToggle: () => setState(() => _obscureNewPassword = !_obscureNewPassword),
+            ),
+            const SizedBox(height: 12),
+            _buildPasswordField(
+              controller: _confirmPasswordController,
+              label: 'Подтвердите новый пароль',
+              obscure: _obscureConfirmPassword,
+              onToggle: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSavingPassword ? null : () {
+                      setState(() {
+                        _isChangingPassword = false;
+                        _currentPasswordController.clear();
+                        _newPasswordController.clear();
+                        _confirmPasswordController.clear();
+                      });
+                    },
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: _isSavingPassword ? null : _savePassword,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: context.brandPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: _isSavingPassword
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Сменить пароль',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _isChangingPassword = true),
+                icon: const Icon(Icons.lock_outline_rounded, size: 20),
+                label: const Text(
+                  'Сменить пароль',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    required bool obscure,
+    required VoidCallback onToggle,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline, size: 20),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            size: 20,
+          ),
+          onPressed: onToggle,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: context.brandPrimary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+    );
+  }
+
+  Future<void> _savePassword() async {
+    final currentPassword = _currentPasswordController.text;
+    final newPassword = _newPasswordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+      _showStyledSnackBar(context, 'Заполните все поля', isError: true);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      _showStyledSnackBar(context, 'Новый пароль должен быть не менее 6 символов', isError: true);
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      _showStyledSnackBar(context, 'Пароли не совпадают', isError: true);
+      return;
+    }
+
+    setState(() => _isSavingPassword = true);
+
+    try {
+      await ref.read(profileRepositoryProvider).changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isSavingPassword = false;
+          _isChangingPassword = false;
+          _currentPasswordController.clear();
+          _newPasswordController.clear();
+          _confirmPasswordController.clear();
+        });
+        _showStyledSnackBar(context, 'Пароль успешно изменён');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSavingPassword = false);
+        String errorMsg = e.toString().replaceAll('Exception: ', '');
+        _showStyledSnackBar(context, errorMsg, isError: true);
+      }
+    }
   }
 
   void _logout() {

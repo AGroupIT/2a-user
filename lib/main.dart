@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) 'src/core/platform/platform_stub.dart';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ import 'src/core/services/push_notification_service.dart';
 
 /// Запрос разрешения на отслеживание (ATT) для iOS
 Future<void> _requestTrackingPermission() async {
+  if (kIsWeb) return; // Web не поддерживает ATT
   if (!Platform.isIOS) return;
 
   try {
