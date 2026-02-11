@@ -99,6 +99,17 @@ void _showStyledSnackBar(
   );
 }
 
+/// Форматирует число, убирая лишние нули: 3.5 → "3.5", 5.0 → "5", 5.70 → "5.7"
+String _formatDecimal(double value) {
+  if (value == value.truncateToDouble()) {
+    return value.toInt().toString();
+  }
+  final s = value.toStringAsFixed(2);
+  // Убираем trailing zeros после точки
+  if (s.endsWith('0')) return s.substring(0, s.length - 1);
+  return s;
+}
+
 class TracksScreen extends ConsumerStatefulWidget {
   const TracksScreen({super.key});
 
@@ -1378,7 +1389,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                       (t) => _DropdownItem(
                                         value: t.id,
                                         label:
-                                            '${t.name} — ${t.baseCost.toStringAsFixed(0)} \$/кг',
+                                            '${t.name} — ${_formatDecimal(t.baseCost)} \$/кг',
                                       ),
                                     )
                                     .toList(),
@@ -1476,7 +1487,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${packing.baseCost.toStringAsFixed(0)} \$',
+                                          '${_formatDecimal(packing.baseCost)} \$',
                                           style: TextStyle(
                                             color: isSelected
                                                 ? Colors.white70
@@ -3089,7 +3100,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                         style: TextStyle(color: Colors.black54),
                                       ),
                                       Text(
-                                        '${widget.assembly!.tariffCost!.toStringAsFixed(0)} \$/кг',
+                                        '${_formatDecimal(widget.assembly!.tariffCost!)} \$/кг',
                                         style: const TextStyle(
                                           color: Colors.green,
                                           fontWeight: FontWeight.w600,
@@ -3136,7 +3147,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                                 style: TextStyle(color: Colors.black54),
                                               ),
                                               TextSpan(
-                                                text: '${widget.assembly!.packagingCost!.toStringAsFixed(0)} \$',
+                                                text: '${_formatDecimal(widget.assembly!.packagingCost!)} \$',
                                                 style: const TextStyle(
                                                   color: Colors.green,
                                                   fontWeight: FontWeight.w600,
@@ -3172,7 +3183,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                     ),
                                     Text(
                                       widget.assembly!.insuranceAmount != null
-                                          ? 'от ${widget.assembly!.insuranceAmount!.toStringAsFixed(0)} ¥'
+                                          ? 'от ${_formatDecimal(widget.assembly!.insuranceAmount!)} ¥'
                                           : 'Да',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w600,
@@ -3386,6 +3397,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             final availablePhotoReport = track.status == 'На складе';
             final canAskQuestion = track.status == 'На складе';
             final availableFillInfo =
+                track.status == 'В ожидании' ||
                 track.status == 'На складе' ||
                 track.status == 'На сборке' ||
                 track.status == 'Отправлен';

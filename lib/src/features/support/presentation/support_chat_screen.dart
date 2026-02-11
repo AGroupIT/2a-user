@@ -160,6 +160,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
     _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 
@@ -904,7 +905,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       // Текст сообщения (если это не просто "Файл")
                       if (message.content.isNotEmpty && message.content != 'Файл')
                         MarkdownBody(
-                          data: message.content,
+                          data: message.content.replaceAll('\n', '  \n'),
                           selectable: true,
                           styleSheet: MarkdownStyleSheet(
                             p: TextStyle(
@@ -933,7 +934,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                             code: TextStyle(
                               fontSize: 14,
                               color: isMe ? Colors.white : Colors.black87,
-                              backgroundColor: isMe 
+                              backgroundColor: isMe
                                   ? Colors.white.withValues(alpha: 0.2)
                                   : Colors.grey.withValues(alpha: 0.2),
                             ),
@@ -950,12 +951,28 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                         ),
                       if (message.content.isNotEmpty && message.content != 'Файл')
                         const SizedBox(height: 4),
-                      Text(
-                        dateFormat.format(message.createdAt.toLocal()),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isMe ? Colors.white70 : Colors.black45,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (message.isEdited) ...[
+                            Text(
+                              'изм.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                                color: isMe ? Colors.white54 : Colors.black38,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            dateFormat.format(message.createdAt.toLocal()),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isMe ? Colors.white70 : Colors.black45,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1361,6 +1378,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     child: TextField(
                       controller: _textController,
                       focusNode: _focusNode,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: tr(context, ru: 'Введите ваше сообщение...', zh: '输入您的消息...'),
                         hintStyle: const TextStyle(color: Colors.black38, fontSize: 15),
@@ -1372,7 +1392,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       ),
                       style: const TextStyle(fontSize: 15, color: Colors.black87),
                       textCapitalization: TextCapitalization.sentences,
-                      onSubmitted: _handleMessageSend,
                     ),
                   ),
                 ),
