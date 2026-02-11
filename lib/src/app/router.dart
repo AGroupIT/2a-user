@@ -18,6 +18,11 @@ import '../features/rules/presentation/rule_detail_screen.dart';
 import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/search_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
+import '../features/shop/presentation/shop_screen.dart';
+import '../features/shop/presentation/shop_item_detail_screen.dart';
+import '../features/shop/presentation/purchase_list_screen.dart';
+import '../features/shop/presentation/purchase_list_detail_screen.dart';
+import '../features/shop/presentation/purchase_lists_screen.dart';
 import '../features/sp_finance/presentation/sp_assemblies_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
@@ -125,10 +130,58 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                path: '/shop',
+                builder: (context, state) => const ShopScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: '/more',
                 builder: (context, state) => const MoreScreen(),
               ),
             ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/shop/item/:itemId',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final itemId = state.pathParameters['itemId'] ?? '';
+          return AppScaffold(
+            title: 'Товар',
+            child: ShopItemDetailScreen(itemId: itemId),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/shop/cart',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Список выкупа',
+          child: PurchaseListScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/shop/purchases',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Мои заявки',
+          child: PurchaseListsScreen(),
+        ),
+        routes: [
+          GoRoute(
+            path: ':id',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              return AppScaffold(
+                title: 'Заявка #$id',
+                child: PurchaseListDetailScreen(listId: id),
+              );
+            },
           ),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/widgets/app_scaffold.dart';
@@ -8,7 +9,20 @@ import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../more/presentation/more_sheet.dart';
 
-class AppShell extends StatelessWidget {
+/// Notifier to hide/show bottom navigation bar (e.g. when a modal is open)
+class BottomNavVisibleNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void hide() => state = false;
+  void show() => state = true;
+}
+
+final bottomNavVisibleProvider =
+    NotifierProvider<BottomNavVisibleNotifier, bool>(
+        BottomNavVisibleNotifier.new);
+
+class AppShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   const AppShell({super.key, required this.navigationShell});
@@ -18,11 +32,12 @@ class AppShell extends StatelessWidget {
     'Фото',
     'Треки',
     'Счета',
+    'Магазин',
     'Ещё',
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = navigationShell.currentIndex;
     final title = _titles[currentIndex.clamp(0, _titles.length - 1)];
     final statusTop = MediaQuery.paddingOf(context).top;
@@ -30,6 +45,7 @@ class AppShell extends StatelessWidget {
     final overlayStyle = theme.brightness == Brightness.dark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
+    final bottomNavVisible = ref.watch(bottomNavVisibleProvider);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle.copyWith(statusBarColor: Colors.transparent),
@@ -81,15 +97,20 @@ class AppShell extends StatelessWidget {
             ],
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-            child: _AnimatedBottomNav(
-              currentIndex: currentIndex,
-              onTap: (index) {
-                navigationShell.goBranch(index, initialLocation: index == currentIndex);
-              },
+        bottomNavigationBar: AnimatedSlide(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          offset: bottomNavVisible ? Offset.zero : const Offset(0, 1.5),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+              child: _AnimatedBottomNav(
+                currentIndex: currentIndex,
+                onTap: (index) {
+                  navigationShell.goBranch(index, initialLocation: index == currentIndex);
+                },
+              ),
             ),
           ),
         ),
@@ -123,6 +144,7 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
     (icon: CupertinoIcons.photo, selectedIcon: CupertinoIcons.photo_fill, label: 'Фото'),
     (icon: CupertinoIcons.cube_box, selectedIcon: CupertinoIcons.cube_box_fill, label: 'Треки'),
     (icon: CupertinoIcons.doc, selectedIcon: CupertinoIcons.doc_fill, label: 'Счета'),
+    (icon: CupertinoIcons.bag, selectedIcon: CupertinoIcons.bag_fill, label: 'Магазин'),
     (icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'Ещё'),
   ];
 

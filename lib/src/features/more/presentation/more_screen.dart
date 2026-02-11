@@ -41,6 +41,12 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: 'Условия и положения',
                 onTap: () => context.push('/rules'),
               ),
+              _MenuItem(
+                icon: CupertinoIcons.cart,
+                title: 'Мои заявки на выкуп',
+                subtitle: 'История заявок',
+                onTap: () => context.push('/shop/purchases'),
+              ),
             ],
           ),
           const SizedBox(height: 24),
