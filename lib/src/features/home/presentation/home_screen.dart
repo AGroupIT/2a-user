@@ -10,6 +10,7 @@ import 'package:showcaseview/showcaseview.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/services/showcase_service.dart';
+import '../../../core/services/update_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -53,6 +54,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
     super.initState();
     _setupAutoRefresh();
     _checkAndShowTermsDialog();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateService.checkAndPrompt(context);
+    });
   }
 
   /// Проверить и показать диалог принятия правил если нужно
@@ -877,44 +881,11 @@ class _InvoicesDigest extends StatelessWidget {
     required this.invoicesAsync,
   });
 
-  /// Расчёт Доставки USD по формуле:
-  /// Доставка = тариф * вес/объём + упаковка + перевалка + страховка - скидка
-  double _calculateDeliveryCostUsd(InvoiceItem item) {
-    if (item.deliveryCostUsd > 0) {
-      return item.deliveryCostUsd;
-    }
-    // Считаем стоимость тарифа
-    double tariffCost = 0;
-    if (item.tariffBaseCost != null && item.tariffBaseCost! > 0) {
-      // Определяем расчётную величину (вес или объём * 1000)
-      final calcWeight = item.weight;
-      final calcVolume = item.volume * 1000;
-      final billableWeight = calcWeight > calcVolume ? calcWeight : calcVolume;
-      tariffCost = item.tariffBaseCost! * billableWeight;
-    }
-    // Считаем стоимость упаковки
-    double packagingCost = 0;
-    if (item.packagingCostTotal != null && item.packagingCostTotal! > 0) {
-      packagingCost = item.packagingCostTotal!;
-    } else {
-      for (final p in item.packagings) {
-        packagingCost += p.cost;
-      }
-    }
-    final transshipment = item.transshipmentCost ?? 0;
-    final insurance = item.insuranceCost ?? 0;
-    final discount = item.discount ?? 0;
-    return tariffCost + packagingCost + transshipment + insurance - discount;
-  }
-
-  /// Расчёт К оплате RUB = Доставка USD × Курс
+  /// К оплате RUB = totalCostUsd × clientRubRate
   double _calculateTotalRub(InvoiceItem item) {
-    if (item.totalCostRub > 0) {
-      return item.totalCostRub;
-    }
-    final deliveryUsd = _calculateDeliveryCostUsd(item);
-    final rate = item.rate ?? 0;
-    return deliveryUsd * rate;
+    if (item.totalCostRub > 0) return item.totalCostRub;
+    final rate = item.clientRubRate ?? 0;
+    return item.totalCostUsd * rate;
   }
 
   @override
@@ -968,7 +939,6 @@ class _InvoicesDigest extends StatelessWidget {
                     child: Builder(
                       builder: (context) {
                         final invoice = top[i];
-                        final deliveryUsd = _calculateDeliveryCostUsd(invoice);
                         final totalRub = _calculateTotalRub(invoice);
 
                         return ListTile(
@@ -978,13 +948,14 @@ class _InvoicesDigest extends StatelessWidget {
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(df.format(invoice.sendDate)),
+                              if (invoice.sendDate != null)
+                                Text(df.format(invoice.sendDate!)),
                               const SizedBox(height: 2),
                               Row(
                                 children: [
-                                  if (deliveryUsd > 0) ...[
+                                  if (invoice.totalCostUsd > 0) ...[
                                     Text(
-                                      '\$${money.format(deliveryUsd.round())}',
+                                      '\$${money.format(invoice.totalCostUsd.round())}',
                                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF2563EB)),
                                     ),
                                     const SizedBox(width: 8),

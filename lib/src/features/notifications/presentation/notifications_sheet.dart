@@ -57,9 +57,12 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
   }
 
   void _startPolling() {
-    // Первый запрос сразу при открытии
+    // Первый запрос сразу при открытии (отложено чтобы не модифицировать провайдер во время build)
     debugPrint('🔔 Initial notifications load...');
-    ref.read(notificationsControllerProvider.notifier).refresh();
+    Future(() {
+      if (!mounted) return;
+      ref.read(notificationsControllerProvider.notifier).refresh();
+    });
 
     // Затем каждые 30 секунд
     _pollingTimer = Timer.periodic(_kPollingInterval, (_) {

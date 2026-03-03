@@ -365,6 +365,10 @@ class NotificationItem {
   
   /// Получить маршрут для типа уведомления
   static String? _getRouteForType(NotificationType type, Map<String, dynamic> data) {
+    // Nocode-дайджест → на страницу поиска с запросом NOCODE
+    if (data['type'] == 'nocode_daily_digest') {
+      return '/search?q=NOCODE';
+    }
     switch (type) {
       case NotificationType.trackStatus:
       case NotificationType.assemblyStatus:

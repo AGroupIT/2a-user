@@ -313,6 +313,15 @@ class PaginatedTracksNotifier {
     await loadInitial();
   }
 
+  /// Оптимистично удалить трек из локального стейта
+  void removeTrackOptimistically(int trackId) {
+    final updatedTracks = _state.tracks.where((t) => t.id != trackId).toList();
+    _updateState(_state.copyWith(
+      tracks: updatedTracks,
+      total: _state.total > 0 ? _state.total - 1 : 0,
+    ));
+  }
+
   Future<_TracksResult> _fetchTracks({
     required int skip,
     required int take,
@@ -640,6 +649,29 @@ class TracksApiService {
     }
   }
   
+  /// Оформить возврат трека
+  Future<bool> createTrackReturn({
+    required int trackId,
+    required String returnCode,
+    String? screenshotUrl,
+    String? note,
+  }) async {
+    try {
+      debugPrint('Creating track return: trackId=$trackId, returnCode=$returnCode');
+      final response = await _apiClient.post('/client/tracks/$trackId/return', data: {
+        'returnCode': returnCode,
+        if (screenshotUrl != null) 'screenshotUrl': screenshotUrl,
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+      debugPrint('Track return response: ${response.statusCode}');
+      return response.statusCode == 200 || response.statusCode == 201;
+    } on DioException catch (e) {
+      debugPrint('Error creating track return: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return false;
+    }
+  }
+
   /// Отменить вопрос
   Future<bool> cancelTrackQuestion(int questionId) async {
     try {
@@ -762,6 +794,18 @@ class TracksApiService {
       return response.statusCode == 200;
     } on DioException catch (e) {
       debugPrint('Error adding track comment: $e');
+      return false;
+    }
+  }
+
+  /// Удалить трек (только в статусе «В ожидании»)
+  Future<bool> deleteTrack(int trackId) async {
+    try {
+      final response = await _apiClient.delete('/tracks/$trackId');
+      final code = response.statusCode ?? 0;
+      return code >= 200 && code < 300;
+    } on DioException catch (e) {
+      debugPrint('Error deleting track: $e');
       return false;
     }
   }

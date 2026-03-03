@@ -68,7 +68,8 @@ void _showStyledSnackBar(
 }
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialQuery;
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -80,6 +81,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   // Showcase key
   final _showcaseKeySearch = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _ctrl.text = widget.initialQuery!;
+      Future(() {
+        if (!mounted) return;
+        _run();
+      });
+    }
+  }
 
   @override
   void dispose() {

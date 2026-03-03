@@ -100,16 +100,14 @@ class FakeInvoicesRepository implements InvoicesRepository {
         calculationMethod: rng.nextBool() ? 'weight' : 'volume',
         transshipmentCost: rng.nextInt(3) == 0 ? 10 + rng.nextDouble() * 20 : null,
         insuranceCost: insuranceEnabled ? insuranceCost : null,
-        discount: rng.nextInt(5) == 0 ? 5 + rng.nextDouble() * 15 : null,
         packagings: packagingItems,
         packagingCostTotal: packagingTypes.isEmpty ? null : packagingCost,
-        deliveryCostUsd: totalUsd,
         totalCostUsd: totalUsd,
-        rate: rate,
+        clientRubRate: rate,
         totalCostRub: totalRub,
         scalePhotoUrls: photoUrls,
       );
     }).toList()
-      ..sort((a, b) => b.sendDate.compareTo(a.sendDate));
+      ..sort((a, b) => (b.sendDate ?? DateTime(2000)).compareTo(a.sendDate ?? DateTime(2000)));
   }
 }

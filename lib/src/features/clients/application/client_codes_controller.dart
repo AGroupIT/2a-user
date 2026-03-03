@@ -32,28 +32,27 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
     }
     
     // Получаем коды из данных авторизации
-    List<String> codes = [];
-    
+    final List<String> authCodes = [];
+
     if (authState.clientData != null) {
       final clientCodes = authState.clientData!['codes'];
       if (clientCodes is List) {
-        codes = clientCodes.map((e) {
-          if (e is Map) {
-            return (e['code'] ?? e.toString()).toString();
-          }
+        authCodes.addAll(clientCodes.map((e) {
+          if (e is Map) return (e['code'] ?? e.toString()).toString();
           return e.toString();
-        }).toList();
+        }));
       }
     }
-    
-    // Если кодов нет из авторизации - пробуем восстановить из локального хранилища
-    if (codes.isEmpty) {
-      final savedCodes = prefs.getStringList(_codesKey);
-      if (savedCodes != null && savedCodes.isNotEmpty) {
-        codes = savedCodes;
-      }
-    } else {
-      // Сохраняем коды локально для восстановления после перезапуска
+
+    // Коды из локального хранилища (могут содержать коды, добавленные через PIN)
+    final savedCodes = prefs.getStringList(_codesKey) ?? [];
+
+    // Объединяем: auth + локально добавленные (чтобы PIN-коды не терялись после перезапуска)
+    final merged = <String>{...authCodes, ...savedCodes}.toList()..sort();
+    final codes = merged;
+
+    // Сохраняем актуальный объединённый список
+    if (codes.isNotEmpty) {
       await prefs.setStringList(_codesKey, codes);
     }
     

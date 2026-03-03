@@ -53,6 +53,7 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     String? email,
     String? companyName,
     String? comment,
+    String? referralCode,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
 
@@ -66,6 +67,8 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
           if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
           if (companyName != null && companyName.isNotEmpty) 'companyName': companyName.trim(),
           if (comment != null && comment.isNotEmpty) 'comment': comment.trim(),
+          if (referralCode != null && referralCode.isNotEmpty)
+            'referralCode': referralCode.trim().toUpperCase(),
         },
       );
 

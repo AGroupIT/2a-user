@@ -155,7 +155,7 @@ class PushNotificationService {
       channelDescription: 'Уведомления от сервера',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: 'ic_notification',
     );
     
     const iosDetails = DarwinNotificationDetails(
@@ -349,7 +349,7 @@ class PushNotificationService {
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
-      icon: '@mipmap/ic_launcher',
+      icon: 'ic_notification',
       color: const Color(0xFFfe3301),
       enableVibration: true,
       playSound: true,

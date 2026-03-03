@@ -144,6 +144,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     'Сформирован к выдаче',
   };
 
+  // Return request local state
+  final Set<String> _returnRequestedTracks = <String>{};
+
   // Local data stores
   final Map<String, String> _askedQuestions = <String, String>{};
   final Map<String, String> _questionStatus =
@@ -347,6 +350,27 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   ),
                   const SizedBox(height: 6),
                   Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.amber.shade700, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Фотоотчёт может быть платным. Ознакомьтесь с тарифами.',
+                            style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [context.brandPrimary, context.brandSecondary],
@@ -404,13 +428,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       // Получаем данные для API
       final auth = ref.read(authStateProvider);
       final clientId = auth.clientId;
-      // Получаем clientCodeId из clientData
-      int? clientCodeId;
-      final codes = auth.clientData?['codes'] as List<dynamic>?;
-      if (codes != null && codes.isNotEmpty) {
-        final firstCode = codes.first;
-        if (firstCode is Map<String, dynamic>) {
-          clientCodeId = firstCode['id'] as int?;
+      // Берём clientCodeId из самого трека (правильный код), fallback на первый код клиента
+      int? clientCodeId = track.clientCodeId;
+      if (clientCodeId == null) {
+        final codes = auth.clientData?['codes'] as List<dynamic>?;
+        if (codes != null && codes.isNotEmpty) {
+          final firstCode = codes.first;
+          if (firstCode is Map<String, dynamic>) {
+            clientCodeId = firstCode['id'] as int?;
+          }
         }
       }
 
@@ -508,6 +534,27 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   ),
                   const SizedBox(height: 6),
                   Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.amber.shade700, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Ответ на вопрос может быть только текстовым',
+                            style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [context.brandPrimary, context.brandSecondary],
@@ -571,13 +618,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       // Получаем данные для API
       final auth = ref.read(authStateProvider);
       final clientId = auth.clientId;
-      // Получаем clientCodeId из clientData
-      int? clientCodeId;
-      final codes = auth.clientData?['codes'] as List<dynamic>?;
-      if (codes != null && codes.isNotEmpty) {
-        final firstCode = codes.first;
-        if (firstCode is Map<String, dynamic>) {
-          clientCodeId = firstCode['id'] as int?;
+      // Берём clientCodeId из самого трека (правильный код), fallback на первый код клиента
+      int? clientCodeId = track.clientCodeId;
+      if (clientCodeId == null) {
+        final codes = auth.clientData?['codes'] as List<dynamic>?;
+        if (codes != null && codes.isNotEmpty) {
+          final firstCode = codes.first;
+          if (firstCode is Map<String, dynamic>) {
+            clientCodeId = firstCode['id'] as int?;
+          }
         }
       }
 
@@ -704,6 +753,184 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         _questionUpdatedAt.remove(track.code);
       });
       _showStyledSnackBar(context, 'Вопрос отменён');
+    }
+  }
+
+  Future<void> _deleteTrack(TrackItem track) async {
+    final confirmed = await _confirmAction(
+      context,
+      title: 'Удалить трек?',
+      message: 'Трек ${track.code} будет удалён. Это действие нельзя отменить.',
+    );
+    if (!confirmed || !mounted) return;
+
+    final apiService = ref.read(tracksApiServiceProvider);
+    final trackId = track.id;
+    if (trackId == null) return;
+
+    final success = await apiService.deleteTrack(trackId);
+    if (!mounted) return;
+
+    if (success) {
+      // Оптимистично убираем из UI сразу, не ждём перезагрузки
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode != null) {
+        ref.read(paginatedTracksProvider(clientCode)).removeTrackOptimistically(trackId);
+      }
+      _refreshTracks();
+      _showStyledSnackBar(context, 'Трек ${track.code} удалён');
+    } else {
+      _showStyledSnackBar(context, 'Ошибка удаления трека', isError: true);
+    }
+  }
+
+  Future<void> _showReturnSheet(BuildContext context, TrackItem track) async {
+    final returnCodeController = TextEditingController();
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final viewInsetsBottom = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return SafeArea(
+          child: AnimatedPadding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + viewInsetsBottom),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SheetHandle(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Оформить возврат',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Time info banner
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFFCC80), width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.schedule_rounded, size: 18, color: Color(0xFFE65100)),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Выберите время возврата с 13:00 до 15:00 по Китаю',
+                            style: TextStyle(fontSize: 13, color: Color(0xFFE65100), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Код возврата',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [context.brandPrimary, context.brandSecondary],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.all(1.5),
+                    child: Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.5),
+                      ),
+                      child: TextField(
+                        controller: returnCodeController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          hintText: 'Введите код возврата…',
+                          hintStyle: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF999999),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Код возврата можно найти в приложении продавца (Taobao/1688)',
+                    style: TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                    child: const Text('Оформить возврат'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result != true || !context.mounted) return;
+
+    final returnCode = returnCodeController.text.trim();
+    if (returnCode.isEmpty) {
+      _showStyledSnackBar(context, 'Введите код возврата', isError: true);
+      return;
+    }
+
+    setState(() => _returnRequestedTracks.add(track.code));
+
+    final apiService = ref.read(tracksApiServiceProvider);
+    final trackId = track.id;
+    if (trackId == null) return;
+
+    final success = await apiService.createTrackReturn(
+      trackId: trackId,
+      returnCode: returnCode,
+    );
+
+    if (!context.mounted) return;
+
+    if (success) {
+      _refreshTracks();
+      _showStyledSnackBar(context, 'Возврат оформлен. Склад получит уведомление.');
+    } else {
+      setState(() => _returnRequestedTracks.remove(track.code));
+      _showStyledSnackBar(context, 'Ошибка оформления возврата', isError: true);
     }
   }
 
@@ -1388,8 +1615,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                     .map(
                                       (t) => _DropdownItem(
                                         value: t.id,
-                                        label:
-                                            '${t.name} — ${_formatDecimal(t.baseCost)} \$/кг',
+                                        label: t.name,
                                       ),
                                     )
                                     .toList(),
@@ -1484,16 +1710,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                           textAlign: TextAlign.center,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${_formatDecimal(packing.baseCost)} \$',
-                                          style: TextStyle(
-                                            color: isSelected
-                                                ? Colors.white70
-                                                : Colors.black54,
-                                            fontSize: 11,
-                                          ),
                                         ),
                                       ],
                                     ),
@@ -1697,15 +1913,99 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       final tracksState = ref.read(paginatedTracksProvider(clientCode)).state;
       final tracks = tracksState.tracks;
 
-      final selectedTrackIds = tracks
+      final selectedTracks = tracks
           .where((t) => _selectedTracks.contains(t.code) && t.id != null)
-          .map((t) => t.id!)
           .toList();
+
+      final selectedTrackIds = selectedTracks.map((t) => t.id!).toList();
+
+      // Проверяем наличие незавершённых задач (вопросы/фотоотчёты)
+      final tracksWithActiveTasks = selectedTracks.where((t) {
+        final hasActivePhoto = t.activePhotoRequest?.isActive == true;
+        final hasActiveQ = t.activeQuestion?.isActive == true;
+        return hasActivePhoto || hasActiveQ;
+      }).toList();
+
+      if (tracksWithActiveTasks.isNotEmpty) {
+        if (!context.mounted) return;
+        final proceed = await showModalBottomSheet<bool>(
+          context: context,
+          useRootNavigator: true,
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (sheetCtx) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SheetHandle(),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Незавершённые задачи',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Есть треки (${tracksWithActiveTasks.length} шт.) с невыполненными задачами '
+                      '(вопросы/фотоотчёты). Если вы создадите сборку, эти задачи будут отменены.',
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(sheetCtx).pop(false),
+                            child: const Text('Отменить'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(sheetCtx).pop(true),
+                            child: const Text('Создать сборку'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+        if (proceed != true) return;
+        if (!context.mounted) return;
+
+        // Отменяем незавершённые задачи
+        final tracksApi = ref.read(tracksApiServiceProvider);
+        for (final t in tracksWithActiveTasks) {
+          if (t.activePhotoRequest?.isActive == true) {
+            await tracksApi.cancelPhotoRequest(t.activePhotoRequest!.id);
+          }
+          if (t.activeQuestion?.isActive == true) {
+            await tracksApi.cancelTrackQuestion(t.activeQuestion!.id);
+          }
+        }
+      }
 
       // Создаём сборку через API
       final apiService = ref.read(assembliesApiServiceProvider);
       final assembly = await apiService.createAssembly(
         clientId: clientId,
+        clientCode: clientCode,
         tariffId: selectedTariff?.id,
         packagingTypeIds: selectedPackingIds.toList(),
         hasInsurance: selectedInsurance == 'yes',
@@ -2259,17 +2559,30 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                   mainAxisAlignment: MainAxisAlignment.end, // FAB справа по умолчанию
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Кнопка "Отправка на сборку" с анимацией (показывается только когда выбраны треки)
-                    if (_selectedTracks.isNotEmpty)
+                    // Кнопки выбора и действия (показываются только когда выбраны треки)
+                    if (_selectedTracks.isNotEmpty) ...[
                       Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        child: FilledButton(
-                          onPressed: _selectedStatus == null
-                              ? null
-                              : () => _bulkAction(context),
-                          child: Text(_actionLabel()),
+                        padding: const EdgeInsets.only(right: 8),
+                        child: OutlinedButton(
+                          onPressed: _selectAll,
+                          child: const Text('Все'),
                         ),
                       ),
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: FilledButton(
+                            onPressed: _selectedStatus == null
+                                ? null
+                                : () => _bulkAction(context),
+                            child: Text(
+                              _actionLabel(),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     // FAB кнопка для добавления треков (всегда справа)
                     Showcase(
                         key: _showcaseKeyAddButton,
@@ -2404,6 +2717,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                 _showGroupQuestionSheet(context, assembly),
             onSelectDelivery: (assembly) =>
                 _showDeliverySheet(context, assembly),
+            onDeleteTrack: (track) => _deleteTrack(track),
+            onReturnRequest: (track) => _showReturnSheet(context, track),
+            returnRequestedTracks: _returnRequestedTracks,
           );
 
           // Первый элемент оборачиваем в Showcase
@@ -2414,7 +2730,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                 key: _showcaseKeyTrackItem,
                 title: '📦 Карточка трека',
                 description:
-                    'Полная информация о вашей посылке:\n• Номер трека и текущий статус\n• Дата последнего обновления\n• Информация о товаре (если заполнена)\n• Комментарии и заметки\n\nНажмите на карточку для раскрытия деталей. Доступные действия:\n• Запросить фотоотчёт - получить фото товара на складе\n• Задать вопрос - уточнить любую информацию\n• Добавить заметку - личный комментарий\n• О товаре - заполнить данные о содержимом',
+                    'Полная информация о вашей посылке:\n• Номер трека и текущий статус\n• Дата последнего обновления\n• Информация о товаре (если заполнена)\n• Комментарии и заметки\n\nНажмите на карточку для раскрытия деталей. Доступные действия:\n• Запросить фотоотчёт — доступно только в статусе «В ожидании». Отменить запрос можно пока его статус «Новый»\n• Задать вопрос - уточнить любую информацию\n• Добавить заметку - личный комментарий\n• О товаре - заполнить данные о содержимом',
                 targetBorderRadius: BorderRadius.circular(18),
                 targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
@@ -2492,6 +2808,30 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         }
         _selectedTracks.add(track.code);
       }
+    });
+  }
+
+  void _selectAll() {
+    if (_selectedStatus == null) return;
+    final clientCode = ref.read(activeClientCodeProvider);
+    if (clientCode == null) return;
+
+    final tracksState = ref.read(paginatedTracksProvider(clientCode)).state;
+    final allWithStatus = tracksState.tracks
+        .where((t) => t.status == _selectedStatus)
+        .map((t) => t.code)
+        .toSet();
+
+    Future(() {
+      if (!mounted) return;
+      setState(() {
+        _selectedTracks.addAll(allWithStatus);
+      });
+      _showStyledSnackBar(
+        context,
+        'Рекомендуем проверить все трек-номера перед передачей на сборку, '
+        'так как будут отправлены именно те трек-номера которые были выбраны.',
+      );
     });
   }
 
@@ -2929,6 +3269,9 @@ class _TrackGroupCard extends StatefulWidget {
   final ValueChanged<TrackAssembly> onEditGroupComment;
   final ValueChanged<TrackAssembly> onAskGroupQuestion;
   final ValueChanged<TrackAssembly> onSelectDelivery;
+  final ValueChanged<TrackItem> onDeleteTrack;
+  final ValueChanged<TrackItem> onReturnRequest;
+  final Set<String> returnRequestedTracks;
 
   const _TrackGroupCard({
     required this.assembly,
@@ -2960,6 +3303,9 @@ class _TrackGroupCard extends StatefulWidget {
     required this.onEditGroupComment,
     required this.onAskGroupQuestion,
     required this.onSelectDelivery,
+    required this.onDeleteTrack,
+    required this.onReturnRequest,
+    required this.returnRequestedTracks,
   });
 
   @override
@@ -3094,20 +3440,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    if (widget.assembly!.tariffCost != null) ...[
-                                      const Text(
-                                        ' — ',
-                                        style: TextStyle(color: Colors.black54),
-                                      ),
-                                      Text(
-                                        '${_formatDecimal(widget.assembly!.tariffCost!)} \$/кг',
-                                        style: const TextStyle(
-                                          color: Colors.green,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
                                   ],
                                 ),
                               ],
@@ -3141,20 +3473,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                                 fontSize: 13,
                                               ),
                                             ),
-                                            if (widget.assembly!.packagingCost != null) ...[
-                                              const TextSpan(
-                                                text: ' — ',
-                                                style: TextStyle(color: Colors.black54),
-                                              ),
-                                              TextSpan(
-                                                text: '${_formatDecimal(widget.assembly!.packagingCost!)} \$',
-                                                style: const TextStyle(
-                                                  color: Colors.green,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ],
                                           ],
                                         ),
                                       ),
@@ -3394,8 +3712,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 widget.selectedStatus == null || widget.selectedStatus == track.status;
             final isSelected = widget.selectedTrackCodes.contains(track.code);
 
-            final availablePhotoReport = track.status == 'На складе';
-            final canAskQuestion = track.status == 'На складе';
+            final canAskQuestion = track.status == 'В ожидании' || track.status == 'На складе';
+            final canRequestReturn = track.status == 'На складе' &&
+                track.statusCode == 'in_warehouse' &&
+                !widget.returnRequestedTracks.contains(track.code);
             final availableFillInfo =
                 track.status == 'В ожидании' ||
                 track.status == 'На складе' ||
@@ -3406,6 +3726,12 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             final isPhotoRequested =
                 activePhoto != null ||
                 widget.requestedPhotoReports.contains(track.code);
+            // Запросить можно только если трек в статусе «В ожидании» и ещё не запрошен
+            final canRequestPhoto =
+                track.status == 'В ожидании' && !isPhotoRequested;
+            // Отменить можно только если статус запроса «new»
+            final canCancelPhoto = activePhoto?.status == 'new';
+            final availablePhotoReport = canRequestPhoto || canCancelPhoto;
             final commentText = widget.overrideComments[track.code] ?? track.comment;
             final hasQuestion =
                 activeQuestion != null ||
@@ -3422,7 +3748,13 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 apiProductInfo?.name ?? localProductInfo?.name ?? '';
             final productInfoQuantity =
                 apiProductInfo?.quantity ?? localProductInfo?.quantity;
-            final productInfoImages = localProductInfo?.images ?? <String>[];
+            // Локальные изображения (после загрузки, до обновления страницы)
+            // После обновления страницы — используем imageUrl из API как fallback
+            final productInfoImages = (localProductInfo?.images.isNotEmpty == true)
+                ? localProductInfo!.images
+                : (apiProductInfo?.imageUrl?.isNotEmpty == true
+                    ? [apiProductInfo!.imageUrl!]
+                    : <String>[]);
             final hasProductInfo =
                 productInfoName.isNotEmpty ||
                 productInfoQuantity != null ||
@@ -3491,6 +3823,36 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       Text(
                         'Пожелание: $photoNote',
                         style: const TextStyle(color: Colors.black54),
+                      ),
+                    ],
+                    if (activePhoto?.warehouseComment != null && activePhoto!.warehouseComment!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8E1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFFE082), width: 1),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Комментарий от склада',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFF57F17),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              activePhoto.warehouseComment!,
+                              style: const TextStyle(fontSize: 13, color: Colors.black87),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     if (photoCreated != null) ...[
@@ -3730,15 +4092,28 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             const SizedBox(width: 2),
                           ],
                           Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Text(
-                                track.code,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                            child: GestureDetector(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: track.code));
+                                HapticFeedback.lightImpact();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Трек скопирован'),
+                                    duration: Duration(seconds: 1),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Text(
+                                  track.code,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
                               ),
                             ),
                           ),
@@ -3785,7 +4160,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                 _ActionChipButton(
                                   icon: Icons.photo_camera_rounded,
                                   iconOnly: true,
-                                  onPressed: () => isPhotoRequested
+                                  onPressed: () => canCancelPhoto
                                       ? widget.onCancelPhotoRequest(track)
                                       : widget.onPhotoRequest(track),
                                 ),
@@ -3798,6 +4173,23 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                   onPressed: () => hasQuestion
                                       ? widget.onCancelQuestion(track)
                                       : widget.onAskQuestion(track),
+                                ),
+                              ],
+                              if (canRequestReturn) ...[
+                                const SizedBox(width: 6),
+                                _ActionChipButton(
+                                  icon: Icons.assignment_return_outlined,
+                                  iconOnly: true,
+                                  onPressed: () => widget.onReturnRequest(track),
+                                ),
+                              ],
+                              if (track.status == 'В ожидании') ...[
+                                const SizedBox(width: 6),
+                                _ActionChipButton(
+                                  icon: Icons.delete_outline_rounded,
+                                  iconOnly: true,
+                                  isDestructive: true,
+                                  onPressed: () => widget.onDeleteTrack(track),
                                 ),
                               ],
                             ],
@@ -4287,17 +4679,24 @@ class _ActionChipButton extends StatelessWidget {
   final String? label;
   final VoidCallback? onPressed;
   final bool iconOnly;
+  final bool isDestructive;
 
   const _ActionChipButton({
     this.icon,
     this.label,
     required this.onPressed,
     this.iconOnly = false,
+    this.isDestructive = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final gradient = context.brandGradient;
+    final destructiveGradient = const LinearGradient(
+      colors: [Color(0xFFFF5252), Color(0xFFD32F2F)],
+    );
+    final activeGradient = isDestructive ? destructiveGradient : gradient;
+    final activeColor = isDestructive ? const Color(0xFFD32F2F) : context.brandPrimary;
     final isDisabled = onPressed == null;
 
     // Icon-only button (circular)
@@ -4305,7 +4704,7 @@ class _ActionChipButton extends StatelessWidget {
       return Opacity(
         opacity: isDisabled ? 0.45 : 1,
         child: Container(
-          decoration: BoxDecoration(gradient: gradient, shape: BoxShape.circle),
+          decoration: BoxDecoration(gradient: activeGradient, shape: BoxShape.circle),
           padding: const EdgeInsets.all(1.5),
           child: Material(
             color: Colors.white,
@@ -4315,7 +4714,7 @@ class _ActionChipButton extends StatelessWidget {
               onTap: onPressed,
               child: Padding(
                 padding: const EdgeInsets.all(8),
-                child: Icon(icon, size: 18, color: context.brandPrimary),
+                child: Icon(icon, size: 18, color: activeColor),
               ),
             ),
           ),

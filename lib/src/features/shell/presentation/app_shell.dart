@@ -32,7 +32,6 @@ class AppShell extends ConsumerWidget {
     'Фото',
     'Треки',
     'Счета',
-    'Магазин',
     'Ещё',
   ];
 
@@ -144,7 +143,6 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
     (icon: CupertinoIcons.photo, selectedIcon: CupertinoIcons.photo_fill, label: 'Фото'),
     (icon: CupertinoIcons.cube_box, selectedIcon: CupertinoIcons.cube_box_fill, label: 'Треки'),
     (icon: CupertinoIcons.doc, selectedIcon: CupertinoIcons.doc_fill, label: 'Счета'),
-    (icon: CupertinoIcons.bag, selectedIcon: CupertinoIcons.bag_fill, label: 'Магазин'),
     (icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'Ещё'),
   ];
 

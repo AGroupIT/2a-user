@@ -236,6 +236,7 @@ class AssembliesApiService {
   /// Создать сборку (статус = new)
   Future<Assembly?> createAssembly({
     required int clientId,
+    String? clientCode,
     String? name,
     int? tariffId,
     List<int>? packagingTypeIds,
@@ -248,6 +249,7 @@ class AssembliesApiService {
         '/assemblies',
         data: {
           'clientId': clientId,
+          if (clientCode != null) 'clientCode': clientCode,
           if (name != null) 'name': name,
           if (tariffId != null) 'tariffId': tariffId,
           if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)

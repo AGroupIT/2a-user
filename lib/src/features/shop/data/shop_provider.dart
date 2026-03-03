@@ -70,8 +70,8 @@ class ShopSearchParams {
       pageSize: pageSize ?? this.pageSize,
       categoryId: categoryId ?? this.categoryId,
       orderBy: orderBy ?? this.orderBy,
-      minPrice: resetMinPrice ? null : this.minPrice,
-      maxPrice: resetMaxPrice ? null : this.maxPrice,
+      minPrice: resetMinPrice ? null : minPrice,
+      maxPrice: resetMaxPrice ? null : maxPrice,
     );
   }
 

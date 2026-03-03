@@ -19,6 +19,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _emailCtrl = TextEditingController();
   final _companyCtrl = TextEditingController();
   final _commentCtrl = TextEditingController();
+  final _referralCodeCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _emailCtrl.dispose();
     _companyCtrl.dispose();
     _commentCtrl.dispose();
+    _referralCodeCtrl.dispose();
     super.dispose();
   }
 
@@ -64,6 +66,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           email: _emailCtrl.text,
           companyName: _companyCtrl.text,
           comment: _commentCtrl.text,
+          referralCode: _referralCodeCtrl.text,
         );
 
     if (!mounted) return;
@@ -251,6 +254,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       prefixIcon: Icons.comment_rounded,
                       maxLines: 3,
                     ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _referralCodeCtrl,
+                      label: 'Реферальный код (необязательно)',
+                      hint: 'ABC123',
+                      prefixIcon: Icons.card_giftcard_rounded,
+                      textCapitalization: TextCapitalization.characters,
+                    ),
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: state.isLoading ? null : _submit,
@@ -415,6 +426,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     int maxLines = 1,
+    TextCapitalization textCapitalization = TextCapitalization.none,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,6 +450,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             keyboardType: keyboardType,
             inputFormatters: inputFormatters,
             maxLines: maxLines,
+            textCapitalization: textCapitalization,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(

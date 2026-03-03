@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
-
 import '../../../core/ui/sheet_handle.dart';
 
 class MoreSheet extends StatelessWidget {
@@ -17,74 +16,121 @@ class MoreSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.35,
-      minChildSize: 0.25,
-      maxChildSize: 0.6,
-      expand: false,
-      builder: (context, controller) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SheetHandle(),
-              Expanded(
-                child: ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  children: [
-                    Text(
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SheetHandle(),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                    child: Text(
                       'Меню',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    _MenuItem(
-                      icon: Icons.person_rounded,
-                      title: 'Профиль',
-                      onTap: () => _go(context, '/profile'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.support_agent_rounded,
-                      title: 'Чат с поддержкой',
-                      onTap: () => _go(context, '/support'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Чат по оплате',
-                      iconColor: const Color(0xFF4CAF50),
-                      onTap: () => _go(context, '/payment-chat'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.newspaper_rounded,
-                      title: 'Новости',
-                      onTap: () => _go(context, '/news'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.rule_rounded,
-                      title: 'Правила оказания услуг',
-                      onTap: () => _go(context, '/rules'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.shopping_bag_rounded,
-                      title: 'Совместные покупки',
-                      iconColor: const Color(0xFF9C27B0),
-                      onTap: () => _go(context, '/sp-finance'),
-                    ),
-                  ],
-                ),
+                  ),
+
+                  // ── Аккаунт ───────────────────────────────────
+                  _MenuItem(
+                    icon: Icons.person_rounded,
+                    title: 'Профиль',
+                    onTap: () => _go(context, '/profile'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.card_giftcard_rounded,
+                    title: 'Реферальная программа',
+                    iconColor: const Color(0xFF4CAF50),
+                    onTap: () => _go(context, '/referral'),
+                  ),
+
+                  // ── Полезные инструменты ──────────────────────
+                  const _SectionLabel(text: 'Полезные инструменты'),
+                  _MenuItem(
+                    icon: Icons.shopping_bag_rounded,
+                    title: 'Совместные покупки',
+                    iconColor: const Color(0xFF9C27B0),
+                    onTap: () => _go(context, '/sp-finance'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.calculate_rounded,
+                    title: 'Калькулятор доставки',
+                    iconColor: const Color(0xFF2196F3),
+                    onTap: () => _go(context, '/calculator'),
+                  ),
+
+                  // ── Поддержка ─────────────────────────────────
+                  const _SectionLabel(text: 'Поддержка'),
+                  _MenuItem(
+                    icon: Icons.account_balance_wallet_rounded,
+                    title: 'Чат по оплате',
+                    iconColor: const Color(0xFF4CAF50),
+                    onTap: () => _go(context, '/payment-chat'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.support_agent_rounded,
+                    title: 'Чат с поддержкой',
+                    onTap: () => _go(context, '/support'),
+                  ),
+
+                  // ── Полезные материалы ────────────────────────
+                  const _SectionLabel(text: 'Полезные материалы'),
+                  _MenuItem(
+                    icon: Icons.newspaper_rounded,
+                    title: 'Новости',
+                    onTap: () => _go(context, '/news'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.rule_rounded,
+                    title: 'Правила оказания услуг',
+                    onTap: () => _go(context, '/rules'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.price_change_rounded,
+                    title: 'Тарифы',
+                    iconColor: const Color(0xFFFF9800),
+                    onTap: () => _go(context, '/tariffs'),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF999999),
+          letterSpacing: 0.3,
+        ),
+      ),
     );
   }
 }
@@ -146,4 +192,3 @@ class _MenuItem extends StatelessWidget {
     );
   }
 }
-

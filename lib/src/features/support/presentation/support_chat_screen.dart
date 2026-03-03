@@ -545,7 +545,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
       buffer.writeln('🔢 单号: ${invoice.invoiceNumber}');
       buffer.writeln('📊 状态: ${invoice.status}');
-      buffer.writeln('📅 发送日期: ${dateFormat.format(invoice.sendDate)}');
+      if (invoice.sendDate != null) {
+        buffer.writeln('📅 发送日期: ${dateFormat.format(invoice.sendDate!)}');
+      }
       buffer.writeln('');
       buffer.writeln('📦 **货物参数:**');
       buffer.writeln('   • 件数: ${invoice.placesCount}');
@@ -585,7 +587,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
       buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
       buffer.writeln('📊 Статус: ${invoice.status}');
-      buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate)}');
+      if (invoice.sendDate != null) {
+        buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}');
+      }
       buffer.writeln('');
       buffer.writeln('📦 **Параметры груза:**');
       buffer.writeln('   • Мест: ${invoice.placesCount}');
@@ -1988,7 +1992,7 @@ class _InvoiceListTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${invoice.status} • ${dateFormat.format(invoice.sendDate)} • ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
+                    '${invoice.status}${invoice.sendDate != null ? ' • ${dateFormat.format(invoice.sendDate!)}' : ''} • ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],

@@ -18,15 +18,13 @@ import '../features/rules/presentation/rule_detail_screen.dart';
 import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/search_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
-import '../features/shop/presentation/shop_screen.dart';
-import '../features/shop/presentation/shop_item_detail_screen.dart';
-import '../features/shop/presentation/purchase_list_screen.dart';
-import '../features/shop/presentation/purchase_list_detail_screen.dart';
-import '../features/shop/presentation/purchase_lists_screen.dart';
+import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/sp_finance/presentation/sp_assemblies_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
+import '../features/referral/presentation/referral_screen.dart';
+import '../features/tariffs/presentation/tariffs_screen.dart';
 import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
 import 'widgets/app_scaffold.dart';
@@ -130,14 +128,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/shop',
-                builder: (context, state) => const ShopScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/more',
                 builder: (context, state) => const MoreScreen(),
               ),
@@ -146,53 +136,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
-        path: '/shop/item/:itemId',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final itemId = state.pathParameters['itemId'] ?? '';
-          return AppScaffold(
-            title: 'Товар',
-            child: ShopItemDetailScreen(itemId: itemId),
-          );
-        },
-      ),
-      GoRoute(
-        path: '/shop/cart',
+        path: '/calculator',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
-          title: 'Список выкупа',
-          child: PurchaseListScreen(),
+          title: 'Калькулятор доставки',
+          child: CalculatorScreen(),
         ),
-      ),
-      GoRoute(
-        path: '/shop/purchases',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Мои заявки',
-          child: PurchaseListsScreen(),
-        ),
-        routes: [
-          GoRoute(
-            path: ':id',
-            parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
-              final id = int.parse(state.pathParameters['id']!);
-              return AppScaffold(
-                title: 'Заявка #$id',
-                child: PurchaseListDetailScreen(listId: id),
-              );
-            },
-          ),
-        ],
       ),
       GoRoute(
         path: '/search',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Поиск',
-          showSearch: false,
-          child: SearchScreen(),
-        ),
+        builder: (context, state) {
+          final initialQuery = state.extra as String? ??
+              state.uri.queryParameters['q'];
+          return AppScaffold(
+            title: 'Поиск',
+            showSearch: false,
+            child: SearchScreen(initialQuery: initialQuery),
+          );
+        },
       ),
       GoRoute(
         path: '/support',
@@ -284,6 +246,22 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
         ],
+      ),
+      GoRoute(
+        path: '/referral',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Реферальная программа',
+          child: ReferralScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/tariffs',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Тарифы',
+          child: TariffsScreen(),
+        ),
       ),
       // SP Finance routes
       GoRoute(

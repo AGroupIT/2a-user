@@ -18,6 +18,7 @@ class TrackItem {
   final List<PhotoRequest> photoRequests;
   final List<TrackQuestion> questions;
   final String? clientCode;
+  final int? clientCodeId;
 
   const TrackItem({
     this.id,
@@ -36,6 +37,7 @@ class TrackItem {
     this.photoRequests = const [],
     this.questions = const [],
     this.clientCode,
+    this.clientCodeId,
   });
 
   // Последний активный фотозапрос (не отмененный)
@@ -120,7 +122,8 @@ class TrackItem {
     // Код клиента
     final clientCodeData = json['clientCode'] as Map<String, dynamic>?;
     final clientCode = clientCodeData?['code'] as String?;
-    
+    final clientCodeId = clientCodeData?['id'] as int?;
+
     return TrackItem(
       id: json['id'] as int?,
       code: code,
@@ -138,6 +141,7 @@ class TrackItem {
       photoRequests: photoRequests,
       questions: questions,
       clientCode: clientCode,
+      clientCodeId: clientCodeId,
     );
   }
 }
@@ -293,6 +297,7 @@ class ProductInfo {
 class PhotoRequest {
   final int id;
   final String? wishes;
+  final String? warehouseComment;
   final String status; // new, in_progress, assigned, completed, cancelled
   final List<String> mediaUrls;
   final DateTime createdAt;
@@ -302,6 +307,7 @@ class PhotoRequest {
   const PhotoRequest({
     required this.id,
     this.wishes,
+    this.warehouseComment,
     required this.status,
     this.mediaUrls = const [],
     required this.createdAt,
@@ -339,6 +345,7 @@ class PhotoRequest {
     return PhotoRequest(
       id: json['id'] as int,
       wishes: json['wish'] as String?,
+      warehouseComment: json['warehouseComment'] as String?,
       status: json['status'] as String? ?? 'new',
       mediaUrls: mediaUrls,
       createdAt: json['createdAt'] != null 

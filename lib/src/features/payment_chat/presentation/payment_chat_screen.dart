@@ -68,6 +68,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
 
+  // Флаг защиты от вызова ref после disposal
+  bool _isDisposed = false;
+
   // Хранение контекста Showcase для вызова next()
   BuildContext? _showcaseContext;
 
@@ -160,12 +163,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   @override
   void dispose() {
+    _isDisposed = true;
     _pollingTimer?.cancel();
-    ref.read(isPaymentChatScreenOpenProvider.notifier).set(false);
-    
-    // Уведомляем сервер что чат закрыт
-    ref.read(chatPresenceServiceProvider).closeChat(ChatType.payment);
-    
+
+    try {
+      ref.read(isPaymentChatScreenOpenProvider.notifier).set(false);
+      ref.read(chatPresenceServiceProvider).closeChat(ChatType.payment);
+    } catch (_) {}
+
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _focusNode.dispose();
@@ -175,7 +180,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!mounted) return;
+    if (!mounted || _isDisposed) return;
     _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 
@@ -582,7 +587,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
       buffer.writeln('🔢 编号: ${invoice.invoiceNumber}');
       buffer.writeln('📊 状态: ${invoice.status}');
-      buffer.writeln('📅 发货日期: ${dateFormat.format(invoice.sendDate)}');
+      if (invoice.sendDate != null) {
+        buffer.writeln('📅 发货日期: ${dateFormat.format(invoice.sendDate!)}');
+      }
       buffer.writeln('');
       buffer.writeln('📦 **货物参数:**');
       buffer.writeln('   • 件数: ${invoice.placesCount}');
@@ -625,7 +632,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
       buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
       buffer.writeln('📊 Статус: ${invoice.status}');
-      buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate)}');
+      if (invoice.sendDate != null) {
+        buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}');
+      }
       buffer.writeln('');
       buffer.writeln('📦 **Параметры груза:**');
       buffer.writeln('   • Мест: ${invoice.placesCount}');
@@ -2083,7 +2092,7 @@ class _InvoiceListTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${invoice.status} • ${dateFormat.format(invoice.sendDate)} • ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
+                    '${invoice.status}${invoice.sendDate != null ? ' • ${dateFormat.format(invoice.sendDate!)}' : ''} • ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],

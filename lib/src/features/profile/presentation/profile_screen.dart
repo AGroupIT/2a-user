@@ -1182,7 +1182,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       for (final invoice in invoices) {
         sheet.appendRow([
           xls.TextCellValue(invoice.invoiceNumber),
-          xls.TextCellValue(dateFormat.format(invoice.sendDate)),
+          xls.TextCellValue(invoice.sendDate != null ? dateFormat.format(invoice.sendDate!) : ''),
           xls.TextCellValue(invoice.statusName ?? invoice.status),
           xls.TextCellValue(invoice.tariffName ?? ''),
           xls.TextCellValue(invoice.calculationMethod ?? ''),
@@ -1192,10 +1192,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           xls.DoubleCellValue(invoice.density),
           xls.DoubleCellValue(invoice.transshipmentCost ?? 0),
           xls.DoubleCellValue(invoice.insuranceCost ?? 0),
-          xls.DoubleCellValue(invoice.discount ?? 0),
           xls.DoubleCellValue(invoice.packagingCostTotal ?? 0),
-          xls.DoubleCellValue(invoice.deliveryCostUsd),
-          invoice.rate != null ? xls.DoubleCellValue(invoice.rate!) : xls.TextCellValue(''),
+          xls.DoubleCellValue(invoice.totalCostUsd),
+          invoice.clientRubRate != null ? xls.DoubleCellValue(invoice.clientRubRate!) : xls.TextCellValue(''),
           xls.DoubleCellValue(invoice.totalCostRub),
         ]);
       }
