@@ -35,6 +35,7 @@ class UpdateService {
       final latestVersion = _parseVersion(latestStr);
       final storeUrl = cfg['storeUrl'] as String? ?? '';
       final rustoreUrl = cfg['rustoreUrl'] as String?;
+      final downloadUrl = cfg['downloadUrl'] as String?;
 
       final isForced = _compare(current, minVersion) < 0;
       final hasUpdate = _compare(current, latestVersion) < 0;
@@ -58,6 +59,7 @@ class UpdateService {
           latestVersionStr: latestStr,
           storeUrl: storeUrl,
           rustoreUrl: rustoreUrl,
+          downloadUrl: downloadUrl,
         ),
       );
     } catch (_) {
@@ -97,25 +99,27 @@ class _UpdateDialog extends StatelessWidget {
   final String latestVersionStr;
   final String storeUrl;
   final String? rustoreUrl;
+  final String? downloadUrl;
 
   const _UpdateDialog({
     required this.isForced,
     required this.latestVersionStr,
     required this.storeUrl,
     this.rustoreUrl,
+    this.downloadUrl,
   });
 
   Future<void> _open(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
     final hasRustore =
         !Platform.isIOS && rustoreUrl != null && rustoreUrl!.isNotEmpty;
+    final hasDownload =
+        !Platform.isIOS && downloadUrl != null && downloadUrl!.isNotEmpty;
 
     return PopScope(
       canPop: !isForced,
@@ -188,24 +192,46 @@ class _UpdateDialog extends StatelessWidget {
                     ),
                   ),
                 )
-              else if (hasRustore)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => _open(rustoreUrl!),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      backgroundColor: context.brandPrimary,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text(
-                      'Открыть RuStore',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              else ...[
+                if (hasRustore)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _open(rustoreUrl!),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: context.brandPrimary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text(
+                        'Открыть RuStore',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
-                ),
+                if (hasDownload) ...[
+                  if (hasRustore) const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => _open(downloadUrl!),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: context.brandPrimary),
+                        foregroundColor: context.brandPrimary,
+                      ),
+                      child: const Text(
+                        'Скачать APK',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
 
               // Кнопка «Позже» только если обновление не принудительное
               if (!isForced) ...[

@@ -1,4 +1,5 @@
 import 'dart:io' if (dart.library.html) 'src/core/platform/platform_stub.dart';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -30,8 +31,57 @@ Future<void> _requestTrackingPermission() async {
   }
 }
 
+/// Проверка: является ли ошибка известным багом showcaseview 5.x.
+///
+/// Баг проявляется в двух сценариях:
+/// 1. iOS: stale BuildContext в post-frame callback showcaseview → MediaQuery crash
+///    (стек содержит 'showcaseview')
+/// 2. Android: Showcase-виджет внутри ListView.builder → createChild crash
+///    (стек содержит 'SliverMultiBoxAdaptorElement', showcaseview не виден)
+///
+/// В обоих случаях exception.toString() содержит `DiagnosticsProperty<void>`.
+/// `DiagnosticsProperty<void>` никогда не должен быть исключением в рабочем коде —
+/// это всегда признак данного конкретного бага.
+bool _isKnownShowcaseBug(FlutterErrorDetails details) {
+  final msg = details.exception.toString();
+  // Все варианты бага дают 'DiagnosticsProperty' в тексте исключения.
+  // В рабочем Flutter-приложении этого никогда не должно быть в production.
+  if (!msg.contains('DiagnosticsProperty')) return false;
+
+  final stack = details.stack?.toString() ?? '';
+  // iOS: showcaseview явно в стеке (ShowcaseService.getScope / _initRootWidget)
+  if (stack.contains('showcaseview')) return true;
+  // Android: Showcase внутри ListView.builder (lazy createChild)
+  if (stack.contains('SliverMultiBoxAdaptorElement')) return true;
+  // Android: tap на InkWell → AutomaticKeepAlive → NotificationListener
+  if (stack.contains('_NotificationElement.onNotification')) return true;
+  // Редкий вариант: ошибка попадает в цепочку загрузки изображений
+  if (stack.contains('FileImage._loadAsync')) return true;
+
+  return false;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Перехватываем известный баг showcaseview 5.x: stale BuildContext → MediaQuery.sizeOf crash
+  final originalOnError = FlutterError.onError;
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (_isKnownShowcaseBug(details)) {
+      debugPrint('[showcaseview] Suppressed known DiagnosticsProperty crash: ${details.exception}');
+      return;
+    }
+    originalOnError?.call(details);
+  };
+
+  // Перехватываем uncaught exceptions на уровне платформы (путь через layout callbacks)
+  PlatformDispatcher.instance.onError = (error, stack) {
+    if (error.toString().contains('DiagnosticsProperty')) {
+      debugPrint('[showcaseview] Suppressed platform-level DiagnosticsProperty crash: $error');
+      return true; // handled — не крашим приложение
+    }
+    return false; // не наша ошибка — пусть падает стандартно
+  };
 
   // Инициализация Firebase для push-уведомлений
   await PushNotificationService.initializeFirebase();
@@ -64,6 +114,15 @@ void main() async {
         if (!SentryConfig.enabled) {
           return null;
         }
+
+        // Фильтровать известный баг showcaseview 5.x (DiagnosticsProperty во всех вариантах)
+        final hasShowcaseFrame = event.exceptions?.any((ex) =>
+          ex.stackTrace?.frames.any((f) => f.package == 'showcaseview') ?? false,
+        ) ?? false;
+        final hasDiagnosticsMsg = event.exceptions?.any((ex) =>
+          ex.value?.contains('DiagnosticsProperty') ?? false,
+        ) ?? false;
+        if (hasShowcaseFrame || hasDiagnosticsMsg) return null;
 
         // Удалить чувствительные данные из user
         if (event.user != null) {

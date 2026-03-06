@@ -34,11 +34,10 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   final _showcaseKeyDateFilter = GlobalKey();
   final _showcaseKeyPhotoGrid = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
 
   @override
   void initState() {
@@ -50,27 +49,48 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.photos));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyStats, ShowcaseBlock.photosStats),
+      (_showcaseKeyDateFilter, ShowcaseBlock.photosDateFilter),
+      (_showcaseKeyPhotoGrid, ShowcaseBlock.photosGrid),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyStats,
-        _showcaseKeyDateFilter,
-        _showcaseKeyPhotoGrid,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.photos)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   void _setupAutoRefresh() {
@@ -117,6 +137,9 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
           );
 
     final photosCount = photosCountAsync.asData?.value;
+    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosStats));
+    final shouldShowDateFilter = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosDateFilter));
+    final shouldShowGrid = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosGrid));
 
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -152,14 +175,10 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
-          
-          // Запускаем showcase когда данные загружены
-          if (photosCount != null) {
-            _startShowcaseIfNeeded(showcaseContext);
-          }
+          _startShowcaseIfNeeded(showcaseContext);
 
           return RefreshIndicator(
             onRefresh: onRefresh,
@@ -180,103 +199,100 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                   ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 12),
-                Showcase(
-                  key: _showcaseKeyStats,
-                  title: '📊 Статистика фотоотчётов',
-                  description:
-                      'Общее количество фото и видео по вашему коду клиента:\n• Фото упаковки товаров\n• Фото весов с весом груза\n• Видео процесса упаковки\n\nВсе файлы доступны для просмотра и скачивания.',
-                  targetBorderRadius: BorderRadius.circular(18),
-                  targetPadding: getShowcaseTargetPadding(),
-                  tooltipPosition: TooltipPosition.bottom,
-                  tooltipBackgroundColor: Colors.white,
-                  textColor: Colors.black87,
-                  titleTextStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                  descTextStyle: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
-                  ),
-                  onTargetClick: () {
-                    if (_showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
-                  },
-                  disposeOnTap: false,
-                  child: _PhotosStatsCard(count: photosCount),
-                ),
+                shouldShowStats
+                    ? Showcase(
+                        key: _showcaseKeyStats,
+                        title: '📊 Статистика фотоотчётов',
+                        description:
+                            'Общее количество фото и видео по вашему коду клиента:\n• Фото упаковки товаров\n• Фото весов с весом груза\n• Видео процесса упаковки\n\nВсе файлы доступны для просмотра и скачивания.',
+                        targetBorderRadius: BorderRadius.circular(18),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.bottom,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        child: _PhotosStatsCard(count: photosCount),
+                      )
+                    : _PhotosStatsCard(count: photosCount),
                 const SizedBox(height: 18),
-                Showcase(
-                  key: _showcaseKeyDateFilter,
-                  title: '📅 Фильтр по месяцу и году',
-                  description:
-                      'Используйте стрелки ◀ ▶ для переключения месяцев.\nФотографии группируются по дням съёмки.',
-                  targetBorderRadius: BorderRadius.circular(14),
-                  targetPadding: getShowcaseTargetPadding(),
-                  tooltipPosition: TooltipPosition.bottom,
-                  tooltipBackgroundColor: Colors.white,
-                  textColor: Colors.black87,
-                  titleTextStyle: const TextStyle(
-                    fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1A1A),
-            ),
-                  descTextStyle: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
-                  ),
-                  onTargetClick: () {
-                    if (_showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
+                Builder(
+                  builder: (_) {
+                    final dateFilterRow = Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: _CustomDropdown<int>(
+                            value: _month,
+                            label: 'Месяц',
+                            items: List.generate(
+                              12,
+                              (i) => _DropdownItem(value: i, label: _monthLabel(i)),
+                            ),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                _month = v;
+                                _selectedDate = '';
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 1,
+                          child: _CustomDropdown<int>(
+                            value: _year,
+                            label: 'Год',
+                            items: List.generate(5, (i) {
+                              final y = DateTime.now().year - 2 + i;
+                              return _DropdownItem(value: y, label: '$y');
+                            }),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                _year = v;
+                                _selectedDate = '';
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                    return shouldShowDateFilter
+                        ? Showcase(
+                            key: _showcaseKeyDateFilter,
+                            title: '📅 Фильтр по месяцу и году',
+                            description:
+                                'Используйте стрелки ◀ ▶ для переключения месяцев.\nФотографии группируются по дням съёмки.',
+                            targetBorderRadius: BorderRadius.circular(14),
+                            targetPadding: getShowcaseTargetPadding(),
+                            tooltipPosition: TooltipPosition.bottom,
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            child: dateFilterRow,
+                          )
+                        : dateFilterRow;
                   },
-                  disposeOnTap: false,
-                  child: Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: _CustomDropdown<int>(
-                    value: _month,
-                    label: 'Месяц',
-                    items: List.generate(
-                      12,
-                      (i) => _DropdownItem(value: i, label: _monthLabel(i)),
-                    ),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() {
-                        _month = v;
-                        _selectedDate = '';
-                      });
-                    },
-                  ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: _CustomDropdown<int>(
-                    value: _year,
-                    label: 'Год',
-                    items: List.generate(5, (i) {
-                      final y = DateTime.now().year - 2 + i;
-                      return _DropdownItem(value: y, label: '$y');
-                    }),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() {
-                        _year = v;
-                        _selectedDate = '';
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 12),
           daysAsync.when(
             loading: () => const Center(
@@ -371,20 +387,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                 }
               }
 
-              return Showcase(
-                key: _showcaseKeyPhotoGrid,
-                title: '📸 Галерея фотоотчётов',
-                description:
-                    'Галерея файлов за выбранную дату:\n• Нажмите на миниатюру для полноэкранного просмотра\n• Увеличивайте фото жестами\n• Скачивайте фото на устройство\n• Делитесь ссылками\n\nФото и видео добавляются после обработки груза на складе.',
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.top,
-                onBarrierClick: () {
-                  _onShowcaseComplete();
-                },
-                onToolTipClick: () {
-                  _onShowcaseComplete();
-                },
-                child: Container(
+              final photoGrid = Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     color: Colors.white,
@@ -500,8 +503,18 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
                       ),
                     ),
                   ),
-                ),
               );
+              return shouldShowGrid
+                  ? Showcase(
+                      key: _showcaseKeyPhotoGrid,
+                      title: '📸 Галерея фотоотчётов',
+                      description:
+                          'Галерея файлов за выбранную дату:\n• Нажмите на миниатюру для полноэкранного просмотра\n• Увеличивайте фото жестами\n• Скачивайте фото на устройство\n• Делитесь ссылками\n\nФото и видео добавляются после обработки груза на складе.',
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.top,
+                      child: photoGrid,
+                    )
+                  : photoGrid;
             },
           ),
               ],

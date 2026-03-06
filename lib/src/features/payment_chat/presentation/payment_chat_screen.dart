@@ -65,14 +65,16 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   final _showcaseKeyMessages = GlobalKey();
   final _showcaseKeyInput = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
+
+  // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
+  bool _isSendingLocally = false;
 
   // Флаг защиты от вызова ref после disposal
   bool _isDisposed = false;
 
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
 
   @override
   void initState() {
@@ -115,27 +117,48 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
+    if (!TickerMode.of(showcaseContext)) return;
 
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.paymentChat));
-    if (!showcaseState.shouldShow) return;
+    final pairs = [
+      (_showcaseKeyInfoBanner, ShowcaseBlock.paymentChatInfoBanner),
+      (_showcaseKeyMessages, ShowcaseBlock.paymentChatInfoBanner),
+      (_showcaseKeyInput, ShowcaseBlock.paymentChatInput),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
 
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyInfoBanner,
-        _showcaseKeyMessages,
-        _showcaseKeyInput,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.paymentChat)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   void _startPolling() {
@@ -205,29 +228,36 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   bool _initialMessageSent = false;
 
   Future<void> _handleMessageSend(String text, {Map<String, dynamic>? metadata}) async {
+    if (_isSendingLocally) return;
+
     final chatState = ref.read(paymentChatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
-    
+
     // Если нет текста и нет вложений - ничего не делаем
     if (text.trim().isEmpty && pendingAttachments.isEmpty) return;
 
-    HapticFeedback.lightImpact();
-    _textController.clear();
-    
-    // Собираем ID вложений
-    final attachmentIds = pendingAttachments.map((a) => a['id'] as int).toList();
-    
-    final success = await ref.read(paymentChatControllerProvider.notifier).sendMessage(
-      text.isEmpty ? tr(context, ru: 'Файл', zh: '文件') : text, 
-      metadata: metadata,
-      attachmentIds: attachmentIds,
-    );
-    
-    if (success) {
-      // Очищаем pending attachments
-      ref.read(paymentChatControllerProvider.notifier).clearPendingAttachments();
-      // Прокрутка вниз после отправки
-      _scrollToBottom();
+    _isSendingLocally = true;
+    try {
+      HapticFeedback.lightImpact();
+      _textController.clear();
+
+      // Собираем ID вложений
+      final attachmentIds = pendingAttachments.map((a) => a['id'] as int).toList();
+
+      final success = await ref.read(paymentChatControllerProvider.notifier).sendMessage(
+        text.isEmpty ? tr(context, ru: 'Файл', zh: '文件') : text,
+        metadata: metadata,
+        attachmentIds: attachmentIds,
+      );
+
+      if (success) {
+        // Очищаем pending attachments
+        ref.read(paymentChatControllerProvider.notifier).clearPendingAttachments();
+        // Прокрутка вниз после отправки
+        _scrollToBottom();
+      }
+    } finally {
+      _isSendingLocally = false;
     }
   }
   
@@ -681,12 +711,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
+    final shouldShowInfoBanner = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.paymentChatInfoBanner));
+    final shouldShowInput = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.paymentChatInput));
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
           _startShowcaseIfNeeded(showcaseContext);
 
           return Stack(
@@ -702,93 +734,81 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     // Отступ от верха экрана
                     const SizedBox(height: 65),
                     // Информационный блок о назначении чата (перемещён выше)
-                    Showcase(
-                      key: _showcaseKeyInfoBanner,
-                      title: tr(context, ru: '💰 Чат по вопросам оплаты', zh: '💰 付款问题聊天'),
-                      description: tr(context, ru: 'Специализированный чат для решения финансовых вопросов:\n• Вопросы по оплате счетов\n• Уточнение реквизитов\n• Подтверждение платежей\n• Обсуждение рассрочки или скидок\n\nВся переписка сохраняется для вашего удобства.', zh: '用于解决财务问题的专用聊天：\n• 发票付款问题\n• 确认付款详情\n• 付款确认\n• 讨论分期付款或折扣\n\n所有聊天记录都会保存以方便您使用。'),
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.bottom,
-                      tooltipBackgroundColor: Colors.white,
-                      textColor: Colors.black87,
-                      titleTextStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                      descTextStyle: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade600,
-                      ),
-                      onTargetClick: () {
-                        if (mounted && _showcaseContext != null) {
-                          ShowCaseWidget.of(_showcaseContext!).next();
-                        }
-                      },
-                      disposeOnTap: false,
-                      child: _buildInfoBanner(),
-                    ),
+                    shouldShowInfoBanner
+                        ? Showcase(
+                            key: _showcaseKeyInfoBanner,
+                            title: tr(context, ru: '💰 Чат по вопросам оплаты', zh: '💰 付款问题聊天'),
+                            description: tr(context, ru: 'Специализированный чат для решения финансовых вопросов:\n• Вопросы по оплате счетов\n• Уточнение реквизитов\n• Подтверждение платежей\n• Обсуждение рассрочки или скидок\n\nВся переписка сохраняется для вашего удобства.', zh: '用于解决财务问题的专用聊天：\n• 发票付款问题\n• 确认付款详情\n• 付款确认\n• 讨论分期付款或折扣\n\n所有聊天记录都会保存以方便您使用。'),
+                            targetPadding: getShowcaseTargetPadding(),
+                            tooltipPosition: TooltipPosition.bottom,
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            child: _buildInfoBanner(),
+                          )
+                        : _buildInfoBanner(),
 
                     // Список сообщений
                     Expanded(
-                      child: Showcase(
-                        key: _showcaseKeyMessages,
-                        title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
-                        description: tr(context, ru: 'Здесь отображается переписка по финансовым вопросам:\n• Ваши сообщения справа (зелёный фон)\n• Ответы бухгалтерии слева (белый фон)\n• Время отправки и статус доставки\n• Вложения (чеки, платёжные поручения)\n\nВы можете отправлять подтверждения оплаты прикрепляя файлы.', zh: '这里显示财务问题的聊天记录：\n• 您的消息在右侧（绿色背景）\n• 会计回复在左侧（白色背景）\n• 发送时间和发送状态\n• 附件（收据、付款单）\n\n您可以通过附加文件发送付款确认。'),
-                        targetPadding: getShowcaseTargetPadding(),
-                        tooltipPosition: TooltipPosition.bottom,
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        onTargetClick: () {
-                          if (mounted && _showcaseContext != null) {
-                            ShowCaseWidget.of(_showcaseContext!).next();
-                          }
-                        },
-                        disposeOnTap: false,
-                        child: _buildMessagesList(),
-                      ),
+                      child: shouldShowInfoBanner
+                          ? Showcase(
+                              key: _showcaseKeyMessages,
+                              title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
+                              description: tr(context, ru: 'Здесь отображается переписка по финансовым вопросам:\n• Ваши сообщения справа (зелёный фон)\n• Ответы бухгалтерии слева (белый фон)\n• Время отправки и статус доставки\n• Вложения (чеки, платёжные поручения)\n\nВы можете отправлять подтверждения оплаты прикрепляя файлы.', zh: '这里显示财务问题的聊天记录：\n• 您的消息在右侧（绿色背景）\n• 会计回复在左侧（白色背景）\n• 发送时间和发送状态\n• 附件（收据、付款单）\n\n您可以通过附加文件发送付款确认。'),
+                              targetPadding: getShowcaseTargetPadding(),
+                              tooltipPosition: TooltipPosition.bottom,
+                              tooltipBackgroundColor: Colors.white,
+                              textColor: Colors.black87,
+                              titleTextStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                              descTextStyle: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade600,
+                              ),
+                              child: _buildMessagesList(),
+                            )
+                          : _buildMessagesList(),
                     ),
 
                     // Панель быстрых действий
                     if (_showQuickActions) _buildQuickActionsBar(),
 
                     // Поле ввода
-                    Showcase(
-                      key: _showcaseKeyInput,
-                      title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
-                      description: tr(context, ru: 'Поле для связи с бухгалтерией:\n• Напишите вопрос или уточнение по оплате\n• Прикрепите скриншот или файл платёжки (📎)\n• Нажмите ➤ для отправки\n\nОтветы по финансовым вопросам обычно приходят в течение рабочего дня.', zh: '与会计沟通的字段：\n• 写下付款问题或澄清\n• 附加截图或付款文件（📎）\n• 按➤发送\n\n财务问题的答复通常在工作日内到达。'),
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.top,
-                      tooltipBackgroundColor: Colors.white,
-                      textColor: Colors.black87,
-                      titleTextStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                      descTextStyle: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade600,
-                      ),
-                      onBarrierClick: () {
-                        if (mounted) _onShowcaseComplete();
-                      },
-                      onToolTipClick: () {
-                        if (mounted) _onShowcaseComplete();
-                      },
-                      child: _buildInputField(bottomInset),
-                    ),
+                    shouldShowInput
+                        ? Showcase(
+                            key: _showcaseKeyInput,
+                            title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
+                            description: tr(context, ru: 'Поле для связи с бухгалтерией:\n• Напишите вопрос или уточнение по оплате\n• Прикрепите скриншот или файл платёжки (📎)\n• Нажмите ➤ для отправки\n\nОтветы по финансовым вопросам обычно приходят в течение рабочего дня.', zh: '与会计沟通的字段：\n• 写下付款问题或澄清\n• 附加截图或付款文件（📎）\n• 按➤发送\n\n财务问题的答复通常在工作日内到达。'),
+                            targetPadding: getShowcaseTargetPadding(),
+                            tooltipPosition: TooltipPosition.top,
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            child: _buildInputField(bottomInset),
+                          )
+                        : _buildInputField(bottomInset),
                   ],
                 ),
               ),

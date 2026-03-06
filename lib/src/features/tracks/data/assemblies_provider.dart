@@ -236,6 +236,7 @@ class AssembliesApiService {
   /// Создать сборку (статус = new)
   Future<Assembly?> createAssembly({
     required int clientId,
+    int? clientCodeId,
     String? clientCode,
     String? name,
     int? tariffId,
@@ -249,7 +250,8 @@ class AssembliesApiService {
         '/assemblies',
         data: {
           'clientId': clientId,
-          if (clientCode != null) 'clientCode': clientCode,
+          if (clientCodeId != null) 'clientCodeId': clientCodeId
+          else if (clientCode != null) 'clientCode': clientCode,
           if (name != null) 'name': name,
           if (tariffId != null) 'tariffId': tariffId,
           if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)
@@ -409,7 +411,10 @@ final tariffsProvider = FutureProvider<List<Tariff>>((ref) async {
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get('/tariffs');
+    final response = await apiClient.get(
+      '/tariffs',
+      queryParameters: {'activeOnly': 'true'},
+    );
 
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
@@ -417,6 +422,7 @@ final tariffsProvider = FutureProvider<List<Tariff>>((ref) async {
 
       return tariffList
           .map((json) => Tariff.fromJson(json as Map<String, dynamic>))
+          .where((t) => t.isActive)
           .toList();
     }
     return [];
@@ -453,8 +459,16 @@ class Tariff {
   final int id;
   final String name;
   final double baseCost;
+  final bool isActive;
+  final bool requiresProductInfo;
 
-  const Tariff({required this.id, required this.name, required this.baseCost});
+  const Tariff({
+    required this.id,
+    required this.name,
+    required this.baseCost,
+    this.isActive = true,
+    this.requiresProductInfo = false,
+  });
 
   factory Tariff.fromJson(Map<String, dynamic> json) {
     return Tariff(
@@ -463,6 +477,8 @@ class Tariff {
       baseCost: json['baseCost'] != null
           ? double.tryParse(json['baseCost'].toString()) ?? 0
           : 0,
+      isActive: json['isActive'] as bool? ?? true,
+      requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
     );
   }
 }

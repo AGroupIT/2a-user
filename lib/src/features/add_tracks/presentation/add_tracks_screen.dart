@@ -31,9 +31,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   final _showcaseKeySubmit = GlobalKey();
 
   bool _showcaseStarted = false;
-
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void dispose() {
@@ -42,26 +41,39 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.addTracks));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyInput, ShowcaseBlock.addTracksInput),
+      (_showcaseKeySubmit, ShowcaseBlock.addTracksSubmit),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
     _showcaseStarted = true;
-
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyInput,
-        _showcaseKeySubmit,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.addTracks)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
@@ -98,14 +110,16 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
   Widget _buildContent(BuildContext context, String clientCode) {
 
+    final shouldShowInput = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.addTracksInput));
+    final shouldShowSubmit = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.addTracksSubmit));
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
           _startShowcaseIfNeeded(showcaseContext);
 
           return SingleChildScrollView(
@@ -125,19 +139,9 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 18),
-              Showcase(
-                key: _showcaseKeyInput,
-                title: 'Поле ввода треков',
-                description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.bottom,
-                onTargetClick: () {
-                  if (_showcaseContext != null) {
-                    ShowCaseWidget.of(_showcaseContext!).next();
-                  }
-                },
-                disposeOnTap: false,
-                child: Container(
+              Builder(
+                builder: (_) {
+                  final w = Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -233,37 +237,56 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              Showcase(
-                key: _showcaseKeySubmit,
-                title: 'Кнопка добавления',
-                description: 'Нажмите для добавления введённых треков.',
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.top,
-                onBarrierClick: () {
-                  _onShowcaseComplete();
-                },
-                onToolTipClick: () {
-                  _onShowcaseComplete();
-                },
-                child: FilledButton(
-                  onPressed: _submitting ? null : () => _submit(clientCode),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Добавить треки'),
-                ),
-              ),
+              shouldShowSubmit
+                  ? Showcase(
+                      key: _showcaseKeySubmit,
+                      title: 'Кнопка добавления',
+                      description: 'Нажмите для добавления введённых треков.',
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.top,
+                      child: FilledButton(
+                        onPressed: _submitting ? null : () => _submit(clientCode),
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Добавить треки'),
+                      ),
+                    )
+                  : FilledButton(
+                      onPressed: _submitting ? null : () => _submit(clientCode),
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Добавить треки'),
+                    ),
             ],
           ),
-        ),
-        ),
-        if (_result != null) ...[
+        );
+                  return shouldShowInput
+                      ? Showcase(
+                          key: _showcaseKeyInput,
+                          title: 'Поле ввода треков',
+                          description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
+                          targetPadding: getShowcaseTargetPadding(),
+                          tooltipPosition: TooltipPosition.bottom,
+                          child: w,
+                        )
+                      : w;
+                },
+              ),
+              if (_result != null) ...[
           const SizedBox(height: 18),
           _ResultCard(
             result: _result!,

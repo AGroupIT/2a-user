@@ -52,11 +52,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   final _showcaseKeySearch = GlobalKey();
   final _showcaseKeyInvoiceItem = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
-
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void initState() {
@@ -65,27 +63,48 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.invoices));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyFilters, ShowcaseBlock.invoicesFilters),
+      (_showcaseKeySearch, ShowcaseBlock.invoicesFilters),
+      (_showcaseKeyInvoiceItem, ShowcaseBlock.invoicesItem),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyFilters,
-        _showcaseKeySearch,
-        _showcaseKeyInvoiceItem,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.invoices)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   void _setupAutoRefresh() {
@@ -126,6 +145,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
 
     final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
     final statusesAsync = ref.watch(invoiceStatusesProvider);
+    final shouldShowFilters = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.invoicesFilters));
+    final shouldShowItem = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.invoicesItem));
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
@@ -144,9 +165,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
 
           return invoicesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -185,55 +206,56 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                       ),
                     ),
                     const SizedBox(height: 18),
-                    Showcase(
-                      key: _showcaseKeyFilters,
-                      title: '💳 Фильтр по статусу оплаты',
-                      description: 'Быстрая фильтрация счетов по состоянию:\n• Все - показать все счета\n• Ожидает оплаты - неоплаченные счета\n• Оплачен - успешно оплаченные\n• Частично оплачен - требуется доплата\n• Просрочен - истёк срок оплаты\n\nВыберите статус из выпадающего списка для фильтрации.',
-                      targetBorderRadius: BorderRadius.circular(20),
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.bottom,
-                      tooltipBackgroundColor: Colors.white,
-                      textColor: Colors.black87,
-                      titleTextStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                      descTextStyle: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade600,
-                      ),
-                      onTargetClick: () {
-                        if (_showcaseContext != null) {
-                          ShowCaseWidget.of(_showcaseContext!).next();
-                        }
+                    Builder(
+                      builder: (_) {
+                        final filtersContainer = Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x14000000),
+                                blurRadius: 24,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          child: _Filters(
+                            selectedStatusCode: _selectedStatusCode,
+                            statuses: dbStatuses,
+                            query: _query,
+                            onStatusChanged: (code) =>
+                                setState(() => _selectedStatusCode = code),
+                            onQueryChanged: (v) => setState(() => _query = v),
+                            showcaseSearchKey: shouldShowFilters ? _showcaseKeySearch : null,
+                          ),
+                        );
+                        return shouldShowFilters
+                            ? Showcase(
+                                key: _showcaseKeyFilters,
+                                title: '💳 Фильтр по статусу оплаты',
+                                description: 'Быстрая фильтрация счетов по состоянию:\n• Все - показать все счета\n• Ожидает оплаты - неоплаченные счета\n• Оплачен - успешно оплаченные\n• Частично оплачен - требуется доплата\n• Просрочен - истёк срок оплаты\n\nВыберите статус из выпадающего списка для фильтрации.',
+                                targetBorderRadius: BorderRadius.circular(20),
+                                targetPadding: getShowcaseTargetPadding(),
+                                tooltipPosition: TooltipPosition.bottom,
+                                tooltipBackgroundColor: Colors.white,
+                                textColor: Colors.black87,
+                                titleTextStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A1A1A),
+                                ),
+                                descTextStyle: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade600,
+                                ),
+                                child: filtersContainer,
+                              )
+                            : filtersContainer;
                       },
-                      disposeOnTap: false,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x14000000),
-                              blurRadius: 24,
-                              offset: Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(16),
-                        child: _Filters(
-                    selectedStatusCode: _selectedStatusCode,
-                    statuses: dbStatuses,
-                    query: _query,
-                    onStatusChanged: (code) =>
-                        setState(() => _selectedStatusCode = code),
-                    onQueryChanged: (v) => setState(() => _query = v),
-                    showcaseSearchKey: _showcaseKeySearch,
-                  ),
-                ),
-              ),
+                    ),
               const SizedBox(height: 18),
               if (filtered.isEmpty)
                 const EmptyState(
@@ -248,8 +270,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
 
                   final invoiceTile = _InvoiceTile(item: inv, clientCode: clientCode);
 
-                  // Первый элемент оборачиваем в Showcase
-                  if (index == 0) {
+                  // Первый элемент оборачиваем в Showcase (только если туториал ещё не показан)
+                  if (index == 0 && shouldShowItem) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Showcase(
@@ -271,8 +293,6 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
                           fontWeight: FontWeight.w500,
                           color: Colors.grey.shade600,
                         ),
-                        onToolTipClick: _onShowcaseComplete,
-                        onBarrierClick: _onShowcaseComplete,
                         child: invoiceTile,
                       ),
                     );
@@ -425,10 +445,6 @@ class _FiltersState extends State<_Filters> {
           fontWeight: FontWeight.w500,
           color: Colors.grey.shade600,
         ),
-        onTargetClick: () {
-          ShowCaseWidget.of(context).next();
-        },
-        disposeOnTap: false,
         child: searchField,
       );
     }

@@ -56,8 +56,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   final _showcaseKeyAttachments = GlobalKey();
   final _showcaseKeyInput = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
+
+  // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
+  bool _isSendingLocally = false;
 
   @override
   void initState() {
@@ -97,28 +101,49 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.support));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyMessages, ShowcaseBlock.supportMessages),
+      (_showcaseKeyQuickActions, ShowcaseBlock.supportMessages),
+      (_showcaseKeyAttachments, ShowcaseBlock.supportInput),
+      (_showcaseKeyInput, ShowcaseBlock.supportInput),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyMessages,
-        _showcaseKeyQuickActions,
-        _showcaseKeyAttachments,
-        _showcaseKeyInput,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.support)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   void _startPolling() {
@@ -182,28 +207,35 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       _appLifecycleState == AppLifecycleState.hidden;
 
   Future<void> _handleMessageSend(String text) async {
+    if (_isSendingLocally) return;
+
     final chatState = ref.read(chatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
-    
+
     // Если нет текста и нет вложений - ничего не делаем
     if (text.trim().isEmpty && pendingAttachments.isEmpty) return;
 
-    HapticFeedback.lightImpact();
-    _textController.clear();
-    
-    // Собираем ID вложений
-    final attachmentIds = pendingAttachments.map((a) => a.id).toList();
-    
-    final success = await ref.read(chatControllerProvider.notifier).sendMessage(
-      text.isEmpty ? 'Файл' : text,
-      attachmentIds: attachmentIds,
-    );
-    
-    if (success) {
-      // Очищаем pending attachments
-      ref.read(chatControllerProvider.notifier).clearPendingAttachments();
-      // Прокрутка вниз после отправки
-      _scrollToBottom();
+    _isSendingLocally = true;
+    try {
+      HapticFeedback.lightImpact();
+      _textController.clear();
+
+      // Собираем ID вложений
+      final attachmentIds = pendingAttachments.map((a) => a.id).toList();
+
+      final success = await ref.read(chatControllerProvider.notifier).sendMessage(
+        text.isEmpty ? 'Файл' : text,
+        attachmentIds: attachmentIds,
+      );
+
+      if (success) {
+        // Очищаем pending attachments
+        ref.read(chatControllerProvider.notifier).clearPendingAttachments();
+        // Прокрутка вниз после отправки
+        _scrollToBottom();
+      }
+    } finally {
+      _isSendingLocally = false;
     }
   }
   
@@ -630,18 +662,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
+    final shouldShowMessages = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.supportMessages));
+    final shouldShowInput = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.supportInput));
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
           _startShowcaseIfNeeded(showcaseContext);
 
           return Stack(
@@ -656,90 +689,78 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             children: [
               // Список сообщений
               Expanded(
-                child: Showcase(
-                  key: _showcaseKeyMessages,
-                  title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
-                  description: tr(context, ru: 'Здесь отображается вся история общения с поддержкой:\n• Ваши сообщения справа (голубой фон)\n• Ответы поддержки слева (белый фон)\n• Время отправки каждого сообщения\n• Статус доставки (✓ или ✓✓)\n\nВы можете:\n• Скопировать текст долгим нажатием\n• Открыть вложения (изображения, файлы)\n• Прокручивать вниз к новым сообщениям', zh: '这里显示与客服的所有聊天记录：\n• 您的消息在右侧（蓝色背景）\n• 客服回复在左侧（白色背景）\n• 每条消息的发送时间\n• 发送状态（✓ 或 ✓✓）\n\n您可以：\n• 长按复制文本\n• 打开附件（图片、文件）\n• 向下滚动查看新消息'),
-                  targetPadding: getShowcaseTargetPadding(),
-                  tooltipPosition: TooltipPosition.bottom,
-                  tooltipBackgroundColor: Colors.white,
-                  textColor: Colors.black87,
-                  titleTextStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                  descTextStyle: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
-                  ),
-                  onTargetClick: () {
-                    if (mounted && _showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
-                  },
-                  disposeOnTap: false,
-                  child: _buildMessagesList(),
-                ),
+                child: shouldShowMessages
+                    ? Showcase(
+                        key: _showcaseKeyMessages,
+                        title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
+                        description: tr(context, ru: 'Здесь отображается вся история общения с поддержкой:\n• Ваши сообщения справа (голубой фон)\n• Ответы поддержки слева (белый фон)\n• Время отправки каждого сообщения\n• Статус доставки (✓ или ✓✓)\n\nВы можете:\n• Скопировать текст долгим нажатием\n• Открыть вложения (изображения, файлы)\n• Прокручивать вниз к новым сообщениям', zh: '这里显示与客服的所有聊天记录：\n• 您的消息在右侧（蓝色背景）\n• 客服回复在左侧（白色背景）\n• 每条消息的发送时间\n• 发送状态（✓ 或 ✓✓）\n\n您可以：\n• 长按复制文本\n• 打开附件（图片、文件）\n• 向下滚动查看新消息'),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.bottom,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        child: _buildMessagesList(),
+                      )
+                    : _buildMessagesList(),
               ),
 
               // Панель быстрых действий
               if (_showQuickActions)
-                Showcase(
-                  key: _showcaseKeyQuickActions,
-                  title: tr(context, ru: '⚡ Быстрые действия', zh: '⚡ 快速操作'),
-                  description: tr(context, ru: 'Кнопки для быстрой отправки информации:\n• Отправить трек - выберите трек из списка, чтобы поделиться информацией с поддержкой\n• Отправить счёт - выберите счёт из списка для обсуждения оплаты\n\nПосле выбора трека или счёта, вся информация автоматически отправится в чат.', zh: '快速发送信息的按钮：\n• 发送运单 - 从列表中选择运单与客服分享信息\n• 发送发票 - 从列表中选择发票讨论付款\n\n选择运单或发票后，所有信息将自动发送到聊天中。'),
-                  targetPadding: getShowcaseTargetPadding(),
-                  tooltipPosition: TooltipPosition.top,
-                  tooltipBackgroundColor: Colors.white,
-                  textColor: Colors.black87,
-                  titleTextStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                  descTextStyle: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
-                  ),
-                  onTargetClick: () {
-                    if (mounted && _showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
-                  },
-                  disposeOnTap: false,
-                  child: _buildQuickActionsBar(),
-                ),
+                shouldShowMessages
+                    ? Showcase(
+                        key: _showcaseKeyQuickActions,
+                        title: tr(context, ru: '⚡ Быстрые действия', zh: '⚡ 快速操作'),
+                        description: tr(context, ru: 'Кнопки для быстрой отправки информации:\n• Отправить трек - выберите трек из списка, чтобы поделиться информацией с поддержкой\n• Отправить счёт - выберите счёт из списка для обсуждения оплаты\n\nПосле выбора трека или счёта, вся информация автоматически отправится в чат.', zh: '快速发送信息的按钮：\n• 发送运单 - 从列表中选择运单与客服分享信息\n• 发送发票 - 从列表中选择发票讨论付款\n\n选择运单或发票后，所有信息将自动发送到聊天中。'),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.top,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        child: _buildQuickActionsBar(),
+                      )
+                    : _buildQuickActionsBar(),
 
               // Поле ввода
-              Showcase(
-                key: _showcaseKeyInput,
-                title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
-                description: tr(context, ru: 'Поле для ввода и отправки сообщений:\n• Введите текст вашего вопроса или сообщения\n• Нажмите Enter или кнопку ➤ для отправки\n• Сообщение отправится со всеми прикреплёнными файлами\n• Индикатор загрузки покажет процесс отправки\n\nПоддержка отвечает обычно в течение 5-15 минут в рабочее время.', zh: '输入和发送消息的字段：\n• 输入您的问题或消息文本\n• 按Enter或➤按钮发送\n• 消息将与所有附加文件一起发送\n• 加载指示器将显示发送过程\n\n客服通常在工作时间5-15分钟内回复。'),
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.top,
-                tooltipBackgroundColor: Colors.white,
-                textColor: Colors.black87,
-                titleTextStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A1A),
-                ),
-                descTextStyle: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-                onBarrierClick: () {
-                  if (mounted) _onShowcaseComplete();
-                },
-                onToolTipClick: () {
-                  if (mounted) _onShowcaseComplete();
-                },
-                child: _buildInputField(bottomInset),
-              ),
+              shouldShowInput
+                  ? Showcase(
+                      key: _showcaseKeyInput,
+                      title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
+                      description: tr(context, ru: 'Поле для ввода и отправки сообщений:\n• Введите текст вашего вопроса или сообщения\n• Нажмите Enter или кнопку ➤ для отправки\n• Сообщение отправится со всеми прикреплёнными файлами\n• Индикатор загрузки покажет процесс отправки\n\nПоддержка отвечает обычно в течение 5-15 минут в рабочее время.', zh: '输入和发送消息的字段：\n• 输入您的问题或消息文本\n• 按Enter或➤按钮发送\n• 消息将与所有附加文件一起发送\n• 加载指示器将显示发送过程\n\n客服通常在工作时间5-15分钟内回复。'),
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.top,
+                      tooltipBackgroundColor: Colors.white,
+                      textColor: Colors.black87,
+                      titleTextStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                      descTextStyle: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
+                      ),
+                      child: _buildInputField(bottomInset),
+                    )
+                  : _buildInputField(bottomInset),
             ],
           ),
         ),
@@ -1294,6 +1315,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final chatState = ref.watch(chatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     final isUploading = chatState.isUploading;
+    final shouldShowInput = !_allSkipped && ref.read(showcaseBlockProvider(ShowcaseBlock.supportInput));
     
     return Container(
       padding: EdgeInsets.only(
@@ -1324,52 +1346,68 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             Row(
               children: [
                 // Кнопка прикрепления файла
-                Showcase(
-                  key: _showcaseKeyAttachments,
-                  title: tr(context, ru: '📎 Прикрепить файлы', zh: '📎 附加文件'),
-                  description: tr(context, ru: 'Кнопка для прикрепления файлов к сообщению:\n• Нажмите для выбора типа вложения:\n  - Фото из галереи\n  - Снимок с камеры\n  - Файл (PDF, документы)\n• Можно прикрепить несколько файлов\n• Поддерживаются изображения до 10 МБ\n\nДолгое нажатие открывает быстрые действия (отправка трека/счёта).', zh: '附加文件到消息的按钮：\n• 点击选择附件类型：\n  - 相册照片\n  - 相机拍照\n  - 文件（PDF、文档）\n• 可附加多个文件\n• 支持最大10MB的图片\n\n长按打开快速操作（发送运单/发票）。'),
-                  targetPadding: getShowcaseTargetPadding(),
-                  tooltipPosition: TooltipPosition.top,
-                  tooltipBackgroundColor: Colors.white,
-                  textColor: Colors.black87,
-                  titleTextStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                  descTextStyle: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
-                  ),
-                  onTargetClick: () {
-                    if (mounted && _showcaseContext != null) {
-                      ShowCaseWidget.of(_showcaseContext!).next();
-                    }
-                  },
-                  disposeOnTap: false,
-                  child: GestureDetector(
-                    onTap: _showAttachmentPicker,
-                    onLongPress: _showQuickSendSheet,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [context.brandPrimary, context.brandSecondary],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                shouldShowInput
+                    ? Showcase(
+                        key: _showcaseKeyAttachments,
+                        title: tr(context, ru: '📎 Прикрепить файлы', zh: '📎 附加文件'),
+                        description: tr(context, ru: 'Кнопка для прикрепления файлов к сообщению:\n• Нажмите для выбора типа вложения:\n  - Фото из галереи\n  - Снимок с камеры\n  - Файл (PDF, документы)\n• Можно прикрепить несколько файлов\n• Поддерживаются изображения до 10 МБ\n\nДолгое нажатие открывает быстрые действия (отправка трека/счёта).', zh: '附加文件到消息的按钮：\n• 点击选择附件类型：\n  - 相册照片\n  - 相机拍照\n  - 文件（PDF、文档）\n• 可附加多个文件\n• 支持最大10MB的图片\n\n长按打开快速操作（发送运单/发票）。'),
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.top,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
                         ),
-                        borderRadius: BorderRadius.circular(14),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        child: GestureDetector(
+                          onTap: _showAttachmentPicker,
+                          onLongPress: _showQuickSendSheet,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [context.brandPrimary, context.brandSecondary],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.attach_file_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      )
+                    : GestureDetector(
+                        onTap: _showAttachmentPicker,
+                        onLongPress: _showQuickSendSheet,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [context.brandPrimary, context.brandSecondary],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.attach_file_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.attach_file_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(width: 12),
 
                 // Поле ввода

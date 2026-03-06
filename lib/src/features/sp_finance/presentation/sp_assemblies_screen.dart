@@ -23,7 +23,10 @@ class SpAssembliesScreen extends ConsumerStatefulWidget {
 
 class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
     with AutoRefreshMixin {
+  final _showcaseKeyCard = GlobalKey();
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void initState() {
@@ -40,25 +43,43 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
     if (_showcaseStarted) return;
-
-    final showcaseController = ref.read(showcaseNotifierProvider(ShowcasePage.spAssemblies));
-    if (showcaseController.shouldShow) {
-      _showcaseStarted = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShowCaseWidget.of(showcaseContext).startShowCase([
-          ShowcaseKeys.spAssemblyCard,
-        ]);
-      });
-    }
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyCard, ShowcaseBlock.spAssemblyCard),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.spAssemblies)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(spAssembliesControllerProvider);
+    final shouldShowCard = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyCard));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -84,6 +105,7 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           // Запускаем showcase после загрузки данных
@@ -119,12 +141,12 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
                 }
 
                 final assembly = state.assemblies[i - 1];
-                final isFirst = i == 1;
+                final isFirst = i == 1 && shouldShowCard;
                 return Padding(
                   padding: EdgeInsets.only(bottom: i == state.assemblies.length ? 0 : 12),
                   child: isFirst
                       ? Showcase(
-                          key: ShowcaseKeys.spAssemblyCard,
+                          key: _showcaseKeyCard,
                           title: '📦 Карточка сборки СП',
                           description: '• Участники и треки в СП\n'
                               '• Вес: грязный и чистый\n'

@@ -30,8 +30,9 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
   final _showcaseKeyHeader = GlobalKey();
   final _showcaseKeyNewsCard = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void initState() {
@@ -42,31 +43,54 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.news));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyHeader, ShowcaseBlock.newsHeader),
+      (_showcaseKeyNewsCard, ShowcaseBlock.newsCard),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyHeader,
-        _showcaseKeyNewsCard,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.news)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final asyncItems = ref.watch(newsListProvider);
+    final shouldShowHeader = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.newsHeader));
+    final shouldShowCard = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.newsCard));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -77,6 +101,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           // Запускаем showcase если нужно
@@ -112,48 +137,45 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
             ),
             itemCount: items.length + 1, // +1 for header
             itemBuilder: (context, i) {
+              final headerText = Text(
+                tr(context, ru: 'Новости', zh: '新闻'),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              );
               if (i == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
-                  child: Showcase(
-                    key: _showcaseKeyHeader,
-                    title: tr(context, ru: '📰 Лента новостей', zh: '📰 新闻动态'),
-                    description: tr(
-                      context,
-                      ru: 'Актуальные новости и объявления от компании:\n• Новые услуги и тарифы\n• Изменения в работе\n• Важные уведомления\n• Акции и предложения\n• Потяните вниз для обновления ⬇️',
-                      zh: '公司的最新新闻和公告：\n• 新服务和费率\n• 工作变化\n• 重要通知\n• 促销和优惠\n• 下拉刷新 ⬇️',
-                    ),
-                    targetPadding: getShowcaseTargetPadding(),
-                    tooltipPosition: TooltipPosition.bottom,
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    onTargetClick: () {
-                      if (mounted) {
-                        ShowCaseWidget.of(showcaseContext).next();
-                      }
-                    },
-                    disposeOnTap: false,
-                    child: Text(
-                      tr(context, ru: 'Новости', zh: '新闻'),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
+                  child: shouldShowHeader
+                      ? Showcase(
+                          key: _showcaseKeyHeader,
+                          title: tr(context, ru: '📰 Лента новостей', zh: '📰 新闻动态'),
+                          description: tr(
+                            context,
+                            ru: 'Актуальные новости и объявления от компании:\n• Новые услуги и тарифы\n• Изменения в работе\n• Важные уведомления\n• Акции и предложения\n• Потяните вниз для обновления ⬇️',
+                            zh: '公司的最新新闻和公告：\n• 新服务和费率\n• 工作变化\n• 重要通知\n• 促销和优惠\n• 下拉刷新 ⬇️',
+                          ),
+                          targetPadding: getShowcaseTargetPadding(),
+                          tooltipPosition: TooltipPosition.bottom,
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          child: headerText,
+                        )
+                      : headerText,
                 );
               }
               final item = items[i - 1];
-              if (i == 1) {
+              if (i == 1 && shouldShowCard) {
                 // Первая карточка новостей - оборачиваем в Showcase
                 return Padding(
                   padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
@@ -179,8 +201,6 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
                       fontWeight: FontWeight.w500,
                       color: Colors.grey.shade600,
                     ),
-                    onBarrierClick: _onShowcaseComplete,
-                    onToolTipClick: _onShowcaseComplete,
                     child: _NewsCard(item: item),
                   ),
                 );

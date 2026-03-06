@@ -92,8 +92,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   final _invoicesExportButtonKey = GlobalKey();
   final _tracksExportButtonKey = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   // Editing state
   bool _isEditing = false;
@@ -130,28 +131,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.profile));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyPersonalData, ShowcaseBlock.profilePersonalData),
+      (_showcaseKeyStats, ShowcaseBlock.profileStats),
+      (_showcaseKeyExport, ShowcaseBlock.profileExport),
+      (_showcaseKeyLogout, ShowcaseBlock.profileLogout),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyPersonalData,
-        _showcaseKeyStats,
-        _showcaseKeyExport,
-        _showcaseKeyLogout,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.profile)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   void _setupAutoRefresh() {
@@ -167,6 +189,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final clientCode = ref.watch(activeClientCodeProvider);
+    final shouldShowPersonalData = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profilePersonalData));
+    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileStats));
+    final shouldShowExport = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileExport));
+    final shouldShowLogout = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileLogout));
     
     // Загружаем профиль и статистику
     final profileAsync = ref.watch(clientProfileProvider);
@@ -183,6 +209,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           return profileAsync.when(
@@ -233,32 +260,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   const SizedBox(height: 18),
 
                   // Personal Info Section
-                  Showcase(
-                    key: _showcaseKeyPersonalData,
-                    title: '👤 Личные данные',
-                    description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Нажмите кнопку редактирования для изменения',
-                    targetPadding: getShowcaseTargetPadding(),
-                    tooltipPosition: TooltipPosition.bottom,
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    onTargetClick: () {
-                      if (mounted) {
-                        ShowCaseWidget.of(showcaseContext).next();
-                      }
-                    },
-                    disposeOnTap: false,
-                    child: _buildPersonalDataSection(profile),
-                  ),
+                  shouldShowPersonalData
+                      ? Showcase(
+                          key: _showcaseKeyPersonalData,
+                          title: '👤 Личные данные',
+                          description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Нажмите кнопку редактирования для изменения',
+                          targetPadding: getShowcaseTargetPadding(),
+                          tooltipPosition: TooltipPosition.bottom,
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          child: _buildPersonalDataSection(profile),
+                        )
+                      : _buildPersonalDataSection(profile),
                   const SizedBox(height: 16),
 
                   // Password Change Section
@@ -276,113 +299,115 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
 
             // Statistics Section
-            Showcase(
-              key: _showcaseKeyStats,
-              title: '📊 Статистика',
-              description: 'Ваша полная статистика по всем операциям:\n• Трек-номера - сгруппированы по статусам\n• Счета - количество по статусам оплаты\n• Запросы фото - активные и выполненные\n• Заданные вопросы - ваши обращения\n• Обновляется в реальном времени',
-              targetPadding: getShowcaseTargetPadding(),
-              tooltipPosition: TooltipPosition.bottom,
-              tooltipBackgroundColor: Colors.white,
-              textColor: Colors.black87,
-              titleTextStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
-              ),
-              descTextStyle: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              onTargetClick: () {
-                if (mounted) {
-                  ShowCaseWidget.of(showcaseContext).next();
-                }
-              },
-              disposeOnTap: false,
-              child: _buildSectionCard(
-                title: 'Статистика',
-                children: [
-                  _buildStatsGroup('Трек-номера', stats.tracks),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Счета', stats.invoices),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Запросы фото', stats.photoRequests),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Заданные вопросы', stats.questions),
-                ],
-              ),
-            ),
+            shouldShowStats
+                ? Showcase(
+                    key: _showcaseKeyStats,
+                    title: '📊 Статистика',
+                    description: 'Ваша полная статистика по всем операциям:\n• Трек-номера - сгруппированы по статусам\n• Счета - количество по статусам оплаты\n• Запросы фото - активные и выполненные\n• Заданные вопросы - ваши обращения\n• Обновляется в реальном времени',
+                    targetPadding: getShowcaseTargetPadding(),
+                    tooltipPosition: TooltipPosition.bottom,
+                    tooltipBackgroundColor: Colors.white,
+                    textColor: Colors.black87,
+                    titleTextStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    descTextStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                    child: _buildSectionCard(
+                      title: 'Статистика',
+                      children: [
+                        _buildStatsGroup('Трек-номера', stats.tracks),
+                        const SizedBox(height: 16),
+                        _buildStatsGroup('Счета', stats.invoices),
+                        const SizedBox(height: 16),
+                        _buildStatsGroup('Запросы фото', stats.photoRequests),
+                        const SizedBox(height: 16),
+                        _buildStatsGroup('Заданные вопросы', stats.questions),
+                      ],
+                    ),
+                  )
+                : _buildSectionCard(
+                    title: 'Статистика',
+                    children: [
+                      _buildStatsGroup('Трек-номера', stats.tracks),
+                      const SizedBox(height: 16),
+                      _buildStatsGroup('Счета', stats.invoices),
+                      const SizedBox(height: 16),
+                      _buildStatsGroup('Запросы фото', stats.photoRequests),
+                      const SizedBox(height: 16),
+                      _buildStatsGroup('Заданные вопросы', stats.questions),
+                    ],
+                  ),
             const SizedBox(height: 16),
 
             // Export Section
-            Showcase(
-              key: _showcaseKeyExport,
-              title: '📥 Выгрузка данных',
-              description: 'Экспортируйте ваши данные в Excel для удобного анализа:\n• Выгрузить счета - все счета с деталями\n• Выгрузить треки - все треки с информацией\n• Формат XLSX совместим с Excel и Google Sheets\n• Включает все поля и актуальные данные\n• Можно поделиться или сохранить локально',
-              targetPadding: getShowcaseTargetPadding(),
-              tooltipPosition: TooltipPosition.top,
-              tooltipBackgroundColor: Colors.white,
-              textColor: Colors.black87,
-              titleTextStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
-              ),
-              descTextStyle: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              onTargetClick: () {
-                if (mounted) {
-                  ShowCaseWidget.of(showcaseContext).next();
-                }
-              },
-              disposeOnTap: false,
-              child: _buildSectionCard(
-                title: 'Выгрузка данных',
-                children: [
-                  _buildExportButton(
-                    key: _invoicesExportButtonKey,
-                    icon: Icons.receipt_long_rounded,
-                    label: 'Выгрузить счета в Excel',
-                    onPressed: () => _exportInvoices(_invoicesExportButtonKey),
+            shouldShowExport
+                ? Showcase(
+                    key: _showcaseKeyExport,
+                    title: '📥 Выгрузка данных',
+                    description: 'Экспортируйте ваши данные в Excel для удобного анализа:\n• Выгрузить счета - все счета с деталями\n• Выгрузить треки - все треки с информацией\n• Формат XLSX совместим с Excel и Google Sheets\n• Включает все поля и актуальные данные\n• Можно поделиться или сохранить локально',
+                    targetPadding: getShowcaseTargetPadding(),
+                    tooltipPosition: TooltipPosition.top,
+                    tooltipBackgroundColor: Colors.white,
+                    textColor: Colors.black87,
+                    titleTextStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    descTextStyle: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade600,
+                    ),
+                    child: _buildSectionCard(
+                      title: 'Выгрузка данных',
+                      children: [
+                        _buildExportButton(
+                          key: _invoicesExportButtonKey,
+                          icon: Icons.receipt_long_rounded,
+                          label: 'Выгрузить счета в Excel',
+                          onPressed: () => _exportInvoices(_invoicesExportButtonKey),
+                        ),
+                        const SizedBox(height: 10),
+                        _buildExportButton(
+                          key: _tracksExportButtonKey,
+                          icon: Icons.local_shipping_rounded,
+                          label: 'Выгрузить треки в Excel',
+                          onPressed: () => _exportTracks(_tracksExportButtonKey),
+                        ),
+                      ],
+                    ),
+                  )
+                : _buildSectionCard(
+                    title: 'Выгрузка данных',
+                    children: [
+                      _buildExportButton(
+                        key: _invoicesExportButtonKey,
+                        icon: Icons.receipt_long_rounded,
+                        label: 'Выгрузить счета в Excel',
+                        onPressed: () => _exportInvoices(_invoicesExportButtonKey),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildExportButton(
+                        key: _tracksExportButtonKey,
+                        icon: Icons.local_shipping_rounded,
+                        label: 'Выгрузить треки в Excel',
+                        onPressed: () => _exportTracks(_tracksExportButtonKey),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  _buildExportButton(
-                    key: _tracksExportButtonKey,
-                    icon: Icons.local_shipping_rounded,
-                    label: 'Выгрузить треки в Excel',
-                    onPressed: () => _exportTracks(_tracksExportButtonKey),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 16),
 
             // Logout Button
-            Showcase(
-              key: _showcaseKeyLogout,
-              title: '🚪 Выход из аккаунта',
-              description: 'Безопасный выход из приложения:\n• Нажмите для завершения сеанса\n• Потребуется подтверждение действия\n• Все данные сохранены на сервере\n• После выхода потребуется снова войти\n• Рекомендуется выходить на чужих устройствах',
-              targetPadding: getShowcaseTargetPadding(),
-              tooltipPosition: TooltipPosition.top,
-              tooltipBackgroundColor: Colors.white,
-              textColor: Colors.black87,
-              titleTextStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
-              ),
-              descTextStyle: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              onBarrierClick: _onShowcaseComplete,
-              onToolTipClick: _onShowcaseComplete,
-              child: Container(
+            Builder(
+              builder: (_) {
+                final logoutButton = Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -424,7 +449,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     ),
                   ),
                 ),
-              ),
+              );
+                return shouldShowLogout
+                    ? Showcase(
+                        key: _showcaseKeyLogout,
+                        title: '🚪 Выход из аккаунта',
+                        description: 'Безопасный выход из приложения:\n• Нажмите для завершения сеанса\n• Потребуется подтверждение действия\n• Все данные сохранены на сервере\n• После выхода потребуется снова войти\n• Рекомендуется выходить на чужих устройствах',
+                        targetPadding: getShowcaseTargetPadding(),
+                        tooltipPosition: TooltipPosition.top,
+                        tooltipBackgroundColor: Colors.white,
+                        textColor: Colors.black87,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        descTextStyle: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                        child: logoutButton,
+                      )
+                    : logoutButton;
+              },
             ),
 
             // App version

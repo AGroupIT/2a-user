@@ -11,6 +11,7 @@ class AnalyticsService {
   /// Инициализация AppMetrica SDK
   static Future<void> initialize() async {
     if (_initialized) return;
+    if (kIsWeb) return; // AppMetrica не поддерживает Web
 
     if (!AppMetricaSettings.enabled) {
       if (kDebugMode) {

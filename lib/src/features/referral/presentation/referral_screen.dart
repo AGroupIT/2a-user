@@ -1,9 +1,13 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../data/referral_provider.dart';
@@ -18,6 +22,46 @@ class ReferralScreen extends ConsumerStatefulWidget {
 class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   final _linkCodeController = TextEditingController();
   bool _isLinking = false;
+
+  final _showcaseKeyInfo = GlobalKey();
+  bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyInfo, ShowcaseBlock.referralInfo),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
+  }
+
+  void _onShowcaseComplete() {
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+  }
 
   @override
   void dispose() {
@@ -65,8 +109,16 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   Widget build(BuildContext context) {
     final referralAsync = ref.watch(referralProvider);
     final brandColor = context.brandPrimary;
+    final shouldShowInfo = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.referralInfo));
 
-    return Scaffold(
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
+      child: Builder(
+        builder: (showcaseContext) {
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return Scaffold(
       backgroundColor: AppColors.brandBg,
       body: referralAsync.when(
         loading: () =>
@@ -105,8 +157,28 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
               AppLayout.bottomScrollPadding(context) + 16,
             ),
             children: [
+              // === Заголовок ===
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'Реферальная программа',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+
               // === Карточка с кодом ===
-              _CodeCard(data: data, brandColor: brandColor),
+              shouldShowInfo
+                  ? Showcase(
+                      key: _showcaseKeyInfo,
+                      title: 'Реферальная программа',
+                      description: 'Ваш реферальный код для приглашения новых клиентов. Поделитесь им, чтобы получать бонусы.',
+                      targetPadding: getShowcaseTargetPadding(),
+                      tooltipPosition: TooltipPosition.bottom,
+                      child: _CodeCard(data: data, brandColor: brandColor),
+                    )
+                  : _CodeCard(data: data, brandColor: brandColor),
 
               const SizedBox(height: 16),
 
@@ -156,6 +228,9 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
           ),
         ),
       ),
+          );
+        },
+      ),
     );
   }
 }
@@ -199,22 +274,6 @@ class _CodeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.card_giftcard_rounded,
-                  color: Colors.white, size: 24),
-              const SizedBox(width: 8),
-              const Text(
-                'Реферальная программа',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           if (data.referralCode != null) ...[
             const Text(
               'Ваш реферальный код',

@@ -90,10 +90,18 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   late TextEditingController _additionalExpensesController;
   late TextEditingController _noteController;
 
+  final _showcaseKeyParticipant = GlobalKey();
+  final _showcaseKeyWeight = GlobalKey();
+  final _showcaseKeyPrices = GlobalKey();
+  final _showcaseKeyCalculation = GlobalKey();
+  final _showcaseKeySave = GlobalKey();
+
   SpTrack? _track;
   SpAssembly? _assembly;
   bool _isLoading = false;
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void initState() {
@@ -110,24 +118,41 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
     if (_showcaseStarted || _track == null) return;
-
-    final showcaseController = ref.read(showcaseNotifierProvider(ShowcasePage.spTrackEdit));
-    if (showcaseController.shouldShow) {
-      _showcaseStarted = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShowCaseWidget.of(showcaseContext).startShowCase([
-          ShowcaseKeys.spTrackParticipant,
-          ShowcaseKeys.spTrackWeight,
-          ShowcaseKeys.spTrackPrices,
-          ShowcaseKeys.spTrackCalculation,
-          ShowcaseKeys.spTrackSave,
-        ]);
-      });
-    }
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyParticipant, ShowcaseBlock.spTrackEditParticipant),
+      (_showcaseKeyWeight, ShowcaseBlock.spTrackEditPrices),
+      (_showcaseKeyPrices, ShowcaseBlock.spTrackEditPrices),
+      (_showcaseKeyCalculation, ShowcaseBlock.spTrackEditSave),
+      (_showcaseKeySave, ShowcaseBlock.spTrackEditSave),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.spTrackEdit)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
@@ -350,6 +375,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
       _loadTrack();
     }
 
+    final shouldShowParticipant = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spTrackEditParticipant));
+    final shouldShowPrices = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spTrackEditPrices));
+    final shouldShowSave = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spTrackEditSave));
     final supplierPriceRub = _calculateSupplierPriceRub();
     final costPrice = _calculateCostPrice();
     final clientPriceRub = _calculateClientPriceRub();
@@ -358,6 +386,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           if (_track != null) {
@@ -382,40 +411,47 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                       ),
 
                       // 1. Имя участника
-                      Showcase(
-                        key: ShowcaseKeys.spTrackParticipant,
-                        title: '👤 Участник СП',
-                        description: 'Укажите имя участника покупки.\n'
-                            'Используйте одинаковые имена для группировки.\n\n'
-                            '👆 Нажмите для продолжения',
-                        targetPadding: const EdgeInsets.all(8),
-                        targetBorderRadius: BorderRadius.circular(20),
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: _buildCard(
-                          title: 'Участник СП',
-                          child: TextField(
-                            controller: _participantController,
-                            decoration: InputDecoration(
-                              labelText: 'Имя участника',
-                              hintText: 'Введите имя участника',
-                              prefixIcon: const Icon(Icons.person_rounded),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
+                      Builder(
+                        builder: (_) {
+                          final w = _buildCard(
+                            title: 'Участник СП',
+                            child: TextField(
+                              controller: _participantController,
+                              decoration: InputDecoration(
+                                labelText: 'Имя участника',
+                                hintText: 'Введите имя участника',
+                                prefixIcon: const Icon(Icons.person_rounded),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
+                          );
+                          return shouldShowParticipant
+                              ? Showcase(
+                                  key: _showcaseKeyParticipant,
+                                  title: '👤 Участник СП',
+                                  description: 'Укажите имя участника покупки.\n'
+                                      'Используйте одинаковые имена для группировки.\n\n'
+                                      '👆 Нажмите для продолжения',
+                                  targetPadding: const EdgeInsets.all(8),
+                                  targetBorderRadius: BorderRadius.circular(20),
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  child: w,
+                                )
+                              : w;
+                        },
                       ),
                       const SizedBox(height: 16),
 
@@ -454,54 +490,36 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                         ],
 
                       // 4. Вес и доставка
-                      Showcase(
-                        key: ShowcaseKeys.spTrackWeight,
-                        title: '⚖️ Вес и доставка',
-                        description: 'Укажите чистый вес (без упаковки).\n'
-                            'Доставка = Вес × (Общая ÷ Σ весов).\n\n'
-                            '👆 Нажмите для продолжения',
-                        targetPadding: const EdgeInsets.all(8),
-                        targetBorderRadius: BorderRadius.circular(20),
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: _buildWeightSection(),
-                      ),
+                      shouldShowPrices
+                          ? Showcase(
+                              key: _showcaseKeyWeight,
+                              title: '⚖️ Вес и доставка',
+                              description: 'Укажите чистый вес (без упаковки).\n'
+                                  'Доставка = Вес × (Общая ÷ Σ весов).\n\n'
+                                  '👆 Нажмите для продолжения',
+                              targetPadding: const EdgeInsets.all(8),
+                              targetBorderRadius: BorderRadius.circular(20),
+                              tooltipBackgroundColor: Colors.white,
+                              textColor: Colors.black87,
+                              titleTextStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                              descTextStyle: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade600,
+                              ),
+                              child: _buildWeightSection(),
+                            )
+                          : _buildWeightSection(),
                       const SizedBox(height: 16),
 
                       // 5-8. Цены в юанях и курс
-                      Showcase(
-                        key: ShowcaseKeys.spTrackPrices,
-                        title: '💰 Цены в юанях',
-                        description: '• Поставщика — цена на сайте\n'
-                            '• Выкупа — со скидкой/кэшбеком\n'
-                            '• Участника — сколько платит\n'
-                            '• Курс — для конвертации ¥→₽\n\n'
-                            '👆 Нажмите для продолжения',
-                        targetPadding: const EdgeInsets.all(8),
-                        targetBorderRadius: BorderRadius.circular(20),
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: _buildCard(
+                      Builder(
+                        builder: (_) {
+                          final w = _buildCard(
                           title: 'Цены в юанях',
                           child: Column(
                             children: [
@@ -584,33 +602,41 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                               ),
                             ],
                           ),
-                        ),
+                        );
+                          return shouldShowPrices
+                              ? Showcase(
+                                  key: _showcaseKeyPrices,
+                                  title: '💰 Цены в юанях',
+                                  description: '• Поставщика — цена на сайте\n'
+                                      '• Выкупа — со скидкой/кэшбеком\n'
+                                      '• Участника — сколько платит\n'
+                                      '• Курс — для конвертации ¥→₽\n\n'
+                                      '👆 Нажмите для продолжения',
+                                  targetPadding: const EdgeInsets.all(8),
+                                  targetBorderRadius: BorderRadius.circular(20),
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  child: w,
+                                )
+                              : w;
+                        },
                       ),
                       const SizedBox(height: 16),
 
                       // 9-14. Расчётные цены в рублях
-                      Showcase(
-                        key: ShowcaseKeys.spTrackCalculation,
-                        title: '🧮 Расчёт в рублях',
-                        description: 'Авто-расчёт: ¥ × Курс = ₽\n'
-                            'Доставка = Вес × (Общая ÷ Σ весов)\n'
-                            'Прибыль = Участник − Себестоимость\n\n'
-                            '👆 Нажмите для продолжения',
-                        targetPadding: const EdgeInsets.all(8),
-                        targetBorderRadius: BorderRadius.circular(20),
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: _buildCard(
+                      Builder(
+                        builder: (_) {
+                          final w = _buildCard(
                           title: 'Расчёт в рублях',
                           child: Column(
                             children: [
@@ -676,48 +702,81 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                               ),
                             ],
                           ),
-                        ),
+                        );
+                          return shouldShowSave
+                              ? Showcase(
+                                  key: _showcaseKeyCalculation,
+                                  title: '🧮 Расчёт в рублях',
+                                  description: 'Авто-расчёт: ¥ × Курс = ₽\n'
+                                      'Доставка = Вес × (Общая ÷ Σ весов)\n'
+                                      'Прибыль = Участник − Себестоимость\n\n'
+                                      '👆 Нажмите для продолжения',
+                                  targetPadding: const EdgeInsets.all(8),
+                                  targetBorderRadius: BorderRadius.circular(20),
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  child: w,
+                                )
+                              : w;
+                        },
                       ),
                       const SizedBox(height: 24),
 
                       // Кнопка сохранения
-                      Showcase(
-                        key: ShowcaseKeys.spTrackSave,
-                        title: '💾 Сохранение',
-                        description: 'Нажмите "Сохранить" после заполнения.\n'
-                            'Данные синхронизируются с сервером.\n\n'
-                            '✅ Нажмите для завершения',
-                        targetPadding: const EdgeInsets.all(8),
-                        targetBorderRadius: BorderRadius.circular(12),
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: FilledButton.icon(
-                          onPressed: _isLoading ? null : _saveTrack,
-                          icon: _isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
+                      Builder(
+                        builder: (_) {
+                          final w = FilledButton.icon(
+                            onPressed: _isLoading ? null : _saveTrack,
+                            icon: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_rounded),
+                            label: Text(_isLoading ? 'Сохранение...' : 'Сохранить'),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                          );
+                          return shouldShowSave
+                              ? Showcase(
+                                  key: _showcaseKeySave,
+                                  title: '💾 Сохранение',
+                                  description: 'Нажмите "Сохранить" после заполнения.\n'
+                                      'Данные синхронизируются с сервером.\n\n'
+                                      '✅ Нажмите для завершения',
+                                  targetPadding: const EdgeInsets.all(8),
+                                  targetBorderRadius: BorderRadius.circular(12),
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
                                   ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  child: w,
                                 )
-                              : const Icon(Icons.save_rounded),
-                          label: Text(_isLoading ? 'Сохранение...' : 'Сохранить'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
+                              : w;
+                        },
                       ),
                       const SizedBox(height: 16),
                     ],

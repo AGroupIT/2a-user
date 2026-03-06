@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
 
-class MoreSheet extends StatelessWidget {
+class MoreSheet extends ConsumerWidget {
   const MoreSheet({super.key});
 
   void _go(BuildContext context, String route) {
@@ -13,7 +15,7 @@ class MoreSheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
     return SafeArea(
@@ -102,6 +104,36 @@ class MoreSheet extends StatelessWidget {
                     title: 'Тарифы',
                     iconColor: const Color(0xFFFF9800),
                     onTap: () => _go(context, '/tariffs'),
+                  ),
+
+                  // ── Настройки ─────────────────────────────────
+                  const _SectionLabel(text: 'Настройки'),
+                  _MenuItem(
+                    icon: Icons.school_rounded,
+                    title: 'Сбросить обучение',
+                    iconColor: const Color(0xFF607D8B),
+                    onTap: () {
+                      // State mutations first (SharedPreferences cache updates synchronously)
+                      ref.read(showcaseServiceProvider).resetAllBlocks();
+                      for (final block in ShowcaseBlock.values) {
+                        ref.invalidate(showcaseBlockProvider(block));
+                      }
+                      ref.read(showcaseTutorialResetProvider.notifier).trigger();
+                      // Dismiss and navigate while context is still mounted
+                      Navigator.of(context).pop();
+                      context.go('/');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Обучение сброшено'),
+                          backgroundColor: context.brandPrimary,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

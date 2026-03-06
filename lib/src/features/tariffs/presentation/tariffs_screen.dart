@@ -1,18 +1,75 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:showcaseview/showcaseview.dart';
 
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../data/tariffs_provider.dart';
 
-class TariffsScreen extends ConsumerWidget {
+class TariffsScreen extends ConsumerStatefulWidget {
   const TariffsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tariffsAsync = ref.watch(userTariffsProvider);
+  ConsumerState<TariffsScreen> createState() => _TariffsScreenState();
+}
 
-    return tariffsAsync.when(
+class _TariffsScreenState extends ConsumerState<TariffsScreen> {
+  final _showcaseKeyList = GlobalKey();
+  bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyList, ShowcaseBlock.tariffsList),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
+  }
+
+  void _onShowcaseComplete() {
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tariffsAsync = ref.watch(userTariffsProvider);
+    final shouldShowList = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tariffsList));
+
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
+      child: Builder(
+        builder: (showcaseContext) {
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return tariffsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
         child: Padding(
@@ -64,7 +121,7 @@ class TariffsScreen extends ConsumerWidget {
           );
         }
 
-        return SingleChildScrollView(
+        final content = SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,7 +173,20 @@ class TariffsScreen extends ConsumerWidget {
             ],
           ),
         );
+        return shouldShowList
+            ? Showcase(
+                key: _showcaseKeyList,
+                title: 'Тарифы',
+                description: 'Здесь отображаются актуальные тарифы на доставку, упаковку и фотоотчёты.',
+                targetPadding: getShowcaseTargetPadding(),
+                tooltipPosition: TooltipPosition.bottom,
+                child: content,
+              )
+            : content;
       },
+          );
+        },
+      ),
     );
   }
 }
@@ -186,13 +256,54 @@ class _DeliveryTariffCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Text(
-              tariff.name,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    tariff.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: tariff.requiresProductInfo
+                        ? const Color(0xFFFF5E04).withValues(alpha: 0.12)
+                        : Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        tariff.requiresProductInfo
+                            ? Icons.assignment_outlined
+                            : Icons.assignment_turned_in_outlined,
+                        size: 12,
+                        color: tariff.requiresProductInfo
+                            ? const Color(0xFFFF5E04)
+                            : Colors.green[700],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        tariff.requiresProductInfo ? 'Нужны данные о товаре' : 'Данные не нужны',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: tariff.requiresProductInfo
+                              ? const Color(0xFFFF5E04)
+                              : Colors.green[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 

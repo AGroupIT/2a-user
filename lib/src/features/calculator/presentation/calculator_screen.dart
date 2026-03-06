@@ -1,9 +1,14 @@
+// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
 import '../../auth/data/auth_provider.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
@@ -145,6 +150,46 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   _Tariff? _selectedTariff;
   _Packaging? _selectedPackaging;
 
+  final _showcaseKeyForm = GlobalKey();
+  bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
+
+  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
+    if (_showcaseStarted) return;
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyForm, ShowcaseBlock.calculatorForm),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
+  }
+
+  void _onShowcaseComplete() {
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+  }
+
   @override
   void dispose() {
     _weightCtrl.dispose();
@@ -216,11 +261,22 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final coefsAsync = ref.watch(_coefsProvider);
     final packagingsAsync = ref.watch(_packagingsProvider);
 
-    return Scaffold(
+    final topPad = AppLayout.topBarTotalHeight(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+
+    final shouldShowForm = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.calculatorForm));
+
+    return ShowcaseWrapper(
+      onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
+      child: Builder(
+        builder: (showcaseContext) {
+          _startShowcaseIfNeeded(showcaseContext);
+
+          return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      body: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 32 + bottomPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -306,58 +362,72 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               ),
 
               // ── Входные данные ──
-              _SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _Label('Параметры груза'),
-                    const SizedBox(height: 12),
-                    Row(
+              Builder(
+                builder: (_) {
+                  final w = _SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _NumField(
-                            label: 'Вес, кг',
-                            controller: _weightCtrl,
-                            hint: 'например 15.5',
-                            decimal: true,
-                            onChanged: (_) => setState(() {}),
-                          ),
+                        const _Label('Параметры груза'),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _NumField(
+                                label: 'Вес, кг',
+                                controller: _weightCtrl,
+                                hint: 'например 15.5',
+                                decimal: true,
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _NumField(
+                                label: 'Мест',
+                                controller: _placesCtrl,
+                                hint: '1',
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _NumField(
-                            label: 'Мест',
-                            controller: _placesCtrl,
-                            hint: '1',
-                            onChanged: (_) => setState(() {}),
-                          ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _NumField(
+                                label: 'Треков всего',
+                                controller: _totalCtrl,
+                                hint: '1',
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _NumField(
+                                label: 'С фотоотчётом',
+                                controller: _photoCtrl,
+                                hint: '0',
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _NumField(
-                            label: 'Треков всего',
-                            controller: _totalCtrl,
-                            hint: '1',
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _NumField(
-                            label: 'С фотоотчётом',
-                            controller: _photoCtrl,
-                            hint: '0',
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                  return shouldShowForm
+                      ? Showcase(
+                          key: _showcaseKeyForm,
+                          title: 'Калькулятор доставки',
+                          description: 'Введите вес, количество мест и треков для расчёта стоимости доставки.',
+                          targetPadding: getShowcaseTargetPadding(),
+                          tooltipPosition: TooltipPosition.top,
+                          child: w,
+                        )
+                      : w;
+                },
               ),
               const SizedBox(height: 12),
 
@@ -388,6 +458,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
             ],
           ),
         ),
+          );
+        },
       ),
     );
   }

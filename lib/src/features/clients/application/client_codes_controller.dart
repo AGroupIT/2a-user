@@ -17,6 +17,24 @@ final activeClientCodeProvider = Provider<String?>((ref) {
   return asyncState.asData?.value.activeCode;
 });
 
+/// Возвращает integer ID активного кода из clientData (если доступен)
+final activeClientCodeIdProvider = Provider<int?>((ref) {
+  final activeCode = ref.watch(activeClientCodeProvider);
+  if (activeCode == null) return null;
+  final authState = ref.watch(authProvider);
+  final codes = authState.clientData?['codes'] as List<dynamic>?;
+  if (codes == null) return null;
+  for (final c in codes) {
+    if (c is Map) {
+      final code = c['code']?.toString();
+      if (code?.toUpperCase() == activeCode.toUpperCase()) {
+        return c['id'] as int?;
+      }
+    }
+  }
+  return null;
+});
+
 class ClientCodesController extends AsyncNotifier<ClientCodesState> {
   static const _activeKey = 'active_client_code';
   static const _codesKey = 'client_codes_list';

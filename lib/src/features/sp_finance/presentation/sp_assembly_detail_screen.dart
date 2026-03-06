@@ -76,31 +76,56 @@ class SpAssemblyDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen> {
+  final _showcaseKeyStats = GlobalKey();
+  final _showcaseKeyParticipants = GlobalKey();
+  final _showcaseKeyTracks = GlobalKey();
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
     if (_showcaseStarted) return;
-
-    final showcaseController = ref.read(showcaseNotifierProvider(ShowcasePage.spAssemblyDetail));
-    if (showcaseController.shouldShow) {
-      _showcaseStarted = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShowCaseWidget.of(showcaseContext).startShowCase([
-          ShowcaseKeys.spStats,
-          ShowcaseKeys.spParticipants,
-          ShowcaseKeys.spTracks,
-        ]);
-      });
-    }
+    if (!TickerMode.of(showcaseContext)) return;
+    final pairs = [
+      (_showcaseKeyStats, ShowcaseBlock.spAssemblyStats),
+      (_showcaseKeyParticipants, ShowcaseBlock.spAssemblyParticipants),
+      (_showcaseKeyTracks, ShowcaseBlock.spAssemblyTracks),
+    ];
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+    if (visible.isEmpty) { _showcaseStarted = false; return; }
+    _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
+    });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.spAssemblyDetail)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(spAssembliesControllerProvider);
+    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyStats));
+    final shouldShowParticipants = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyParticipants));
+    final shouldShowTracks = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyTracks));
     final assembly = state.assemblies.firstWhere(
       (a) => a.id == widget.assemblyId,
       orElse: () => throw Exception('Assembly not found'),
@@ -108,6 +133,7 @@ class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           _startShowcaseIfNeeded(showcaseContext);
@@ -130,31 +156,33 @@ class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen>
                           ),
                     ),
                   ),
-                  Showcase(
-                    key: ShowcaseKeys.spStats,
-                    title: '📊 Статистика сборки',
-                    description: '• Треков — участвует в СП из общего\n'
-                        '• Участников — уникальные в СП\n'
-                        '• Доставка — общая сумма\n'
-                        '• Вес — с упаковкой и без\n\n'
-                        'Прибыль = сумма наценок.\n\n'
-                        '👆 Нажмите для продолжения',
-                    targetPadding: const EdgeInsets.all(8),
-                    targetBorderRadius: BorderRadius.circular(20),
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _StatsSection(assembly: assembly),
-                  ),
+                  shouldShowStats
+                      ? Showcase(
+                          key: _showcaseKeyStats,
+                          title: '📊 Статистика сборки',
+                          description: '• Треков — участвует в СП из общего\n'
+                              '• Участников — уникальные в СП\n'
+                              '• Доставка — общая сумма\n'
+                              '• Вес — с упаковкой и без\n\n'
+                              'Прибыль = сумма наценок.\n\n'
+                              '👆 Нажмите для продолжения',
+                          targetPadding: const EdgeInsets.all(8),
+                          targetBorderRadius: BorderRadius.circular(20),
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          child: _StatsSection(assembly: assembly),
+                        )
+                      : _StatsSection(assembly: assembly),
                   const SizedBox(height: 24),
 
                   // Коробки
@@ -163,55 +191,59 @@ class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen>
                     const SizedBox(height: 24),
                   ],
 
-                  Showcase(
-                    key: ShowcaseKeys.spParticipants,
-                    title: '👥 Участники СП',
-                    description: '• Чекбокс — отметка оплаты\n'
-                        '• Треки и вес — заказы участника\n'
-                        '• Прибыль — ваша наценка\n\n'
-                        'Разверните для деталей и копирования.\n\n'
-                        '👆 Нажмите для продолжения',
-                    targetPadding: const EdgeInsets.all(8),
-                    targetBorderRadius: BorderRadius.circular(20),
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _ParticipantsSection(assembly: assembly),
-                  ),
+                  shouldShowParticipants
+                      ? Showcase(
+                          key: _showcaseKeyParticipants,
+                          title: '👥 Участники СП',
+                          description: '• Чекбокс — отметка оплаты\n'
+                              '• Треки и вес — заказы участника\n'
+                              '• Прибыль — ваша наценка\n\n'
+                              'Разверните для деталей и копирования.\n\n'
+                              '👆 Нажмите для продолжения',
+                          targetPadding: const EdgeInsets.all(8),
+                          targetBorderRadius: BorderRadius.circular(20),
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          child: _ParticipantsSection(assembly: assembly),
+                        )
+                      : _ParticipantsSection(assembly: assembly),
                   const SizedBox(height: 24),
-                  Showcase(
-                    key: ShowcaseKeys.spTracks,
-                    title: '📦 Треки сборки',
-                    description: '• Зелёная рамка — данные заполнены\n'
-                        '• Оранжевая — требуется заполнение\n\n'
-                        'Видно: цена, доставка, итого, прибыль.\n'
-                        'Нажмите на трек для редактирования.\n\n'
-                        '✅ Нажмите для завершения',
-                    targetPadding: const EdgeInsets.all(8),
-                    targetBorderRadius: BorderRadius.circular(20),
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _TracksSection(assembly: assembly),
-                  ),
+                  shouldShowTracks
+                      ? Showcase(
+                          key: _showcaseKeyTracks,
+                          title: '📦 Треки сборки',
+                          description: '• Зелёная рамка — данные заполнены\n'
+                              '• Оранжевая — требуется заполнение\n\n'
+                              'Видно: цена, доставка, итого, прибыль.\n'
+                              'Нажмите на трек для редактирования.\n\n'
+                              '✅ Нажмите для завершения',
+                          targetPadding: const EdgeInsets.all(8),
+                          targetBorderRadius: BorderRadius.circular(20),
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          child: _TracksSection(assembly: assembly),
+                        )
+                      : _TracksSection(assembly: assembly),
                 ],
               ),
             ),

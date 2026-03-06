@@ -35,6 +35,8 @@ class UserDeliveryTariff {
   final String? allowedItems;
   final String? prohibitedItems;
   final List<UserWeightTier> weightTiers;
+  final bool isActive;
+  final bool requiresProductInfo;
 
   const UserDeliveryTariff({
     required this.id,
@@ -43,6 +45,8 @@ class UserDeliveryTariff {
     this.allowedItems,
     this.prohibitedItems,
     this.weightTiers = const [],
+    this.isActive = true,
+    this.requiresProductInfo = false,
   });
 
   factory UserDeliveryTariff.fromJson(Map<String, dynamic> json) {
@@ -56,6 +60,8 @@ class UserDeliveryTariff {
               ?.map((e) => UserWeightTier.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      isActive: json['isActive'] as bool? ?? true,
+      requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
     );
   }
 }
@@ -154,6 +160,7 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
     return UserTariffsData(
       deliveryTariffs: tariffsJson
           .map((e) => UserDeliveryTariff.fromJson(e as Map<String, dynamic>))
+          .where((t) => t.isActive)
           .toList(),
       packagingTypes: packagingsJson
           .map((e) => UserPackagingType.fromJson(e as Map<String, dynamic>))

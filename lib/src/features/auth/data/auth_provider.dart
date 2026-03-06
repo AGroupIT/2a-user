@@ -103,9 +103,17 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('🔍 hasToken from ApiClient: $hasToken');
 
       if (!hasToken) {
-        // Если токен потерян, разлогиниваем
-        debugPrint('🔐 Token lost, logging out');
-        await logout();
+        // Токен не найден — возможны два случая:
+        // 1. Транзиентная ошибка iOS Keychain (до первой разблокировки после перезагрузки,
+        //    после обновления приложения/iOS) — токен физически есть, просто не читается.
+        // 2. Токен реально удалён.
+        //
+        // В обоих случаях НЕ вызываем logout() — это необратимо очищает SharedPreferences
+        // и убивает авторизацию навсегда. Вместо этого просто показываем экран входа.
+        // При следующем запуске попробуем снова — если Keychain восстановился, войдём
+        // автоматически; если нет — пользователь введёт пароль и получит новый токен.
+        debugPrint('🔐 Token not found — showing login screen (not forcing logout)');
+        state = const AuthState(isLoggedIn: false, isLoading: false);
         return;
       }
     }
@@ -132,6 +140,29 @@ class AuthNotifier extends Notifier<AuthState> {
     );
 
     debugPrint('✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail');
+
+    // Обновляем clientData из /auth/me в фоне, чтобы коды клиента содержали актуальные id.
+    // Это важно для корректной передачи clientCodeId при создании сборок.
+    if (isLoggedIn) {
+      _refreshClientDataInBackground();
+    }
+  }
+
+  /// Обновляет clientData из /auth/me в фоне.
+  /// Критично для того, чтобы codes содержали актуальный id (нужен для clientCodeId в сборках).
+  Future<void> _refreshClientDataInBackground() async {
+    try {
+      final response = await _apiClient.get('/auth/me');
+      if (response.statusCode == 200 && response.data != null) {
+        final userData = response.data as Map<String, dynamic>;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_kClientDataKey, jsonEncode(userData));
+        state = state.copyWith(clientData: userData);
+        debugPrint('✅ clientData refreshed from /auth/me');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not refresh clientData from /auth/me: $e');
+    }
   }
 
   Future<bool> login({
@@ -208,6 +239,9 @@ class AuthNotifier extends Notifier<AuthState> {
           ref.invalidate(clientProfileProvider);
           for (final page in ShowcasePage.values) {
             ref.invalidate(showcaseProvider(page));
+          }
+          for (final block in ShowcaseBlock.values) {
+            ref.invalidate(showcaseBlockProvider(block));
           }
         });
         
@@ -310,6 +344,9 @@ class AuthNotifier extends Notifier<AuthState> {
       // Invalidate все showcase провайдеры чтобы они перечитали состояние
       for (final page in ShowcasePage.values) {
         ref.invalidate(showcaseProvider(page));
+      }
+      for (final block in ShowcaseBlock.values) {
+        ref.invalidate(showcaseBlockProvider(block));
       }
       
       state = AuthState(

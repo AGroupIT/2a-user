@@ -168,9 +168,12 @@ class ApiClient {
     // На мобильных платформах используем FlutterSecureStorage
     try {
       final token = await _storage.read(key: _tokenKey);
-      _inMemoryToken = token; // Кешируем
+      if (token != null) _inMemoryToken = token; // Кешируем только не-null
       return token;
     } catch (e) {
+      // Не кешируем null при ошибке — следующий вызов попробует storage снова.
+      // PlatformException может быть транзиентной (iOS Keychain до первой разблокировки,
+      // после обновления приложения и т.д.).
       debugPrint('Error reading token from SecureStorage: $e');
       return null;
     }

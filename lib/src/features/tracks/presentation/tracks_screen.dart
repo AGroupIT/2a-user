@@ -168,8 +168,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   final _showcaseKeyTrackItem = GlobalKey();
   final _showcaseKeyAddButton = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
+  // Showcase state
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   // Хранение контекста Showcase для вызова next()
   BuildContext? _showcaseContext;
@@ -181,29 +183,50 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
-    if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.tracks));
-    if (!showcaseState.shouldShow) return;
-    
+    if (_showcaseStarted || _allSkipped) return;
+    if (!TickerMode.of(showcaseContext)) return;
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyFilters,
-        _showcaseKeySearch,
-        _showcaseKeyViewMode,
-        _showcaseKeyTrackItem,
-        _showcaseKeyAddButton,
-      ]);
+      final pairs = [
+        (ShowcaseBlock.tracksFilters, _showcaseKeyFilters),
+        (ShowcaseBlock.tracksFilters, _showcaseKeySearch),
+        (ShowcaseBlock.tracksFilters, _showcaseKeyViewMode),
+        (ShowcaseBlock.tracksItem, _showcaseKeyTrackItem),
+        (ShowcaseBlock.tracksAddButton, _showcaseKeyAddButton),
+      ];
+      final visible = pairs.where((p) => p.$2.currentContext != null).toList();
+
+      if (visible.isEmpty) {
+        _showcaseStarted = false;
+        return;
+      }
+
+      _currentRunBlocks = visible.map((p) => p.$1).toSet().toList();
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      ShowCaseWidget.of(showcaseContext)
+          .startShowCase(visible.map((p) => p.$2).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.tracks)).markAsSeen();
+    final svc = ref.read(showcaseServiceProvider);
+    for (final block in _currentRunBlocks) {
+      svc.markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
   }
 
   void _setupAutoRefresh() {
@@ -1887,24 +1910,22 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       if (!context.mounted) return;
       // Получаем данные для API
       final auth = ref.read(authStateProvider);
+      final clientCode = ref.read(activeClientCodeProvider);
+      if (clientCode == null) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: код клиента не найден',
+          isError: true,
+        );
+        return;
+      }
+
       final clientId = auth.clientId;
 
       if (clientId == null) {
         _showStyledSnackBar(
           context,
           'Ошибка: нет данных клиента',
-          isError: true,
-        );
-        return;
-      }
-
-      // Преобразуем trackIds из выбранных треков
-      // Получаем треки из текущего состояния пагинации
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode == null) {
-        _showStyledSnackBar(
-          context,
-          'Ошибка: код клиента не найден',
           isError: true,
         );
         return;
@@ -2001,11 +2022,114 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         }
       }
 
+      // Проверяем наличие информации о товаре если тариф требует её
+      if (selectedTariff?.requiresProductInfo == true) {
+        final tracksWithoutProductInfo = selectedTracks.where((t) {
+          final info = t.productInfo;
+          return info == null || (info.name == null || info.name!.trim().isEmpty);
+        }).toList();
+
+        if (tracksWithoutProductInfo.isNotEmpty) {
+          if (!context.mounted) return;
+          await showModalBottomSheet<void>(
+            context: context,
+            useRootNavigator: true,
+            backgroundColor: Colors.white,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (sheetCtx) {
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SheetHandle(),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(Icons.assignment_outlined, color: Colors.orange.shade700, size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Требуется информация о товаре',
+                            style: Theme.of(sheetCtx).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Тариф «${selectedTariff!.name}» требует заполнения информации о товаре. '
+                        'Пожалуйста, заполните данные для следующих треков (${tracksWithoutProductInfo.length} шт.):',
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(sheetCtx).size.height * 0.3,
+                        ),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: tracksWithoutProductInfo.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final t = tracksWithoutProductInfo[i];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.local_shipping_outlined, size: 16, color: Colors.orange.shade600),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      t.code,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    'нет данных о товаре',
+                                    style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => Navigator.of(sheetCtx).pop(),
+                        style: FilledButton.styleFrom(backgroundColor: Colors.orange.shade700),
+                        child: const Text('Понятно, заполню информацию'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+          return; // Прерываем создание сборки
+        }
+      }
+
       // Создаём сборку через API
       final apiService = ref.read(assembliesApiServiceProvider);
+      final clientCodeId = ref.read(activeClientCodeIdProvider);
       final assembly = await apiService.createAssembly(
         clientId: clientId,
-        clientCode: clientCode,
+        clientCodeId: clientCodeId,
+        clientCode: clientCodeId == null ? clientCode : null,
         tariffId: selectedTariff?.id,
         packagingTypeIds: selectedPackingIds.toList(),
         hasInsurance: selectedInsurance == 'yes',
@@ -2415,13 +2539,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     _updateNotifierListener(tracksNotifier);
 
     final tracksState = tracksNotifier.state;
-
+    final shouldShowFilters = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksFilters));
+    final shouldShowItem = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksItem));
+    final shouldShowAddButton = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksAddButton));
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 72.0;
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           _showcaseContext = showcaseContext;
@@ -2474,60 +2601,67 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 18),
-                      Showcase(
-                        key: _showcaseKeyFilters,
-                        title: '🎯 Фильтры по статусу',
-                        description:
-                            'Быстрая фильтрация треков по состоянию:\n• Все - показать все посылки\n• На складе - товары прибыли на склад\n• Отправлен - в пути к вам\n• Прибыл на терминал - готов к выдаче\n• Сформирован к выдаче - ждёт получения\n\nВыберите статус из выпадающего списка "Статус" для фильтрации.',
-                        targetBorderRadius: BorderRadius.circular(20),
-                        targetPadding: getShowcaseTargetPadding(),
-                        tooltipPosition: TooltipPosition.bottom,
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        onTargetClick: () {
-                          if (_showcaseContext != null) {
-                            ShowCaseWidget.of(_showcaseContext!).next();
-                          }
+                      Builder(
+                        builder: (_) {
+                          final filtersContainer = Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x14000000),
+                                  blurRadius: 24,
+                                  offset: Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.all(16),
+                            child: _FiltersNew(
+                              statusCode: _statusCode,
+                              tracks: tracksState.tracks,
+                              viewMode: _viewMode,
+                              query: _query,
+                              onStatusChanged: (v) =>
+                                  _onStatusChanged(v, clientCode),
+                              onViewModeChanged: (v) =>
+                                  _onViewModeChanged(v, clientCode),
+                              onQueryChanged: (v) =>
+                                  _onSearchChanged(v, clientCode),
+                              showcaseSearchKey: shouldShowFilters ? _showcaseKeySearch : null,
+                              showcaseViewModeKey: shouldShowFilters ? _showcaseKeyViewMode : null,
+                            ),
+                          );
+                          return shouldShowFilters
+                              ? Showcase(
+                                  key: _showcaseKeyFilters,
+                                  title: '🎯 Фильтры по статусу',
+                                  description:
+                                      'Быстрая фильтрация треков по состоянию:\n• Все - показать все посылки\n• На складе - товары прибыли на склад\n• Отправлен - в пути к вам\n• Прибыл на терминал - готов к выдаче\n• Сформирован к выдаче - ждёт получения\n\nВыберите статус из выпадающего списка "Статус" для фильтрации.',
+                                  targetBorderRadius: BorderRadius.circular(20),
+                                  targetPadding: getShowcaseTargetPadding(),
+                                  tooltipPosition: TooltipPosition.bottom,
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  onTargetClick: () {
+                                    if (_showcaseContext != null) {
+                                      ShowCaseWidget.of(_showcaseContext!).next();
+                                    }
+                                  },
+                                  disposeOnTap: false,
+                                  child: filtersContainer,
+                                )
+                              : filtersContainer;
                         },
-                        disposeOnTap: false,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x14000000),
-                                blurRadius: 24,
-                                offset: Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: _FiltersNew(
-                            statusCode: _statusCode,
-                            tracks: tracksState.tracks,
-                            viewMode: _viewMode,
-                            query: _query,
-                            onStatusChanged: (v) =>
-                                _onStatusChanged(v, clientCode),
-                            onViewModeChanged: (v) =>
-                                _onViewModeChanged(v, clientCode),
-                            onQueryChanged: (v) =>
-                                _onSearchChanged(v, clientCode),
-                            showcaseSearchKey: _showcaseKeySearch,
-                            showcaseViewModeKey: _showcaseKeyViewMode,
-                          ),
-                        ),
                       ),
                       const SizedBox(height: 18),
                       // Показываем информацию о количестве
@@ -2543,7 +2677,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                             ),
                           ),
                         ),
-                      _buildTracksList(tracksState, clientCode),
+                      _buildTracksList(tracksState, clientCode, shouldShowItem),
                     ],
                   ),
                 ),
@@ -2584,36 +2718,44 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       ),
                     ],
                     // FAB кнопка для добавления треков (всегда справа)
-                    Showcase(
-                        key: _showcaseKeyAddButton,
-                        title: '➕ Добавить треки',
-                        description:
-                            'Нажмите для добавления новых треков.\nВведите номера треков, каждый с новой строки.',
-                        targetBorderRadius: BorderRadius.circular(28),
-                        targetPadding: getShowcaseTargetPadding(),
-                        tooltipPosition: TooltipPosition.top,
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        onToolTipClick: _onShowcaseComplete,
-                        onBarrierClick: _onShowcaseComplete,
-                        child: FloatingActionButton(
-                          onPressed: () => showAddTracksDialog(context, ref),
-                          backgroundColor: context.brandPrimary,
-                          foregroundColor: Colors.white,
-                          elevation: 8,
-                          child: const Icon(Icons.add_box_rounded, size: 28),
-                        ),
-                      ),
+                    shouldShowAddButton
+                        ? Showcase(
+                            key: _showcaseKeyAddButton,
+                            title: '➕ Добавить треки',
+                            description:
+                                'Нажмите для добавления новых треков.\nВведите номера треков, каждый с новой строки.',
+                            targetBorderRadius: BorderRadius.circular(28),
+                            targetPadding: getShowcaseTargetPadding(),
+                            tooltipPosition: TooltipPosition.top,
+                            tooltipBackgroundColor: Colors.white,
+                            textColor: Colors.black87,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            descTextStyle: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
+                            onToolTipClick: _onShowcaseComplete,
+                            onBarrierClick: _onShowcaseComplete,
+                            child: FloatingActionButton(
+                              onPressed: () => showAddTracksDialog(context, ref),
+                              backgroundColor: context.brandPrimary,
+                              foregroundColor: Colors.white,
+                              elevation: 8,
+                              child: const Icon(Icons.add_box_rounded, size: 28),
+                            ),
+                          )
+                        : FloatingActionButton(
+                            onPressed: () => showAddTracksDialog(context, ref),
+                            backgroundColor: context.brandPrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 8,
+                            child: const Icon(Icons.add_box_rounded, size: 28),
+                          ),
                   ],
                 ),
               ),
@@ -2625,7 +2767,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   }
 
   /// Построить список треков с поддержкой пагинации
-  Widget _buildTracksList(PaginatedTracksState tracksState, String clientCode) {
+  Widget _buildTracksList(PaginatedTracksState tracksState, String clientCode, bool shouldShowItem) {
     // Показываем загрузку при первоначальной загрузке
     if (tracksState.isLoading && tracksState.tracks.isEmpty) {
       return const Center(
@@ -2722,8 +2864,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
             returnRequestedTracks: _returnRequestedTracks,
           );
 
-          // Первый элемент оборачиваем в Showcase
-          if (index == 0) {
+          // Первый элемент оборачиваем в Showcase (только если туториал ещё не показан)
+          if (index == 0 && shouldShowItem) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Showcase(

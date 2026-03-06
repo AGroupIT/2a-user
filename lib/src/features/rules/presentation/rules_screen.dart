@@ -28,8 +28,9 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
   final _showcaseKeyHeader = GlobalKey();
   final _showcaseKeyRuleCard = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   @override
   void initState() {
@@ -40,33 +41,54 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.rules));
-    if (!showcaseState.shouldShow) return;
-    
+    if (!TickerMode.of(showcaseContext)) return;
+
+    final pairs = [
+      (_showcaseKeyHeader, ShowcaseBlock.rulesHeader),
+      (_showcaseKeyRuleCard, ShowcaseBlock.rulesCard),
+    ];
+
+    final visible = pairs
+        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
+        .toList();
+
+    if (visible.isEmpty) {
+      _showcaseStarted = false;
+      return;
+    }
+
     _showcaseStarted = true;
+    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-
-      ShowCaseWidget.of(
-        showcaseContext,
-      ).startShowCase([
-        _showcaseKeyHeader,
-        _showcaseKeyRuleCard,
-      ]);
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.rules)).markAsSeen();
+    for (final block in _currentRunBlocks) {
+      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final asyncItems = ref.watch(rulesListProvider);
+    final shouldShowHeader = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.rulesHeader));
+    final shouldShowCard = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.rulesCard));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -77,6 +99,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           // Запускаем showcase если нужно
@@ -113,47 +136,44 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                     ),
                     itemCount: items.length + 1, // +1 for header
                     itemBuilder: (context, i) {
+                      final headerText = Text(
+                        tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      );
                       if (i == 0) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 18),
-                          child: Showcase(
-                            key: _showcaseKeyHeader,
-                            title: tr(context, ru: '📋 Правила и условия', zh: '📋 规则和条款'),
-                            description: tr(
-                              context,
-                              ru: 'Важные правила работы с компанией:\n• Условия оказания услуг\n• Права и обязанности клиентов\n• Порядок работы и процедуры\n• Правила упаковки и маркировки\n• Потяните вниз для обновления ⬇️',
-                              zh: '与公司合作的重要规则：\n• 服务条款\n• 客户的权利和义务\n• 工作流程和程序\n• 包装和标记规则\n• 下拉刷新 ⬇️',
-                            ),
-                            targetPadding: getShowcaseTargetPadding(),
-                            tooltipPosition: TooltipPosition.bottom,
-                            tooltipBackgroundColor: Colors.white,
-                            textColor: Colors.black87,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            descTextStyle: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade600,
-                            ),
-                            onTargetClick: () {
-                              if (mounted) {
-                                ShowCaseWidget.of(showcaseContext).next();
-                              }
-                            },
-                            disposeOnTap: false,
-                            child: Text(
-                              tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.w900),
-                            ),
-                          ),
+                          child: shouldShowHeader
+                              ? Showcase(
+                                  key: _showcaseKeyHeader,
+                                  title: tr(context, ru: '📋 Правила и условия', zh: '📋 规则和条款'),
+                                  description: tr(
+                                    context,
+                                    ru: 'Важные правила работы с компанией:\n• Условия оказания услуг\n• Права и обязанности клиентов\n• Порядок работы и процедуры\n• Правила упаковки и маркировки\n• Потяните вниз для обновления ⬇️',
+                                    zh: '与公司合作的重要规则：\n• 服务条款\n• 客户的权利和义务\n• 工作流程和程序\n• 包装和标记规则\n• 下拉刷新 ⬇️',
+                                  ),
+                                  targetPadding: getShowcaseTargetPadding(),
+                                  tooltipPosition: TooltipPosition.bottom,
+                                  tooltipBackgroundColor: Colors.white,
+                                  textColor: Colors.black87,
+                                  titleTextStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                  descTextStyle: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  child: headerText,
+                                )
+                              : headerText,
                         );
                       }
                       final item = items[i - 1];
-                      if (i == 1) {
+                      if (i == 1 && shouldShowCard) {
                         // Первая карточка правил - оборачиваем в Showcase
                         return Padding(
                           padding: EdgeInsets.only(
@@ -181,8 +201,6 @@ class _RulesScreenState extends ConsumerState<RulesScreen>
                               fontWeight: FontWeight.w500,
                               color: Colors.grey.shade600,
                             ),
-                            onBarrierClick: _onShowcaseComplete,
-                            onToolTipClick: _onShowcaseComplete,
                             child: _RuleCard(item: item),
                           ),
                         );

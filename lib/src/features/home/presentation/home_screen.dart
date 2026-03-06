@@ -40,8 +40,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   final _showcaseKeyDigest = GlobalKey();
   final _showcaseKeyPhotos = GlobalKey();
 
-  // Флаг чтобы showcase не запускался повторно при rebuild
+  // Showcase state
   bool _showcaseStarted = false;
+  bool _allSkipped = false;
+  List<ShowcaseBlock> _currentRunBlocks = [];
 
   // Флаг для показа диалога принятия правил
   bool _termsDialogShown = false;
@@ -96,31 +98,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   }
 
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    // Проверяем локальный флаг чтобы не запускать повторно при rebuild
-    if (_showcaseStarted) return;
+    if (_showcaseStarted || _allSkipped) return;
+    if (!TickerMode.of(showcaseContext)) return;
 
-    // Проверяем что пользователь уже принял правила
     final showcaseService = ref.read(showcaseServiceProvider);
     if (!showcaseService.hasAcceptedTerms) return;
-
-    final showcaseState = ref.read(showcaseProvider(ShowcasePage.home));
-    if (!showcaseState.shouldShow) return;
 
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      ShowCaseWidget.of(showcaseContext).startShowCase([
-        _showcaseKeyQuickCards,
-        _showcaseKeyDigest,
-        _showcaseKeyPhotos,
-      ]);
+      final pairs = [
+        (ShowcaseBlock.homeQuickCards, _showcaseKeyQuickCards),
+        (ShowcaseBlock.homeDigest, _showcaseKeyDigest),
+        (ShowcaseBlock.homePhotos, _showcaseKeyPhotos),
+      ];
+      final visible = pairs.where((p) => p.$2.currentContext != null).toList();
+
+      if (visible.isEmpty) {
+        _showcaseStarted = false; // Сбрасываем чтобы сработало когда появятся данные
+        return;
+      }
+
+      _currentRunBlocks = visible.map((p) => p.$1).toList();
+      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
+      ShowCaseWidget.of(showcaseContext)
+          .startShowCase(visible.map((p) => p.$2).toList());
     });
   }
 
   void _onShowcaseComplete() {
-    ref.read(showcaseNotifierProvider(ShowcasePage.home)).markAsSeen();
+    final svc = ref.read(showcaseServiceProvider);
+    for (final block in _currentRunBlocks) {
+      svc.markBlockAsSeen(block);
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
+  }
+
+  void _skipAllShowcases() {
+    setState(() => _allSkipped = true);
+    ref.read(showcaseServiceProvider).markAllBlocksSeen();
+    for (final block in ShowcaseBlock.values) {
+      ref.invalidate(showcaseBlockProvider(block));
+    }
+    _currentRunBlocks = [];
   }
 
   void _setupAutoRefresh() {
@@ -140,6 +163,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
 
   @override
   Widget build(BuildContext context) {
+    // Сброс флага _showcaseStarted при глобальном сбросе обучения
+    ref.listen(showcaseTutorialResetProvider, (_, _) {
+      _showcaseStarted = false;
+    });
+
     final clientCode = ref.watch(activeClientCodeProvider);
     final authState = ref.watch(authProvider);
     final clientProfile = ref.watch(clientProfileProvider);
@@ -166,6 +194,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
     final assembliesCount = assembliesCountAsync.asData?.value;
     final invoicesCount = invoicesCountAsync.asData?.value;
 
+    final shouldShowQuickCards = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homeQuickCards));
+    final shouldShowDigest = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homeDigest));
+    final shouldShowPhotos = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homePhotos));
     final theme = Theme.of(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -192,6 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
 
     return ShowcaseWrapper(
       onComplete: _onShowcaseComplete,
+      onSkipAll: _skipAllShowcases,
       child: Builder(
         builder: (showcaseContext) {
           _showcaseContext = showcaseContext;
@@ -212,11 +244,82 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
               children: [
               _GreetingBlock(fullName: clientName),
               const SizedBox(height: 14),
-              Showcase(
-                key: _showcaseKeyQuickCards,
-                title: '📊 Быстрый доступ к данным',
-                description: 'Три карточки показывают количество:\n• Треки - ваши посылки в пути\n• Сборки - готовые к отправке\n• Счета - документы на оплату\n\nНажмите на любую карточку для перехода к подробному списку.',
-                targetBorderRadius: BorderRadius.circular(18),
+              Builder(
+                builder: (_) {
+                  final quickCards = Row(
+                    children: [
+                      Expanded(
+                        child: _QuickCard(
+                          title: 'Треки',
+                          icon: Icons.local_shipping_rounded,
+                          value: tracksCount,
+                          onTap: () => context.go('/tracks'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _QuickCard(
+                          title: 'Сборки',
+                          icon: Icons.inventory_2_rounded,
+                          value: assembliesCount,
+                          onTap: () => context.go('/tracks'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _QuickCard(
+                          title: 'Счета',
+                          icon: Icons.receipt_long_rounded,
+                          value: invoicesCount,
+                          onTap: () => context.go('/invoices'),
+                        ),
+                      ),
+                    ],
+                  );
+                  return shouldShowQuickCards
+                      ? Showcase(
+                          key: _showcaseKeyQuickCards,
+                          title: '📊 Быстрый доступ к данным',
+                          description: 'Три карточки показывают количество:\n• Треки - ваши посылки в пути\n• Сборки - готовые к отправке\n• Счета - документы на оплату\n\nНажмите на любую карточку для перехода к подробному списку.',
+                          targetBorderRadius: BorderRadius.circular(18),
+                          targetPadding: getShowcaseTargetPadding(),
+                          tooltipPosition: TooltipPosition.bottom,
+                          tooltipBackgroundColor: Colors.white,
+                          textColor: Colors.black87,
+                          titleTextStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                          descTextStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                          onTargetClick: () {
+                            if (_showcaseContext != null) {
+                              ShowCaseWidget.of(_showcaseContext!).next();
+                            }
+                          },
+                          disposeOnTap: false,
+                          child: quickCards,
+                        )
+                      : quickCards;
+                },
+              ),
+        const SizedBox(height: 18),
+        Text(
+          'Дайджест',
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 10),
+        // Дайджест треков — показываем showcase только когда есть треки
+        (shouldShowDigest && (tracksCount ?? 0) > 0)
+            ? Showcase(
+                key: _showcaseKeyDigest,
+                title: '📦 Дайджест треков',
+                description: 'Лента последних обновлений по вашим посылкам:\n• Статус трека (в пути, на складе, получен)\n• Дата последнего обновления\n• Информация о товаре\n\nНажмите "Смотреть все" справа для перехода к полному списку треков с фильтрами и поиском.',
+                targetBorderRadius: BorderRadius.circular(20),
                 targetPadding: getShowcaseTargetPadding(),
                 tooltipPosition: TooltipPosition.bottom,
                 tooltipBackgroundColor: Colors.white,
@@ -231,112 +334,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
                   fontWeight: FontWeight.w500,
                   color: Colors.grey.shade600,
                 ),
-                onTargetClick: () {
-                  if (_showcaseContext != null) {
-                    ShowCaseWidget.of(_showcaseContext!).next();
-                  }
-                },
-                disposeOnTap: false,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _QuickCard(
-                        title: 'Треки',
-                        icon: Icons.local_shipping_rounded,
-                        value: tracksCount,
-                        onTap: () => context.go('/tracks'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _QuickCard(
-                        title: 'Сборки',
-                        icon: Icons.inventory_2_rounded,
-                        value: assembliesCount,
-                        onTap: () => context.go('/tracks'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _QuickCard(
-                        title: 'Счета',
-                        icon: Icons.receipt_long_rounded,
-                        value: invoicesCount,
-                        onTap: () => context.go('/invoices'),
-                      ),
-                    ),
-                  ],
+                child: _DigestSection(
+                  title: 'Треки',
+                  onAll: () => context.go('/tracks'),
+                  child: _TracksDigest(tracksAsync: tracksDigestAsync),
                 ),
+              )
+            : _DigestSection(
+                title: 'Треки',
+                onAll: () => context.go('/tracks'),
+                child: _TracksDigest(tracksAsync: tracksDigestAsync),
               ),
-        const SizedBox(height: 18),
-        Text(
-          'Дайджест',
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 10),
-        Showcase(
-          key: _showcaseKeyDigest,
-          title: '📦 Дайджест треков',
-          description: 'Лента последних обновлений по вашим посылкам:\n• Статус трека (в пути, на складе, получен)\n• Дата последнего обновления\n• Информация о товаре\n\nНажмите "Смотреть все" справа для перехода к полному списку треков с фильтрами и поиском.',
-          targetBorderRadius: BorderRadius.circular(20),
-          targetPadding: getShowcaseTargetPadding(),
-          tooltipPosition: TooltipPosition.bottom,
-          tooltipBackgroundColor: Colors.white,
-          textColor: Colors.black87,
-          titleTextStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1A1A1A),
-          ),
-          descTextStyle: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-          ),
-          onTargetClick: () {
-            if (_showcaseContext != null) {
-              ShowCaseWidget.of(_showcaseContext!).next();
-            }
-          },
-          disposeOnTap: false,
-          child: _DigestSection(
-            title: 'Треки',
-            onAll: () => context.go('/tracks'),
-            child: _TracksDigest(tracksAsync: tracksDigestAsync),
-          ),
-        ),
         const SizedBox(height: 12),
-        Showcase(
-          key: _showcaseKeyPhotos,
-          title: '📸 Фотоотчёты товаров',
-          description: 'Галерея фотографий ваших посылок на складе:\n• Фото упаковки\n• Фото весов с весом груза\n• Состояние товара\n\nНажмите на фото для просмотра в полном размере. Кнопка "Смотреть все" откроет полную галерею с возможностью скачивания.',
-          targetBorderRadius: BorderRadius.circular(20),
-          targetPadding: getShowcaseTargetPadding(),
-          tooltipPosition: TooltipPosition.bottom,
-          tooltipBackgroundColor: Colors.white,
-          textColor: Colors.black87,
-          titleTextStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1A1A1A),
-          ),
-          descTextStyle: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-          ),
-          onToolTipClick: () {
-            _onShowcaseComplete();
-          },
-          onBarrierClick: () {
-            _onShowcaseComplete();
-          },
-          child: _DigestSection(
-            title: 'Фото',
-            onAll: () => context.go('/photos'),
-            child: _PhotosDigest(photosAsync: recentPhotosAsync),
-          ),
-        ),
+        // Фотоотчёты — показываем showcase только когда есть фото
+        (shouldShowPhotos && (recentPhotosAsync.asData?.value.isNotEmpty ?? false))
+            ? Showcase(
+                key: _showcaseKeyPhotos,
+                title: '📸 Фотоотчёты товаров',
+                description: 'Галерея фотографий ваших посылок на складе:\n• Фото упаковки\n• Фото весов с весом груза\n• Состояние товара\n\nНажмите на фото для просмотра в полном размере. Кнопка "Смотреть все" откроет полную галерею с возможностью скачивания.',
+                targetBorderRadius: BorderRadius.circular(20),
+                targetPadding: getShowcaseTargetPadding(),
+                tooltipPosition: TooltipPosition.bottom,
+                tooltipBackgroundColor: Colors.white,
+                textColor: Colors.black87,
+                titleTextStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+                descTextStyle: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+                child: _DigestSection(
+                  title: 'Фото',
+                  onAll: () => context.go('/photos'),
+                  child: _PhotosDigest(photosAsync: recentPhotosAsync),
+                ),
+              )
+            : _DigestSection(
+                title: 'Фото',
+                onAll: () => context.go('/photos'),
+                child: _PhotosDigest(photosAsync: recentPhotosAsync),
+              ),
         const SizedBox(height: 12),
         _DigestSection(
           title: 'Счета',
