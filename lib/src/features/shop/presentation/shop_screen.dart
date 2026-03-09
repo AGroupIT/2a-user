@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../shell/presentation/app_shell.dart';
 import '../data/purchase_provider.dart';
 import '../data/shop_provider.dart';
@@ -205,7 +206,36 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
     final cartCount = ref.watch(cartItemCountProvider);
 
-    return Stack(
+    return TutorialScreenWrapper(
+      screenKey: 'shop',
+      steps: const [
+        TutorialStep(
+          icon: Icons.store_rounded,
+          title: 'Магазин',
+          description: 'Каталог товаров с китайских торговых площадок. Выберите площадку (Taobao, 1688, Poizon) вверху экрана.',
+        ),
+        TutorialStep(
+          icon: Icons.search_rounded,
+          title: 'Поиск товара',
+          description: 'Введите название товара или вставьте ссылку с площадки в строку поиска — мы найдём и покажем карточку.',
+        ),
+        TutorialStep(
+          icon: Icons.category_rounded,
+          title: 'Категории',
+          description: 'Выберите категорию, чтобы просматривать товары по разделам. Нажмите на товар для перехода к деталям.',
+        ),
+        TutorialStep(
+          icon: Icons.filter_alt_rounded,
+          title: 'Фильтр по цене',
+          description: 'Нажмите иконку фильтра (воронка) рядом со строкой поиска, чтобы задать диапазон цен в юанях.',
+        ),
+        TutorialStep(
+          icon: Icons.shopping_cart_rounded,
+          title: 'Список выкупа',
+          description: 'Иконка корзины вверху открывает ваш текущий список выкупа. Там собраны все товары перед отправкой заявки.',
+        ),
+      ],
+      child: Stack(
       children: [
         Column(
           children: [
@@ -450,7 +480,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
             ),
           ),
       ],
-    );
+    ));
   }
 
   String _buildFilterLabel() {

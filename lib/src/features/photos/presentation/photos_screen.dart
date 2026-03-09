@@ -1,16 +1,12 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/network/api_config.dart';
 import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/photos_provider.dart';
 import '../domain/photo_item.dart';
@@ -28,16 +24,12 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   late int _month;
   late int _year;
   String _selectedDate = '';
+  final ScrollController _scrollController = ScrollController();
+  PaginatedPhotosNotifier? _photosNotifier;
 
-  // Showcase keys
-  final _showcaseKeyStats = GlobalKey();
-  final _showcaseKeyDateFilter = GlobalKey();
-  final _showcaseKeyPhotoGrid = GlobalKey();
-
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
+  final GlobalKey _statsKey = GlobalKey();
+  final GlobalKey _calendarKey = GlobalKey();
+  final GlobalKey _photoGridKey = GlobalKey();
 
   @override
   void initState() {
@@ -45,51 +37,27 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
     final now = DateTime.now();
     _month = now.month - 1;
     _year = now.year;
+    _scrollController.addListener(_onScroll);
     _setupAutoRefresh();
   }
 
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-
-    final pairs = [
-      (_showcaseKeyStats, ShowcaseBlock.photosStats),
-      (_showcaseKeyDateFilter, ShowcaseBlock.photosDateFilter),
-      (_showcaseKeyPhotoGrid, ShowcaseBlock.photosGrid),
-    ];
-
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-
-    if (visible.isEmpty) {
-      _showcaseStarted = false;
-      return;
-    }
-
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _photosNotifier?.removeListener(_onPhotosChanged);
+    super.dispose();
   }
 
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
+  void _onPhotosChanged() {
+    if (mounted) setState(() {});
   }
 
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent * 0.9) {
+      _photosNotifier?.loadMore();
     }
   }
 
@@ -106,9 +74,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
           )),
         );
         if (_selectedDate.isNotEmpty) {
-          ref.invalidate(
-            photosByDateProvider((clientCode: clientCode, date: _selectedDate)),
-          );
+          _photosNotifier?.loadInitial();
         }
       }
     });
@@ -130,16 +96,20 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
     final daysAsync = ref.watch(
       photosDaysProvider((clientCode: clientCode, month: _month, year: _year)),
     );
-    final photosAsync = _selectedDate.isEmpty
-        ? const AsyncValue<List<PhotoItem>>.data([])
-        : ref.watch(
-            photosByDateProvider((clientCode: clientCode, date: _selectedDate)),
-          );
-
     final photosCount = photosCountAsync.asData?.value;
-    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosStats));
-    final shouldShowDateFilter = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosDateFilter));
-    final shouldShowGrid = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.photosGrid));
+
+    // Subscribe to paginated photos notifier
+    if (_selectedDate.isNotEmpty) {
+      final newNotifier = ref.read(paginatedPhotosByDateProvider(
+        (clientCode: clientCode, date: _selectedDate),
+      ));
+      if (_photosNotifier != newNotifier) {
+        _photosNotifier?.removeListener(_onPhotosChanged);
+        _photosNotifier = newNotifier;
+        newNotifier.addListener(_onPhotosChanged);
+      }
+    }
+    final photosState = _selectedDate.isEmpty ? null : _photosNotifier?.state;
 
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -154,15 +124,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
         )),
       );
       if (_selectedDate.isNotEmpty) {
-        ref.invalidate(
-          photosByDateProvider((clientCode: clientCode, date: _selectedDate)),
-        );
-        await ref.read(
-          photosByDateProvider((
-            clientCode: clientCode,
-            date: _selectedDate,
-          )).future,
-        );
+        await _photosNotifier?.loadInitial();
       }
       await ref.read(
         photosDaysProvider((
@@ -173,356 +135,265 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
       );
     }
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return RefreshIndicator(
-            onRefresh: onRefresh,
-            color: context.brandPrimary,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(
-                16,
-                topPad * 0.7 + 6,
-                16,
-                (24 + bottomPad) * 0.55,
-              ),
-              children: [
-                Text(
-                  'Фотографии и видео',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 12),
-                shouldShowStats
-                    ? Showcase(
-                        key: _showcaseKeyStats,
-                        title: '📊 Статистика фотоотчётов',
-                        description:
-                            'Общее количество фото и видео по вашему коду клиента:\n• Фото упаковки товаров\n• Фото весов с весом груза\n• Видео процесса упаковки\n\nВсе файлы доступны для просмотра и скачивания.',
-                        targetBorderRadius: BorderRadius.circular(18),
-                        targetPadding: getShowcaseTargetPadding(),
-                        tooltipPosition: TooltipPosition.bottom,
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: _PhotosStatsCard(count: photosCount),
-                      )
-                    : _PhotosStatsCard(count: photosCount),
-                const SizedBox(height: 18),
-                Builder(
-                  builder: (_) {
-                    final dateFilterRow = Row(
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: _CustomDropdown<int>(
-                            value: _month,
-                            label: 'Месяц',
-                            items: List.generate(
-                              12,
-                              (i) => _DropdownItem(value: i, label: _monthLabel(i)),
-                            ),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() {
-                                _month = v;
-                                _selectedDate = '';
-                              });
-                            },
+    return TutorialScreenWrapper(
+      screenKey: 'photos',
+      steps: [
+        TutorialStep(
+          icon: Icons.photo_camera_rounded,
+          title: 'Фотоотчёты',
+          description: 'Мы фотографируем ваши посылки на складе. Здесь хранятся все снимки и видео по вашим отправлениям.',
+          targetKey: _statsKey,
+        ),
+        TutorialStep(
+          icon: Icons.calendar_month_rounded,
+          title: 'Календарь дат',
+          description: 'Оранжевые даты — дни, когда есть фотографии. Нажмите на дату, чтобы открыть снимки за этот день.',
+          targetKey: _calendarKey,
+        ),
+        TutorialStep(
+          icon: Icons.fullscreen_rounded,
+          title: 'Просмотр фото',
+          description: 'Нажмите на любое фото для полноэкранного просмотра. Видеофайлы отмечены значком воспроизведения.',
+          targetKey: _photoGridKey,
+        ),
+      ],
+      child: RefreshIndicator(
+      onRefresh: onRefresh,
+      color: context.brandPrimary,
+      // CustomScrollView + SliverGrid обеспечивают виртуализацию фото-грида:
+      // только видимые ячейки держатся в дереве, остальные уничтожаются.
+      // Ранее использовался ListView + shrinkWrap:true GridView, который рендерил
+      // ВСЕ фото одновременно → OOM crash при большом количестве.
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Фотографии и видео',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 12),
+                  KeyedSubtree(key: _statsKey, child: _PhotosStatsCard(count: photosCount)),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: _CustomDropdown<int>(
+                          value: _month,
+                          label: 'Месяц',
+                          items: List.generate(
+                            12,
+                            (i) => _DropdownItem(value: i, label: _monthLabel(i)),
                           ),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _month = v;
+                              _selectedDate = '';
+                            });
+                          },
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 1,
-                          child: _CustomDropdown<int>(
-                            value: _year,
-                            label: 'Год',
-                            items: List.generate(5, (i) {
-                              final y = DateTime.now().year - 2 + i;
-                              return _DropdownItem(value: y, label: '$y');
-                            }),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() {
-                                _year = v;
-                                _selectedDate = '';
-                              });
-                            },
-                          ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 1,
+                        child: _CustomDropdown<int>(
+                          value: _year,
+                          label: 'Год',
+                          items: List.generate(5, (i) {
+                            final y = DateTime.now().year - 2 + i;
+                            return _DropdownItem(value: y, label: '$y');
+                          }),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _year = v;
+                              _selectedDate = '';
+                            });
+                          },
                         ),
-                      ],
-                    );
-                    return shouldShowDateFilter
-                        ? Showcase(
-                            key: _showcaseKeyDateFilter,
-                            title: '📅 Фильтр по месяцу и году',
-                            description:
-                                'Используйте стрелки ◀ ▶ для переключения месяцев.\nФотографии группируются по дням съёмки.',
-                            targetBorderRadius: BorderRadius.circular(14),
-                            targetPadding: getShowcaseTargetPadding(),
-                            tooltipPosition: TooltipPosition.bottom,
-                            tooltipBackgroundColor: Colors.white,
-                            textColor: Colors.black87,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            descTextStyle: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade600,
-                            ),
-                            child: dateFilterRow,
-                          )
-                        : dateFilterRow;
-                  },
-                ),
-          const SizedBox(height: 12),
-          daysAsync.when(
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(),
-              ),
-            ),
-            error: (e, _) => Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                'Не удалось загрузить даты: $e',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
-            data: (days) {
-              _syncSelectedDate(days);
-              return _CalendarGrid(
-                year: _year,
-                month: _month,
-                selectedDate: _selectedDate,
-                enabledDates: days,
-                onPrevMonth: () {
-                  setState(() {
-                    if (_month == 0) {
-                      _month = 11;
-                      _year -= 1;
-                    } else {
-                      _month -= 1;
-                    }
-                    _selectedDate = '';
-                  });
-                },
-                onNextMonth: () {
-                  setState(() {
-                    if (_month == 11) {
-                      _month = 0;
-                      _year += 1;
-                    } else {
-                      _month += 1;
-                    }
-                    _selectedDate = '';
-                  });
-                },
-                onSelect: (date) => setState(() => _selectedDate = date),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          photosAsync.when(
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
-              ),
-            ),
-            error: (e, _) => Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Не удалось загрузить фото: $e',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
-            data: (items) {
-              if (items.isEmpty) {
-                if (_selectedDate.isNotEmpty) {
-                  return const EmptyState(
-                    icon: Icons.photo_library_outlined,
-                    title: 'Фотоотчёт отсутствует',
-                    message: 'За выбранную дату нет фото/видео.',
-                  );
-                }
-                return const EmptyState(
-                  icon: Icons.event_available_outlined,
-                  title: 'Выберите дату',
-                  message: 'Нажмите на оранжевый день в календаре.',
-                );
-              }
-
-              // Разбиваем на 3 колонки
-              final col1 = <PhotoItem>[];
-              final col2 = <PhotoItem>[];
-              final col3 = <PhotoItem>[];
-
-              for (var i = 0; i < items.length; i++) {
-                if (i % 3 == 0) {
-                  col1.add(items[i]);
-                } else if (i % 3 == 1) {
-                  col2.add(items[i]);
-                } else {
-                  col3.add(items[i]);
-                }
-              }
-
-              final photoGrid = Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: Colors.white,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: col1
-                                  .map(
-                                    (item) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _PhotoThumbnail(
-                                        item: item,
-                                        onOpen: () =>
-                                            Navigator.of(
-                                              context,
-                                              rootNavigator: true,
-                                            ).push(
-                                              MaterialPageRoute<void>(
-                                                fullscreenDialog: true,
-                                                builder: (_) =>
-                                                    PhotoViewerScreen(
-                                                      item: item,
-                                                      allPhotos: items,
-                                                      initialIndex: items.indexOf(item),
-                                                    ),
-                                              ),
-                                            ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              children: col2
-                                  .map(
-                                    (item) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _PhotoThumbnail(
-                                        item: item,
-                                        onOpen: () =>
-                                            Navigator.of(
-                                              context,
-                                              rootNavigator: true,
-                                            ).push(
-                                              MaterialPageRoute<void>(
-                                                fullscreenDialog: true,
-                                                builder: (_) =>
-                                                    PhotoViewerScreen(
-                                                      item: item,
-                                                      allPhotos: items,
-                                                      initialIndex: items.indexOf(item),
-                                                    ),
-                                              ),
-                                            ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              children: col3
-                                  .map(
-                                    (item) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _PhotoThumbnail(
-                                        item: item,
-                                        onOpen: () =>
-                                            Navigator.of(
-                                              context,
-                                              rootNavigator: true,
-                                            ).push(
-                                              MaterialPageRoute<void>(
-                                                fullscreenDialog: true,
-                                                builder: (_) =>
-                                                    PhotoViewerScreen(
-                                                      item: item,
-                                                      allPhotos: items,
-                                                      initialIndex: items.indexOf(item),
-                                                    ),
-                                              ),
-                                            ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 12),
+                  daysAsync.when(
+                    loading: () => const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator(),
                       ),
                     ),
+                    error: (e, _) => Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        'Не удалось загрузить даты: $e',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                    data: (days) {
+                      _syncSelectedDate(days);
+                      return KeyedSubtree(
+                        key: _calendarKey,
+                        child: _CalendarGrid(
+                          year: _year,
+                          month: _month,
+                          selectedDate: _selectedDate,
+                          enabledDates: days,
+                          onPrevMonth: () {
+                            setState(() {
+                              if (_month == 0) {
+                                _month = 11;
+                                _year -= 1;
+                              } else {
+                                _month -= 1;
+                              }
+                              _selectedDate = '';
+                            });
+                          },
+                          onNextMonth: () {
+                            setState(() {
+                              if (_month == 11) {
+                                _month = 0;
+                                _year += 1;
+                              } else {
+                                _month += 1;
+                              }
+                              _selectedDate = '';
+                            });
+                          },
+                          onSelect: (date) => setState(() => _selectedDate = date),
+                        ),
+                      );
+                    },
                   ),
-              );
-              return shouldShowGrid
-                  ? Showcase(
-                      key: _showcaseKeyPhotoGrid,
-                      title: '📸 Галерея фотоотчётов',
-                      description:
-                          'Галерея файлов за выбранную дату:\n• Нажмите на миниатюру для полноэкранного просмотра\n• Увеличивайте фото жестами\n• Скачивайте фото на устройство\n• Делитесь ссылками\n\nФото и видео добавляются после обработки груза на складе.',
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.top,
-                      child: photoGrid,
-                    )
-                  : photoGrid;
-            },
-          ),
-              ],
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
-          );
-        },
+          ),
+          ..._buildPhotosSlivers(context, photosState),
+          SliverToBoxAdapter(
+            child: SizedBox(height: (24 + bottomPad) * 0.55),
+          ),
+        ],
       ),
-    );
+    ));
+  }
+
+  /// Возвращает список slivers для секции фотографий.
+  /// Использует SliverGrid вместо shrinkWrap GridView — обеспечивает
+  /// виртуализацию: только видимые ячейки держатся в дереве.
+  List<Widget> _buildPhotosSlivers(BuildContext context, PaginatedPhotosState? state) {
+    if (state == null) {
+      return [
+        const SliverToBoxAdapter(
+          child: EmptyState(
+            icon: Icons.event_available_outlined,
+            title: 'Выберите дату',
+            message: 'Нажмите на оранжевый день в календаре.',
+          ),
+        ),
+      ];
+    }
+
+    if (state.isLoading && state.photos.isEmpty) {
+      return [
+        const SliverToBoxAdapter(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    if (state.error != null && state.photos.isEmpty) {
+      return [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Не удалось загрузить фото: ${state.error}',
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    if (state.photos.isEmpty) {
+      return [
+        const SliverToBoxAdapter(
+          child: EmptyState(
+            icon: Icons.photo_library_outlined,
+            title: 'Фотоотчёт отсутствует',
+            message: 'За выбранную дату нет фото/видео.',
+          ),
+        ),
+      ];
+    }
+
+    final items = state.photos;
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        sliver: SliverGrid(
+          key: _photoGridKey,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final item = items[index];
+              return _PhotoThumbnail(
+                item: item,
+                onOpen: () => Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute<void>(
+                    fullscreenDialog: true,
+                    builder: (_) => PhotoViewerScreen(
+                      item: item,
+                      allPhotos: items,
+                      initialIndex: index,
+                    ),
+                  ),
+                ),
+              );
+            },
+            childCount: items.length,
+          ),
+        ),
+      ),
+      if (state.isLoading)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      if (!state.isLoading && !state.hasMore && items.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Все фото загружены (${items.length})',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+    ];
   }
 
   void _syncSelectedDate(List<String> days) {
@@ -861,6 +732,11 @@ class _PhotoThumbnail extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: ApiConfig.getMediaUrl(item.url),
                       fit: BoxFit.cover,
+                      // Ограничиваем размер в памяти до thumbnail-разрешения.
+                      // Без этого каждое фото грузится в полном разрешении (~5-20 МБ).
+                      // При 200+ фото это вызывает OOM crash (EXC_RESOURCE MEMORY).
+                      memCacheWidth: 300,
+                      memCacheHeight: 300,
                       placeholder: (_, _) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(

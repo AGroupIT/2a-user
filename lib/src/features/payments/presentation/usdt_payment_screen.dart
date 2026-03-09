@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/ui/tutorial_card.dart';
 import '../data/payments_provider.dart';
 import '../domain/payment_model.dart';
 import 'payment_screen.dart';
@@ -207,7 +208,32 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
         title: const Text('Оплата USDT'),
         centerTitle: true,
       ),
-      body: _buildBody(),
+      body: TutorialScreenWrapper(
+        screenKey: 'usdt_payment',
+        steps: const [
+          TutorialStep(
+            icon: Icons.currency_bitcoin_rounded,
+            title: 'Оплата USDT',
+            description: 'Экран показывает реквизиты для оплаты через криптовалюту USDT по сети TRC20.',
+          ),
+          TutorialStep(
+            icon: Icons.qr_code_rounded,
+            title: 'QR-код кошелька',
+            description: 'Отсканируйте QR-код в приложении криптокошелька или скопируйте адрес кнопкой рядом.',
+          ),
+          TutorialStep(
+            icon: Icons.copy_rounded,
+            title: 'Скопировать сумму и адрес',
+            description: 'Нажмите иконку копирования рядом с суммой или адресом кошелька, чтобы скопировать их в буфер обмена.',
+          ),
+          TutorialStep(
+            icon: Icons.timer_rounded,
+            title: 'Таймер и статус',
+            description: 'Платёж действителен ограниченное время. Нажмите «Проверить статус», чтобы убедиться в зачислении средств.',
+          ),
+        ],
+        child: _buildBody(),
+      ),
     );
   }
 

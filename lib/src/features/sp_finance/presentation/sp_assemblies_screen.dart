@@ -1,13 +1,9 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/services/auto_refresh_service.dart';
-import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -23,11 +19,8 @@ class SpAssembliesScreen extends ConsumerStatefulWidget {
 
 class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
     with AutoRefreshMixin {
-  final _showcaseKeyCard = GlobalKey();
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
+  final GlobalKey _assembliesListKey = GlobalKey();
+  final GlobalKey _firstAssemblyKey = GlobalKey();
   @override
   void initState() {
     super.initState();
@@ -41,45 +34,9 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
     });
   }
 
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyCard, ShowcaseBlock.spAssemblyCard),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(spAssembliesControllerProvider);
-    final shouldShowCard = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyCard));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -103,80 +60,67 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
       );
     }
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          // Запускаем showcase после загрузки данных
-          if (state.assemblies.isNotEmpty) {
-            _startShowcaseIfNeeded(showcaseContext);
+    return TutorialScreenWrapper(
+      screenKey: 'sp_assemblies',
+      steps: [
+        TutorialStep(
+          icon: Icons.inventory_2_rounded,
+          title: 'Совместные покупки',
+          description: 'Сборка объединяет несколько треков в одну партию. Здесь видны статус и итоговая стоимость каждой группы.',
+          targetKey: _assembliesListKey,
+        ),
+        TutorialStep(
+          icon: Icons.group_rounded,
+          title: 'Детали сборки',
+          description: 'Нажмите на сборку, чтобы увидеть всех участников, их треки, вес и долю в общем счёте.',
+          targetKey: _firstAssemblyKey,
+        ),
+        TutorialStep(
+          icon: Icons.notifications_rounded,
+          title: 'Уведомления о статусе',
+          description: 'При изменении статуса сборки вы получите push-уведомление. Статусы: новая → упакована → отправлена.',
+          targetKey: _firstAssemblyKey,
+        ),
+      ],
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
+        },
+        color: context.brandPrimary,
+      child: ListView.builder(
+        key: _assembliesListKey,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          topPad * 0.7 + 6,
+          16,
+          24 + bottomPad,
+        ),
+        itemCount: state.assemblies.length + 1, // +1 для заголовка
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Text(
+                'Совместные покупки',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+            );
           }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
-            },
-            color: context.brandPrimary,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(
-                16,
-                topPad * 0.7 + 6,
-                16,
-                24 + bottomPad,
-              ),
-              itemCount: state.assemblies.length + 1, // +1 для заголовка
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 18),
-                    child: Text(
-                      'Совместные покупки',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                  );
-                }
-
-                final assembly = state.assemblies[i - 1];
-                final isFirst = i == 1 && shouldShowCard;
-                return Padding(
-                  padding: EdgeInsets.only(bottom: i == state.assemblies.length ? 0 : 12),
-                  child: isFirst
-                      ? Showcase(
-                          key: _showcaseKeyCard,
-                          title: '📦 Карточка сборки СП',
-                          description: '• Участники и треки в СП\n'
-                              '• Вес: грязный и чистый\n'
-                              '• Статусы и прибыль\n\n'
-                              'Нажмите для просмотра деталей.\n\n'
-                              '👆 Нажмите для продолжения',
-                          targetPadding: const EdgeInsets.all(8),
-                          targetBorderRadius: BorderRadius.circular(20),
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: _AssemblyCard(assembly: assembly),
-                        )
-                      : _AssemblyCard(assembly: assembly),
-                );
-              },
-            ),
+          final assembly = state.assemblies[i - 1];
+          final card = _AssemblyCard(assembly: assembly);
+          return Padding(
+            padding: EdgeInsets.only(bottom: i == state.assemblies.length ? 0 : 12),
+            child: i == 1
+                ? KeyedSubtree(key: _firstAssemblyKey, child: card)
+                : card,
           );
         },
       ),
-    );
+    ));
   }
 }
 

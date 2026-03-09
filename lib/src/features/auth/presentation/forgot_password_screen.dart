@@ -57,14 +57,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Timer? _countdownTimer;
   int _secondsLeft = 300; // 5 минут
 
+  void _cancelTimers() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+  }
+
   @override
   void dispose() {
     _phoneCtrl.dispose();
     _domainCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmPasswordCtrl.dispose();
-    _pollTimer?.cancel();
-    _countdownTimer?.cancel();
+    _cancelTimers();
     super.dispose();
   }
 
@@ -174,8 +180,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (_secondsLeft > 0) {
         setState(() => _secondsLeft--);
       } else {
-        _countdownTimer?.cancel();
-        _pollTimer?.cancel();
+        _cancelTimers();
         _showError('Время истекло. Попробуйте снова.');
         setState(() => _currentStep = ResetStep.enterPhone);
       }
@@ -197,14 +202,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         final data = response.data;
 
         if (data['confirmed'] == true) {
-          _pollTimer?.cancel();
-          _countdownTimer?.cancel();
+          _cancelTimers();
           _resetToken = data['resetToken'];
           HapticFeedback.heavyImpact();
           setState(() => _currentStep = ResetStep.enterPassword);
         } else if (data['expired'] == true) {
-          _pollTimer?.cancel();
-          _countdownTimer?.cancel();
+          _cancelTimers();
           _showError('Время истекло. Попробуйте снова.');
           setState(() => _currentStep = ResetStep.enterPhone);
         }
@@ -319,8 +322,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         _currentStep == ResetStep.success) {
                       context.pop();
                     } else {
-                      _pollTimer?.cancel();
-                      _countdownTimer?.cancel();
+                      _cancelTimers();
                       setState(() => _currentStep = ResetStep.enterPhone);
                     }
                   },

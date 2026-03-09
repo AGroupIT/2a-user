@@ -1,15 +1,11 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/network/api_client.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../data/referral_provider.dart';
 
 class ReferralScreen extends ConsumerStatefulWidget {
@@ -23,45 +19,9 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   final _linkCodeController = TextEditingController();
   bool _isLinking = false;
 
-  final _showcaseKeyInfo = GlobalKey();
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyInfo, ShowcaseBlock.referralInfo),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
+  final GlobalKey _referralInfoKey = GlobalKey();
+  final GlobalKey _codeCardKey = GlobalKey();
+  final GlobalKey _balanceKey = GlobalKey();
 
   @override
   void dispose() {
@@ -109,18 +69,31 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   Widget build(BuildContext context) {
     final referralAsync = ref.watch(referralProvider);
     final brandColor = context.brandPrimary;
-    final shouldShowInfo = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.referralInfo));
-
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return Scaffold(
-      backgroundColor: AppColors.brandBg,
-      body: referralAsync.when(
+    return TutorialScreenWrapper(
+      screenKey: 'referral',
+      steps: [
+        TutorialStep(
+          icon: Icons.group_add_rounded,
+          title: 'Реферальная программа',
+          description: 'Приглашайте друзей и коллег. Когда они оплатят первый счёт — вы получаете бонусные килограммы к вашим отправлениям.',
+          targetKey: _referralInfoKey,
+        ),
+        TutorialStep(
+          icon: Icons.qr_code_rounded,
+          title: 'Ваш реферальный код',
+          description: 'Нажмите «Скопировать» или «Поделиться», чтобы отправить код другу. Он вводит его при регистрации — и оба получают бонус после первой оплаты.',
+          targetKey: _codeCardKey,
+        ),
+        TutorialStep(
+          icon: Icons.balance_rounded,
+          title: 'Бонусный баланс',
+          description: 'Накопленные килограммы автоматически вычитаются из веса следующего счёта. Чем больше приглашённых — тем больше скидка.',
+          targetKey: _balanceKey,
+        ),
+      ],
+      child: Scaffold(
+        backgroundColor: AppColors.brandBg,
+        body: referralAsync.when(
         loading: () =>
             const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -158,27 +131,27 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
             ),
             children: [
               // === Заголовок ===
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  'Реферальная программа',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+              KeyedSubtree(
+                key: _referralInfoKey,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    'Реферальная программа',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
 
-              // === Карточка с кодом ===
-              shouldShowInfo
-                  ? Showcase(
-                      key: _showcaseKeyInfo,
-                      title: 'Реферальная программа',
-                      description: 'Ваш реферальный код для приглашения новых клиентов. Поделитесь им, чтобы получать бонусы.',
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.bottom,
-                      child: _CodeCard(data: data, brandColor: brandColor),
-                    )
-                  : _CodeCard(data: data, brandColor: brandColor),
+              // === Карточка с кодом (содержит бонусный баланс) ===
+              KeyedSubtree(
+                key: _codeCardKey,
+                child: KeyedSubtree(
+                  key: _balanceKey,
+                  child: _CodeCard(data: data, brandColor: brandColor),
+                ),
+              ),
 
               const SizedBox(height: 16),
 
@@ -205,8 +178,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
 
               // === Рефералы ===
               if (data.referrals.isNotEmpty) ...[
-                _SectionHeader(
-                    title: 'Ваши рефералы (${data.referrals.length})'),
+                _SectionHeader(title: 'Ваши рефералы (${data.referrals.length})'),
                 const SizedBox(height: 8),
                 ...data.referrals.map((r) => _ReferralEntryTile(
                       entry: r,
@@ -228,10 +200,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
           ),
         ),
       ),
-          );
-        },
-      ),
-    );
+    ));
   }
 }
 

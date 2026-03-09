@@ -1,12 +1,14 @@
 class InvoiceItem {
   final String id;
   final String invoiceNumber;
-  final DateTime? sendDate; // Дата отправки
-  final DateTime? arrivalDate; // Дата прибытия
-  final DateTime? paymentDate; // Дата оплаты
-  final String? arrivalMarket; // Рынок разгрузки
+  final DateTime? createdAt;
+  final DateTime? sendDate;
+  final DateTime? arrivalDate; // arrivedAt в БД
+  final DateTime? paidAt; // paidAt в БД
+  final String? arrivalMarket;
+  final String? arrivalStatus;
   final String? tariffName;
-  final double? tariffBaseCost; // Базовая стоимость тарифа
+  final double? tariffBaseCost;
   final int placesCount;
   final double density;
   final double weight;
@@ -14,15 +16,19 @@ class InvoiceItem {
   final String? calculationMethod;
   final List<PackagingItem> packagings;
   final double? packagingCostTotal;
-  final double? transshipmentCost; // Приём груза (разгрузка) для клиента $
-  final double? insuranceCost; // Страховка для клиента $
-  final double? discountAmount; // Скидка $
-  final double totalCostUsd; // Итого к оплате $
-  final double? clientRubRate; // Курс доллара клиента
-  final double totalCostRub; // К оплате RUB
-  final double? photoReportCoefficient; // Коэффициент фотоотчёта
-  final int totalTracks; // Всего треков в сборке
-  final int tracksWithPhoto; // Треков с фотоотчётом
+  final double? transshipmentCost;
+  final double? insuranceCost;
+  final double? insurancePercent;
+  final double? discountAmount;
+  final double? shippingCost; // стоимость доставки $
+  final double totalCostUsd;
+  final double totalCostCny; // к оплате в ¥
+  final double totalCostRub; // к оплате в ₽
+  final double? clientRubRate; // курс $/₽
+  final double? clientYuanRate; // курс $/¥
+  final double? photoReportCoefficient;
+  final int totalTracks;
+  final int tracksWithPhoto;
   final List<String> scalePhotoUrls;
   final String status;
   final String? statusName;
@@ -34,10 +40,12 @@ class InvoiceItem {
   const InvoiceItem({
     required this.id,
     required this.invoiceNumber,
+    this.createdAt,
     this.sendDate,
     this.arrivalDate,
-    this.paymentDate,
+    this.paidAt,
     this.arrivalMarket,
+    this.arrivalStatus,
     required this.status,
     this.statusName,
     this.statusColor,
@@ -50,12 +58,16 @@ class InvoiceItem {
     this.calculationMethod,
     this.transshipmentCost,
     this.insuranceCost,
+    this.insurancePercent,
     this.discountAmount,
+    this.shippingCost,
     this.packagings = const [],
     this.packagingCostTotal,
     this.totalCostUsd = 0,
-    this.clientRubRate,
+    this.totalCostCny = 0,
     required this.totalCostRub,
+    this.clientRubRate,
+    this.clientYuanRate,
     this.photoReportCoefficient,
     this.totalTracks = 0,
     this.tracksWithPhoto = 0,
@@ -70,35 +82,40 @@ class InvoiceItem {
     final statusName = json['statusName'] as String?;
     final statusColor = json['statusColor'] as String?;
 
-    // Дата отправки
+    DateTime? createdAt;
+    if (json['createdAt'] != null) {
+      createdAt = DateTime.tryParse(json['createdAt'].toString());
+    }
+
     DateTime? sendDate;
     if (json['sendDate'] != null) {
       sendDate = DateTime.tryParse(json['sendDate'].toString());
     }
 
-    // Дата прибытия
+    // arrivedAt — основное поле в Prisma, arrivalDate — fallback
     DateTime? arrivalDate;
-    if (json['arrivalDate'] != null) {
+    if (json['arrivedAt'] != null) {
+      arrivalDate = DateTime.tryParse(json['arrivedAt'].toString());
+    } else if (json['arrivalDate'] != null) {
       arrivalDate = DateTime.tryParse(json['arrivalDate'].toString());
     }
 
-    // Дата оплаты
-    DateTime? paymentDate;
-    if (json['paymentDate'] != null) {
-      paymentDate = DateTime.tryParse(json['paymentDate'].toString());
+    // paidAt — основное поле в Prisma, paymentDate — fallback
+    DateTime? paidAt;
+    if (json['paidAt'] != null) {
+      paidAt = DateTime.tryParse(json['paidAt'].toString());
+    } else if (json['paymentDate'] != null) {
+      paidAt = DateTime.tryParse(json['paymentDate'].toString());
     }
 
-    // Тариф
     final tariff = json['tariff'] as Map<String, dynamic>?;
     final tariffName =
         tariff?['name'] as String? ?? tariff?['nameRu'] as String?;
     final tariffBaseCost = _parseDouble(tariff?['baseCost']);
 
-    // Код клиента
     final clientCodeData = json['clientCode'] as Map<String, dynamic>?;
     final clientCode = clientCodeData?['code'] as String?;
 
-    // Упаковки (множественное значение)
     final List<PackagingItem> packagings = [];
     final packagingsData = json['packagings'] as List<dynamic>? ?? [];
     for (final p in packagingsData) {
@@ -118,7 +135,6 @@ class InvoiceItem {
       }
     }
 
-    // Fallback: packagingType (одиночное значение)
     if (packagings.isEmpty) {
       final packaging = json['packagingType'] as Map<String, dynamic>?;
       if (packaging != null) {
@@ -134,7 +150,6 @@ class InvoiceItem {
       }
     }
 
-    // Фотоотчёт и фото: считаем треки с фото из assembly.tracks
     int totalTracks = 0;
     int tracksWithPhoto = 0;
     final List<String> photoUrls = [];
@@ -146,7 +161,6 @@ class InvoiceItem {
         final tm = t as Map<String, dynamic>;
         final pr = tm['photoRequests'] as List?;
         if (pr != null && pr.isNotEmpty) tracksWithPhoto++;
-        // Собираем URL фотографий из треков
         final photos = tm['photos'] as List?;
         if (photos != null) {
           for (final photo in photos) {
@@ -163,10 +177,12 @@ class InvoiceItem {
           json['invoiceNumber'] as String? ??
           json['number'] as String? ??
           'INV-${json['id']}',
+      createdAt: createdAt,
       sendDate: sendDate,
       arrivalDate: arrivalDate,
-      paymentDate: paymentDate,
+      paidAt: paidAt,
       arrivalMarket: json['arrivalMarket'] as String?,
+      arrivalStatus: json['arrivalStatus'] as String?,
       status: status,
       statusName: statusName,
       statusColor: statusColor,
@@ -177,22 +193,26 @@ class InvoiceItem {
       weight: _parseDouble(json['weight']),
       volume: _parseDouble(json['volume']),
       calculationMethod: json['calculationMethod'] as String?,
-      transshipmentCost: _parseDouble(json['transshipmentCost']),
-      insuranceCost: _parseDouble(json['insuranceCost']),
-      discountAmount: json['discount'] != null ? _parseDouble(json['discount']) : null,
+      transshipmentCost: _parseDouble(json['transshipmentCost']).let((v) => v > 0 ? v : null),
+      insuranceCost: _parseDouble(json['insuranceCost']).let((v) => v > 0 ? v : null),
+      insurancePercent: json['insurancePercent'] != null ? _parseDouble(json['insurancePercent']).let((v) => v > 0 ? v : null) : null,
+      discountAmount: json['discount'] != null ? _parseDouble(json['discount']).let((v) => v > 0 ? v : null) : null,
+      shippingCost: json['shippingCost'] != null ? _parseDouble(json['shippingCost']).let((v) => v > 0 ? v : null) : null,
       packagings: packagings,
-      packagingCostTotal: _parseDouble(json['packagingCost']),
+      packagingCostTotal: _parseDouble(json['packagingCost']).let((v) => v > 0 ? v : null),
       totalCostUsd: _parseDouble(json['totalCostUSD']),
-      clientRubRate: _parseDouble(json['clientRubRate']),
+      totalCostCny: _parseDouble(json['totalCostCNY']),
       totalCostRub: _parseDouble(json['totalCostRUB']),
-      photoReportCoefficient: _parseDouble(json['photoReportCoefficient']),
+      clientRubRate: json['clientRubRate'] != null ? _parseDouble(json['clientRubRate']).let((v) => v > 0 ? v : null) : null,
+      clientYuanRate: json['clientYuanRate'] != null ? _parseDouble(json['clientYuanRate']).let((v) => v > 0 ? v : null) : null,
+      photoReportCoefficient: _parseDouble(json['photoReportCoefficient']).let((v) => v > 0 ? v : null),
       totalTracks: totalTracks,
       tracksWithPhoto: tracksWithPhoto,
       scalePhotoUrls: photoUrls,
       clientCode: clientCode,
       bonusKgApplied: _parseDouble(json['bonusKgApplied']),
       clientPricePerKg: json['clientPricePerKg'] != null
-          ? _parseDouble(json['clientPricePerKg'])
+          ? _parseDouble(json['clientPricePerKg']).let((v) => v > 0 ? v : null)
           : null,
     );
   }
@@ -203,6 +223,10 @@ class InvoiceItem {
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
   }
+}
+
+extension _DoubleLetExt on double {
+  T let<T>(T Function(double) f) => f(this);
 }
 
 /// Элемент упаковки с названием и стоимостью

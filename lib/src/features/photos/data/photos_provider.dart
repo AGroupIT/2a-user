@@ -2,11 +2,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import '../domain/photo_item.dart';
 
 /// Провайдер для получения общего количества фото по коду клиента
-final photosTotalCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+final photosTotalCountProvider = FutureProvider.autoDispose.family<int, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.photosCount;
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -31,7 +34,8 @@ final photosTotalCountProvider = FutureProvider.family<int, String>((ref, client
 });
 
 /// Провайдер для получения последних фото по коду клиента (только из фотоотчётов)
-final photosRecentProvider = FutureProvider.family<List<PhotoItem>, ({String clientCode, int limit})>((ref, params) async {
+final photosRecentProvider = FutureProvider.autoDispose.family<List<PhotoItem>, ({String clientCode, int limit})>((ref, params) async {
+  if (ref.watch(demoModeProvider)) return DemoData.photos.take(params.limit).toList();
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -58,7 +62,15 @@ final photosRecentProvider = FutureProvider.family<List<PhotoItem>, ({String cli
 });
 
 /// Провайдер для получения дней с фото
-final photosDaysProvider = FutureProvider.family<List<String>, ({String clientCode, int month, int year})>((ref, params) async {
+final photosDaysProvider = FutureProvider.autoDispose.family<List<String>, ({String clientCode, int month, int year})>((ref, params) async {
+  if (ref.watch(demoModeProvider)) {
+    // Дни, в которые есть демо-фотографии за нужный месяц
+    return DemoData.photos
+        .where((p) => p.date.month == params.month && p.date.year == params.year)
+        .map((p) => p.date.day.toString())
+        .toSet()
+        .toList();
+  }
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -85,7 +97,14 @@ final photosDaysProvider = FutureProvider.family<List<String>, ({String clientCo
 });
 
 /// Провайдер для получения фото по дате
-final photosByDateProvider = FutureProvider.family<List<PhotoItem>, ({String clientCode, String date})>((ref, params) async {
+final photosByDateProvider = FutureProvider.autoDispose.family<List<PhotoItem>, ({String clientCode, String date})>((ref, params) async {
+  if (ref.watch(demoModeProvider)) {
+    final d = DateTime.tryParse(params.date);
+    if (d == null) return DemoData.photos;
+    return DemoData.photos
+        .where((p) => p.date.year == d.year && p.date.month == d.month && p.date.day == d.day)
+        .toList();
+  }
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -110,6 +129,136 @@ final photosByDateProvider = FutureProvider.family<List<PhotoItem>, ({String cli
     debugPrint('Error loading photos by date: $e');
     return [];
   }
+});
+
+// ─── Paginated photos by date ─────────────────────────────────────────────────
+
+class PaginatedPhotosState {
+  final List<PhotoItem> photos;
+  final bool isLoading;
+  final bool hasMore;
+  final int total;
+  final String? error;
+  final String date;
+  final String clientCode;
+
+  const PaginatedPhotosState({
+    this.photos = const [],
+    this.isLoading = false,
+    this.hasMore = true,
+    this.total = 0,
+    this.error,
+    required this.date,
+    required this.clientCode,
+  });
+
+  PaginatedPhotosState copyWith({
+    List<PhotoItem>? photos,
+    bool? isLoading,
+    bool? hasMore,
+    int? total,
+    String? error,
+    bool clearError = false,
+  }) {
+    return PaginatedPhotosState(
+      photos: photos ?? this.photos,
+      isLoading: isLoading ?? this.isLoading,
+      hasMore: hasMore ?? this.hasMore,
+      total: total ?? this.total,
+      error: clearError ? null : (error ?? this.error),
+      date: date,
+      clientCode: clientCode,
+    );
+  }
+}
+
+class PaginatedPhotosNotifier {
+  static const int _pageSize = 30;
+
+  final Ref _ref;
+  PaginatedPhotosState _state;
+  PaginatedPhotosState get state => _state;
+
+  final List<void Function()> _listeners = [];
+
+  PaginatedPhotosNotifier(this._ref, String clientCode, String date)
+      : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
+    loadInitial();
+  }
+
+  ApiClient get _apiClient => _ref.read(apiClientProvider);
+
+  void addListener(void Function() l) => _listeners.add(l);
+  void removeListener(void Function() l) => _listeners.remove(l);
+  void _notify() { for (final l in _listeners) { l(); } }
+
+  void _update(PaginatedPhotosState s) { _state = s; _notify(); }
+
+  Future<void> loadInitial() async {
+    if (_ref.read(demoModeProvider)) {
+      final d = DateTime.tryParse(_state.date);
+      final demoPhotos = d == null
+          ? DemoData.photos
+          : DemoData.photos
+              .where((p) => p.date.year == d.year && p.date.month == d.month && p.date.day == d.day)
+              .toList();
+      _update(_state.copyWith(photos: demoPhotos, total: demoPhotos.length, hasMore: false, isLoading: false));
+      return;
+    }
+    _update(_state.copyWith(isLoading: true, photos: [], hasMore: true, clearError: true));
+    try {
+      final result = await _fetch(skip: 0);
+      _update(_state.copyWith(
+        photos: result.photos,
+        total: result.total,
+        hasMore: result.photos.length >= _pageSize,
+        isLoading: false,
+      ));
+    } catch (e) {
+      _update(_state.copyWith(error: e.toString(), isLoading: false));
+    }
+  }
+
+  Future<void> loadMore() async {
+    if (_state.isLoading || !_state.hasMore) return;
+    _update(_state.copyWith(isLoading: true));
+    try {
+      final result = await _fetch(skip: _state.photos.length);
+      _update(_state.copyWith(
+        photos: [..._state.photos, ...result.photos],
+        total: result.total,
+        hasMore: result.photos.length >= _pageSize,
+        isLoading: false,
+      ));
+    } catch (e) {
+      _update(_state.copyWith(error: e.toString(), isLoading: false));
+    }
+  }
+
+  Future<({List<PhotoItem> photos, int total})> _fetch({required int skip}) async {
+    final response = await _apiClient.get('/photos', queryParameters: {
+      'clientCode': _state.clientCode,
+      'source': 'photoRequest',
+      'date': _state.date,
+      'take': _pageSize,
+      'skip': skip,
+    });
+
+    if (response.statusCode == 200 && response.data != null) {
+      final data = response.data as Map<String, dynamic>;
+      final json = data['data'] as List<dynamic>? ?? [];
+      final total = data['total'] as int? ?? 0;
+      final photos = json.map((j) => PhotoItem.fromJson(j as Map<String, dynamic>)).toList();
+      return (photos: photos, total: total);
+    }
+    throw Exception('Failed to load photos');
+  }
+}
+
+final paginatedPhotosByDateProvider = Provider.family<
+    PaginatedPhotosNotifier,
+    ({String clientCode, String date})>((ref, params) {
+  return PaginatedPhotosNotifier(ref, params.clientCode, params.date);
 });
 
 /// Провайдер для поиска фото

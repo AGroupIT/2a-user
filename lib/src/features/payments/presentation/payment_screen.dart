@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/ui/tutorial_card.dart';
 import '../data/payments_provider.dart';
 import '../domain/payment_model.dart';
 
@@ -92,7 +93,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         title: const Text('Оплата'),
         centerTitle: true,
       ),
-      body: _buildBody(),
+      body: TutorialScreenWrapper(
+        screenKey: 'payment',
+        steps: const [
+          TutorialStep(
+            icon: Icons.payment_rounded,
+            title: 'Оплата счёта',
+            description: 'Экран формирует платёж на указанную сумму и автоматически открывает страницу оплаты в браузере.',
+          ),
+          TutorialStep(
+            icon: Icons.open_in_new_rounded,
+            title: 'Перейти к оплате',
+            description: 'Нажмите кнопку «Перейти к оплате», чтобы открыть форму оплаты картой или через СБП.',
+          ),
+        ],
+        child: _buildBody(),
+      ),
     );
   }
 

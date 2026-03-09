@@ -1,14 +1,11 @@
-﻿// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
-import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/network/api_config.dart';
 import '../../../core/services/auto_refresh_service.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/services/update_service.dart';
 import '../../../core/ui/app_colors.dart';
@@ -26,6 +23,7 @@ import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
+import '../../../core/ui/tutorial_card.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -35,21 +33,13 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
-  // Showcase keys
-  final _showcaseKeyQuickCards = GlobalKey();
-  final _showcaseKeyDigest = GlobalKey();
-  final _showcaseKeyPhotos = GlobalKey();
-
-  // Showcase state
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
   // Флаг для показа диалога принятия правил
   bool _termsDialogShown = false;
 
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
+  final GlobalKey _quickCardsKey = GlobalKey();
+  final GlobalKey _tracksDigestKey = GlobalKey();
+  final GlobalKey _photosDigestKey = GlobalKey();
+  final GlobalKey _invoicesDigestKey = GlobalKey();
 
   @override
   void initState() {
@@ -85,65 +75,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
       builder: (context) => const _TermsAcceptanceDialog(),
     );
 
-    // После того как пользователь принял правила, запускаем showcase
-    if (mounted && _showcaseContext != null) {
-      // Сбрасываем флаг чтобы showcase мог запуститься
-      _showcaseStarted = false;
-      // Даем время на анимацию закрытия диалога
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (mounted) {
-        _startShowcaseIfNeeded(_showcaseContext!);
-      }
-    }
+    // После принятия правил — предлагаем пройти обучение
+    await _showOnboardingOfferIfNeeded();
   }
 
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted || _allSkipped) return;
-    if (!TickerMode.of(showcaseContext)) return;
-
+  /// Показать предложение пройти обучение (однократно)
+  Future<void> _showOnboardingOfferIfNeeded() async {
+    if (!mounted) return;
     final showcaseService = ref.read(showcaseServiceProvider);
-    if (!showcaseService.hasAcceptedTerms) return;
+    if (showcaseService.hasSeenOnboardingOffer) return;
 
-    _showcaseStarted = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      final pairs = [
-        (ShowcaseBlock.homeQuickCards, _showcaseKeyQuickCards),
-        (ShowcaseBlock.homeDigest, _showcaseKeyDigest),
-        (ShowcaseBlock.homePhotos, _showcaseKeyPhotos),
-      ];
-      final visible = pairs.where((p) => p.$2.currentContext != null).toList();
-
-      if (visible.isEmpty) {
-        _showcaseStarted = false; // Сбрасываем чтобы сработало когда появятся данные
-        return;
-      }
-
-      _currentRunBlocks = visible.map((p) => p.$1).toList();
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      ShowCaseWidget.of(showcaseContext)
-          .startShowCase(visible.map((p) => p.$2).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    final svc = ref.read(showcaseServiceProvider);
-    for (final block in _currentRunBlocks) {
-      svc.markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _OnboardingOfferDialog(),
+    );
   }
 
   void _setupAutoRefresh() {
@@ -163,11 +109,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
 
   @override
   Widget build(BuildContext context) {
-    // Сброс флага _showcaseStarted при глобальном сбросе обучения
-    ref.listen(showcaseTutorialResetProvider, (_, _) {
-      _showcaseStarted = false;
-    });
-
     final clientCode = ref.watch(activeClientCodeProvider);
     final authState = ref.watch(authProvider);
     final clientProfile = ref.watch(clientProfileProvider);
@@ -194,9 +135,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
     final assembliesCount = assembliesCountAsync.asData?.value;
     final invoicesCount = invoicesCountAsync.asData?.value;
 
-    final shouldShowQuickCards = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homeQuickCards));
-    final shouldShowDigest = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homeDigest));
-    final shouldShowPhotos = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.homePhotos));
     final theme = Theme.of(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -209,7 +147,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
       ref.invalidate(tracksCountProvider(clientCode));
       ref.invalidate(assembliesCountProvider(clientCode));
       ref.invalidate(invoicesCountProvider(clientCode));
-      // Ждём завершения загрузки
       await Future.wait([
         ref.read(clientProfileProvider.future),
         ref.read(tracksDigestProvider(clientCode).future),
@@ -218,177 +155,112 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
       ]);
     }
 
-    // Запускаем showcase после загрузки данных
-    // (перенесено в build внутрь Builder)
-
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
-          
-          // Запускаем showcase после загрузки данных
-          if (tracksCountAsync.hasValue) {
-            _startShowcaseIfNeeded(showcaseContext);
-          }
-
-          return RefreshIndicator(
-            onRefresh: onRefresh,
-            color: context.brandPrimary,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
-              // Увеличиваем область кэширования для плавного скролла
-              cacheExtent: 500,
-              children: [
-              _GreetingBlock(fullName: clientName),
-              const SizedBox(height: 14),
-              Builder(
-                builder: (_) {
-                  final quickCards = Row(
-                    children: [
-                      Expanded(
-                        child: _QuickCard(
-                          title: 'Треки',
-                          icon: Icons.local_shipping_rounded,
-                          value: tracksCount,
-                          onTap: () => context.go('/tracks'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _QuickCard(
-                          title: 'Сборки',
-                          icon: Icons.inventory_2_rounded,
-                          value: assembliesCount,
-                          onTap: () => context.go('/tracks'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _QuickCard(
-                          title: 'Счета',
-                          icon: Icons.receipt_long_rounded,
-                          value: invoicesCount,
-                          onTap: () => context.go('/invoices'),
-                        ),
-                      ),
-                    ],
-                  );
-                  return shouldShowQuickCards
-                      ? Showcase(
-                          key: _showcaseKeyQuickCards,
-                          title: '📊 Быстрый доступ к данным',
-                          description: 'Три карточки показывают количество:\n• Треки - ваши посылки в пути\n• Сборки - готовые к отправке\n• Счета - документы на оплату\n\nНажмите на любую карточку для перехода к подробному списку.',
-                          targetBorderRadius: BorderRadius.circular(18),
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.bottom,
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          onTargetClick: () {
-                            if (_showcaseContext != null) {
-                              ShowCaseWidget.of(_showcaseContext!).next();
-                            }
-                          },
-                          disposeOnTap: false,
-                          child: quickCards,
-                        )
-                      : quickCards;
-                },
-              ),
-        const SizedBox(height: 18),
-        Text(
-          'Дайджест',
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+    return TutorialScreenWrapper(
+      screenKey: 'home',
+      steps: [
+        TutorialStep(
+          icon: Icons.dashboard_rounded,
+          title: 'Главная страница',
+          description: 'Здесь собрана ключевая информация: счётчики треков, сборок, счетов и фотоотчётов. Нажмите на любую карточку — перейдёте в нужный раздел.',
+          targetKey: _quickCardsKey,
         ),
-        const SizedBox(height: 10),
-        // Дайджест треков — показываем showcase только когда есть треки
-        (shouldShowDigest && (tracksCount ?? 0) > 0)
-            ? Showcase(
-                key: _showcaseKeyDigest,
-                title: '📦 Дайджест треков',
-                description: 'Лента последних обновлений по вашим посылкам:\n• Статус трека (в пути, на складе, получен)\n• Дата последнего обновления\n• Информация о товаре\n\nНажмите "Смотреть все" справа для перехода к полному списку треков с фильтрами и поиском.',
-                targetBorderRadius: BorderRadius.circular(20),
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.bottom,
-                tooltipBackgroundColor: Colors.white,
-                textColor: Colors.black87,
-                titleTextStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A1A),
-                ),
-                descTextStyle: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-                child: _DigestSection(
-                  title: 'Треки',
-                  onAll: () => context.go('/tracks'),
-                  child: _TracksDigest(tracksAsync: tracksDigestAsync),
-                ),
-              )
-            : _DigestSection(
-                title: 'Треки',
-                onAll: () => context.go('/tracks'),
-                child: _TracksDigest(tracksAsync: tracksDigestAsync),
-              ),
-        const SizedBox(height: 12),
-        // Фотоотчёты — показываем showcase только когда есть фото
-        (shouldShowPhotos && (recentPhotosAsync.asData?.value.isNotEmpty ?? false))
-            ? Showcase(
-                key: _showcaseKeyPhotos,
-                title: '📸 Фотоотчёты товаров',
-                description: 'Галерея фотографий ваших посылок на складе:\n• Фото упаковки\n• Фото весов с весом груза\n• Состояние товара\n\nНажмите на фото для просмотра в полном размере. Кнопка "Смотреть все" откроет полную галерею с возможностью скачивания.',
-                targetBorderRadius: BorderRadius.circular(20),
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.bottom,
-                tooltipBackgroundColor: Colors.white,
-                textColor: Colors.black87,
-                titleTextStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A1A),
-                ),
-                descTextStyle: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-                child: _DigestSection(
-                  title: 'Фото',
-                  onAll: () => context.go('/photos'),
-                  child: _PhotosDigest(photosAsync: recentPhotosAsync),
-                ),
-              )
-            : _DigestSection(
-                title: 'Фото',
-                onAll: () => context.go('/photos'),
-                child: _PhotosDigest(photosAsync: recentPhotosAsync),
-              ),
-        const SizedBox(height: 12),
-        _DigestSection(
+        TutorialStep(
+          icon: Icons.local_shipping_rounded,
+          title: 'Последние посылки',
+          description: 'Блок показывает 10 последних треков с текущим статусом. Цветной значок — этап доставки. Нажмите на трек, чтобы увидеть детали.',
+          targetKey: _tracksDigestKey,
+        ),
+        TutorialStep(
+          icon: Icons.receipt_long_rounded,
           title: 'Счета',
-          onAll: () => context.go('/invoices'),
-          child: _InvoicesDigest(invoicesAsync: invoicesDigestAsync),
+          description: 'Последние счета на оплату. «Требует оплаты» — посылка ждёт оплаты перед отправкой. «Оплачен» — уже в пути.',
+          targetKey: _invoicesDigestKey,
         ),
-            ],
+        TutorialStep(
+          icon: Icons.photo_rounded,
+          title: 'Фотоотчёты',
+          description: 'Последние фотографии ваших посылок со склада. Нажмите на фото, чтобы открыть в полном размере.',
+          targetKey: _photosDigestKey,
+        ),
+      ],
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        color: context.brandPrimary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+        cacheExtent: 500,
+        children: [
+          _GreetingBlock(fullName: clientName),
+          const SizedBox(height: 14),
+          KeyedSubtree(
+            key: _quickCardsKey,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _QuickCard(
+                    title: 'Треки',
+                    icon: Icons.local_shipping_rounded,
+                    value: tracksCount,
+                    onTap: () => context.go('/tracks'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickCard(
+                    title: 'Сборки',
+                    icon: Icons.inventory_2_rounded,
+                    value: assembliesCount,
+                    onTap: () => context.go('/tracks'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickCard(
+                    title: 'Счета',
+                    icon: Icons.receipt_long_rounded,
+                    value: invoicesCount,
+                    onTap: () => context.go('/invoices'),
+                  ),
+                ),
+              ],
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Дайджест',
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          KeyedSubtree(
+            key: _tracksDigestKey,
+            child: _DigestSection(
+              title: 'Треки',
+              onAll: () => context.go('/tracks'),
+              child: _TracksDigest(tracksAsync: tracksDigestAsync),
+            ),
+          ),
+          const SizedBox(height: 12),
+          KeyedSubtree(
+            key: _photosDigestKey,
+            child: _DigestSection(
+              title: 'Фото',
+              onAll: () => context.go('/photos'),
+              child: _PhotosDigest(photosAsync: recentPhotosAsync),
+            ),
+          ),
+          const SizedBox(height: 12),
+          KeyedSubtree(
+            key: _invoicesDigestKey,
+            child: _DigestSection(
+              title: 'Счета',
+              onAll: () => context.go('/invoices'),
+              child: _InvoicesDigest(invoicesAsync: invoicesDigestAsync),
+            ),
+          ),
+        ],
       ),
+    ),
     );
   }
 }
@@ -1049,6 +921,127 @@ class _InvoicesDigest extends StatelessWidget {
     if (s.contains('требует')) return const Color(0xFFB45309);
     if (s.contains('новый')) return const Color(0xFF2563EB);
     return Theme.of(context).colorScheme.primary;
+  }
+}
+
+/// Диалог предложения пройти обучение
+class _OnboardingOfferDialog extends ConsumerWidget {
+  const _OnboardingOfferDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          constraints: const BoxConstraints(maxWidth: 500),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Иконка
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(
+                    Icons.school_rounded,
+                    size: 48,
+                    color: context.brandPrimary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Заголовок
+                const Text(
+                  'Пройти обучение?',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+
+                // Описание
+                Text(
+                  'Мы покажем, как пользоваться приложением: отслеживать треки, работать со счетами и многое другое.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+
+                // Кнопка "Да"
+                FilledButton(
+                  onPressed: () async {
+                    final svc = ref.read(showcaseServiceProvider);
+                    await svc.markOnboardingOffered();
+                    ref.read(demoModeProvider.notifier).enable();
+                    if (context.mounted) {
+                      Navigator.of(context).pop(true);
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.brandPrimary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'Да, пройти обучение',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Кнопка "Нет"
+                TextButton(
+                  onPressed: () async {
+                    final svc = ref.read(showcaseServiceProvider);
+                    await svc.markOnboardingOffered();
+                    if (context.mounted) {
+                      Navigator.of(context).pop(false);
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade600,
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: const Text(
+                    'Нет, пропустить',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

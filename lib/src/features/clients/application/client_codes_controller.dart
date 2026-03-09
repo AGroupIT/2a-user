@@ -180,7 +180,7 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
   Future<void> logout() async {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.remove(_activeKey);
-    // По UX после выхода оставим пустой список и null активный код
+    await prefs.remove(_codesKey); // Очищаем PIN-коды чтобы они не попали к следующему пользователю
     state = const AsyncValue.data(ClientCodesState(codes: [], activeCode: null));
   }
 }

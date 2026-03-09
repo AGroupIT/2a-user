@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 
 // ============================================================
 // Модели
@@ -116,6 +117,14 @@ class ReferralData {
 // ============================================================
 
 final referralProvider = FutureProvider<ReferralData>((ref) async {
+  if (ref.watch(demoModeProvider)) {
+    return const ReferralData(
+      referralCode: 'DEMO2025',
+      referralKgBalance: 3.5,
+      referrals: [],
+      transactions: [],
+    );
+  }
   final api = ref.read(apiClientProvider);
   final response = await api.get('/client/referral');
   final data = (response.data as Map<String, dynamic>)['data']

@@ -17,8 +17,10 @@ import '../../assemblies/data/assemblies_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../notifications/application/notifications_controller.dart';
+import '../../photos/data/photos_provider.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../sp_finance/data/sp_provider.dart';
+import '../../tracks/data/assemblies_provider.dart' as tracks_assemblies;
 import '../../tracks/data/tracks_provider.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
@@ -232,11 +234,9 @@ class AuthNotifier extends Notifier<AuthState> {
           clientData: userData,
         );
         
-        // Invalidate провайдеры ПОСЛЕ обновления state
-        // НЕ invalidate clientCodesControllerProvider - он сам пересоберётся через watch(authProvider)
-        // Используем Future.microtask чтобы отложить до следующего микротаска
+        // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
         Future.microtask(() {
-          ref.invalidate(clientProfileProvider);
+          _invalidateAllProviders();
           for (final page in ShowcasePage.values) {
             ref.invalidate(showcaseProvider(page));
           }
@@ -336,19 +336,9 @@ class AuthNotifier extends Notifier<AuthState> {
       // Сбрасываем showcase чтобы показать обучение при каждом логине
       final showcaseService = ref.read(showcaseServiceProvider);
       await showcaseService.resetAllShowcases();
-      
-      // Invalidate client codes and profile to reload data
-      ref.invalidate(clientCodesControllerProvider);
-      ref.invalidate(clientProfileProvider);
-      
-      // Invalidate все showcase провайдеры чтобы они перечитали состояние
-      for (final page in ShowcasePage.values) {
-        ref.invalidate(showcaseProvider(page));
-      }
-      for (final block in ShowcaseBlock.values) {
-        ref.invalidate(showcaseBlockProvider(block));
-      }
-      
+
+      // Обновляем state ПЕРЕД invalidate — чтобы при перестройке провайдеры
+      // видели уже нового пользователя (новый clientId/clientCode)
       state = AuthState(
         isLoggedIn: true,
         userEmail: email,
@@ -358,6 +348,17 @@ class AuthNotifier extends Notifier<AuthState> {
         clientName: clientName,
         clientData: userData,
       );
+
+      // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
+      Future.microtask(() {
+        _invalidateAllProviders();
+        for (final page in ShowcasePage.values) {
+          ref.invalidate(showcaseProvider(page));
+        }
+        for (final block in ShowcaseBlock.values) {
+          ref.invalidate(showcaseBlockProvider(block));
+        }
+      });
       
       // Регистрируем устройство для push-уведомлений
       if (clientDomain.isNotEmpty) {
@@ -477,13 +478,23 @@ class AuthNotifier extends Notifier<AuthState> {
         }
       }
 
-      // Обновляем состояние
+      // Очищаем SharedPreferences ключи clientCodesController вручную,
+      // чтобы PIN-коды одного пользователя не утекли к следующему
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('active_client_code');
+        await prefs.remove('client_codes_list');
+      } catch (e) {
+        debugPrint('⚠️ Error clearing client codes from prefs: $e');
+      }
+
+      // Сначала обновляем state — при перестройке провайдеры увидят isLoggedIn: false
       state = const AuthState(
         isLoggedIn: false,
         isLoading: false,
       );
 
-      // Invalidate all data providers to clear cached data
+      // Затем инвалидируем все провайдеры
       _invalidateAllProviders();
 
       debugPrint('✅ Logout completed successfully');
@@ -491,7 +502,7 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('❌ Critical error during logout: $e');
       debugPrint('Stack trace: $stackTrace');
 
-      // Все равно устанавливаем состояние "разлогинен" даже если была ошибка
+      // Всё равно устанавливаем состояние "разлогинен" даже если была ошибка
       state = const AuthState(
         isLoggedIn: false,
         isLoading: false,
@@ -509,18 +520,41 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Profile & Stats
       ref.invalidate(clientProfileProvider);
+      ref.invalidate(clientStatsProvider);
 
       // Client codes
       ref.invalidate(clientCodesControllerProvider);
 
-      // Tracks
+      // Tracks (all family instances)
+      ref.invalidate(paginatedTracksProvider);
+      ref.invalidate(tracksListProvider);
+      ref.invalidate(tracksDigestProvider);
+      ref.invalidate(tracksSimpleListProvider);
       ref.invalidate(tracksCountProvider);
+      ref.invalidate(tracksWithoutAssemblyCountProvider);
+      ref.invalidate(trackStatusesProvider);
+
+      // Assemblies (tracks module)
+      ref.invalidate(tracks_assemblies.assembliesListProvider);
+      ref.invalidate(tracks_assemblies.assembliesDigestProvider);
+      ref.invalidate(tracks_assemblies.assembliesCountProvider);
+      ref.invalidate(tracks_assemblies.tariffsProvider);
+
+      // Assemblies (assemblies module)
+      ref.invalidate(assembliesCountProvider);
 
       // Invoices
+      ref.invalidate(invoicesListProvider);
+      ref.invalidate(invoicesDigestProvider);
       ref.invalidate(invoicesCountProvider);
+      ref.invalidate(invoiceStatusesProvider);
 
-      // Assemblies
-      ref.invalidate(assembliesCountProvider);
+      // Photos
+      ref.invalidate(photosTotalCountProvider);
+      ref.invalidate(photosRecentProvider);
+      ref.invalidate(photosDaysProvider);
+      ref.invalidate(photosByDateProvider);
+      ref.invalidate(photosSearchProvider);
 
       // Notifications
       ref.invalidate(notificationsControllerProvider);

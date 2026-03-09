@@ -2,12 +2,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import '../../news/data/news_provider.dart';
 import '../domain/rule_item.dart';
 
 /// Провайдер для получения списка правил
 final rulesListProvider = FutureProvider<List<RuleItem>>((ref) async {
+  if (ref.watch(demoModeProvider)) return DemoData.rules;
+
   final apiClient = ref.read(apiClientProvider);
   final agentId = ref.watch(clientAgentIdProvider);
 

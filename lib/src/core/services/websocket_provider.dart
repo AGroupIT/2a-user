@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
+import '../network/api_client.dart';
 import '../network/api_config.dart';
-import '../persistence/shared_preferences_provider.dart';
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   // WebSocket is proxied through nginx at /socket.io/ path
@@ -23,22 +23,21 @@ final webSocketConnectionStatusProvider = StreamProvider<SocketConnectionStatus>
   return service.connectionStatus;
 });
 
-/// Провайдер для автоматического подключения WebSocket при наличии токена
+/// Провайдер для автоматического подключения WebSocket при наличии токена.
+/// Использует ApiClient.getToken() — он корректно читает из SecureStorage на мобильных
+/// и из SharedPreferences/localStorage на web/desktop.
 final webSocketAutoConnectProvider = Provider<void>((ref) {
   final service = ref.watch(webSocketServiceProvider);
-  final prefs = ref.watch(sharedPreferencesProvider);
+  final apiClient = ref.watch(apiClientProvider);
 
-  // Получаем токен из SharedPreferences
-  final token = prefs.getString('token');
-
-  if (token != null && token.isNotEmpty) {
-    // Подключаемся асинхронно
-    Future.microtask(() async {
-      try {
+  Future.microtask(() async {
+    try {
+      final token = await apiClient.getToken();
+      if (token != null && token.isNotEmpty) {
         await service.connect(token);
-      } catch (e) {
-        // Ошибка подключения WebSocket не критична, будет fallback на polling
       }
-    });
-  }
+    } catch (e) {
+      // Ошибка подключения WebSocket не критична, будет fallback на polling
+    }
+  });
 });

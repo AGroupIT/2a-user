@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../data/purchase_provider.dart';
 import '../domain/purchase_list.dart';
 
@@ -62,7 +63,26 @@ class PurchaseListsScreen extends ConsumerWidget {
           );
         }
 
-        return ListView(
+        return TutorialScreenWrapper(
+          screenKey: 'purchase_lists',
+          steps: const [
+            TutorialStep(
+              icon: Icons.receipt_long_rounded,
+              title: 'Мои заявки',
+              description: 'Здесь хранятся все ваши отправленные заявки на выкуп. Каждая заявка — это список товаров из магазина.',
+            ),
+            TutorialStep(
+              icon: Icons.info_rounded,
+              title: 'Статус заявки',
+              description: 'Статус показывает, на каком этапе находится заявка: новая, в обработке, выкуплена или отменена.',
+            ),
+            TutorialStep(
+              icon: Icons.touch_app_rounded,
+              title: 'Детали заявки',
+              description: 'Нажмите на заявку, чтобы увидеть список товаров, их количество и итоговые суммы.',
+            ),
+          ],
+          child: ListView(
           padding: EdgeInsets.fromLTRB(
               16, topPad * 0.7 + 6, 16, 24 + bottomPad),
           children: [
@@ -80,7 +100,7 @@ class PurchaseListsScreen extends ConsumerWidget {
               ),
             ),
           ],
-        );
+        ));
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(

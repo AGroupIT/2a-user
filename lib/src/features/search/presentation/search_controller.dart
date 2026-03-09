@@ -33,6 +33,7 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
     required String clientCode,
     required int clientId,
     required int? clientCodeId,
+    String? currentClientCode,
   }) async {
     try {
       final repo = ref.read(searchRepositoryProvider);
@@ -42,6 +43,7 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
         clientCode: clientCode,
         clientId: clientId,
         clientCodeId: clientCodeId,
+        currentClientCode: currentClientCode,
       );
       
       // Обновляем список - помечаем трек как имеющий вопрос

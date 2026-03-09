@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import '../domain/invoice_item.dart';
 
 /// Модель статуса счёта
@@ -31,6 +33,7 @@ class InvoiceStatus {
 
 /// Провайдер для статусов счетов из БД
 final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((ref) async {
+  if (ref.watch(demoModeProvider)) return [];
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -62,6 +65,7 @@ final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((ref) async 
 
 /// Провайдер для получения списка счетов
 final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.invoices;
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -90,6 +94,7 @@ final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((r
 
 /// Провайдер для дайджеста счетов (последние 10, сортировка по updatedAt)
 final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.invoices;
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -119,6 +124,7 @@ final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>(
 
 /// Провайдер для общего количества счетов
 final invoicesCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.invoicesCount;
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -138,5 +144,28 @@ final invoicesCountProvider = FutureProvider.family<int, String>((ref, clientCod
   } on DioException catch (e) {
     debugPrint('Error loading invoices count: $e');
     return 0;
+  }
+});
+
+/// Провайдер для получения одного счёта по ID (для актуальных данных в чате)
+final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((ref, id) async {
+  if (ref.watch(demoModeProvider)) {
+    return DemoData.invoices.where((i) => i.id == id).firstOrNull;
+  }
+  final apiClient = ref.read(apiClientProvider);
+
+  try {
+    final response = await apiClient.get('/invoices/$id');
+
+    if (response.statusCode == 200 && response.data != null) {
+      final data = response.data as Map<String, dynamic>;
+      final invoiceJson = data['data'] as Map<String, dynamic>?;
+      if (invoiceJson == null) return null;
+      return InvoiceItem.fromJson(invoiceJson);
+    }
+    return null;
+  } on DioException catch (e) {
+    debugPrint('Error loading invoice by id: $e');
+    return null;
   }
 });

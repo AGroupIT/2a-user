@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_layout.dart';
 import '../data/purchase_provider.dart';
 import '../domain/purchase_list.dart';
@@ -38,12 +39,31 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
         if (list == null || list.items.isEmpty) {
           return _buildEmpty(context, topPad);
         }
-        return Stack(
+        return TutorialScreenWrapper(
+          screenKey: 'purchase_list',
+          steps: const [
+            TutorialStep(
+              icon: Icons.shopping_bag_rounded,
+              title: 'Список выкупа',
+              description: 'Здесь товары, которые вы добавили из каталога. Перед отправкой можно изменить количество или удалить позиции.',
+            ),
+            TutorialStep(
+              icon: Icons.add_circle_outline_rounded,
+              title: 'Изменить количество',
+              description: 'Кнопки «−» и «+» рядом с товаром меняют количество. Кнопка корзины (×) удаляет товар из списка.',
+            ),
+            TutorialStep(
+              icon: Icons.send_rounded,
+              title: 'Отправить на сборку',
+              description: 'Кнопка «Отправить на сборку» внизу экрана отправляет весь список менеджеру для оформления и выкупа.',
+            ),
+          ],
+          child: Stack(
           children: [
             _buildContent(context, list, topPad, bottomPad),
             _buildSubmitBar(context, list, bottomPad),
           ],
-        );
+        ));
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(

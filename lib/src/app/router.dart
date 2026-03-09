@@ -175,17 +175,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           String? invoiceId;
           String? invoiceNumber;
           double? amount;
-          
+          double? totalCostCny;
+          double? totalCostRub;
+          double? clientRubRate;
+          double? clientYuanRate;
+
           if (state.extra is Map<String, dynamic>) {
             final extra = state.extra as Map<String, dynamic>;
             initialMessage = extra['message'] as String?;
             invoiceId = extra['invoiceId'] as String?;
             invoiceNumber = extra['invoiceNumber'] as String?;
             amount = extra['amount'] as double?;
+            totalCostCny = extra['totalCostCny'] as double?;
+            totalCostRub = extra['totalCostRub'] as double?;
+            clientRubRate = extra['clientRubRate'] as double?;
+            clientYuanRate = extra['clientYuanRate'] as double?;
           } else if (state.extra is String) {
             initialMessage = state.extra as String?;
           }
-          
+
           return AppScaffold(
             title: 'Чат по оплате',
             child: PaymentChatScreen(
@@ -193,6 +201,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               invoiceId: invoiceId,
               invoiceNumber: invoiceNumber,
               amount: amount,
+              totalCostCny: totalCostCny,
+              totalCostRub: totalCostRub,
+              clientRubRate: clientRubRate,
+              clientYuanRate: clientYuanRate,
             ),
           );
         },

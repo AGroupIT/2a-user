@@ -1,13 +1,9 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
-
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/help_dialog.dart';
 import '../../../core/ui/status_pill.dart';
@@ -79,12 +75,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _ctrl = TextEditingController();
   bool _hasSearched = false;
 
-  // Showcase key
-  final _showcaseKeySearch = GlobalKey();
-
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
+  final GlobalKey _searchFieldKey = GlobalKey();
+  final GlobalKey _resultsKey = GlobalKey();
 
   @override
   void initState() {
@@ -104,263 +96,221 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.dispose();
   }
 
-  void _startShowcase(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeySearch, ShowcaseBlock.searchInput),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final activeClientCode = ref.watch(activeClientCodeProvider);
     final results = ref.watch(searchControllerProvider);
-    final shouldShowSearch = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.searchInput));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          // Запускаем showcase с правильным контекстом
-          _startShowcase(showcaseContext);
-
-          return ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              topPad * 0.7 + 6,
-              16,
-              24 + bottomPad,
+    return TutorialScreenWrapper(
+      screenKey: 'search',
+      steps: [
+        TutorialStep(
+          icon: Icons.search_rounded,
+          title: 'Поиск',
+          description: 'Введите трек-номер, номер счёта или код клиента — система найдёт совпадения по всей базе.',
+          targetKey: _searchFieldKey,
+        ),
+        TutorialStep(
+          icon: Icons.touch_app_rounded,
+          title: 'Результаты',
+          description: 'Нажмите на найденный результат, чтобы сразу перейти к треку или счёту.',
+          targetKey: _resultsKey,
+        ),
+      ],
+      child: ListView(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        topPad * 0.7 + 6,
+        16,
+        24 + bottomPad,
+      ),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Поиск по трекам',
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w900),
+              ),
             ),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Поиск по трекам',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
+            IconButton(
+              tooltip: 'Справка',
+              onPressed: () => showHelpDialog(
+                context,
+                title: 'Как искать треки',
+                content: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '1) Введите минимум 5 символов трек-номера (можно последние цифры).',
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Справка',
-                    onPressed: () => showHelpDialog(
-                      context,
-                      title: 'Как искать треки',
-                      content: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '1) Введите минимум 5 символов трек-номера (можно последние цифры).',
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            '2) Нажмите «Найти». Появятся карточки со статусом и датой обновления.',
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            '3) Если трек найден, но не привязан к вашему коду — нажмите «Запросить привязку…».',
-                          ),
-                        ],
-                      ),
+                    SizedBox(height: 8),
+                    Text(
+                      '2) Нажмите «Найти». Появятся карточки со статусом и датой обновления.',
                     ),
-                    icon: Icon(
-                      Icons.help_outline_rounded,
-                      color: context.brandPrimary,
+                    SizedBox(height: 8),
+                    Text(
+                      '3) Если трек найден, но не привязан к вашему коду — нажмите «Запросить привязку…».',
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Builder(
-                builder: (_) {
-                  final searchBox = Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x14000000),
-                          blurRadius: 24,
-                          offset: Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Builder(
-                          builder: (ctx) => Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [ctx.brandPrimary, ctx.brandSecondary],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.all(1.5),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12.5),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: TextField(
-                                controller: _ctrl,
-                                textInputAction: TextInputAction.search,
-                                decoration: InputDecoration(
-                                  prefixIcon: Icon(
-                                    Icons.search_rounded,
-                                    color: ctx.brandPrimary,
-                                    size: 20,
-                                  ),
-                                  suffixIcon: _ctrl.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.close_rounded,
-                                            color: Color(0xFF999999),
-                                            size: 20,
-                                          ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _ctrl.clear();
-                                            });
-                                          },
-                                        )
-                                      : null,
-                                  hintText: 'Поиск по номеру трека',
-                                  hintStyle: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF999999),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                onChanged: (_) => setState(() {
-                                  _hasSearched = false;
-                                }),
-                                onSubmitted: (_) => _run(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                  return shouldShowSearch
-                      ? Showcase(
-                          key: _showcaseKeySearch,
-                          title: 'Поиск треков',
-                          description:
-                              'Введите минимум 5 символов трек-номера и нажмите "Найти". Можно искать по любой части номера.',
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.bottom,
-                          child: searchBox,
-                        )
-                      : searchBox;
-                },
-              ),
-              const SizedBox(height: 10),
-              results.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
+                  ],
                 ),
-                error: (e, _) {
-                  final errorInfo = ErrorUtils.getErrorInfo(e);
-                  return EmptyState(
-                    icon: errorInfo.icon,
-                    title: errorInfo.title,
-                    message: errorInfo.message,
-                  );
-                },
-                data: (items) {
-                  final q = _ctrl.text.trim();
-                  if (q.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.search_rounded,
-                      title: 'Введите трек‑номер',
-                      message:
-                          'Поиск глобальный и не зависит от выбранного кода клиента.',
-                    );
-                  }
-                  if (q.length < 5) {
-                    return const EmptyState(
-                      icon: Icons.info_outline_rounded,
-                      title: 'Слишком короткий запрос',
-                      message: 'Введите минимум 5 символов.',
-                    );
-                  }
-                  if (!_hasSearched) {
-                    return const EmptyState(
-                      icon: Icons.keyboard_return_rounded,
-                      title: 'Нажмите Enter для поиска',
-                      message: 'Или нажмите «Готово» на клавиатуре.',
-                    );
-                  }
-                  if (items.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.search_off_rounded,
-                      title: 'Ничего не найдено',
-                      message: 'Проверьте написание или попробуйте позже.',
-                    );
-                  }
-
-                  return ListView.separated(
-                    physics: const NeverScrollableScrollPhysics(),
-                    shrinkWrap: true,
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) => _SearchResultTile(
-                      result: items[i],
-                      activeClientCode: activeClientCode,
-                    ),
-                  );
-                },
+              ),
+              icon: Icon(
+                Icons.help_outline_rounded,
+                color: context.brandPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          key: _searchFieldKey,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 24,
+                offset: Offset(0, 10),
               ),
             ],
-          );
-        },
-      ),
-    );
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Builder(
+                builder: (ctx) => Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [ctx.brandPrimary, ctx.brandSecondary],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.all(1.5),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12.5),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: TextField(
+                      controller: _ctrl,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: ctx.brandPrimary,
+                          size: 20,
+                        ),
+                        suffixIcon: _ctrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: Color(0xFF999999),
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _ctrl.clear();
+                                  });
+                                },
+                              )
+                            : null,
+                        hintText: 'Поиск по номеру трека',
+                        hintStyle: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (_) => setState(() {
+                        _hasSearched = false;
+                      }),
+                      onSubmitted: (_) => _run(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        KeyedSubtree(
+          key: _resultsKey,
+          child: results.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) {
+            final errorInfo = ErrorUtils.getErrorInfo(e);
+            return EmptyState(
+              icon: errorInfo.icon,
+              title: errorInfo.title,
+              message: errorInfo.message,
+            );
+          },
+          data: (items) {
+            final q = _ctrl.text.trim();
+            if (q.isEmpty) {
+              return const EmptyState(
+                icon: Icons.search_rounded,
+                title: 'Введите трек‑номер',
+                message:
+                    'Поиск глобальный и не зависит от выбранного кода клиента.',
+              );
+            }
+            if (q.length < 5) {
+              return const EmptyState(
+                icon: Icons.info_outline_rounded,
+                title: 'Слишком короткий запрос',
+                message: 'Введите минимум 5 символов.',
+              );
+            }
+            if (!_hasSearched) {
+              return const EmptyState(
+                icon: Icons.keyboard_return_rounded,
+                title: 'Нажмите Enter для поиска',
+                message: 'Или нажмите «Готово» на клавиатуре.',
+              );
+            }
+            if (items.isEmpty) {
+              return const EmptyState(
+                icon: Icons.search_off_rounded,
+                title: 'Ничего не найдено',
+                message: 'Проверьте написание или попробуйте позже.',
+              );
+            }
+
+            return ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, i) => _SearchResultTile(
+                result: items[i],
+                activeClientCode: activeClientCode,
+              ),
+            );
+          },
+        ),
+        ),
+      ],
+    ));
   }
 
   void _run() {
@@ -569,6 +519,7 @@ class _SearchResultTileState extends ConsumerState<_SearchResultTile> {
             clientCode: code,
             clientId: clientId,
             clientCodeId: null, // Будет определён на сервере
+            currentClientCode: widget.result.clientCode,
           );
 
       if (context.mounted) {

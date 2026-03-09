@@ -13,6 +13,7 @@ abstract class SearchRepository {
     required String clientCode,
     required int clientId,
     required int? clientCodeId,
+    String? currentClientCode,
   });
 }
 
@@ -74,8 +75,12 @@ class RealSearchRepository implements SearchRepository {
     required String clientCode,
     required int clientId,
     required int? clientCodeId,
+    String? currentClientCode,
   }) async {
     try {
+      final currentPart = currentClientCode != null && currentClientCode.isNotEmpty
+          ? ' - ($currentClientCode)'
+          : ' - (nocode)';
       await _api.post(
         '/questions',
         data: {
@@ -83,7 +88,7 @@ class RealSearchRepository implements SearchRepository {
           'trackNumber': trackNumber,
           'clientId': clientId,
           'clientCodeId': clientCodeId,
-          'question': 'Прошу привязать трек $trackNumber к моему коду клиента $clientCode',
+          'question': 'Прошу привязать трек $trackNumber$currentPart к моему коду клиента $clientCode',
         },
       );
     } on DioException catch (e) {

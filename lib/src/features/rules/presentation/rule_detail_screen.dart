@@ -6,6 +6,7 @@ import 'package:photo_view/photo_view.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/quill_delta_viewer.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
@@ -39,7 +40,21 @@ class RuleDetailScreen extends ConsumerWidget {
           );
         }
 
-        return ListView(
+        return TutorialScreenWrapper(
+          screenKey: 'rule_detail',
+          steps: const [
+            TutorialStep(
+              icon: Icons.rule_rounded,
+              title: 'Текст правила',
+              description: 'Здесь отображается полное содержание правила. Прокрутите вниз, чтобы прочитать его целиком.',
+            ),
+            TutorialStep(
+              icon: Icons.image_rounded,
+              title: 'Изображения',
+              description: 'Нажмите на любое изображение в правиле, чтобы открыть его на весь экран и увеличить.',
+            ),
+          ],
+          child: ListView(
           padding: EdgeInsets.fromLTRB(
             16,
             topPad * 0.7 + 6,
@@ -78,7 +93,7 @@ class RuleDetailScreen extends ConsumerWidget {
               ),
             ),
           ],
-        );
+        ));
       },
     );
   }

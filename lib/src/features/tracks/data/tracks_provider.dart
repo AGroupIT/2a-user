@@ -3,7 +3,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import '../domain/track_item.dart';
 
 // ==================== Status Model ====================
@@ -171,7 +173,7 @@ class PaginatedTracksState {
 /// Использует Provider.family для создания экземпляров с разными фильтрами
 class PaginatedTracksNotifier {
   final Ref _ref;
-  static const int _pageSize = 100;
+  static const int _pageSize = 25;
   
   PaginatedTracksState _state;
   PaginatedTracksState get state => _state;
@@ -187,7 +189,9 @@ class PaginatedTracksNotifier {
   ApiClient get _apiClient => _ref.read(apiClientProvider);
 
   void addListener(void Function() listener) {
-    _listeners.add(listener);
+    if (!_listeners.contains(listener)) {
+      _listeners.add(listener);
+    }
   }
 
   void removeListener(void Function() listener) {
@@ -208,6 +212,16 @@ class PaginatedTracksNotifier {
   /// Загрузить начальную страницу
   /// [silent] - если true, не показывать индикатор загрузки (для фонового обновления)
   Future<void> loadInitial({bool silent = false}) async {
+    if (_ref.read(demoModeProvider)) {
+      _updateState(_state.copyWith(
+        tracks: DemoData.tracks,
+        total: DemoData.tracksCount,
+        hasMore: false,
+        isLoading: false,
+        clearError: true,
+      ));
+      return;
+    }
     if (_state.isLoading) return;
 
     // При silent refresh не показываем loader и не очищаем текущие данные
@@ -220,7 +234,7 @@ class PaginatedTracksNotifier {
           _updateState(_state.copyWith(
             tracks: result.tracks,
             total: result.total,
-            hasMore: result.tracks.length >= _pageSize,
+            hasMore: result.tracks.length < result.total,
           ));
         }
       } catch (e) {
@@ -243,7 +257,7 @@ class PaginatedTracksNotifier {
       _updateState(_state.copyWith(
         tracks: result.tracks,
         total: result.total,
-        hasMore: result.tracks.length >= _pageSize,
+        hasMore: result.tracks.length < result.total,
         isLoading: false,
       ));
     } catch (e) {
@@ -289,7 +303,7 @@ class PaginatedTracksNotifier {
       _updateState(_state.copyWith(
         tracks: newTracks,
         total: result.total,
-        hasMore: result.tracks.length >= _pageSize,
+        hasMore: newTracks.length < result.total,
         isLoading: false,
       ));
     } catch (e) {
@@ -497,6 +511,7 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
 
 /// Провайдер для дайджеста - последние 10 треков отсортированные по дате изменения
 final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.tracks.take(10).toList();
   final apiClient = ref.read(apiClientProvider);
   
   try {
@@ -524,6 +539,7 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
 
 /// Провайдер для общего количества треков
 final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+  if (ref.watch(demoModeProvider)) return DemoData.tracksCount;
   final apiClient = ref.read(apiClientProvider);
   
   try {

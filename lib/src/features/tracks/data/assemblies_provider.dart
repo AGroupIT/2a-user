@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 
 /// Модель сборки
 class Assembly {
@@ -147,6 +149,7 @@ final assembliesListProvider = FutureProvider.family<List<Assembly>, String>((
   ref,
   clientCode,
 ) async {
+  if (ref.watch(demoModeProvider)) return [];
   final apiClient = ref.read(apiClientProvider);
 
   try {
@@ -175,6 +178,7 @@ final assembliesDigestProvider = FutureProvider.family<List<Assembly>, String>((
   ref,
   clientCode,
 ) async {
+  if (ref.watch(demoModeProvider)) return [];
   final apiClient = ref.read(apiClientProvider);
 
   try {
@@ -203,6 +207,7 @@ final assembliesCountProvider = FutureProvider.family<int, String>((
   ref,
   clientCode,
 ) async {
+  if (ref.watch(demoModeProvider)) return DemoData.assembliesCount;
   final apiClient = ref.read(apiClientProvider);
 
   try {

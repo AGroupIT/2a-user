@@ -5,16 +5,48 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 
-class MoreScreen extends ConsumerWidget {
+class MoreScreen extends ConsumerStatefulWidget {
   const MoreScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends ConsumerState<MoreScreen> {
+  final GlobalKey _newsRulesKey = GlobalKey();
+  final GlobalKey _supportKey = GlobalKey();
+  final GlobalKey _profileKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
 
-    return SingleChildScrollView(
+    return TutorialScreenWrapper(
+      screenKey: 'more',
+      steps: [
+        TutorialStep(
+          icon: Icons.newspaper_rounded,
+          title: 'Новости и правила',
+          description: 'Здесь собраны новости компании и правила оказания услуг. Читайте обновления и условия работы.',
+          targetKey: _newsRulesKey,
+        ),
+        TutorialStep(
+          icon: Icons.chat_bubble_outline_rounded,
+          title: 'Чат поддержки',
+          description: 'Возникли вопросы? Напишите нам в чат поддержки — отвечаем быстро в рабочее время.',
+          targetKey: _supportKey,
+        ),
+        TutorialStep(
+          icon: Icons.person_outline_rounded,
+          title: 'Профиль',
+          description: 'Здесь можно посмотреть статистику, изменить личные данные и настройки аккаунта.',
+          targetKey: _profileKey,
+        ),
+      ],
+      child: SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 100 + bottomPad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,7 +107,7 @@ class MoreScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

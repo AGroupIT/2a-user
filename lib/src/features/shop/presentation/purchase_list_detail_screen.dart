@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../data/purchase_provider.dart';
 import '../domain/purchase_list.dart';
 
@@ -50,7 +51,26 @@ class PurchaseListDetailScreen extends ConsumerWidget {
 
   Widget _buildContent(
       BuildContext context, PurchaseList list, double topPad, double bottomPad) {
-    return ListView(
+    return TutorialScreenWrapper(
+      screenKey: 'purchase_list_detail',
+      steps: const [
+        TutorialStep(
+          icon: Icons.receipt_long_rounded,
+          title: 'Детали заявки',
+          description: 'Здесь отображается список всех товаров в заявке: фото, название, выбранные параметры и количество.',
+        ),
+        TutorialStep(
+          icon: Icons.label_rounded,
+          title: 'Статус заявки',
+          description: 'Статус показывает этап обработки заявки: отправлена, в работе, выполнена или отменена.',
+        ),
+        TutorialStep(
+          icon: Icons.comment_rounded,
+          title: 'Комментарий менеджера',
+          description: 'Если менеджер оставил примечание к вашей заявке, оно отобразится в синем блоке внизу страницы.',
+        ),
+      ],
+      child: ListView(
       padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
       children: [
         Text(
@@ -153,7 +173,7 @@ class PurchaseListDetailScreen extends ConsumerWidget {
           ),
         ],
       ],
-    );
+    ));
   }
 
   static String _formatDate(DateTime date) {

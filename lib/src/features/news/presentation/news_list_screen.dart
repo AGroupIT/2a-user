@@ -1,14 +1,10 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/services/auto_refresh_service.dart';
-import '../../../core/services/showcase_service.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -26,14 +22,8 @@ class NewsListScreen extends ConsumerStatefulWidget {
 
 class _NewsListScreenState extends ConsumerState<NewsListScreen>
     with AutoRefreshMixin {
-  // Showcase keys
-  final _showcaseKeyHeader = GlobalKey();
-  final _showcaseKeyNewsCard = GlobalKey();
-
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
+  final GlobalKey _newsListKey = GlobalKey();
+  final GlobalKey _firstNewsKey = GlobalKey();
   @override
   void initState() {
     super.initState();
@@ -42,55 +32,9 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
     });
   }
 
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-
-    final pairs = [
-      (_showcaseKeyHeader, ShowcaseBlock.newsHeader),
-      (_showcaseKeyNewsCard, ShowcaseBlock.newsCard),
-    ];
-
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-
-    if (visible.isEmpty) {
-      _showcaseStarted = false;
-      return;
-    }
-
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final asyncItems = ref.watch(newsListProvider);
-    final shouldShowHeader = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.newsHeader));
-    final shouldShowCard = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.newsCard));
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -99,35 +43,44 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
       await ref.read(newsListProvider.future);
     }
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          // Запускаем showcase если нужно
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return asyncItems.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) {
-              final errorInfo = ErrorUtils.getErrorInfo(e);
-              return EmptyState(
-                icon: errorInfo.icon,
-                title: errorInfo.title,
-                message: errorInfo.message,
-              );
-            },
-            data: (items) {
-              if (items.isEmpty) {
-                return EmptyState(
-                  icon: Icons.newspaper_outlined,
-                  title: tr(context, ru: 'Пока нет новостей', zh: '暂无新闻'),
-                );
-              }
-              return RefreshIndicator(
-                onRefresh: onRefresh,
-                color: context.brandPrimary,
-                child: ListView.builder(
+    return asyncItems.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) {
+        final errorInfo = ErrorUtils.getErrorInfo(e);
+        return EmptyState(
+          icon: errorInfo.icon,
+          title: errorInfo.title,
+          message: errorInfo.message,
+        );
+      },
+      data: (items) {
+        if (items.isEmpty) {
+          return EmptyState(
+            icon: Icons.newspaper_outlined,
+            title: tr(context, ru: 'Пока нет новостей', zh: '暂无新闻'),
+          );
+        }
+        return TutorialScreenWrapper(
+          screenKey: 'news_list',
+          steps: [
+            TutorialStep(
+              icon: Icons.newspaper_rounded,
+              title: 'Новости компании',
+              description: 'Здесь публикуются важные новости: изменения тарифов, акции, объявления об изменениях в работе.',
+              targetKey: _newsListKey,
+            ),
+            TutorialStep(
+              icon: Icons.open_in_new_rounded,
+              title: 'Читать подробнее',
+              description: 'Нажмите на карточку новости, чтобы прочитать полный текст. Важные новости лучше не пропускать.',
+              targetKey: _firstNewsKey,
+            ),
+          ],
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            color: context.brandPrimary,
+            child: ListView.builder(
+              key: _newsListKey,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
               16,
@@ -135,74 +88,25 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
               16,
               24 + bottomPad,
             ),
-            itemCount: items.length + 1, // +1 for header
+            itemCount: items.length + 1,
             itemBuilder: (context, i) {
               final headerText = Text(
                 tr(context, ru: 'Новости', zh: '新闻'),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+                      fontWeight: FontWeight.w900,
+                    ),
               );
               if (i == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
-                  child: shouldShowHeader
-                      ? Showcase(
-                          key: _showcaseKeyHeader,
-                          title: tr(context, ru: '📰 Лента новостей', zh: '📰 新闻动态'),
-                          description: tr(
-                            context,
-                            ru: 'Актуальные новости и объявления от компании:\n• Новые услуги и тарифы\n• Изменения в работе\n• Важные уведомления\n• Акции и предложения\n• Потяните вниз для обновления ⬇️',
-                            zh: '公司的最新新闻和公告：\n• 新服务和费率\n• 工作变化\n• 重要通知\n• 促销和优惠\n• 下拉刷新 ⬇️',
-                          ),
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.bottom,
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: headerText,
-                        )
-                      : headerText,
+                  child: headerText,
                 );
               }
               final item = items[i - 1];
-              if (i == 1 && shouldShowCard) {
-                // Первая карточка новостей - оборачиваем в Showcase
+              if (i == 1) {
                 return Padding(
                   padding: EdgeInsets.only(bottom: i == items.length ? 0 : 12),
-                  child: Showcase(
-                    key: _showcaseKeyNewsCard,
-                    title: tr(context, ru: '📄 Карточка новости', zh: '📄 新闻卡片'),
-                    description: tr(
-                      context,
-                      ru: 'Каждая новость содержит:\n• 🖼️ Обложку с изображением (если есть)\n• 📅 Дату публикации\n• 📝 Заголовок и краткое описание\n• 👆 Нажмите для чтения полной версии\n• Полный текст откроется на отдельной странице',
-                      zh: '每条新闻包含：\n• 🖼️ 封面图片（如有）\n• 📅 发布日期\n• 📝 标题和简短描述\n• 👆 点击阅读完整版本\n• 完整文本将在单独页面打开',
-                    ),
-                    targetPadding: getShowcaseTargetPadding(),
-                    tooltipPosition: TooltipPosition.bottom,
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _NewsCard(item: item),
-                  ),
+                  child: KeyedSubtree(key: _firstNewsKey, child: _NewsCard(item: item)),
                 );
               }
               return Padding(
@@ -211,11 +115,9 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen>
               );
             },
           ),
+          ),
         );
-            },
-          );
-        },
-      ),
+      },
     );
   }
 }
@@ -331,8 +233,8 @@ class _NewsCard extends StatelessWidget {
                       children: [
                         Text(
                           tr(context, ru: 'Читать далее', zh: '阅读更多'),
-                          style: TextStyle(
-                            color: const Color(0xFFfe3301),
+                          style: const TextStyle(
+                            color: Color(0xFFfe3301),
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
                           ),

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/data/auth_provider.dart';
+
 /// Интервал автоматического обновления данных (60 секунд)
 const kAutoRefreshInterval = Duration(seconds: 60);
 
@@ -36,7 +38,7 @@ mixin AutoRefreshMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     final refreshInterval = interval ?? kAutoRefreshInterval;
     
     _autoRefreshTimer = Timer.periodic(refreshInterval, (_) {
-      if (_isVisible && mounted) {
+      if (_isVisible && mounted && ref.read(authProvider).isLoggedIn) {
         debugPrint('AutoRefresh: Обновление данных...');
         onRefresh();
       }

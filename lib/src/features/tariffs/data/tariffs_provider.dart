@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 
 // ============================================================
 // Модели
@@ -133,6 +134,33 @@ class UserTariffsData {
 // ============================================================
 
 final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
+  if (ref.watch(demoModeProvider)) {
+    return const UserTariffsData(
+      deliveryTariffs: [
+        UserDeliveryTariff(
+          id: 1,
+          name: 'Стандарт',
+          baseCost: 7.0,
+          weightTiers: [UserWeightTier(minWeight: 0, pricePerKg: 7.0)],
+        ),
+        UserDeliveryTariff(
+          id: 2,
+          name: 'Эконом',
+          baseCost: 5.0,
+          weightTiers: [UserWeightTier(minWeight: 0, pricePerKg: 5.0)],
+        ),
+      ],
+      packagingTypes: [
+        UserPackagingType(id: 1, name: 'Пакет', baseCost: 50.0),
+        UserPackagingType(id: 2, name: 'Коробка', baseCost: 150.0),
+      ],
+      photoCoefficients: [
+        UserPhotoCoefficient(minPercent: 0, maxPercent: 0, coefficient: 1.0),
+        UserPhotoCoefficient(minPercent: 1, maxPercent: 50, coefficient: 0.95),
+        UserPhotoCoefficient(minPercent: 51, coefficient: 0.9),
+      ],
+    );
+  }
   final api = ref.read(apiClientProvider);
 
   try {

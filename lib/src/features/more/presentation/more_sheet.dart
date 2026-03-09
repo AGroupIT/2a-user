@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
@@ -110,22 +111,30 @@ class MoreSheet extends ConsumerWidget {
                   const _SectionLabel(text: 'Настройки'),
                   _MenuItem(
                     icon: Icons.school_rounded,
-                    title: 'Сбросить обучение',
+                    title: 'Пройти обучение',
                     iconColor: const Color(0xFF607D8B),
-                    onTap: () {
-                      // State mutations first (SharedPreferences cache updates synchronously)
-                      ref.read(showcaseServiceProvider).resetAllBlocks();
+                    onTap: () async {
+                      // Захватываем context-зависимые объекты ДО async-разрыва
+                      final nav = Navigator.of(context);
+                      final router = GoRouter.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      final brandColor = context.brandPrimary;
+
+                      final svc = ref.read(showcaseServiceProvider);
+                      await svc.resetAllBlocks();
+                      await svc.resetAllTutorials();
                       for (final block in ShowcaseBlock.values) {
                         ref.invalidate(showcaseBlockProvider(block));
                       }
                       ref.read(showcaseTutorialResetProvider.notifier).trigger();
-                      // Dismiss and navigate while context is still mounted
-                      Navigator.of(context).pop();
-                      context.go('/');
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ref.read(demoModeProvider.notifier).enable();
+
+                      nav.pop();
+                      router.go('/');
+                      messenger.showSnackBar(
                         SnackBar(
-                          content: const Text('Обучение сброшено'),
-                          backgroundColor: context.brandPrimary,
+                          content: const Text('Обучение запущено заново'),
+                          backgroundColor: brandColor,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),

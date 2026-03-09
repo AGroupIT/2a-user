@@ -1,10 +1,7 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:typed_data';
@@ -12,8 +9,8 @@ import 'dart:typed_data';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/services/auto_refresh_service.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
@@ -82,19 +79,14 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with AutoRefreshMixin {
-  // Showcase keys
-  final _showcaseKeyPersonalData = GlobalKey();
-  final _showcaseKeyStats = GlobalKey();
-  final _showcaseKeyExport = GlobalKey();
-  final _showcaseKeyLogout = GlobalKey();
-
   // Export button keys for sharePositionOrigin on iPad
   final _invoicesExportButtonKey = GlobalKey();
   final _tracksExportButtonKey = GlobalKey();
 
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
+  final GlobalKey _personalDataKey = GlobalKey();
+  final GlobalKey _statsKey = GlobalKey();
+  final GlobalKey _exportKey = GlobalKey();
+  final GlobalKey _logoutKey = GlobalKey();
 
   // Editing state
   bool _isEditing = false;
@@ -130,52 +122,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     super.dispose();
   }
 
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-
-    final pairs = [
-      (_showcaseKeyPersonalData, ShowcaseBlock.profilePersonalData),
-      (_showcaseKeyStats, ShowcaseBlock.profileStats),
-      (_showcaseKeyExport, ShowcaseBlock.profileExport),
-      (_showcaseKeyLogout, ShowcaseBlock.profileLogout),
-    ];
-
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-
-    if (visible.isEmpty) {
-      _showcaseStarted = false;
-      return;
-    }
-
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
-
   void _setupAutoRefresh() {
     startAutoRefresh(() {
       final clientCode = ref.read(activeClientCodeProvider);
@@ -189,11 +135,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final clientCode = ref.watch(activeClientCodeProvider);
-    final shouldShowPersonalData = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profilePersonalData));
-    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileStats));
-    final shouldShowExport = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileExport));
-    final shouldShowLogout = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.profileLogout));
-    
     // Загружаем профиль и статистику
     final profileAsync = ref.watch(clientProfileProvider);
     final statsAsync = ref.watch(clientStatsProvider(clientCode));
@@ -207,12 +148,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ]);
     }
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          return profileAsync.when(
+    return profileAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(
               child: Column(
@@ -234,9 +170,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 return const Center(child: Text('Профиль не найден'));
               }
               
-              // Запускаем showcase если нужно
-              _startShowcaseIfNeeded(showcaseContext);
-              
               final companyDomain = profile.agent?.domain ?? '';
               final stats = statsAsync.when(
                 data: (s) => s,
@@ -244,7 +177,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 error: (_, _) => ClientStats.empty,
               );
 
-              return RefreshIndicator(
+              return TutorialScreenWrapper(
+                screenKey: 'profile',
+                steps: [
+                  TutorialStep(
+                    icon: Icons.person_rounded,
+                    title: 'Личные данные',
+                    description: 'Ваше имя, email и телефон. «Редактировать» — обновить данные. «Сменить пароль» — изменить пароль входа.',
+                    targetKey: _personalDataKey,
+                  ),
+                  TutorialStep(
+                    icon: Icons.bar_chart_rounded,
+                    title: 'Статистика',
+                    description: 'Сколько треков, счетов и фотозапросов было создано. Удобно для отслеживания активности.',
+                    targetKey: _statsKey,
+                  ),
+                  TutorialStep(
+                    icon: Icons.file_download_rounded,
+                    title: 'Выгрузка данных',
+                    description: 'Скачайте все счета или треки в формате Excel — удобно для бухгалтерии и архивирования.',
+                    targetKey: _exportKey,
+                  ),
+                  TutorialStep(
+                    icon: Icons.logout_rounded,
+                    title: 'Выход из аккаунта',
+                    description: 'Кнопка выхода находится внизу страницы. Все данные будут удалены с устройства.',
+                    targetKey: _logoutKey,
+                  ),
+                ],
+                child: RefreshIndicator(
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView(
@@ -260,28 +221,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   const SizedBox(height: 18),
 
                   // Personal Info Section
-                  shouldShowPersonalData
-                      ? Showcase(
-                          key: _showcaseKeyPersonalData,
-                          title: '👤 Личные данные',
-                          description: 'Ваши контактные данные и информация о компании:\n• ФИО, телефон и email\n• Нажмите кнопку редактирования для изменения',
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.bottom,
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: _buildPersonalDataSection(profile),
-                        )
-                      : _buildPersonalDataSection(profile),
+                  KeyedSubtree(key: _personalDataKey, child: _buildPersonalDataSection(profile)),
                   const SizedBox(height: 16),
 
                   // Password Change Section
@@ -299,115 +239,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
 
             // Statistics Section
-            shouldShowStats
-                ? Showcase(
-                    key: _showcaseKeyStats,
-                    title: '📊 Статистика',
-                    description: 'Ваша полная статистика по всем операциям:\n• Трек-номера - сгруппированы по статусам\n• Счета - количество по статусам оплаты\n• Запросы фото - активные и выполненные\n• Заданные вопросы - ваши обращения\n• Обновляется в реальном времени',
-                    targetPadding: getShowcaseTargetPadding(),
-                    tooltipPosition: TooltipPosition.bottom,
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _buildSectionCard(
-                      title: 'Статистика',
-                      children: [
-                        _buildStatsGroup('Трек-номера', stats.tracks),
-                        const SizedBox(height: 16),
-                        _buildStatsGroup('Счета', stats.invoices),
-                        const SizedBox(height: 16),
-                        _buildStatsGroup('Запросы фото', stats.photoRequests),
-                        const SizedBox(height: 16),
-                        _buildStatsGroup('Заданные вопросы', stats.questions),
-                      ],
-                    ),
-                  )
-                : _buildSectionCard(
-                    title: 'Статистика',
-                    children: [
-                      _buildStatsGroup('Трек-номера', stats.tracks),
-                      const SizedBox(height: 16),
-                      _buildStatsGroup('Счета', stats.invoices),
-                      const SizedBox(height: 16),
-                      _buildStatsGroup('Запросы фото', stats.photoRequests),
-                      const SizedBox(height: 16),
-                      _buildStatsGroup('Заданные вопросы', stats.questions),
-                    ],
-                  ),
+            KeyedSubtree(
+              key: _statsKey,
+              child: _buildSectionCard(
+                title: 'Статистика',
+                children: [
+                  _buildStatsGroup('Трек-номера', stats.tracks),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Счета', stats.invoices),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Запросы фото', stats.photoRequests),
+                  const SizedBox(height: 16),
+                  _buildStatsGroup('Заданные вопросы', stats.questions),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
 
             // Export Section
-            shouldShowExport
-                ? Showcase(
-                    key: _showcaseKeyExport,
-                    title: '📥 Выгрузка данных',
-                    description: 'Экспортируйте ваши данные в Excel для удобного анализа:\n• Выгрузить счета - все счета с деталями\n• Выгрузить треки - все треки с информацией\n• Формат XLSX совместим с Excel и Google Sheets\n• Включает все поля и актуальные данные\n• Можно поделиться или сохранить локально',
-                    targetPadding: getShowcaseTargetPadding(),
-                    tooltipPosition: TooltipPosition.top,
-                    tooltipBackgroundColor: Colors.white,
-                    textColor: Colors.black87,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                    descTextStyle: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                    child: _buildSectionCard(
-                      title: 'Выгрузка данных',
-                      children: [
-                        _buildExportButton(
-                          key: _invoicesExportButtonKey,
-                          icon: Icons.receipt_long_rounded,
-                          label: 'Выгрузить счета в Excel',
-                          onPressed: () => _exportInvoices(_invoicesExportButtonKey),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildExportButton(
-                          key: _tracksExportButtonKey,
-                          icon: Icons.local_shipping_rounded,
-                          label: 'Выгрузить треки в Excel',
-                          onPressed: () => _exportTracks(_tracksExportButtonKey),
-                        ),
-                      ],
-                    ),
-                  )
-                : _buildSectionCard(
-                    title: 'Выгрузка данных',
-                    children: [
-                      _buildExportButton(
-                        key: _invoicesExportButtonKey,
-                        icon: Icons.receipt_long_rounded,
-                        label: 'Выгрузить счета в Excel',
-                        onPressed: () => _exportInvoices(_invoicesExportButtonKey),
-                      ),
-                      const SizedBox(height: 10),
-                      _buildExportButton(
-                        key: _tracksExportButtonKey,
-                        icon: Icons.local_shipping_rounded,
-                        label: 'Выгрузить треки в Excel',
-                        onPressed: () => _exportTracks(_tracksExportButtonKey),
-                      ),
-                    ],
+            KeyedSubtree(
+              key: _exportKey,
+              child: _buildSectionCard(
+                title: 'Выгрузка данных',
+                children: [
+                  _buildExportButton(
+                    key: _invoicesExportButtonKey,
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Выгрузить счета в Excel',
+                    onPressed: () => _exportInvoices(_invoicesExportButtonKey),
                   ),
+                  const SizedBox(height: 10),
+                  _buildExportButton(
+                    key: _tracksExportButtonKey,
+                    icon: Icons.local_shipping_rounded,
+                    label: 'Выгрузить треки в Excel',
+                    onPressed: () => _exportTracks(_tracksExportButtonKey),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
 
             // Logout Button
-            Builder(
-              builder: (_) {
-                final logoutButton = Container(
+            Container(
+                key: _logoutKey,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -449,31 +324,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     ),
                   ),
                 ),
-              );
-                return shouldShowLogout
-                    ? Showcase(
-                        key: _showcaseKeyLogout,
-                        title: '🚪 Выход из аккаунта',
-                        description: 'Безопасный выход из приложения:\n• Нажмите для завершения сеанса\n• Потребуется подтверждение действия\n• Все данные сохранены на сервере\n• После выхода потребуется снова войти\n• Рекомендуется выходить на чужих устройствах',
-                        targetPadding: getShowcaseTargetPadding(),
-                        tooltipPosition: TooltipPosition.top,
-                        tooltipBackgroundColor: Colors.white,
-                        textColor: Colors.black87,
-                        titleTextStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
-                        ),
-                        descTextStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
-                        child: logoutButton,
-                      )
-                    : logoutButton;
-              },
-            ),
+              ),
 
             // App version
             const SizedBox(height: 24),
@@ -495,12 +346,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ),
           ],
                 ),
-              );
+              ));
             },
           );
-        },
-      ),
-    );
   }
 
   // ===== PERSONAL DATA EDITING =====

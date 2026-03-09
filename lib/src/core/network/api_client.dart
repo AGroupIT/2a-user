@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -81,8 +82,10 @@ class ApiClient {
           if (!isLoginRequest) {
             // Это не login, значит токен истёк - делаем logout
             await clearToken();
-            // Вызываем callback для logout и редиректа
-            _onUnauthorized?.call();
+            // Вызываем callback на main thread (Dio interceptor может работать не на main isolate)
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              _onUnauthorized?.call();
+            });
           }
           // Если это login request, просто пробрасываем ошибку дальше
         }

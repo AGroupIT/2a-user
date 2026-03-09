@@ -1,4 +1,3 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
@@ -10,11 +9,9 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
-import 'package:showcaseview/showcaseview.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/services/auto_refresh_service.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
@@ -30,6 +27,7 @@ import '../domain/track_item.dart';
 import '../../assemblies/domain/box.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../photos/domain/photo_item.dart';
+import '../../../core/ui/tutorial_card.dart';
 import 'add_tracks_dialog.dart';
 
 // Alias для authStateProvider
@@ -134,6 +132,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   // Текущий notifier для отслеживания изменений состояния
   PaginatedTracksNotifier? _currentNotifier;
 
+  final GlobalKey _tracksListKey = GlobalKey();
+  final GlobalKey _fabKey = GlobalKey();
+  final GlobalKey _filtersKey = GlobalKey();
+  final GlobalKey _trackDetailKey = GlobalKey();
+  final GlobalKey _actionsRowKey = GlobalKey();
+  final GlobalKey _assemblyKey = GlobalKey();
+
   // Выбранные треки
   final Set<String> _selectedTracks = <String>{};
   String? _selectedStatus;
@@ -161,72 +166,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   final Map<String, DateTime> _groupQuestionCreatedAt = <String, DateTime>{};
   final Map<String, DateTime> _groupQuestionUpdatedAt = <String, DateTime>{};
 
-  // Showcase keys
-  final _showcaseKeyFilters = GlobalKey();
-  final _showcaseKeySearch = GlobalKey();
-  final _showcaseKeyViewMode = GlobalKey();
-  final _showcaseKeyTrackItem = GlobalKey();
-  final _showcaseKeyAddButton = GlobalKey();
-
-  // Showcase state
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
-  // Хранение контекста Showcase для вызова next()
-  BuildContext? _showcaseContext;
+  bool _isRefreshing = false;
+  DateTime? _lastLoadMoreTime;
 
   @override
   void initState() {
     super.initState();
     _setupAutoRefresh();
-  }
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted || _allSkipped) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    _showcaseStarted = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      final pairs = [
-        (ShowcaseBlock.tracksFilters, _showcaseKeyFilters),
-        (ShowcaseBlock.tracksFilters, _showcaseKeySearch),
-        (ShowcaseBlock.tracksFilters, _showcaseKeyViewMode),
-        (ShowcaseBlock.tracksItem, _showcaseKeyTrackItem),
-        (ShowcaseBlock.tracksAddButton, _showcaseKeyAddButton),
-      ];
-      final visible = pairs.where((p) => p.$2.currentContext != null).toList();
-
-      if (visible.isEmpty) {
-        _showcaseStarted = false;
-        return;
-      }
-
-      _currentRunBlocks = visible.map((p) => p.$1).toSet().toList();
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      ShowCaseWidget.of(showcaseContext)
-          .startShowCase(visible.map((p) => p.$2).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    final svc = ref.read(showcaseServiceProvider);
-    for (final block in _currentRunBlocks) {
-      svc.markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
   }
 
   void _setupAutoRefresh() {
@@ -271,6 +217,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
       final filterParams = _getFilterParams(clientCode);
       ref.read(paginatedTracksProvider(clientCode)).updateFilters(filterParams);
     }
+  }
+
+  /// Очищает оптимистичные Map-записи для треков у которых сервер
+  /// уже подтвердил данные. Вызывается после pull-to-refresh.
+  void _syncMapsWithServerData(List<TrackItem> serverTracks) {
+    bool changed = false;
+    for (final track in serverTracks) {
+      // Если сервер вернул photo request — оптимистика больше не нужна
+      if (track.photoRequests.isNotEmpty &&
+          _requestedPhotoReports.contains(track.code)) {
+        _requestedPhotoReports.remove(track.code);
+        _photoRequestNotes.remove(track.code);
+        _photoRequestCreatedAt.remove(track.code);
+        _photoRequestUpdatedAt.remove(track.code);
+        changed = true;
+      }
+      // Если сервер вернул вопрос — оптимистика больше не нужна
+      if (track.questions.isNotEmpty &&
+          _askedQuestions.containsKey(track.code)) {
+        _askedQuestions.remove(track.code);
+        _questionStatus.remove(track.code);
+        _questionAnswers.remove(track.code);
+        _questionCreatedAt.remove(track.code);
+        _questionUpdatedAt.remove(track.code);
+        changed = true;
+      }
+    }
+    if (changed && mounted) setState(() {});
   }
 
   Future<bool> _confirmAction(
@@ -1931,8 +1905,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
         return;
       }
 
-      final tracksState = ref.read(paginatedTracksProvider(clientCode)).state;
-      final tracks = tracksState.tracks;
+      // Ensure all pages are loaded so every selected track code can be resolved to an ID
+      final notifier = ref.read(paginatedTracksProvider(clientCode));
+      while (notifier.state.hasMore && !notifier.state.isLoading) {
+        await notifier.loadMore();
+        if (!context.mounted) return;
+        if (notifier.state.error != null) break; // прерываем при ошибке API
+      }
+      final tracks = notifier.state.tracks;
 
       final selectedTracks = tracks
           .where((t) => _selectedTracks.contains(t.code) && t.id != null)
@@ -2298,6 +2278,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                                       ? CachedNetworkImage(
                                           imageUrl: ApiConfig.getMediaUrl(path),
                                           fit: BoxFit.cover,
+                                          memCacheWidth: 200,
+                                          memCacheHeight: 200,
                                           placeholder: (_, _) => const Center(
                                             child: CircularProgressIndicator(strokeWidth: 2),
                                           ),
@@ -2539,30 +2521,96 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     _updateNotifierListener(tracksNotifier);
 
     final tracksState = tracksNotifier.state;
-    final shouldShowFilters = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksFilters));
-    final shouldShowItem = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksItem));
-    final shouldShowAddButton = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tracksAddButton));
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 72.0;
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _showcaseContext = showcaseContext;
+    final groups = tracksState.tracks.isNotEmpty
+        ? _groupTracks(tracksState.tracks)
+        : <_GroupBucket>[];
+    final bottomScrollPad = bottomPad +
+        16 +
+        (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8);
 
-          return Stack(
+    return TutorialScreenWrapper(
+      screenKey: 'tracks',
+      steps: [
+        TutorialStep(
+          icon: Icons.local_shipping_rounded,
+          title: 'Список треков',
+          description: 'Каждая строка — одна посылка. Цветной статус показывает этап: склад в Китае, в пути, склад в России или получено клиентом.',
+          targetKey: _tracksListKey,
+        ),
+        TutorialStep(
+          icon: Icons.add_circle_rounded,
+          title: 'Добавить трек',
+          description: 'Нажмите кнопку «+» в правом нижнем углу, чтобы добавить трек-номер новой посылки. Мы начнём её отслеживать.',
+          targetKey: _fabKey,
+        ),
+        TutorialStep(
+          icon: Icons.filter_list_rounded,
+          title: 'Фильтр по статусу',
+          description: 'Нажмите на статус в верхней панели, чтобы показать только посылки на этом этапе. Удобно при большом количестве треков.',
+          targetKey: _filtersKey,
+        ),
+        TutorialStep(
+          icon: Icons.touch_app_rounded,
+          title: 'Детали посылки',
+          description: 'Нажмите на трек, чтобы развернуть карточку с подробностями: вес, тариф, история статусов и кнопки действий.',
+          targetKey: _trackDetailKey,
+        ),
+        TutorialStep(
+          icon: Icons.photo_camera_rounded,
+          title: 'Запросить фотоотчёт',
+          description: 'Кнопка «Запросить фотоотчёт» внутри карточки отправляет запрос на склад. Мы сфотографируем посылку и пришлём снимки. Услуга может быть платной.',
+          targetKey: _actionsRowKey,
+        ),
+        TutorialStep(
+          icon: Icons.help_outline_rounded,
+          title: 'Задать вопрос',
+          description: 'Кнопка «Задать вопрос» открывает форму для обращения к менеджеру по конкретному треку. Ответ придёт в этой же карточке.',
+          targetKey: _actionsRowKey,
+        ),
+        TutorialStep(
+          icon: Icons.sticky_note_2_rounded,
+          title: 'Комментарий к треку',
+          description: 'В карточке трека есть поле для заметки. Введите текст и нажмите «Сохранить заметку» — заметка видна только вам.',
+          targetKey: _actionsRowKey,
+        ),
+        TutorialStep(
+          icon: Icons.assignment_return_rounded,
+          title: 'Оформить возврат',
+          description: '«Оформить возврат» — открывает форму возврата товара. Укажите причину и код — заявка уйдёт на склад в Китае.',
+          targetKey: _actionsRowKey,
+        ),
+        TutorialStep(
+          icon: Icons.inventory_2_rounded,
+          title: 'Сборка и доставка по РФ',
+          description: 'Блок сборки показывает транспортную компанию, коробки с весами, тариф и упаковку. Нажмите «Выбрать ТК» для настройки доставки.',
+          targetKey: _assemblyKey,
+        ),
+      ],
+      child: Stack(
             children: [
               RefreshIndicator(
                 onRefresh: () async {
-                  // Обновляем с актуальными фильтрами из UI
-                  final filterParams = _getFilterParams(clientCode);
-                  await ref
-                      .read(paginatedTracksProvider(clientCode))
-                      .updateFilters(filterParams);
-                  ref.invalidate(assembliesListProvider(clientCode));
+                  if (_isRefreshing) return;
+                  _isRefreshing = true;
+                  try {
+                    // Обновляем с актуальными фильтрами из UI
+                    final filterParams = _getFilterParams(clientCode);
+                    await ref
+                        .read(paginatedTracksProvider(clientCode))
+                        .updateFilters(filterParams);
+                    ref.invalidate(assembliesListProvider(clientCode));
+                    // Очищаем оптимистичные Map-записи для треков у которых
+                    // сервер уже подтвердил данные (вопросы, фото-запросы)
+                    _syncMapsWithServerData(
+                      ref.read(paginatedTracksProvider(clientCode)).state.tracks,
+                    );
+                  } finally {
+                    _isRefreshing = false;
+                  }
                 },
                 color: context.brandPrimary,
                 child: NotificationListener<ScrollNotification>(
@@ -2572,9 +2620,18 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       final metrics = notification.metrics;
                       final maxScroll = metrics.maxScrollExtent;
                       final currentScroll = metrics.pixels;
-                      // Загружаем ещё когда до конца осталось ~10% списка
-                      if (currentScroll >= maxScroll * 0.9 &&
-                          !tracksState.isLoading) {
+                      // Загружаем ещё когда до конца осталось ~10% списка.
+                      // Throttle: не чаще 1 раза в 300мс, не пробуем если уже грузим или нет страниц.
+                      final now = DateTime.now();
+                      final canLoad = _lastLoadMoreTime == null ||
+                          now.difference(_lastLoadMoreTime!).inMilliseconds > 300;
+                      if (maxScroll > 0 &&
+                          currentScroll >= maxScroll * 0.9 &&
+                          !tracksState.isLoading &&
+                          tracksState.hasMore &&
+                          tracksState.error == null &&
+                          canLoad) {
+                        _lastLoadMoreTime = now;
                         ref
                             .read(paginatedTracksProvider(clientCode))
                             .loadMore();
@@ -2582,102 +2639,69 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                     }
                     return false;
                   },
-                  child: ListView(
+                  child: CustomScrollView(
+                    key: _tracksListKey,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      topPad * 0.7 + 6,
-                      16,
-                      bottomPad +
-                          16 +
-                          (_selectedTracks.isEmpty
-                              ? 0
-                              : bulkButtonExtraPad + 8),
-                    ),
-                    children: [
-                      Text(
-                        'Треки',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                      const SizedBox(height: 18),
-                      Builder(
-                        builder: (_) {
-                          final filtersContainer = Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x14000000),
-                                  blurRadius: 24,
-                                  offset: Offset(0, 10),
+                    slivers: [
+                      // Заголовок + фильтры
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Треки',
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 18),
+                              Container(
+                                key: _filtersKey,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x14000000),
+                                      blurRadius: 24,
+                                      offset: Offset(0, 10),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: _FiltersNew(
-                              statusCode: _statusCode,
-                              tracks: tracksState.tracks,
-                              viewMode: _viewMode,
-                              query: _query,
-                              onStatusChanged: (v) =>
-                                  _onStatusChanged(v, clientCode),
-                              onViewModeChanged: (v) =>
-                                  _onViewModeChanged(v, clientCode),
-                              onQueryChanged: (v) =>
-                                  _onSearchChanged(v, clientCode),
-                              showcaseSearchKey: shouldShowFilters ? _showcaseKeySearch : null,
-                              showcaseViewModeKey: shouldShowFilters ? _showcaseKeyViewMode : null,
-                            ),
-                          );
-                          return shouldShowFilters
-                              ? Showcase(
-                                  key: _showcaseKeyFilters,
-                                  title: '🎯 Фильтры по статусу',
-                                  description:
-                                      'Быстрая фильтрация треков по состоянию:\n• Все - показать все посылки\n• На складе - товары прибыли на склад\n• Отправлен - в пути к вам\n• Прибыл на терминал - готов к выдаче\n• Сформирован к выдаче - ждёт получения\n\nВыберите статус из выпадающего списка "Статус" для фильтрации.',
-                                  targetBorderRadius: BorderRadius.circular(20),
-                                  targetPadding: getShowcaseTargetPadding(),
-                                  tooltipPosition: TooltipPosition.bottom,
-                                  tooltipBackgroundColor: Colors.white,
-                                  textColor: Colors.black87,
-                                  titleTextStyle: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF1A1A1A),
+                                padding: const EdgeInsets.all(16),
+                                child: _FiltersNew(
+                                  statusCode: _statusCode,
+                                  tracks: tracksState.tracks,
+                                  viewMode: _viewMode,
+                                  query: _query,
+                                  onStatusChanged: (v) =>
+                                      _onStatusChanged(v, clientCode),
+                                  onViewModeChanged: (v) =>
+                                      _onViewModeChanged(v, clientCode),
+                                  onQueryChanged: (v) =>
+                                      _onSearchChanged(v, clientCode),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              if (tracksState.total > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    'Показано ${tracksState.tracks.length} из ${tracksState.total}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                  descTextStyle: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  onTargetClick: () {
-                                    if (_showcaseContext != null) {
-                                      ShowCaseWidget.of(_showcaseContext!).next();
-                                    }
-                                  },
-                                  disposeOnTap: false,
-                                  child: filtersContainer,
-                                )
-                              : filtersContainer;
-                        },
-                      ),
-                      const SizedBox(height: 18),
-                      // Показываем информацию о количестве
-                      if (tracksState.total > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            'Показано ${tracksState.tracks.length} из ${tracksState.total}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
-                            ),
+                                ),
+                            ],
                           ),
                         ),
-                      _buildTracksList(tracksState, clientCode, shouldShowItem),
+                      ),
+                      // Список треков или состояние (загрузка/ошибка/пусто)
+                      ..._buildTracksList(tracksState, clientCode, groups, bottomScrollPad),
                     ],
                   ),
                 ),
@@ -2698,7 +2722,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: OutlinedButton(
-                          onPressed: _selectAll,
+                          onPressed: () { _selectAll(); },
                           child: const Text('Все'),
                         ),
                       ),
@@ -2718,207 +2742,159 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
                       ),
                     ],
                     // FAB кнопка для добавления треков (всегда справа)
-                    shouldShowAddButton
-                        ? Showcase(
-                            key: _showcaseKeyAddButton,
-                            title: '➕ Добавить треки',
-                            description:
-                                'Нажмите для добавления новых треков.\nВведите номера треков, каждый с новой строки.',
-                            targetBorderRadius: BorderRadius.circular(28),
-                            targetPadding: getShowcaseTargetPadding(),
-                            tooltipPosition: TooltipPosition.top,
-                            tooltipBackgroundColor: Colors.white,
-                            textColor: Colors.black87,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            descTextStyle: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade600,
-                            ),
-                            onToolTipClick: _onShowcaseComplete,
-                            onBarrierClick: _onShowcaseComplete,
-                            child: FloatingActionButton(
-                              onPressed: () => showAddTracksDialog(context, ref),
-                              backgroundColor: context.brandPrimary,
-                              foregroundColor: Colors.white,
-                              elevation: 8,
-                              child: const Icon(Icons.add_box_rounded, size: 28),
-                            ),
-                          )
-                        : FloatingActionButton(
-                            onPressed: () => showAddTracksDialog(context, ref),
-                            backgroundColor: context.brandPrimary,
-                            foregroundColor: Colors.white,
-                            elevation: 8,
-                            child: const Icon(Icons.add_box_rounded, size: 28),
-                          ),
+                    FloatingActionButton(
+                      key: _fabKey,
+                      onPressed: () => showAddTracksDialog(context, ref),
+                      backgroundColor: context.brandPrimary,
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      child: const Icon(Icons.add_box_rounded, size: 28),
+                    ),
                   ],
                 ),
               ),
             ],
-          );
-        },
-      ),
+          ),
     );
   }
 
-  /// Построить список треков с поддержкой пагинации
-  Widget _buildTracksList(PaginatedTracksState tracksState, String clientCode, bool shouldShowItem) {
+  /// Построить список треков как slivers (ленивый рендеринг через SliverList.builder)
+  List<Widget> _buildTracksList(
+    PaginatedTracksState tracksState,
+    String clientCode,
+    List<_GroupBucket> groups,
+    double bottomPad,
+  ) {
     // Показываем загрузку при первоначальной загрузке
     if (tracksState.isLoading && tracksState.tracks.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(),
+      return [
+        const SliverFillRemaining(
+          child: Center(child: CircularProgressIndicator()),
         ),
-      );
+      ];
     }
 
     // Показываем ошибку
     if (tracksState.error != null && tracksState.tracks.isEmpty) {
       final errorInfo = ErrorUtils.getErrorInfo(tracksState.error!);
-      return EmptyState(
-        icon: errorInfo.icon,
-        title: errorInfo.getTitle(context),
-        message: errorInfo.getMessage(context),
-      );
+      return [
+        SliverFillRemaining(
+          child: EmptyState(
+            icon: errorInfo.icon,
+            title: errorInfo.getTitle(context),
+            message: errorInfo.getMessage(context),
+          ),
+        ),
+      ];
     }
 
     // Пустой список
     if (tracksState.tracks.isEmpty) {
-      return const EmptyState(
-        icon: Icons.local_shipping_outlined,
-        title: 'Ничего не найдено',
-        message: 'Попробуйте изменить фильтры или строку поиска.',
-      );
+      return [
+        const SliverFillRemaining(
+          child: EmptyState(
+            icon: Icons.local_shipping_outlined,
+            title: 'Ничего не найдено',
+            message: 'Попробуйте изменить фильтры или строку поиска.',
+          ),
+        ),
+      ];
     }
 
-    // Запускаем showcase когда данные загружены
-    if (_showcaseContext != null) {
-      _startShowcaseIfNeeded(_showcaseContext!);
-    }
+    // SliverList.builder — ленивый рендеринг: только видимые карточки строятся
+    return [
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
+        sliver: SliverList.builder(
+          itemCount: groups.length + 1, // +1 для footer
+          itemBuilder: (context, index) {
+            // Footer: индикатор загрузки, ошибка или "все загружены"
+            if (index == groups.length) {
+              if (tracksState.isLoading && tracksState.tracks.isNotEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (tracksState.error != null && tracksState.tracks.isNotEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      'Не удалось загрузить все треки. Потяните вниз для обновления.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
+                  ),
+                );
+              }
+              if (!tracksState.hasMore && tracksState.tracks.isNotEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      'Все треки загружены',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            }
 
-    // Группируем треки
-    final groups = _groupTracks(tracksState.tracks);
+            final g = groups[index];
+            final isFirstAssembly = g.assembly != null &&
+                groups.sublist(0, index).every((gr) => gr.assembly == null);
+            final trackCard = _TrackGroupCard(
+              assembly: g.assembly,
+              tracks: g.tracks,
+              selectedTrackCodes: _selectedTracks,
+              selectedStatus: _selectedStatus,
+              onToggle: _toggleTrack,
+              requestedPhotoReports: _requestedPhotoReports,
+              onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
+              onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
+              photoRequestCreatedAt: _photoRequestCreatedAt,
+              photoRequestUpdatedAt: _photoRequestUpdatedAt,
+              photoRequestNotes: _photoRequestNotes,
+              overrideComments: _overrideComments,
+              onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+              onCancelQuestion: (track) => _cancelQuestion(track),
+              onEditComment: (track) => _showCommentSheet(context, track),
+              onEditProduct: (track) => _showAboutProductSheet(context, track),
+              askedQuestions: _askedQuestions,
+              questionCreatedAt: _questionCreatedAt,
+              questionUpdatedAt: _questionUpdatedAt,
+              questionStatus: _questionStatus,
+              questionAnswers: _questionAnswers,
+              productInfos: _productInfos,
+              groupComments: _groupComments,
+              groupQuestions: _groupQuestions,
+              groupQuestionCreatedAt: _groupQuestionCreatedAt,
+              groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
+              onEditGroupComment: (assembly) =>
+                  _showGroupCommentSheet(context, assembly),
+              onAskGroupQuestion: (assembly) =>
+                  _showGroupQuestionSheet(context, assembly),
+              onSelectDelivery: (assembly) =>
+                  _showDeliverySheet(context, assembly),
+              onDeleteTrack: (track) => _deleteTrack(track),
+              onReturnRequest: (track) => _showReturnSheet(context, track),
+              returnRequestedTracks: _returnRequestedTracks,
+              tutorialActionsKey: index == 0 ? _actionsRowKey : null,
+              tutorialAssemblyKey: isFirstAssembly ? _assemblyKey : null,
+            );
 
-    return Column(
-      children: [
-        ...groups.asMap().entries.map((entry) {
-          final index = entry.key;
-          final g = entry.value;
-
-          // Проверяем нужна ли подгрузка при достижении группы
-          // Считаем сколько треков до этой группы
-          int tracksBefore = 0;
-          for (int i = 0; i < index; i++) {
-            tracksBefore += groups[i].tracks.length;
-          }
-
-          // Если достигли ~90 трека из 100, загружаем ещё
-          if (tracksBefore >= 90 &&
-              !tracksState.isLoading &&
-              tracksState.hasMore) {
-            // Подгрузка будет через ScrollNotification
-          }
-
-          // Оборачиваем первую карточку в Showcase
-          final trackCard = _TrackGroupCard(
-            assembly: g.assembly,
-            tracks: g.tracks,
-            selectedTrackCodes: _selectedTracks,
-            selectedStatus: _selectedStatus,
-            onToggle: _toggleTrack,
-            requestedPhotoReports: _requestedPhotoReports,
-            onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
-            onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
-            photoRequestCreatedAt: _photoRequestCreatedAt,
-            photoRequestUpdatedAt: _photoRequestUpdatedAt,
-            photoRequestNotes: _photoRequestNotes,
-            overrideComments: _overrideComments,
-            onAskQuestion: (track) => _showAskQuestionSheet(context, track),
-            onCancelQuestion: (track) => _cancelQuestion(track),
-            onEditComment: (track) => _showCommentSheet(context, track),
-            onEditProduct: (track) => _showAboutProductSheet(context, track),
-            askedQuestions: _askedQuestions,
-            questionCreatedAt: _questionCreatedAt,
-            questionUpdatedAt: _questionUpdatedAt,
-            questionStatus: _questionStatus,
-            questionAnswers: _questionAnswers,
-            productInfos: _productInfos,
-            groupComments: _groupComments,
-            groupQuestions: _groupQuestions,
-            groupQuestionCreatedAt: _groupQuestionCreatedAt,
-            groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
-            onEditGroupComment: (assembly) =>
-                _showGroupCommentSheet(context, assembly),
-            onAskGroupQuestion: (assembly) =>
-                _showGroupQuestionSheet(context, assembly),
-            onSelectDelivery: (assembly) =>
-                _showDeliverySheet(context, assembly),
-            onDeleteTrack: (track) => _deleteTrack(track),
-            onReturnRequest: (track) => _showReturnSheet(context, track),
-            returnRequestedTracks: _returnRequestedTracks,
-          );
-
-          // Первый элемент оборачиваем в Showcase (только если туториал ещё не показан)
-          if (index == 0 && shouldShowItem) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Showcase(
-                key: _showcaseKeyTrackItem,
-                title: '📦 Карточка трека',
-                description:
-                    'Полная информация о вашей посылке:\n• Номер трека и текущий статус\n• Дата последнего обновления\n• Информация о товаре (если заполнена)\n• Комментарии и заметки\n\nНажмите на карточку для раскрытия деталей. Доступные действия:\n• Запросить фотоотчёт — доступно только в статусе «В ожидании». Отменить запрос можно пока его статус «Новый»\n• Задать вопрос - уточнить любую информацию\n• Добавить заметку - личный комментарий\n• О товаре - заполнить данные о содержимом',
-                targetBorderRadius: BorderRadius.circular(18),
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.bottom,
-                tooltipBackgroundColor: Colors.white,
-                textColor: Colors.black87,
-                titleTextStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A1A),
-                ),
-                descTextStyle: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-                onToolTipClick: _onShowcaseComplete,
-                onBarrierClick: _onShowcaseComplete,
-                child: trackCard,
-              ),
+              child: index == 0
+                  ? KeyedSubtree(key: _trackDetailKey, child: trackCard)
+                  : trackCard,
             );
-          }
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: trackCard,
-          );
-        }),
-        // Индикатор загрузки следующей страницы
-        if (tracksState.isLoading && tracksState.tracks.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        // Показываем что загружены все данные
-        if (!tracksState.hasMore && tracksState.tracks.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: Text(
-                'Все треки загружены',
-                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-              ),
-            ),
-          ),
-      ],
-    );
+          },
+        ),
+      ),
+    ];
   }
 
   List<_GroupBucket> _groupTracks(List<TrackItem> tracks) {
@@ -2930,6 +2906,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
             ..tracks.add(t);
     }
     final list = byKey.values.toList(growable: false);
+    for (final bucket in list) {
+      bucket.tracks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
     list.sort((a, b) => b.latestDate.compareTo(a.latestDate));
     return list;
   }
@@ -2953,28 +2932,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     });
   }
 
-  void _selectAll() {
+  Future<void> _selectAll() async {
     if (_selectedStatus == null) return;
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) return;
 
-    final tracksState = ref.read(paginatedTracksProvider(clientCode)).state;
-    final allWithStatus = tracksState.tracks
+    final notifier = ref.read(paginatedTracksProvider(clientCode));
+
+    // Load all remaining pages so we select every track, not just the loaded page
+    while (notifier.state.hasMore && !notifier.state.isLoading) {
+      await notifier.loadMore();
+      if (!mounted) return;
+      if (notifier.state.error != null) break; // прерываем при ошибке API
+    }
+
+    final allWithStatus = notifier.state.tracks
         .where((t) => t.status == _selectedStatus)
         .map((t) => t.code)
         .toSet();
 
-    Future(() {
-      if (!mounted) return;
-      setState(() {
-        _selectedTracks.addAll(allWithStatus);
-      });
-      _showStyledSnackBar(
-        context,
-        'Рекомендуем проверить все трек-номера перед передачей на сборку, '
-        'так как будут отправлены именно те трек-номера которые были выбраны.',
-      );
+    if (!mounted) return;
+    setState(() {
+      _selectedTracks.addAll(allWithStatus);
     });
+    _showStyledSnackBar(
+      context,
+      'Рекомендуем проверить все трек-номера перед передачей на сборку, '
+      'так как будут отправлены именно те трек-номера которые были выбраны.',
+    );
   }
 
   String _actionLabel() {
@@ -3162,9 +3147,6 @@ class _FiltersNew extends StatefulWidget {
   final ValueChanged<String?> onStatusChanged;
   final ValueChanged<ViewMode> onViewModeChanged;
   final ValueChanged<String> onQueryChanged;
-  final GlobalKey? showcaseSearchKey;
-  final GlobalKey? showcaseViewModeKey;
-
   const _FiltersNew({
     required this.statusCode,
     required this.tracks,
@@ -3173,8 +3155,6 @@ class _FiltersNew extends StatefulWidget {
     required this.onStatusChanged,
     required this.onViewModeChanged,
     required this.onQueryChanged,
-    this.showcaseSearchKey,
-    this.showcaseViewModeKey,
   });
 
   @override
@@ -3235,36 +3215,6 @@ class _FiltersNewState extends State<_FiltersNew> {
       ],
       onChanged: (v) => v != null ? widget.onViewModeChanged(v) : null,
     );
-
-    // Оборачиваем в Showcase если ключ передан
-    if (widget.showcaseViewModeKey != null) {
-      viewModeDropdown = Showcase(
-        key: widget.showcaseViewModeKey!,
-        title: '📋 Режим отображения',
-        description:
-            'Переключение между видами треков:\n• Все - все посылки и сборки вместе\n• Сборки - только консолидированные отправки (несколько треков в одной посылке)\n• Одиночные - только отдельные посылки\n\nВыберите режим для удобной навигации по списку.',
-        targetBorderRadius: BorderRadius.circular(14),
-        targetPadding: getShowcaseTargetPadding(),
-        tooltipPosition: TooltipPosition.bottom,
-        tooltipBackgroundColor: Colors.white,
-        textColor: Colors.black87,
-        titleTextStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1A1A1A),
-        ),
-        descTextStyle: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: Colors.grey.shade600,
-        ),
-        onTargetClick: () {
-          ShowCaseWidget.of(context).next();
-        },
-        disposeOnTap: false,
-        child: viewModeDropdown,
-      );
-    }
 
     // Виджет поля поиска
     Widget searchField = Container(
@@ -3328,36 +3278,6 @@ class _FiltersNewState extends State<_FiltersNew> {
       ),
     );
 
-    // Оборачиваем в Showcase если ключ передан
-    if (widget.showcaseSearchKey != null) {
-      searchField = Showcase(
-        key: widget.showcaseSearchKey!,
-        title: '🔍 Поиск по номеру трека',
-        description:
-            'Введите полный или частичный номер для поиска.\nНажмите ✕ для очистки поля.',
-        targetBorderRadius: BorderRadius.circular(14),
-        targetPadding: getShowcaseTargetPadding(),
-        tooltipPosition: TooltipPosition.bottom,
-        tooltipBackgroundColor: Colors.white,
-        textColor: Colors.black87,
-        titleTextStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1A1A1A),
-        ),
-        descTextStyle: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: Colors.grey.shade600,
-        ),
-        onTargetClick: () {
-          ShowCaseWidget.of(context).next();
-        },
-        disposeOnTap: false,
-        child: searchField,
-      );
-    }
-
     return Column(
       children: [
         searchField,
@@ -3414,6 +3334,8 @@ class _TrackGroupCard extends StatefulWidget {
   final ValueChanged<TrackItem> onDeleteTrack;
   final ValueChanged<TrackItem> onReturnRequest;
   final Set<String> returnRequestedTracks;
+  final GlobalKey? tutorialActionsKey;
+  final GlobalKey? tutorialAssemblyKey;
 
   const _TrackGroupCard({
     required this.assembly,
@@ -3448,6 +3370,8 @@ class _TrackGroupCard extends StatefulWidget {
     required this.onDeleteTrack,
     required this.onReturnRequest,
     required this.returnRequestedTracks,
+    this.tutorialActionsKey,
+    this.tutorialAssemblyKey,
   });
 
   @override
@@ -3491,6 +3415,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         children: [
           if (widget.assembly != null) ...[
             Padding(
+              key: widget.tutorialAssemblyKey,
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3864,7 +3789,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 track.status == 'На сборке' ||
                 track.status == 'Отправлен';
             final activePhoto = track.activePhotoRequest;
-            final activeQuestion = track.activeQuestion;
+            final visibleQuestions = track.questions
+                .where((q) => q.status != 'cancelled')
+                .toList();
             final isPhotoRequested =
                 activePhoto != null ||
                 widget.requestedPhotoReports.contains(track.code);
@@ -3875,9 +3802,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             final canCancelPhoto = activePhoto?.status == 'new';
             final availablePhotoReport = canRequestPhoto || canCancelPhoto;
             final commentText = widget.overrideComments[track.code] ?? track.comment;
+            final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '').trim();
             final hasQuestion =
-                activeQuestion != null ||
-                (widget.askedQuestions[track.code] ?? '').trim().isNotEmpty;
+                visibleQuestions.isNotEmpty || pendingLocalQuestion.isNotEmpty;
             final photoCreated =
                 activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
             final photoUpdated =
@@ -3903,10 +3830,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 productInfoImages.isNotEmpty;
 
             final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
-            final questionCreated =
-                activeQuestion?.createdAt ?? widget.questionCreatedAt[track.code];
-            final questionUpdated =
-                activeQuestion?.answeredAt ?? widget.questionUpdatedAt[track.code];
 
             final List<Widget> infoSections = [];
             final commentValue = (commentText ?? '').trim();
@@ -4065,6 +3988,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                           CachedNetworkImage(
                                             imageUrl: fullUrl,
                                             fit: BoxFit.cover,
+                                            memCacheWidth: 160,
+                                            memCacheHeight: 160,
                                             placeholder: (_, _) => Container(
                                               color: Colors.black.withValues(alpha: 0.06),
                                               child: const Center(
@@ -4110,61 +4035,82 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             }
 
             if (hasQuestion) {
-              final questionText =
-                  activeQuestion?.question ?? widget.askedQuestions[track.code] ?? '';
-              final qStatus =
-                  activeQuestion?.statusLabel ??
-                  widget.questionStatus[track.code] ??
-                  'Новый';
-              final qAnswer =
-                  activeQuestion?.answer ?? widget.questionAnswers[track.code] ?? '';
-              infoSections.add(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Вопрос',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
+              // Показываем все видимые вопросы (из API)
+              for (var i = 0; i < visibleQuestions.length; i++) {
+                final q = visibleQuestions[i];
+                infoSections.add(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Статус: $qStatus',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                    if (questionText.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Вопрос: $questionText',
+                        'Статус: ${q.statusLabel}',
+                        style: const TextStyle(color: Colors.black54),
+                      ),
+                      if (q.question.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Вопрос: ${q.question}',
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                      if (q.hasAnswer) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Ответ: ${q.answer}',
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                      const SizedBox(height: 2),
+                      Text(
+                        'Создан: ${df.format(q.createdAt)}',
+                        style: const TextStyle(color: Colors.black45),
+                      ),
+                      if (q.answeredAt != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Отвечен: ${df.format(q.answeredAt!)}',
+                          style: const TextStyle(color: Colors.black45),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              // Показываем локально добавленный вопрос (ещё не сохранён в API)
+              if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty) {
+                infoSections.add(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Вопрос',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Статус: ${widget.questionStatus[track.code] ?? 'Новый'}',
+                        style: const TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Вопрос: $pendingLocalQuestion',
                         style: const TextStyle(color: Colors.black54),
                       ),
                     ],
-                    if (qAnswer.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ответ: $qAnswer',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    ],
-                    if (questionCreated != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Создан: ${df.format(questionCreated)}',
-                        style: const TextStyle(color: Colors.black45),
-                      ),
-                    ],
-                    if (questionUpdated != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Обновлён: ${df.format(questionUpdated)}',
-                        style: const TextStyle(color: Colors.black45),
-                      ),
-                    ],
-                  ],
-                ),
-              );
+                  ),
+                );
+              }
             }
 
             if (hasProductInfo) {
@@ -4293,6 +4239,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       ],
                       const SizedBox(height: 10),
                       Row(
+                        key: index == 0 ? widget.tutorialActionsKey : null,
                         children: [
                           // Icon buttons on the left
                           Row(
@@ -4519,6 +4466,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             child: CachedNetworkImage(
                               imageUrl: photoUrl,
                               fit: BoxFit.cover,
+                              memCacheWidth: 160,
+                              memCacheHeight: 160,
                               placeholder: (_, _) => Container(
                                 color: Colors.black.withValues(alpha: 0.06),
                                 child: const Center(

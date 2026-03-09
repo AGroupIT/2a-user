@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../data/purchase_provider.dart';
 import '../data/shop_provider.dart';
 import '../domain/purchase_list.dart' show SkuProperty;
@@ -55,12 +56,36 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
           return const Center(child: Text('Товар не найден'));
         }
         _initDefaults(item);
-        return Stack(
+        return TutorialScreenWrapper(
+          screenKey: 'shop_item_detail',
+          steps: const [
+            TutorialStep(
+              icon: Icons.info_outline_rounded,
+              title: 'О товаре',
+              description: 'Здесь показана подробная информация о товаре: фото, название, характеристики и описание.',
+            ),
+            TutorialStep(
+              icon: Icons.tune_rounded,
+              title: 'Выбор вариации',
+              description: 'Если у товара есть цвет, размер или другие параметры — выберите нужный вариант, нажав на него.',
+            ),
+            TutorialStep(
+              icon: Icons.remove_circle_outline_rounded,
+              title: 'Количество',
+              description: 'Используйте кнопки «−» и «+» внизу экрана, чтобы указать нужное количество товара.',
+            ),
+            TutorialStep(
+              icon: Icons.add_shopping_cart_rounded,
+              title: 'В список выкупа',
+              description: 'Нажмите кнопку «В список выкупа», чтобы добавить товар в текущую заявку на выкуп.',
+            ),
+          ],
+          child: Stack(
           children: [
             _buildContent(context, item),
             _buildBottomBar(context, item),
           ],
-        );
+        ));
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(

@@ -1,14 +1,10 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/network/api_client.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
@@ -142,6 +138,12 @@ class CalculatorScreen extends ConsumerStatefulWidget {
 }
 
 class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
+  final GlobalKey _calcFormKey = GlobalKey();
+  final GlobalKey _tariffKey = GlobalKey();
+  final GlobalKey _packagingKey = GlobalKey();
+  final GlobalKey _calcButtonKey = GlobalKey();
+  final GlobalKey _photoSurchargeKey = GlobalKey();
+
   final _weightCtrl = TextEditingController();
   final _placesCtrl = TextEditingController(text: '1');
   final _totalCtrl = TextEditingController(text: '1');
@@ -149,46 +151,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   _Tariff? _selectedTariff;
   _Packaging? _selectedPackaging;
-
-  final _showcaseKeyForm = GlobalKey();
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyForm, ShowcaseBlock.calculatorForm),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
 
   @override
   void dispose() {
@@ -264,17 +226,42 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
-    final shouldShowForm = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.calculatorForm));
-
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return Scaffold(
-      backgroundColor: Colors.transparent,
+    return TutorialScreenWrapper(
+      screenKey: 'calculator',
+      steps: [
+        TutorialStep(
+          icon: Icons.calculate_rounded,
+          title: 'Калькулятор стоимости',
+          description: 'Рассчитайте примерную стоимость доставки заранее. Выберите тариф, введите вес и объём посылки.',
+          targetKey: _calcFormKey,
+        ),
+        TutorialStep(
+          icon: Icons.local_shipping_rounded,
+          title: 'Выбор тарифа',
+          description: 'Тариф определяет цену за кг. Уточните у менеджера, какой тариф применяется к вашим товарам.',
+          targetKey: _tariffKey,
+        ),
+        TutorialStep(
+          icon: Icons.photo_camera_rounded,
+          title: 'Надбавка за фотоотчёты',
+          description: 'Чем больше позиций сфотографировано — тем ниже итоговая стоимость. Коэффициент виден в строке «Фотоотчёт».',
+          targetKey: _photoSurchargeKey,
+        ),
+        TutorialStep(
+          icon: Icons.inventory_rounded,
+          title: 'Упаковка',
+          description: 'Выберите тип упаковки, чтобы добавить её стоимость к расчёту. Упаковка оплачивается отдельно.',
+          targetKey: _packagingKey,
+        ),
+        TutorialStep(
+          icon: Icons.calculate_outlined,
+          title: 'Кнопка «Рассчитать»',
+          description: 'После заполнения всех полей нажмите «Рассчитать» — внизу появится итоговая стоимость с разбивкой по статьям.',
+          targetKey: _calcButtonKey,
+        ),
+      ],
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 32 + bottomPad),
           child: Column(
@@ -316,14 +303,17 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                   if (tariffs.isEmpty) {
                     return const _SectionCard(child: Text('Тарифы не найдены'));
                   }
-                  return _SectionCard(
-                    child: _CalcDropdown<_Tariff>(
-                      value: _selectedTariff ?? tariffs.first,
-                      label: 'Тариф',
-                      items: tariffs
-                          .map((t) => _CalcDropdownItem(value: t, label: t.name))
-                          .toList(),
-                      onChanged: (v) => setState(() => _selectedTariff = v),
+                  return KeyedSubtree(
+                    key: _tariffKey,
+                    child: _SectionCard(
+                      child: _CalcDropdown<_Tariff>(
+                        value: _selectedTariff ?? tariffs.first,
+                        label: 'Тариф',
+                        items: tariffs
+                            .map((t) => _CalcDropdownItem(value: t, label: t.name))
+                            .toList(),
+                        onChanged: (v) => setState(() => _selectedTariff = v),
+                      ),
                     ),
                   );
                 },
@@ -336,7 +326,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                 error: (e, st) => const SizedBox.shrink(),
                 data: (packagings) {
                   if (packagings.isEmpty) return const SizedBox.shrink();
-                  return Column(
+                  return KeyedSubtree(
+                    key: _packagingKey,
+                    child: Column(
                     children: [
                       _SectionCard(
                         child: _CalcDropdown<_Packaging?>(
@@ -357,14 +349,17 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                  ),
                   );
                 },
               ),
 
               // ── Входные данные ──
-              Builder(
-                builder: (_) {
-                  final w = _SectionCard(
+              KeyedSubtree(
+                key: _calcFormKey,
+                child: KeyedSubtree(
+                  key: _calcButtonKey,
+                  child: _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -393,41 +388,34 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _NumField(
-                                label: 'Треков всего',
-                                controller: _totalCtrl,
-                                hint: '1',
-                                onChanged: (_) => setState(() {}),
+                        KeyedSubtree(
+                          key: _photoSurchargeKey,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _NumField(
+                                  label: 'Треков всего',
+                                  controller: _totalCtrl,
+                                  hint: '1',
+                                  onChanged: (_) => setState(() {}),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _NumField(
-                                label: 'С фотоотчётом',
-                                controller: _photoCtrl,
-                                hint: '0',
-                                onChanged: (_) => setState(() {}),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _NumField(
+                                  label: 'С фотоотчётом',
+                                  controller: _photoCtrl,
+                                  hint: '0',
+                                  onChanged: (_) => setState(() {}),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  );
-                  return shouldShowForm
-                      ? Showcase(
-                          key: _showcaseKeyForm,
-                          title: 'Калькулятор доставки',
-                          description: 'Введите вес, количество мест и треков для расчёта стоимости доставки.',
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.top,
-                          child: w,
-                        )
-                      : w;
-                },
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -458,8 +446,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
             ],
           ),
         ),
-          );
-        },
       ),
     );
   }

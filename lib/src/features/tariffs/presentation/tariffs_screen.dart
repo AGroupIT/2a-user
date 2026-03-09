@@ -1,12 +1,8 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:showcaseview/showcaseview.dart';
-
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../data/tariffs_provider.dart';
 
 class TariffsScreen extends ConsumerStatefulWidget {
@@ -17,59 +13,15 @@ class TariffsScreen extends ConsumerStatefulWidget {
 }
 
 class _TariffsScreenState extends ConsumerState<TariffsScreen> {
-  final _showcaseKeyList = GlobalKey();
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyList, ShowcaseBlock.tariffsList),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
+  final GlobalKey _tariffsListKey = GlobalKey();
+  final GlobalKey _weightTiersKey = GlobalKey();
+  final GlobalKey _packagingKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final tariffsAsync = ref.watch(userTariffsProvider);
-    final shouldShowList = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.tariffsList));
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return tariffsAsync.when(
+    return tariffsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
         child: Padding(
@@ -128,25 +80,36 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
             children: [
               // ── Доставка ──────────────────────────────────────
               if (data.deliveryTariffs.isNotEmpty) ...[
-                _SectionHeader(
-                  icon: Icons.local_shipping_rounded,
-                  title: 'Доставка',
-                  color: context.brandPrimary,
+                KeyedSubtree(
+                  key: _tariffsListKey,
+                  child: _SectionHeader(
+                    icon: Icons.local_shipping_rounded,
+                    title: 'Доставка',
+                    color: context.brandPrimary,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                ...data.deliveryTariffs.map((t) => Padding(
+                ...data.deliveryTariffs.asMap().entries.map((entry) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: _DeliveryTariffCard(tariff: t),
+                      child: entry.key == 0
+                          ? KeyedSubtree(
+                              key: _weightTiersKey,
+                              child: _DeliveryTariffCard(tariff: entry.value),
+                            )
+                          : _DeliveryTariffCard(tariff: entry.value),
                     )),
                 const SizedBox(height: 8),
               ],
 
               // ── Упаковка ──────────────────────────────────────
               if (data.packagingTypes.isNotEmpty) ...[
-                _SectionHeader(
-                  icon: Icons.inventory_2_rounded,
-                  title: 'Упаковка',
-                  color: const Color(0xFF9C27B0),
+                KeyedSubtree(
+                  key: _packagingKey,
+                  child: _SectionHeader(
+                    icon: Icons.inventory_2_rounded,
+                    title: 'Упаковка',
+                    color: const Color(0xFF9C27B0),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _PackagingCard(types: data.packagingTypes),
@@ -173,20 +136,31 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
             ],
           ),
         );
-        return shouldShowList
-            ? Showcase(
-                key: _showcaseKeyList,
-                title: 'Тарифы',
-                description: 'Здесь отображаются актуальные тарифы на доставку, упаковку и фотоотчёты.',
-                targetPadding: getShowcaseTargetPadding(),
-                tooltipPosition: TooltipPosition.bottom,
-                child: content,
-              )
-            : content;
+        return TutorialScreenWrapper(
+          screenKey: 'tariffs',
+          steps: [
+            TutorialStep(
+              icon: Icons.local_shipping_rounded,
+              title: 'Тарифы доставки',
+              description: 'Актуальная стоимость доставки по каждому тарифу. Цена указана за 1 кг. Тариф назначается менеджером при оформлении.',
+              targetKey: _tariffsListKey,
+            ),
+            TutorialStep(
+              icon: Icons.scale_rounded,
+              title: 'Весовые диапазоны',
+              description: 'Чем тяжелее партия — тем ниже цена за кг. Итоговый тариф выбирается автоматически при выставлении счёта.',
+              targetKey: _weightTiersKey,
+            ),
+            TutorialStep(
+              icon: Icons.inventory_rounded,
+              title: 'Упаковка',
+              description: 'Стоимость дополнительной упаковки прибавляется к счёту. Упаковка защищает товар при транспортировке.',
+              targetKey: _packagingKey,
+            ),
+          ],
+          child: content,
+        );
       },
-          );
-        },
-      ),
     );
   }
 }

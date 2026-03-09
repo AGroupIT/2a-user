@@ -1,15 +1,11 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:showcaseview/showcaseview.dart';
-
 import '../../../core/network/api_config.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../assemblies/domain/box.dart';
 import '../data/sp_models.dart';
@@ -76,181 +72,73 @@ class SpAssemblyDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen> {
-  final _showcaseKeyStats = GlobalKey();
-  final _showcaseKeyParticipants = GlobalKey();
-  final _showcaseKeyTracks = GlobalKey();
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyStats, ShowcaseBlock.spAssemblyStats),
-      (_showcaseKeyParticipants, ShowcaseBlock.spAssemblyParticipants),
-      (_showcaseKeyTracks, ShowcaseBlock.spAssemblyTracks),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(spAssembliesControllerProvider);
-    final shouldShowStats = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyStats));
-    final shouldShowParticipants = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyParticipants));
-    final shouldShowTracks = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.spAssemblyTracks));
     final assembly = state.assemblies.firstWhere(
       (a) => a.id == widget.assemblyId,
       orElse: () => throw Exception('Assembly not found'),
     );
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return Scaffold(
-            body: RefreshIndicator(
-              onRefresh: () async {
-                await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
-              },
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
-                children: [
-                  // Заголовок
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: Text(
-                      assembly.displayName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+    return TutorialScreenWrapper(
+      screenKey: 'sp_assembly_detail',
+      steps: const [
+        TutorialStep(
+          icon: Icons.group_rounded,
+          title: 'Участники сборки',
+          description: 'Список всех участников совместной покупки с их треками, весом и долей в общем счёте.',
+        ),
+        TutorialStep(
+          icon: Icons.calculate_rounded,
+          title: 'Финансы',
+          description: 'Итоговая сумма к оплате для каждого участника рассчитывается автоматически по весу и тарифу.',
+        ),
+        TutorialStep(
+          icon: Icons.edit_rounded,
+          title: 'Редактирование трека',
+          description: 'Нажмите на трек, чтобы заполнить СП-данные: имя участника, цену в юанях и чистый вес.',
+        ),
+        TutorialStep(
+          icon: Icons.check_circle_outline_rounded,
+          title: 'Отметить оплату',
+          description: 'Чекбокс «Оплачено» рядом с участником — отметьте, когда получите оплату от конкретного человека.',
+        ),
+        TutorialStep(
+          icon: Icons.copy_rounded,
+          title: 'Скопировать для отправки',
+          description: '«Скопировать для отправки» формирует текст с суммой для участника — удобно отправить в мессенджер.',
+        ),
+      ],
+      child: Scaffold(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
+        },
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Text(
+                assembly.displayName,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
                     ),
-                  ),
-                  shouldShowStats
-                      ? Showcase(
-                          key: _showcaseKeyStats,
-                          title: '📊 Статистика сборки',
-                          description: '• Треков — участвует в СП из общего\n'
-                              '• Участников — уникальные в СП\n'
-                              '• Доставка — общая сумма\n'
-                              '• Вес — с упаковкой и без\n\n'
-                              'Прибыль = сумма наценок.\n\n'
-                              '👆 Нажмите для продолжения',
-                          targetPadding: const EdgeInsets.all(8),
-                          targetBorderRadius: BorderRadius.circular(20),
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: _StatsSection(assembly: assembly),
-                        )
-                      : _StatsSection(assembly: assembly),
-                  const SizedBox(height: 24),
-
-                  // Коробки
-                  if (assembly.boxes.isNotEmpty) ...[
-                    _BoxesSection(assembly: assembly),
-                    const SizedBox(height: 24),
-                  ],
-
-                  shouldShowParticipants
-                      ? Showcase(
-                          key: _showcaseKeyParticipants,
-                          title: '👥 Участники СП',
-                          description: '• Чекбокс — отметка оплаты\n'
-                              '• Треки и вес — заказы участника\n'
-                              '• Прибыль — ваша наценка\n\n'
-                              'Разверните для деталей и копирования.\n\n'
-                              '👆 Нажмите для продолжения',
-                          targetPadding: const EdgeInsets.all(8),
-                          targetBorderRadius: BorderRadius.circular(20),
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: _ParticipantsSection(assembly: assembly),
-                        )
-                      : _ParticipantsSection(assembly: assembly),
-                  const SizedBox(height: 24),
-                  shouldShowTracks
-                      ? Showcase(
-                          key: _showcaseKeyTracks,
-                          title: '📦 Треки сборки',
-                          description: '• Зелёная рамка — данные заполнены\n'
-                              '• Оранжевая — требуется заполнение\n\n'
-                              'Видно: цена, доставка, итого, прибыль.\n'
-                              'Нажмите на трек для редактирования.\n\n'
-                              '✅ Нажмите для завершения',
-                          targetPadding: const EdgeInsets.all(8),
-                          targetBorderRadius: BorderRadius.circular(20),
-                          tooltipBackgroundColor: Colors.white,
-                          textColor: Colors.black87,
-                          titleTextStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                          descTextStyle: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                          child: _TracksSection(assembly: assembly),
-                        )
-                      : _TracksSection(assembly: assembly),
-                ],
               ),
             ),
-          );
-        },
+            _StatsSection(assembly: assembly),
+            const SizedBox(height: 24),
+            if (assembly.boxes.isNotEmpty) ...[
+              _BoxesSection(assembly: assembly),
+              const SizedBox(height: 24),
+            ],
+            _ParticipantsSection(assembly: assembly),
+            const SizedBox(height: 24),
+            _TracksSection(assembly: assembly),
+          ],
+        ),
       ),
-    );
+    ));
   }
 }
 

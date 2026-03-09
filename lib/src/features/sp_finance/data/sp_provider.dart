@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/demo_mode_provider.dart';
 import 'sp_models.dart';
 import 'sp_repository.dart';
 
@@ -39,14 +41,26 @@ class SpAssembliesState {
 class SpAssembliesController extends Notifier<SpAssembliesState> {
   @override
   SpAssembliesState build() {
-    // Не вызываем loadAssemblies() в build() - это создает circular dependency
-    // Вместо этого вызовем из initState экрана
+    // В демо-режиме сразу возвращаем данные, чтобы TutorialScreenWrapper рендерился с первого кадра
+    if (ref.watch(demoModeProvider)) {
+      return SpAssembliesState(assemblies: DemoData.spAssemblies);
+    }
+    // В обычном режиме данные загружаются через loadAssemblies() из initState экрана
     return const SpAssembliesState();
   }
 
   /// Загрузить список сборок
   Future<void> loadAssemblies() async {
     state = state.copyWith(isLoading: true, error: null);
+
+    // Демо-режим: возвращаем статичные данные без обращения к API
+    if (ref.read(demoModeProvider)) {
+      state = state.copyWith(
+        assemblies: DemoData.spAssemblies,
+        isLoading: false,
+      );
+      return;
+    }
 
     try {
       final repository = ref.read(spRepositoryProvider);

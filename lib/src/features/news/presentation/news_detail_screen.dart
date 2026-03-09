@@ -7,6 +7,7 @@ import 'package:photo_view/photo_view.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/quill_delta_viewer.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
@@ -43,7 +44,21 @@ class NewsDetailScreen extends ConsumerWidget {
         final locale = isZh(context) ? 'zh' : 'ru';
         final df = DateFormat('dd MMM yyyy', locale);
 
-        return ListView(
+        return TutorialScreenWrapper(
+          screenKey: 'news_detail',
+          steps: const [
+            TutorialStep(
+              icon: Icons.article_rounded,
+              title: 'Статья',
+              description: 'Здесь отображается полный текст новости с датой публикации и обложкой.',
+            ),
+            TutorialStep(
+              icon: Icons.image_rounded,
+              title: 'Фото в статье',
+              description: 'Нажмите на любое изображение в статье, чтобы открыть его на весь экран и увеличить.',
+            ),
+          ],
+          child: ListView(
           padding: EdgeInsets.fromLTRB(
             16,
             topPad * 0.7 + 6,
@@ -162,7 +177,7 @@ class NewsDetailScreen extends ConsumerWidget {
               ),
             ),
           ],
-        );
+        ));
       },
     );
   }

@@ -1,4 +1,3 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
@@ -14,15 +13,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
+import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/locale_text.dart';
-import 'package:showcaseview/showcaseview.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
@@ -36,13 +34,21 @@ class PaymentChatScreen extends ConsumerStatefulWidget {
   final String? invoiceId;
   final String? invoiceNumber;
   final double? amount;
-  
+  final double? totalCostCny;
+  final double? totalCostRub;
+  final double? clientRubRate;
+  final double? clientYuanRate;
+
   const PaymentChatScreen({
     super.key,
     this.initialMessage,
     this.invoiceId,
     this.invoiceNumber,
     this.amount,
+    this.totalCostCny,
+    this.totalCostRub,
+    this.clientRubRate,
+    this.clientYuanRate,
   });
 
   @override
@@ -60,20 +66,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   bool _isInfoBannerExpanded = false;
 
-  // Showcase keys
-  final _showcaseKeyInfoBanner = GlobalKey();
-  final _showcaseKeyMessages = GlobalKey();
-  final _showcaseKeyInput = GlobalKey();
-
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
   // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
   bool _isSendingLocally = false;
 
   // Флаг защиты от вызова ref после disposal
   bool _isDisposed = false;
+
+  final GlobalKey _infoBannerKey = GlobalKey();
+  final GlobalKey _messagesAreaKey = GlobalKey();
+  final GlobalKey _inputAreaKey = GlobalKey();
 
 
   @override
@@ -114,51 +115,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ChatType.payment,
       conversationId: conversationId,
     );
-  }
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-
-    final pairs = [
-      (_showcaseKeyInfoBanner, ShowcaseBlock.paymentChatInfoBanner),
-      (_showcaseKeyMessages, ShowcaseBlock.paymentChatInfoBanner),
-      (_showcaseKeyInput, ShowcaseBlock.paymentChatInput),
-    ];
-
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-
-    if (visible.isEmpty) {
-      _showcaseStarted = false;
-      return;
-    }
-
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
   }
 
   void _startPolling() {
@@ -515,9 +471,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         'invoiceId': widget.invoiceId,
         'invoiceNumber': widget.invoiceNumber,
         'amount': widget.amount,
+        if (widget.totalCostCny != null) 'totalCostCny': widget.totalCostCny,
+        if (widget.totalCostRub != null) 'totalCostRub': widget.totalCostRub,
+        if (widget.clientRubRate != null) 'clientRubRate': widget.clientRubRate,
+        if (widget.clientYuanRate != null) 'clientYuanRate': widget.clientYuanRate,
       };
     }
-    
+
     await _handleMessageSend(widget.initialMessage!, metadata: metadata);
   }
 
@@ -711,112 +671,60 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
-    final shouldShowInfoBanner = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.paymentChatInfoBanner));
-    final shouldShowInput = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.paymentChatInput));
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
+    return TutorialScreenWrapper(
+      screenKey: 'payment_chat',
+      steps: [
+        TutorialStep(
+          icon: Icons.payments_rounded,
+          title: 'Чат по оплате',
+          description: 'Здесь обсуждается оплата счетов. Напишите, если есть вопросы по сумме или реквизитам.',
+          targetKey: _messagesAreaKey,
+        ),
+        TutorialStep(
+          icon: Icons.receipt_rounded,
+          title: 'Прикрепить чек',
+          description: 'После оплаты нажмите значок скрепки и прикрепите скриншот или чек — это ускорит подтверждение платежа.',
+          targetKey: _inputAreaKey,
+        ),
+        TutorialStep(
+          icon: Icons.info_outline_rounded,
+          title: 'Баннер с инструкцией',
+          description: 'Вверху чата — кнопка с инструкцией по оплате. Откройте её, чтобы узнать доступные способы.',
+          targetKey: _infoBannerKey,
+        ),
+      ],
+      child: Stack(
+      children: [
+        // Градиентный фон как на других страницах
+        const Positioned.fill(child: AppBackground()),
 
-          return Stack(
+        SafeArea(
+          top: false, // Контент скроллится под топ-меню
+          bottom: false,
+          child: Column(
             children: [
-              // Градиентный фон как на других страницах
-              const Positioned.fill(child: AppBackground()),
+              // Отступ от верха экрана
+              const SizedBox(height: 65),
+              // Информационный блок о назначении чата
+              _buildInfoBanner(),
 
-              SafeArea(
-                top: false, // Контент скроллится под топ-меню
-                bottom: false,
-                child: Column(
-                  children: [
-                    // Отступ от верха экрана
-                    const SizedBox(height: 65),
-                    // Информационный блок о назначении чата (перемещён выше)
-                    shouldShowInfoBanner
-                        ? Showcase(
-                            key: _showcaseKeyInfoBanner,
-                            title: tr(context, ru: '💰 Чат по вопросам оплаты', zh: '💰 付款问题聊天'),
-                            description: tr(context, ru: 'Специализированный чат для решения финансовых вопросов:\n• Вопросы по оплате счетов\n• Уточнение реквизитов\n• Подтверждение платежей\n• Обсуждение рассрочки или скидок\n\nВся переписка сохраняется для вашего удобства.', zh: '用于解决财务问题的专用聊天：\n• 发票付款问题\n• 确认付款详情\n• 付款确认\n• 讨论分期付款或折扣\n\n所有聊天记录都会保存以方便您使用。'),
-                            targetPadding: getShowcaseTargetPadding(),
-                            tooltipPosition: TooltipPosition.bottom,
-                            tooltipBackgroundColor: Colors.white,
-                            textColor: Colors.black87,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            descTextStyle: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade600,
-                            ),
-                            child: _buildInfoBanner(),
-                          )
-                        : _buildInfoBanner(),
-
-                    // Список сообщений
-                    Expanded(
-                      child: shouldShowInfoBanner
-                          ? Showcase(
-                              key: _showcaseKeyMessages,
-                              title: tr(context, ru: '💬 История переписки', zh: '💬 聊天记录'),
-                              description: tr(context, ru: 'Здесь отображается переписка по финансовым вопросам:\n• Ваши сообщения справа (зелёный фон)\n• Ответы бухгалтерии слева (белый фон)\n• Время отправки и статус доставки\n• Вложения (чеки, платёжные поручения)\n\nВы можете отправлять подтверждения оплаты прикрепляя файлы.', zh: '这里显示财务问题的聊天记录：\n• 您的消息在右侧（绿色背景）\n• 会计回复在左侧（白色背景）\n• 发送时间和发送状态\n• 附件（收据、付款单）\n\n您可以通过附加文件发送付款确认。'),
-                              targetPadding: getShowcaseTargetPadding(),
-                              tooltipPosition: TooltipPosition.bottom,
-                              tooltipBackgroundColor: Colors.white,
-                              textColor: Colors.black87,
-                              titleTextStyle: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1A1A),
-                              ),
-                              descTextStyle: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey.shade600,
-                              ),
-                              child: _buildMessagesList(),
-                            )
-                          : _buildMessagesList(),
-                    ),
-
-                    // Панель быстрых действий
-                    if (_showQuickActions) _buildQuickActionsBar(),
-
-                    // Поле ввода
-                    shouldShowInput
-                        ? Showcase(
-                            key: _showcaseKeyInput,
-                            title: tr(context, ru: '✍️ Написать сообщение', zh: '✍️ 写消息'),
-                            description: tr(context, ru: 'Поле для связи с бухгалтерией:\n• Напишите вопрос или уточнение по оплате\n• Прикрепите скриншот или файл платёжки (📎)\n• Нажмите ➤ для отправки\n\nОтветы по финансовым вопросам обычно приходят в течение рабочего дня.', zh: '与会计沟通的字段：\n• 写下付款问题或澄清\n• 附加截图或付款文件（📎）\n• 按➤发送\n\n财务问题的答复通常在工作日内到达。'),
-                            targetPadding: getShowcaseTargetPadding(),
-                            tooltipPosition: TooltipPosition.top,
-                            tooltipBackgroundColor: Colors.white,
-                            textColor: Colors.black87,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            descTextStyle: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade600,
-                            ),
-                            child: _buildInputField(bottomInset),
-                          )
-                        : _buildInputField(bottomInset),
-                  ],
-                ),
+              // Список сообщений
+              Expanded(
+                key: _messagesAreaKey,
+                child: _buildMessagesList(),
               ),
+
+              // Панель быстрых действий
+              if (_showQuickActions) _buildQuickActionsBar(),
+
+              // Поле ввода
+              _buildInputField(bottomInset),
             ],
-          );
-        },
-      ),
-    );
+          ),
+        ),
+      ],
+    ));
   }
 
   Widget _buildMessagesList() {
@@ -880,6 +788,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   /// Информационный баннер о назначении чата
   Widget _buildInfoBanner() {
     return GestureDetector(
+      key: _infoBannerKey,
       onTap: () => setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -950,6 +859,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
+    // Специальный рендер для запроса оплаты счёта — показываем актуальные данные
+    final meta = message.metadata;
+    if (meta != null && meta['type'] == 'invoice_payment_request') {
+      final invoiceId = meta['invoiceId']?.toString();
+      if (invoiceId != null) {
+        return _InvoicePaymentBubble(message: message, invoiceId: invoiceId);
+      }
+    }
+
     final isMe = message.isFromClient;
     final dateFormat = DateFormat('HH:mm');
 
@@ -1436,8 +1354,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     final chatState = ref.watch(paymentChatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     final isUploading = chatState.isUploading;
-    
+
     return Container(
+      key: _inputAreaKey,
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
@@ -2200,6 +2119,296 @@ class _PaymentFullScreenImageView extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Виджет для отображения запроса оплаты счёта с актуальными данными из сервера
+class _InvoicePaymentBubble extends ConsumerWidget {
+  final ChatMessage message;
+  final String invoiceId;
+
+  const _InvoicePaymentBubble({
+    required this.message,
+    required this.invoiceId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invoiceAsync = ref.watch(invoiceByIdProvider(invoiceId));
+    final isMe = message.isFromClient;
+    final moneyFmt = NumberFormat.decimalPattern('ru');
+    final dateFormat = DateFormat('HH:mm');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(
+              left: isMe ? 0 : 40,
+              right: isMe ? 40 : 0,
+              bottom: 4,
+            ),
+            child: Text(
+              message.senderName,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.black.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe) ...[
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: isMe
+                        ? LinearGradient(
+                            colors: [context.brandPrimary, context.brandSecondary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isMe ? null : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20),
+                      topRight: const Radius.circular(20),
+                      bottomLeft: Radius.circular(isMe ? 20 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 20),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: invoiceAsync.when(
+                    loading: () => _InvoicePaymentContent(
+                      message: message,
+                      invoice: null,
+                      isMe: isMe,
+                      moneyFmt: moneyFmt,
+                      dateFormat: dateFormat,
+                      isLoading: true,
+                    ),
+                    error: (_, e) => _InvoicePaymentContent(
+                      message: message,
+                      invoice: null,
+                      isMe: isMe,
+                      moneyFmt: moneyFmt,
+                      dateFormat: dateFormat,
+                      isLoading: false,
+                    ),
+                    data: (invoice) => _InvoicePaymentContent(
+                      message: message,
+                      invoice: invoice,
+                      isMe: isMe,
+                      moneyFmt: moneyFmt,
+                      dateFormat: dateFormat,
+                      isLoading: false,
+                    ),
+                  ),
+                ),
+              ),
+              if (isMe) ...[
+                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.person_rounded,
+                    color: context.brandPrimary,
+                    size: 18,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InvoicePaymentContent extends StatelessWidget {
+  final ChatMessage message;
+  final InvoiceItem? invoice;
+  final bool isMe;
+  final NumberFormat moneyFmt;
+  final DateFormat dateFormat;
+  final bool isLoading;
+
+  const _InvoicePaymentContent({
+    required this.message,
+    required this.invoice,
+    required this.isMe,
+    required this.moneyFmt,
+    required this.dateFormat,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = isMe ? Colors.white : Colors.black87;
+    final subColor = isMe ? Colors.white70 : Colors.black54;
+    final meta = message.metadata!;
+
+    // Актуальные данные из invoice, fallback на metadata
+    final invoiceNumber = invoice?.invoiceNumber ?? meta['invoiceNumber']?.toString() ?? '—';
+    final statusName = invoice?.statusName ?? invoice?.status ?? '—';
+    final totalUsd = invoice?.totalCostUsd ?? (meta['amount'] as num?)?.toDouble() ?? 0.0;
+    final totalCny = invoice?.totalCostCny ?? (meta['totalCostCny'] as num?)?.toDouble() ?? 0.0;
+    final totalRub = invoice?.totalCostRub ?? (meta['totalCostRub'] as num?)?.toDouble() ?? 0.0;
+    final rubRate = invoice?.clientRubRate ?? (meta['clientRubRate'] as num?)?.toDouble();
+    final yuanRate = invoice?.clientYuanRate ?? (meta['clientYuanRate'] as num?)?.toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.receipt_long_rounded,
+              size: 16,
+              color: isMe ? Colors.white : context.brandPrimary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Запрос на оплату',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+              ),
+            ),
+            if (isLoading) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: isMe ? Colors.white54 : Colors.grey,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '№ $invoiceNumber',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
+        ),
+        Text(
+          statusName,
+          style: TextStyle(fontSize: 12, color: subColor),
+        ),
+        const SizedBox(height: 10),
+        _AmountRow(label: 'К оплате \$', value: '\$${moneyFmt.format(totalUsd.round())}', isMe: isMe),
+        if (totalCny > 0)
+          _AmountRow(label: 'К оплате ¥', value: '¥${moneyFmt.format(totalCny.round())}', isMe: isMe),
+        if (totalRub > 0)
+          _AmountRow(label: 'К оплате ₽', value: '${moneyFmt.format(totalRub.round())} ₽', isMe: isMe),
+        if (rubRate != null || yuanRate != null) ...[
+          const SizedBox(height: 6),
+          Divider(height: 1, color: isMe ? Colors.white24 : Colors.black12),
+          const SizedBox(height: 6),
+          if (rubRate != null)
+            _AmountRow(label: 'Курс \$/₽', value: rubRate.toStringAsFixed(2), isMe: isMe, small: true),
+          if (yuanRate != null)
+            _AmountRow(label: 'Курс \$/¥', value: yuanRate.toStringAsFixed(2), isMe: isMe, small: true),
+        ],
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            dateFormat.format(message.createdAt.toLocal()),
+            style: TextStyle(fontSize: 11, color: subColor),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AmountRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isMe;
+  final bool small;
+
+  const _AmountRow({
+    required this.label,
+    required this.value,
+    required this.isMe,
+    this.small = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = isMe ? Colors.white : Colors.black87;
+    final subColor = isMe ? Colors.white70 : Colors.black54;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: small ? 12 : 13, color: subColor),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: small ? 12 : 13,
+              fontWeight: small ? FontWeight.w500 : FontWeight.w700,
+              color: textColor,
+            ),
+          ),
+        ],
       ),
     );
   }

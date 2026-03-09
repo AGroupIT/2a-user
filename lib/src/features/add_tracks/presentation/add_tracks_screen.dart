@@ -1,12 +1,8 @@
-// TODO: Update to ShowcaseView.get() API when showcaseview 6.0.0 is released
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:showcaseview/showcaseview.dart';
-
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../tracks/data/tracks_provider.dart';
@@ -26,54 +22,10 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   String? _error;
   bool _submitting = false;
 
-  // Showcase keys
-  final _showcaseKeyInput = GlobalKey();
-  final _showcaseKeySubmit = GlobalKey();
-
-  bool _showcaseStarted = false;
-  bool _allSkipped = false;
-  List<ShowcaseBlock> _currentRunBlocks = [];
-
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
-  }
-
-  void _startShowcaseIfNeeded(BuildContext showcaseContext) {
-    if (_showcaseStarted) return;
-    if (!TickerMode.of(showcaseContext)) return;
-    final pairs = [
-      (_showcaseKeyInput, ShowcaseBlock.addTracksInput),
-      (_showcaseKeySubmit, ShowcaseBlock.addTracksSubmit),
-    ];
-    final visible = pairs
-        .where((p) => p.$1.currentContext != null && ref.read(showcaseBlockProvider(p.$2)))
-        .toList();
-    if (visible.isEmpty) { _showcaseStarted = false; return; }
-    _showcaseStarted = true;
-    _currentRunBlocks = visible.map((p) => p.$2).toSet().toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(showcasePendingBlocksProvider.notifier).setBlocks(_currentRunBlocks);
-      startShowCaseSafe(showcaseContext, visible.map((p) => p.$1).toList());
-    });
-  }
-
-  void _onShowcaseComplete() {
-    for (final block in _currentRunBlocks) {
-      ref.read(showcaseServiceProvider).markBlockAsSeen(block);
-      ref.invalidate(showcaseBlockProvider(block));
-    }
-    _currentRunBlocks = [];
-  }
-
-  void _skipAllShowcases() {
-    setState(() => _allSkipped = true);
-    ref.read(showcaseServiceProvider).markAllBlocksSeen();
-    for (final block in ShowcaseBlock.values) {
-      ref.invalidate(showcaseBlockProvider(block));
-    }
   }
 
   @override
@@ -109,20 +61,24 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
   }
 
   Widget _buildContent(BuildContext context, String clientCode) {
-
-    final shouldShowInput = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.addTracksInput));
-    final shouldShowSubmit = !_allSkipped && ref.watch(showcaseBlockProvider(ShowcaseBlock.addTracksSubmit));
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
-    return ShowcaseWrapper(
-      onComplete: _onShowcaseComplete,
-      onSkipAll: _skipAllShowcases,
-      child: Builder(
-        builder: (showcaseContext) {
-          _startShowcaseIfNeeded(showcaseContext);
-
-          return SingleChildScrollView(
+    return TutorialScreenWrapper(
+      screenKey: 'add_tracks',
+      steps: const [
+        TutorialStep(
+          icon: Icons.add_box_rounded,
+          title: 'Добавить треки',
+          description: 'Вставьте трек-номера — по одному или сразу несколько через новую строку.',
+        ),
+        TutorialStep(
+          icon: Icons.playlist_add_check_rounded,
+          title: 'Несколько треков',
+          description: 'Каждый трек-номер на отдельной строке. Нажмите кнопку «Добавить» — треки сохранятся и появятся в разделе «Треки».',
+        ),
+      ],
+      child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               16,
               topPad * 0.7 + 6,
@@ -237,68 +193,35 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              shouldShowSubmit
-                  ? Showcase(
-                      key: _showcaseKeySubmit,
-                      title: 'Кнопка добавления',
-                      description: 'Нажмите для добавления введённых треков.',
-                      targetPadding: getShowcaseTargetPadding(),
-                      tooltipPosition: TooltipPosition.top,
-                      child: FilledButton(
-                        onPressed: _submitting ? null : () => _submit(clientCode),
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Добавить треки'),
-                      ),
-                    )
-                  : FilledButton(
-                      onPressed: _submitting ? null : () => _submit(clientCode),
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Добавить треки'),
-                    ),
+              FilledButton(
+                onPressed: _submitting ? null : () => _submit(clientCode),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Добавить треки'),
+              ),
             ],
           ),
         );
-                  return shouldShowInput
-                      ? Showcase(
-                          key: _showcaseKeyInput,
-                          title: 'Поле ввода треков',
-                          description: 'Введите трек-номера по одному на строку или через запятую. После добавления они отобразятся в разделе "Треки".',
-                          targetPadding: getShowcaseTargetPadding(),
-                          tooltipPosition: TooltipPosition.bottom,
-                          child: w,
-                        )
-                      : w;
+                  return w;
                 },
               ),
               if (_result != null) ...[
-          const SizedBox(height: 18),
-          _ResultCard(
-            result: _result!,
-            onClose: () => setState(() => _result = null),
-          ),
-        ],
+                const SizedBox(height: 18),
+                _ResultCard(
+                  result: _result!,
+                  onClose: () => setState(() => _result = null),
+                ),
               ],
-            ),
-          );
-        },
-      ),
-    );
+            ],
+          ),
+        ));
   }
 
   Future<void> _submit(String clientCode) async {
