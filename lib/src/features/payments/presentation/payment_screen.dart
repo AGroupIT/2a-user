@@ -35,6 +35,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _createPayment() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -48,6 +49,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         description: widget.description,
       );
 
+      if (!mounted) return;
       if (result != null) {
         setState(() {
           _paymentResult = result;
@@ -62,6 +64,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Ошибка: ${e.toString()}';
         _isLoading = false;

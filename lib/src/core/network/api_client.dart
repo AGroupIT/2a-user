@@ -170,7 +170,10 @@ class ApiClient {
 
     // На мобильных платформах используем FlutterSecureStorage
     try {
-      final token = await _storage.read(key: _tokenKey);
+      // Таймаут 5 сек: на некоторых Android устройствах EncryptedSharedPreferences
+      // может зависнуть при первом обращении (генерация ключей шифрования).
+      final token = await _storage.read(key: _tokenKey)
+          .timeout(const Duration(seconds: 5));
       if (token != null) _inMemoryToken = token; // Кешируем только не-null
       return token;
     } catch (e) {
@@ -200,10 +203,14 @@ class ApiClient {
 
     // На мобильных платформах используем FlutterSecureStorage
     try {
-      await _storage.write(key: _tokenKey, value: token);
+      // Таймаут 5 сек: при первой записи после переустановки EncryptedSharedPreferences
+      // может зависнуть на Android при генерации ключей шифрования.
+      // Токен уже в памяти (_inMemoryToken), поэтому таймаут не ломает авторизацию.
+      await _storage.write(key: _tokenKey, value: token)
+          .timeout(const Duration(seconds: 5));
       debugPrint('Token saved to SecureStorage');
     } catch (e) {
-      debugPrint('Error saving token to SecureStorage: $e');
+      debugPrint('Error/timeout saving token to SecureStorage: $e');
     }
   }
 
@@ -224,10 +231,11 @@ class ApiClient {
 
     // На мобильных платформах удаляем из FlutterSecureStorage
     try {
-      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _tokenKey)
+          .timeout(const Duration(seconds: 5));
       debugPrint('Token cleared from SecureStorage');
     } catch (e) {
-      debugPrint('Error clearing token from SecureStorage: $e');
+      debugPrint('Error/timeout clearing token from SecureStorage: $e');
     }
   }
   

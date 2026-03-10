@@ -422,9 +422,8 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: ListView(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: widget.items.asMap().entries.map((entry) {
                   final index = entry.key;
                   final item = entry.value;
@@ -577,6 +576,7 @@ class _InvoiceTile extends ConsumerStatefulWidget {
 
 class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   bool _applyingBonus = false;
+  bool _isNavigatingToPayment = false;
 
   bool get _isUnpaid =>
       widget.item.status.toLowerCase() == 'unpaid' ||
@@ -610,6 +610,8 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   }
 
   void _goToPayment(BuildContext context) {
+    if (_isNavigatingToPayment) return;
+    _isNavigatingToPayment = true;
     final money = NumberFormat.decimalPattern('ru');
     final item = widget.item;
     final buffer = StringBuffer();
@@ -645,6 +647,8 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
       if (item.totalCostRub > 0) 'totalCostRub': item.totalCostRub,
       if (item.clientRubRate != null) 'clientRubRate': item.clientRubRate,
       if (item.clientYuanRate != null) 'clientYuanRate': item.clientYuanRate,
+    }).whenComplete(() {
+      if (mounted) setState(() => _isNavigatingToPayment = false);
     });
   }
 
@@ -891,8 +895,6 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     }
 
     if (item.createdAt != null) addRow('Создан', item.createdAt!);
-    if (item.sendDate != null) addRow('Отправлен', item.sendDate!);
-    if (item.arrivalDate != null) addRow('Прибыл', item.arrivalDate!);
     if (item.paidAt != null) addRow('Оплачен', item.paidAt!);
 
     return rows;
@@ -1103,12 +1105,6 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                       if (item.createdAt != null)
                         _buildInfoRow(context, 'Дата создания',
                             df.format(item.createdAt!)),
-                      if (item.sendDate != null)
-                        _buildInfoRow(context, 'Дата отправки',
-                            df.format(item.sendDate!)),
-                      if (item.arrivalDate != null)
-                        _buildInfoRow(context, 'Дата прибытия',
-                            df.format(item.arrivalDate!)),
                       if (item.paidAt != null)
                         _buildInfoRow(context, 'Дата оплаты',
                             df.format(item.paidAt!)),

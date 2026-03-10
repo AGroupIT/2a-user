@@ -199,13 +199,13 @@ class Payment {
 
   factory Payment.fromJson(Map<String, dynamic> json) {
     return Payment(
-      id: json['id'] as int,
-      agentId: json['agentId'] as int,
-      clientId: json['clientId'] as int?,
-      invoiceId: json['invoiceId'] as int?,
-      orderId: json['orderId'] as String,
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      agentId: (json['agentId'] as num?)?.toInt() ?? 0,
+      clientId: (json['clientId'] as num?)?.toInt(),
+      invoiceId: (json['invoiceId'] as num?)?.toInt(),
+      orderId: json['orderId'] as String? ?? '',
       externalId: json['externalId'] as String?,
-      amount: (json['amount'] as num).toDouble(),
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       commission: json['commission'] != null
           ? (json['commission'] as num).toDouble()
           : null,
@@ -224,12 +224,16 @@ class Payment {
       accountNumber: json['accountNumber'] as String?,
       description: json['description'] as String?,
       custom: json['custom'] as String?,
-      errorCode: json['errorCode'] as int?,
+      errorCode: (json['errorCode'] as num?)?.toInt(),
       errorMessage: json['errorMessage'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       paidAt: json['paidAt'] != null
-          ? DateTime.parse(json['paidAt'] as String)
+          ? DateTime.tryParse(json['paidAt'].toString())
           : null,
       // Crypto-specific
       cryptoAmount: json['cryptoAmount'] != null
@@ -242,7 +246,7 @@ class Payment {
           ? (json['exchangeRate'] as num).toDouble()
           : null,
       expiresAt: json['expiresAt'] != null
-          ? DateTime.parse(json['expiresAt'] as String)
+          ? DateTime.tryParse(json['expiresAt'].toString())
           : null,
     );
   }
@@ -324,10 +328,10 @@ class CreatePaymentResult {
 
   factory CreatePaymentResult.fromJson(Map<String, dynamic> json) {
     return CreatePaymentResult(
-      paymentId: json['paymentId'] as int,
-      orderId: json['orderId'] as String,
-      paymentUrl: json['paymentUrl'] as String,
-      billId: json['billId'] as String,
+      paymentId: (json['paymentId'] as num?)?.toInt() ?? 0,
+      orderId: json['orderId'] as String? ?? '',
+      paymentUrl: json['paymentUrl'] as String? ?? '',
+      billId: json['billId'] as String? ?? '',
     );
   }
 }
@@ -369,26 +373,28 @@ class CreateUsdtPaymentResult {
   });
 
   factory CreateUsdtPaymentResult.fromJson(Map<String, dynamic> json) {
-    final amount = json['amount'] as Map<String, dynamic>;
-    final exchangeRate = json['exchangeRate'] as Map<String, dynamic>;
-    final instructions = json['instructions'] as Map<String, dynamic>;
+    final amount = json['amount'] as Map<String, dynamic>? ?? {};
+    final exchangeRate = json['exchangeRate'] as Map<String, dynamic>? ?? {};
+    final instructions = json['instructions'] as Map<String, dynamic>? ?? {};
 
     return CreateUsdtPaymentResult(
-      paymentId: json['paymentId'] as int,
-      orderId: json['orderId'] as String,
-      walletAddress: json['walletAddress'] as String,
-      rubAmount: (amount['rub'] as num).toDouble(),
-      usdtAmount: (amount['usdt'] as num).toDouble(),
-      formattedUsdtAmount: amount['formatted'] as String,
-      cbrRate: (exchangeRate['cbrRate'] as num).toDouble(),
-      effectiveRate: (exchangeRate['effectiveRate'] as num).toDouble(),
-      markupPercent: (exchangeRate['markupPercent'] as num).toDouble(),
-      expiresAt: DateTime.parse(json['expiresAt'] as String),
-      expiresInMinutes: json['expiresInMinutes'] as int,
-      network: json['network'] as String,
-      currency: json['currency'] as String,
-      instructionRu: instructions['ru'] as String,
-      instructionEn: instructions['en'] as String,
+      paymentId: (json['paymentId'] as num?)?.toInt() ?? 0,
+      orderId: json['orderId'] as String? ?? '',
+      walletAddress: json['walletAddress'] as String? ?? '',
+      rubAmount: (amount['rub'] as num?)?.toDouble() ?? 0.0,
+      usdtAmount: (amount['usdt'] as num?)?.toDouble() ?? 0.0,
+      formattedUsdtAmount: amount['formatted'] as String? ?? '',
+      cbrRate: (exchangeRate['cbrRate'] as num?)?.toDouble() ?? 0.0,
+      effectiveRate: (exchangeRate['effectiveRate'] as num?)?.toDouble() ?? 0.0,
+      markupPercent: (exchangeRate['markupPercent'] as num?)?.toDouble() ?? 0.0,
+      expiresAt: json['expiresAt'] != null
+          ? DateTime.tryParse(json['expiresAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      expiresInMinutes: (json['expiresInMinutes'] as num?)?.toInt() ?? 0,
+      network: json['network'] as String? ?? '',
+      currency: json['currency'] as String? ?? '',
+      instructionRu: instructions['ru'] as String? ?? '',
+      instructionEn: instructions['en'] as String? ?? '',
     );
   }
 

@@ -500,6 +500,8 @@ class _VideoPlayerViewState extends State<_VideoPlayerView> {
         if (!mounted) return;
         setState(() {});
         _controller.play();
+      }).catchError((e) {
+        debugPrint('[VideoPlayer] Failed to initialize: $e');
       });
   }
 

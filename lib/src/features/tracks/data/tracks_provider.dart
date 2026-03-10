@@ -639,6 +639,22 @@ class TracksApiService {
     }
   }
   
+  /// Обновить пожелание к фотоотчету
+  Future<bool> updatePhotoWish(int photoRequestId, String wish) async {
+    try {
+      debugPrint('Updating photo wish: id=$photoRequestId, wish=$wish');
+      final response = await _apiClient.patch('/photo-requests/$photoRequestId', data: {
+        'wish': wish,
+      });
+      debugPrint('Update photo wish response: ${response.statusCode}');
+      return response.statusCode == 200;
+    } on DioException catch (e) {
+      debugPrint('Error updating photo wish: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return false;
+    }
+  }
+
   /// Создать вопрос по треку
   Future<bool> createTrackQuestion({
     required int clientId,

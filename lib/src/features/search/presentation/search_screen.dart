@@ -296,15 +296,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               );
             }
 
-            return ListView.separated(
-              physics: const NeverScrollableScrollPhysics(),
-              shrinkWrap: true,
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, i) => _SearchResultTile(
-                result: items[i],
-                activeClientCode: activeClientCode,
-              ),
+            return Column(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 10),
+                  _SearchResultTile(
+                    result: items[i],
+                    activeClientCode: activeClientCode,
+                  ),
+                ],
+              ],
             );
           },
         ),

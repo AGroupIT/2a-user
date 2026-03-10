@@ -44,6 +44,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   Timer? _pollingTimer;
+  bool _isDisposed = false;
 
   final bool _showQuickActions = true;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
@@ -116,6 +117,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   @override
   void dispose() {
+    _isDisposed = true;
     _pollingTimer?.cancel();
     
     // Не используем ref в dispose() - это небезопасно
@@ -130,7 +132,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!mounted) return;
+    if (!mounted || _isDisposed) return;
     _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 

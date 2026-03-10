@@ -309,7 +309,8 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       },
     );
 
-    // Слушаем новые сообщения
+    // Слушаем новые сообщения (отменяем предыдущую подписку при reconnect)
+    _messageSubscription?.cancel();
     _messageSubscription = _wsService.messages.listen((data) {
       try {
         final message = ChatMessage.fromJson(data);
@@ -342,7 +343,8 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       }
     });
 
-    // Слушаем редактирование сообщений
+    // Слушаем редактирование сообщений (отменяем предыдущую подписку при reconnect)
+    _messageEditedSubscription?.cancel();
     _messageEditedSubscription = _wsService.messageEdited.listen((data) {
       try {
         final editedMessage = ChatMessage.fromJson(data);

@@ -78,10 +78,15 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   late ApiClient _apiClient;
+  // Флаг: начальная загрузка завершена или login/logout уже взяли управление.
+  // Предотвращает race condition когда _loadAuthState() завершается ПОСЛЕ того,
+  // как пользователь уже нажал "Войти" и login() изменил state.
+  bool _initialLoadDone = false;
 
   @override
   AuthState build() {
     _apiClient = ref.read(apiClientProvider);
+    _initialLoadDone = false;
     _loadAuthState();
     return const AuthState();
   }
@@ -89,64 +94,85 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _loadAuthState() async {
     debugPrint('🔄 Loading auth state...');
 
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool(_kIsLoggedInKey) ?? false;
-    final userEmail = prefs.getString(_kUserEmailKey);
-    final userDomain = prefs.getString(_kUserDomainKey);
-    final clientId = prefs.getInt(_kClientIdKey);
-    final clientName = prefs.getString(_kClientNameKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isLoggedIn = prefs.getBool(_kIsLoggedInKey) ?? false;
+      final userEmail = prefs.getString(_kUserEmailKey);
+      final userDomain = prefs.getString(_kUserDomainKey);
+      final clientId = prefs.getInt(_kClientIdKey);
+      final clientName = prefs.getString(_kClientNameKey);
 
-    debugPrint('🔍 isLoggedIn from SharedPreferences: $isLoggedIn');
-    debugPrint('🔍 userEmail: $userEmail');
+      debugPrint('🔍 isLoggedIn from SharedPreferences: $isLoggedIn');
+      debugPrint('🔍 userEmail: $userEmail');
 
-    // Проверяем есть ли токен в ApiClient (он сам знает откуда читать: localStorage на web, SecureStorage на мобильных)
-    if (isLoggedIn) {
-      final hasToken = await _apiClient.hasTokenAsync();
-      debugPrint('🔍 hasToken from ApiClient: $hasToken');
+      // Проверяем есть ли токен в ApiClient (он сам знает откуда читать: localStorage на web, SecureStorage на мобильных)
+      if (isLoggedIn) {
+        final hasToken = await _apiClient.hasTokenAsync();
+        debugPrint('🔍 hasToken from ApiClient: $hasToken');
 
-      if (!hasToken) {
-        // Токен не найден — возможны два случая:
-        // 1. Транзиентная ошибка iOS Keychain (до первой разблокировки после перезагрузки,
-        //    после обновления приложения/iOS) — токен физически есть, просто не читается.
-        // 2. Токен реально удалён.
-        //
-        // В обоих случаях НЕ вызываем logout() — это необратимо очищает SharedPreferences
-        // и убивает авторизацию навсегда. Вместо этого просто показываем экран входа.
-        // При следующем запуске попробуем снова — если Keychain восстановился, войдём
-        // автоматически; если нет — пользователь введёт пароль и получит новый токен.
-        debugPrint('🔐 Token not found — showing login screen (not forcing logout)');
-        state = const AuthState(isLoggedIn: false, isLoading: false);
+        if (!hasToken) {
+          // Токен не найден — возможны два случая:
+          // 1. Транзиентная ошибка iOS Keychain (до первой разблокировки после перезагрузки,
+          //    после обновления приложения/iOS) — токен физически есть, просто не читается.
+          // 2. Токен реально удалён.
+          //
+          // В обоих случаях НЕ вызываем logout() — это необратимо очищает SharedPreferences
+          // и убивает авторизацию навсегда. Вместо этого просто показываем экран входа.
+          // При следующем запуске попробуем снова — если Keychain восстановился, войдём
+          // автоматически; если нет — пользователь введёт пароль и получит новый токен.
+          debugPrint('🔐 Token not found — showing login screen (not forcing logout)');
+          if (!_initialLoadDone) {
+            _initialLoadDone = true;
+            state = const AuthState(isLoggedIn: false, isLoading: false);
+          }
+          return;
+        }
+      }
+
+      // Восстанавливаем данные клиента
+      Map<String, dynamic>? clientData;
+      final clientDataJson = prefs.getString(_kClientDataKey);
+      if (clientDataJson != null) {
+        try {
+          clientData = jsonDecode(clientDataJson) as Map<String, dynamic>;
+        } catch (e) {
+          debugPrint('Error parsing client data: $e');
+        }
+      }
+
+      // Проверяем, что login() не успел взять управление пока мы читали хранилище.
+      // Если _initialLoadDone уже true — login() или logout() уже обновили state, не перезаписываем.
+      if (_initialLoadDone) {
+        debugPrint('⚠️ _loadAuthState: skipping state update — login/logout already took over');
         return;
       }
-    }
+      _initialLoadDone = true;
 
-    // Восстанавливаем данные клиента
-    Map<String, dynamic>? clientData;
-    final clientDataJson = prefs.getString(_kClientDataKey);
-    if (clientDataJson != null) {
-      try {
-        clientData = jsonDecode(clientDataJson) as Map<String, dynamic>;
-      } catch (e) {
-        debugPrint('Error parsing client data: $e');
+      state = AuthState(
+        isLoggedIn: isLoggedIn,
+        userEmail: userEmail,
+        userDomain: userDomain,
+        isLoading: false,
+        clientId: clientId,
+        clientName: clientName,
+        clientData: clientData,
+      );
+
+      debugPrint('✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail');
+
+      // Обновляем clientData из /auth/me в фоне, чтобы коды клиента содержали актуальные id.
+      // Это важно для корректной передачи clientCodeId при создании сборок.
+      if (isLoggedIn) {
+        _refreshClientDataInBackground();
       }
-    }
-
-    state = AuthState(
-      isLoggedIn: isLoggedIn,
-      userEmail: userEmail,
-      userDomain: userDomain,
-      isLoading: false,
-      clientId: clientId,
-      clientName: clientName,
-      clientData: clientData,
-    );
-
-    debugPrint('✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail');
-
-    // Обновляем clientData из /auth/me в фоне, чтобы коды клиента содержали актуальные id.
-    // Это важно для корректной передачи clientCodeId при создании сборок.
-    if (isLoggedIn) {
-      _refreshClientDataInBackground();
+    } catch (e, stackTrace) {
+      // Если что-то пошло не так при загрузке состояния — не зависаем на сплэше,
+      // просто показываем экран входа.
+      debugPrint('❌ Error loading auth state: $e\n$stackTrace');
+      if (!_initialLoadDone) {
+        _initialLoadDone = true;
+        state = const AuthState(isLoggedIn: false, isLoading: false);
+      }
     }
   }
 
@@ -172,6 +198,7 @@ class AuthNotifier extends Notifier<AuthState> {
     required String domain,
     required String password,
   }) async {
+    _initialLoadDone = true; // Предотвращаем перезапись state от _loadAuthState()
     state = state.copyWith(isLoading: true, clearError: true);
     
     try {
@@ -307,6 +334,7 @@ class AuthNotifier extends Notifier<AuthState> {
     required String token,
     required Map<String, dynamic> userData,
   }) async {
+    _initialLoadDone = true; // Предотвращаем перезапись state от _loadAuthState()
     state = state.copyWith(isLoading: true, clearError: true);
     
     try {
@@ -515,58 +543,61 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Инвалидация всех провайдеров данных при logout
   void _invalidateAllProviders() {
-    try {
-      debugPrint('🗑️ Invalidating all data providers...');
+    debugPrint('🗑️ Invalidating all data providers...');
 
-      // Profile & Stats
-      ref.invalidate(clientProfileProvider);
-      ref.invalidate(clientStatsProvider);
-
-      // Client codes
-      ref.invalidate(clientCodesControllerProvider);
-
-      // Tracks (all family instances)
-      ref.invalidate(paginatedTracksProvider);
-      ref.invalidate(tracksListProvider);
-      ref.invalidate(tracksDigestProvider);
-      ref.invalidate(tracksSimpleListProvider);
-      ref.invalidate(tracksCountProvider);
-      ref.invalidate(tracksWithoutAssemblyCountProvider);
-      ref.invalidate(trackStatusesProvider);
-
-      // Assemblies (tracks module)
-      ref.invalidate(tracks_assemblies.assembliesListProvider);
-      ref.invalidate(tracks_assemblies.assembliesDigestProvider);
-      ref.invalidate(tracks_assemblies.assembliesCountProvider);
-      ref.invalidate(tracks_assemblies.tariffsProvider);
-
-      // Assemblies (assemblies module)
-      ref.invalidate(assembliesCountProvider);
-
-      // Invoices
-      ref.invalidate(invoicesListProvider);
-      ref.invalidate(invoicesDigestProvider);
-      ref.invalidate(invoicesCountProvider);
-      ref.invalidate(invoiceStatusesProvider);
-
-      // Photos
-      ref.invalidate(photosTotalCountProvider);
-      ref.invalidate(photosRecentProvider);
-      ref.invalidate(photosDaysProvider);
-      ref.invalidate(photosByDateProvider);
-      ref.invalidate(photosSearchProvider);
-
-      // Notifications
-      ref.invalidate(notificationsControllerProvider);
-      ref.invalidate(unreadCountProvider);
-
-      // SP Finance
-      ref.invalidate(spAssembliesControllerProvider);
-
-      debugPrint('✅ All providers invalidated');
-    } catch (e) {
-      debugPrint('⚠️ Error invalidating providers: $e');
+    // Каждый invalidate в отдельном try-catch: если один провайдер недоступен,
+    // остальные всё равно будут инвалидированы (иначе при смене аккаунта могут
+    // остаться старые данные).
+    void inv(dynamic provider) {
+      try { ref.invalidate(provider); } catch (_) {}
     }
+
+    // Profile & Stats
+    inv(clientProfileProvider);
+    inv(clientStatsProvider);
+
+    // Client codes
+    inv(clientCodesControllerProvider);
+
+    // Tracks (all family instances)
+    inv(paginatedTracksProvider);
+    inv(tracksListProvider);
+    inv(tracksDigestProvider);
+    inv(tracksSimpleListProvider);
+    inv(tracksCountProvider);
+    inv(tracksWithoutAssemblyCountProvider);
+    inv(trackStatusesProvider);
+
+    // Assemblies (tracks module)
+    inv(tracks_assemblies.assembliesListProvider);
+    inv(tracks_assemblies.assembliesDigestProvider);
+    inv(tracks_assemblies.assembliesCountProvider);
+    inv(tracks_assemblies.tariffsProvider);
+
+    // Assemblies (assemblies module)
+    inv(assembliesCountProvider);
+
+    // Invoices
+    inv(invoicesListProvider);
+    inv(invoicesDigestProvider);
+    inv(invoicesCountProvider);
+    inv(invoiceStatusesProvider);
+
+    // Photos
+    inv(photosTotalCountProvider);
+    inv(photosRecentProvider);
+    inv(photosDaysProvider);
+    inv(photosByDateProvider);
+    inv(photosSearchProvider);
+
+    // Notifications
+    inv(notificationsControllerProvider);
+    inv(unreadCountProvider);
+
+    // SP Finance
+    inv(spAssembliesControllerProvider);
+
+    debugPrint('✅ All providers invalidated');
   }
   
   /// Отписка от push-уведомлений

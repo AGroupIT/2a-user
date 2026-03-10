@@ -32,13 +32,16 @@ import 'widgets/app_scaffold.dart';
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-  
+  // НЕ используем ref.watch здесь — иначе GoRouter пересоздаётся при каждом
+  // изменении authState (включая фоновое обновление clientData), что сбрасывает
+  // navigation stack в initialLocation '/'. Вместо этого читаем authState прямо
+  // внутри redirect через ref.read — он вызывается refreshListenable'ом.
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
     refreshListenable: _AuthRefreshNotifier(ref),
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;
       final isLoggedIn = authState.isLoggedIn;
       final isSplashRoute = state.matchedLocation == '/splash';
@@ -46,8 +49,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation == '/register' ||
           state.matchedLocation == '/forgot-password';
 
-      // Still loading auth state - show splash
+      // Still loading auth state - show splash.
+      // Исключение: если пользователь уже на экране входа/регистрации — остаёмся там.
+      // Иначе нажатие "Войти" перебрасывает на сплэш на время API-запроса.
       if (isLoading) {
+        if (isAuthRoute) return null;
         return isSplashRoute ? null : '/splash';
       }
 

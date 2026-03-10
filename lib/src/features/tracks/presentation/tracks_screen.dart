@@ -714,6 +714,117 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
     }
   }
 
+  Future<void> _showEditPhotoWishSheet(
+    BuildContext context,
+    TrackItem track,
+  ) async {
+    final activeRequest = track.activePhotoRequest;
+    if (activeRequest == null) return;
+
+    final currentWish = activeRequest.wishes ?? '';
+    final controller = TextEditingController(text: currentWish);
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final viewInsetsBottom = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return SafeArea(
+          child: AnimatedPadding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + viewInsetsBottom),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SheetHandle(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Пожелание к фотоотчёту',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [context.brandPrimary, context.brandSecondary],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: const BorderRadius.all(Radius.circular(14)),
+                    ),
+                    padding: const EdgeInsets.all(1.5),
+                    child: Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.all(Radius.circular(12.5)),
+                      ),
+                      child: TextField(
+                        controller: controller,
+                        maxLines: 4,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          hintText: 'Пожелание для сборщиков…',
+                          hintStyle: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF999999),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                    child: const Text('Сохранить'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result == true) {
+      final wish = controller.text.trim();
+      final apiService = ref.read(tracksApiServiceProvider);
+      final success = await apiService.updatePhotoWish(activeRequest.id, wish);
+
+      if (!mounted) return;
+      if (success) {
+        // Обновляем локальный кеш пожелания и список треков
+        setState(() {
+          _photoRequestNotes[track.code] = wish;
+        });
+        _refreshTracks();
+        _showStyledSnackBar(context, 'Пожелание обновлено');
+      } else {
+        _showStyledSnackBar(context, 'Ошибка обновления пожелания', isError: true);
+      }
+    }
+  }
+
   Future<void> _cancelQuestion(TrackItem track) async {
     final confirmed = await _confirmAction(
       context,
@@ -2854,6 +2965,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
               requestedPhotoReports: _requestedPhotoReports,
               onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
               onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
+              onEditPhotoWish: (track) => _showEditPhotoWishSheet(context, track),
               photoRequestCreatedAt: _photoRequestCreatedAt,
               photoRequestUpdatedAt: _photoRequestUpdatedAt,
               photoRequestNotes: _photoRequestNotes,
@@ -3310,6 +3422,7 @@ class _TrackGroupCard extends StatefulWidget {
   final Set<String> requestedPhotoReports;
   final ValueChanged<TrackItem> onPhotoRequest;
   final ValueChanged<TrackItem> onCancelPhotoRequest;
+  final ValueChanged<TrackItem> onEditPhotoWish;
   final Map<String, DateTime> photoRequestCreatedAt;
   final Map<String, DateTime> photoRequestUpdatedAt;
   final Map<String, String> photoRequestNotes;
@@ -3346,6 +3459,7 @@ class _TrackGroupCard extends StatefulWidget {
     required this.requestedPhotoReports,
     required this.onPhotoRequest,
     required this.onCancelPhotoRequest,
+    required this.onEditPhotoWish,
     required this.photoRequestCreatedAt,
     required this.photoRequestUpdatedAt,
     required this.photoRequestNotes,
@@ -3856,7 +3970,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             }
 
             if (activePhoto != null || isPhotoRequested) {
-              final photoNote = widget.photoRequestNotes[track.code] ?? '';
+              final photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
+                  ? activePhoto!.wishes!
+                  : widget.photoRequestNotes[track.code] ?? '';
 
               // Собираем все фото/видео из разных источников
               final allMediaUrls = <String>[];
@@ -3883,11 +3999,27 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       'Статус: $photoStatusLabel',
                       style: const TextStyle(color: Colors.black54),
                     ),
-                    if (photoNote.isNotEmpty) ...[
+                    if (photoNote.isNotEmpty || canCancelPhoto) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        'Пожелание: $photoNote',
-                        style: const TextStyle(color: Colors.black54),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              photoNote.isNotEmpty ? 'Пожелание: $photoNote' : 'Пожелание: не указано',
+                              style: TextStyle(
+                                color: photoNote.isNotEmpty ? Colors.black54 : Colors.black38,
+                              ),
+                            ),
+                          ),
+                          if (canCancelPhoto) ...[
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => widget.onEditPhotoWish(track),
+                              child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                     if (activePhoto?.warehouseComment != null && activePhoto!.warehouseComment!.isNotEmpty) ...[
@@ -4026,6 +4158,20 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                               ),
                             );
                           },
+                        ),
+                      ),
+                    ],
+                    if (canCancelPhoto) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () => widget.onCancelPhotoRequest(track),
+                        child: const Text(
+                          'Отменить запрос',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],

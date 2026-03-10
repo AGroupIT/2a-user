@@ -134,7 +134,13 @@ class _TopBarContent extends StatelessWidget {
         if (showBack)
           IconButton(
             tooltip: 'Назад',
-            onPressed: () => context.pop(),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/');
+              }
+            },
             icon: const Icon(Icons.chevron_left_rounded),
           ),
         const ClientSwitcherButton(),
