@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
@@ -49,8 +48,7 @@ class InvoicesScreen extends ConsumerStatefulWidget {
   ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
 }
 
-class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
-    with AutoRefreshMixin {
+class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   String? _selectedStatusCode; // null = "Все"
   String _query = '';
 
@@ -61,17 +59,6 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen>
   @override
   void initState() {
     super.initState();
-    _setupAutoRefresh();
-  }
-
-  void _setupAutoRefresh() {
-    startAutoRefresh(() {
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) {
-        ref.invalidate(invoicesListProvider(clientCode));
-        ref.invalidate(invoiceStatusesProvider);
-      }
-    });
   }
 
   List<InvoiceItem> _applyFilters(List<InvoiceItem> items) {

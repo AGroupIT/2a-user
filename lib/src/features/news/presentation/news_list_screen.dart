@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
@@ -20,17 +19,10 @@ class NewsListScreen extends ConsumerStatefulWidget {
   ConsumerState<NewsListScreen> createState() => _NewsListScreenState();
 }
 
-class _NewsListScreenState extends ConsumerState<NewsListScreen>
-    with AutoRefreshMixin {
+class _NewsListScreenState extends ConsumerState<NewsListScreen> {
   final GlobalKey _newsListKey = GlobalKey();
   final GlobalKey _firstNewsKey = GlobalKey();
-  @override
-  void initState() {
-    super.initState();
-    startAutoRefresh(() {
-      ref.invalidate(newsListProvider);
-    });
-  }
+
 
   @override
   Widget build(BuildContext context) {

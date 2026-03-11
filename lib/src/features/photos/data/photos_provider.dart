@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
+import '../../../core/services/websocket_provider.dart';
 import '../domain/photo_item.dart';
 
 /// Провайдер для получения общего количества фото по коду клиента
@@ -174,16 +177,47 @@ class PaginatedPhotosState {
 
 class PaginatedPhotosNotifier {
   static const int _pageSize = 30;
+  static const _photoTypes = {'photo_requests'};
 
   final Ref _ref;
   PaginatedPhotosState _state;
   PaginatedPhotosState get state => _state;
 
   final List<void Function()> _listeners = [];
+  StreamSubscription? _deltaSub;
+  StreamSubscription? _dataChangedSub;
+  StreamSubscription? _reconnectSub;
+  Timer? _refreshTimer;
 
   PaginatedPhotosNotifier(this._ref, String clientCode, String date)
       : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
+    // Subscribe to WS events for auto-refresh
+    final wsService = _ref.read(webSocketServiceProvider);
+    _deltaSub = wsService.deltas
+        .where((delta) => _photoTypes.contains(delta.type))
+        .listen((_) => _debouncedRefresh());
+    _dataChangedSub = wsService.dataChanged
+        .where((data) => _photoTypes.contains(data['type'] as String?))
+        .listen((_) => _debouncedRefresh());
+    _reconnectSub = wsService.reconnected
+        .listen((_) => _debouncedRefresh());
+
     loadInitial();
+  }
+
+  void _debouncedRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(const Duration(milliseconds: 500), () {
+      debugPrint('[PaginatedPhotos] WS event — reloading photos for ${_state.date}');
+      loadInitial();
+    });
+  }
+
+  void dispose() {
+    _deltaSub?.cancel();
+    _dataChangedSub?.cancel();
+    _reconnectSub?.cancel();
+    _refreshTimer?.cancel();
   }
 
   ApiClient get _apiClient => _ref.read(apiClientProvider);
@@ -258,7 +292,9 @@ class PaginatedPhotosNotifier {
 final paginatedPhotosByDateProvider = Provider.family<
     PaginatedPhotosNotifier,
     ({String clientCode, String date})>((ref, params) {
-  return PaginatedPhotosNotifier(ref, params.clientCode, params.date);
+  final notifier = PaginatedPhotosNotifier(ref, params.clientCode, params.date);
+  ref.onDispose(() => notifier.dispose());
+  return notifier;
 });
 
 /// Провайдер для поиска фото

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
@@ -18,17 +17,10 @@ class RulesScreen extends ConsumerStatefulWidget {
   ConsumerState<RulesScreen> createState() => _RulesScreenState();
 }
 
-class _RulesScreenState extends ConsumerState<RulesScreen>
-    with AutoRefreshMixin {
+class _RulesScreenState extends ConsumerState<RulesScreen> {
   final GlobalKey _rulesListKey = GlobalKey();
   final GlobalKey _firstRuleKey = GlobalKey();
-  @override
-  void initState() {
-    super.initState();
-    startAutoRefresh(() {
-      ref.invalidate(rulesListProvider);
-    });
-  }
+
 
   @override
   Widget build(BuildContext context) {

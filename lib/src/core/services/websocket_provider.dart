@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
+import '../../features/auth/data/auth_provider.dart';
 import '../network/api_client.dart';
 import '../network/api_config.dart';
 
@@ -24,20 +26,35 @@ final webSocketConnectionStatusProvider = StreamProvider<SocketConnectionStatus>
 });
 
 /// Провайдер для автоматического подключения WebSocket при наличии токена.
-/// Использует ApiClient.getToken() — он корректно читает из SecureStorage на мобильных
-/// и из SharedPreferences/localStorage на web/desktop.
+/// Слушает authProvider — подключается после логина, отключается при логауте.
 final webSocketAutoConnectProvider = Provider<void>((ref) {
+  final authState = ref.watch(authProvider);
   final service = ref.watch(webSocketServiceProvider);
-  final apiClient = ref.watch(apiClientProvider);
+  final apiClient = ref.read(apiClientProvider);
 
-  Future.microtask(() async {
-    try {
-      final token = await apiClient.getToken();
-      if (token != null && token.isNotEmpty) {
-        await service.connect(token);
+  debugPrint('[WS] Provider triggered: isLoggedIn=${authState.isLoggedIn}, isLoading=${authState.isLoading}');
+
+  if (authState.isLoggedIn && !authState.isLoading) {
+    Future.microtask(() async {
+      try {
+        final token = await apiClient.getToken();
+        debugPrint('[WS] Token: ${token != null ? "${token.substring(0, 20)}..." : "NULL"}');
+        debugPrint('[WS] URL: ${ApiConfig.baseUrl.replaceAll('/api', '')}');
+        if (token != null && token.isNotEmpty) {
+          await service.connect(token);
+          debugPrint('[WS] Connect called successfully');
+        } else {
+          debugPrint('[WS] No token — skipping WebSocket connect');
+        }
+      } catch (e) {
+        debugPrint('[WS] Connection error: $e');
       }
-    } catch (e) {
-      // Ошибка подключения WebSocket не критична, будет fallback на polling
+    });
+  } else {
+    // Отключаемся при логауте
+    if (service.currentStatus != SocketConnectionStatus.disconnected) {
+      debugPrint('[WS] Auth lost — disconnecting');
+      service.disconnect();
     }
-  });
+  }
 });

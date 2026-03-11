@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/network/api_client.dart';
 import '../core/services/app_language_service.dart';
 import '../core/services/chat_presence_service.dart';
+import '../core/services/delta_sync_provider.dart';
 import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
 import '../core/ui/demo_mode_banner.dart';
@@ -29,8 +30,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initializePushNotificationsHandler(ref);
       _setupUnauthorizedHandler();
-      // Инициализируем WebSocket подключение
-      ref.read(webSocketAutoConnectProvider);
     });
   }
 
@@ -60,6 +59,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // WebSocket + delta sync: watch ensures re-trigger on auth state change
+    ref.watch(webSocketAutoConnectProvider);
+    ref.watch(deltaSyncProvider);
+
     final router = ref.watch(routerProvider);
     final brandColors = ref.watch(brandColorsProvider);
     final language = ref.watch(appLanguageProvider);

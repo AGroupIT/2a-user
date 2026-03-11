@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/services/update_service.dart';
@@ -32,7 +31,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Флаг для показа диалога принятия правил
   bool _termsDialogShown = false;
 
@@ -44,7 +43,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
   @override
   void initState() {
     super.initState();
-    _setupAutoRefresh();
     _checkAndShowTermsDialog();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) UpdateService.checkAndPrompt(context);
@@ -90,21 +88,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutoRefreshMixin {
       barrierDismissible: false,
       builder: (context) => const _OnboardingOfferDialog(),
     );
-  }
-
-  void _setupAutoRefresh() {
-    startAutoRefresh(() {
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) {
-        ref.invalidate(clientProfileProvider);
-        ref.invalidate(tracksDigestProvider(clientCode));
-        ref.invalidate(invoicesDigestProvider(clientCode));
-        ref.invalidate(photosRecentProvider((clientCode: clientCode, limit: 12)));
-        ref.invalidate(tracksCountProvider(clientCode));
-        ref.invalidate(assembliesCountProvider(clientCode));
-        ref.invalidate(invoicesCountProvider(clientCode));
-      }
-    });
   }
 
   @override

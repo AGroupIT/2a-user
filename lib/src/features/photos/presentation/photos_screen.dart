@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -19,8 +18,7 @@ class PhotosScreen extends ConsumerStatefulWidget {
   ConsumerState<PhotosScreen> createState() => _PhotosScreenState();
 }
 
-class _PhotosScreenState extends ConsumerState<PhotosScreen>
-    with AutoRefreshMixin {
+class _PhotosScreenState extends ConsumerState<PhotosScreen> {
   late int _month;
   late int _year;
   String _selectedDate = '';
@@ -38,7 +36,6 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
     _month = now.month - 1;
     _year = now.year;
     _scrollController.addListener(_onScroll);
-    _setupAutoRefresh();
   }
 
   @override
@@ -59,25 +56,6 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
     if (pos.pixels >= pos.maxScrollExtent * 0.9) {
       _photosNotifier?.loadMore();
     }
-  }
-
-  void _setupAutoRefresh() {
-    startAutoRefresh(() {
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) {
-        ref.invalidate(photosTotalCountProvider(clientCode));
-        ref.invalidate(
-          photosDaysProvider((
-            clientCode: clientCode,
-            month: _month,
-            year: _year,
-          )),
-        );
-        if (_selectedDate.isNotEmpty) {
-          _photosNotifier?.loadInitial();
-        }
-      }
-    });
   }
 
   @override

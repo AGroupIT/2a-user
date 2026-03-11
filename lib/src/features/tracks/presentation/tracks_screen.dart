@@ -11,7 +11,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
@@ -115,8 +114,7 @@ class TracksScreen extends ConsumerStatefulWidget {
   ConsumerState<TracksScreen> createState() => _TracksScreenState();
 }
 
-class _TracksScreenState extends ConsumerState<TracksScreen>
-    with AutoRefreshMixin {
+class _TracksScreenState extends ConsumerState<TracksScreen> {
   // Local tracking for photo report requests and their notes
   final Set<String> _requestedPhotoReports = <String>{};
   final Map<String, String> _photoRequestNotes = <String, String>{};
@@ -172,24 +170,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen>
   @override
   void initState() {
     super.initState();
-    _setupAutoRefresh();
-  }
-
-  void _setupAutoRefresh() {
-    startAutoRefresh(() {
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) {
-        // Тихое обновление без показа индикатора загрузки
-        ref.read(paginatedTracksProvider(clientCode)).loadInitial(silent: true);
-        // Также обновляем сборки в фоне
-        ref.invalidate(assembliesListProvider(clientCode));
-      }
-    });
   }
 
   @override
   void dispose() {
-    stopAutoRefresh();
     _searchDebounce?.cancel();
     _currentNotifier?.removeListener(_onNotifierStateChanged);
     super.dispose();
@@ -3974,13 +3958,18 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   ? activePhoto!.wishes!
                   : widget.photoRequestNotes[track.code] ?? '';
 
-              // Собираем все фото/видео из разных источников
+              // Собираем все фото/видео из разных источников (без дублей)
               final allMediaUrls = <String>[];
+              final seenUrls = <String>{};
               if (activePhoto?.mediaUrls != null && activePhoto!.mediaUrls.isNotEmpty) {
-                allMediaUrls.addAll(activePhoto.mediaUrls);
+                for (final url in activePhoto.mediaUrls) {
+                  if (seenUrls.add(url)) allMediaUrls.add(url);
+                }
               }
               if (track.photoReportUrls.isNotEmpty) {
-                allMediaUrls.addAll(track.photoReportUrls);
+                for (final url in track.photoReportUrls) {
+                  if (seenUrls.add(url)) allMediaUrls.add(url);
+                }
               }
 
               infoSections.add(

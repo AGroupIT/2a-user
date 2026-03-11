@@ -8,7 +8,6 @@ import 'dart:typed_data';
 
 import '../../../core/utils/file_download_helper.dart';
 
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
@@ -77,8 +76,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen>
-    with AutoRefreshMixin {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // Export button keys for sharePositionOrigin on iPad
   final _invoicesExportButtonKey = GlobalKey();
   final _tracksExportButtonKey = GlobalKey();
@@ -108,7 +106,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   @override
   void initState() {
     super.initState();
-    _setupAutoRefresh();
   }
 
   @override
@@ -120,14 +117,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  void _setupAutoRefresh() {
-    startAutoRefresh(() {
-      final clientCode = ref.read(activeClientCodeProvider);
-      ref.invalidate(clientProfileProvider);
-      ref.invalidate(clientStatsProvider(clientCode));
-    });
   }
 
   @override

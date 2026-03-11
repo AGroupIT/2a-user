@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:twoalogistic_shared/twoalogistic_shared.dart' show DeltaEvent;
 
 import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
+import '../../../core/services/websocket_provider.dart';
 import '../domain/track_item.dart';
 
 // ==================== Status Model ====================
@@ -180,10 +183,37 @@ class PaginatedTracksNotifier {
   
   final List<void Function()> _listeners = [];
 
+  StreamSubscription? _deltaSub;
+  StreamSubscription? _dataChangedSub;
+  StreamSubscription? _reconnectSub;
+  Timer? _debounceTimer;
+  bool _silentRefreshInProgress = false;
+
+  static const _tracksTypes = {'tracks', 'photo_requests', 'questions', 'assemblies'};
+
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
       : _state = PaginatedTracksState(filters: initialFilters) {
+    // Подписка на WS дельты для автообновления (с debounce 500ms)
+    final wsService = _ref.read(webSocketServiceProvider);
+    _deltaSub = wsService.deltas
+        .where((delta) => _tracksTypes.contains(delta.type))
+        .listen((_) => _debouncedSilentRefresh());
+    // Fallback: data_changed events (broadcast, no room filtering)
+    _dataChangedSub = wsService.dataChanged
+        .where((data) => _tracksTypes.contains(data['type'] as String?))
+        .listen((_) => _debouncedSilentRefresh());
+    _reconnectSub = wsService.reconnected
+        .listen((_) => _debouncedSilentRefresh());
+
     // Загружаем начальные данные при создании
     loadInitial();
+  }
+
+  void _debouncedSilentRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      loadInitial(silent: true);
+    });
   }
 
   ApiClient get _apiClient => _ref.read(apiClientProvider);
@@ -226,20 +256,20 @@ class PaginatedTracksNotifier {
 
     // При silent refresh не показываем loader и не очищаем текущие данные
     if (silent) {
+      if (_silentRefreshInProgress) return;
+      _silentRefreshInProgress = true;
       try {
         final result = await _fetchTracks(skip: 0, take: _pageSize);
-        
-        // Обновляем только если данные изменились
-        if (_hasDataChanged(result.tracks)) {
-          _updateState(_state.copyWith(
-            tracks: result.tracks,
-            total: result.total,
-            hasMore: result.tracks.length < result.total,
-          ));
-        }
+        _updateState(_state.copyWith(
+          tracks: result.tracks,
+          total: result.total,
+          hasMore: result.tracks.length < result.total,
+        ));
       } catch (e) {
         // При silent refresh ошибки не показываем пользователю
         debugPrint('Silent refresh error: $e');
+      } finally {
+        _silentRefreshInProgress = false;
       }
       return;
     }
@@ -267,25 +297,7 @@ class PaginatedTracksNotifier {
       ));
     }
   }
-  
-  /// Проверяет, изменились ли данные
-  bool _hasDataChanged(List<TrackItem> newTracks) {
-    if (_state.tracks.length != newTracks.length) return true;
-    
-    // Сравниваем ID и даты обновления
-    for (var i = 0; i < _state.tracks.length; i++) {
-      final oldTrack = _state.tracks[i];
-      final newTrack = newTracks[i];
-      
-      if (oldTrack.id != newTrack.id || 
-          oldTrack.updatedAt != newTrack.updatedAt ||
-          oldTrack.status != newTrack.status) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
+
 
   /// Загрузить следующую страницу
   Future<void> loadMore() async {

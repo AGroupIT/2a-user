@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../../../core/services/auto_refresh_service.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
@@ -17,8 +16,7 @@ class SpAssembliesScreen extends ConsumerStatefulWidget {
   ConsumerState<SpAssembliesScreen> createState() => _SpAssembliesScreenState();
 }
 
-class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
-    with AutoRefreshMixin {
+class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
   final GlobalKey _assembliesListKey = GlobalKey();
   final GlobalKey _firstAssemblyKey = GlobalKey();
   @override
@@ -26,10 +24,6 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen>
     super.initState();
     // Загружаем сборки сразу при инициализации
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
-    });
-    // Настраиваем автообновление
-    startAutoRefresh(() {
       ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
     });
   }

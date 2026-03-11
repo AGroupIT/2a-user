@@ -319,14 +319,16 @@ class PhotoRequest {
     switch (status) {
       case 'new':
         return 'Новый';
+      case 'at_warehouse':
+        return 'На складе';
       case 'in_progress':
-        return 'В работе';
+        return 'Передан в работу';
       case 'assigned':
-        return 'Назначен';
+        return 'Назначен ответственный';
       case 'completed':
         return 'Выполнен';
       case 'cancelled':
-        return 'Отменен';
+        return 'Отменён';
       default:
         return status;
     }
@@ -383,12 +385,16 @@ class TrackQuestion {
     switch (status) {
       case 'new':
         return 'Новый';
+      case 'at_warehouse':
+        return 'На складе';
       case 'in_progress':
-        return 'В работе';
+        return 'Передан в работу';
+      case 'assigned':
+        return 'Назначен ответственный';
       case 'completed':
         return 'Отвечен';
       case 'cancelled':
-        return 'Отменен';
+        return 'Отменён';
       default:
         return status;
     }
