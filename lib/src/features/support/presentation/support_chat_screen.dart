@@ -818,6 +818,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Цитата (reply)
+                      if (message.replyToMessageId != null)
+                        GestureDetector(
+                          onTap: () => _scrollToMessage(message.replyToMessageId!),
+                          child: _buildReplyQuote(message, isMe),
+                        ),
+
                       // Отображаем вложения
                       if (message.attachments.isNotEmpty)
                         _buildMessageAttachments(message.attachments, isMe),
@@ -930,6 +937,71 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
   
   /// Отображение вложений в сообщении
+  void _scrollToMessage(int messageId) {
+    final messages = ref.read(chatControllerProvider).messages;
+    final index = messages.indexWhere((m) => m.id == messageId);
+    if (index < 0 || !_scrollController.hasClients) return;
+    final offset = index * 80.0;
+    _scrollController.animateTo(
+      offset.clamp(0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _buildReplyQuote(ChatMessage message, bool isMe) {
+    final chatState = ref.read(chatControllerProvider);
+    final replyMsg = chatState.messages.where((m) => m.id == message.replyToMessageId).firstOrNull;
+    if (replyMsg == null) return const SizedBox.shrink();
+
+    final senderLabel = replyMsg.isFromClient ? 'Вы' : replyMsg.senderName;
+    final quoteText = replyMsg.content.length > 60
+        ? '${replyMsg.content.substring(0, 60)}...'
+        : replyMsg.content;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: isMe ? Colors.white.withValues(alpha: 0.6) : context.brandPrimary,
+            width: 2.5,
+          ),
+        ),
+        color: isMe
+            ? Colors.white.withValues(alpha: 0.12)
+            : context.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(6),
+          bottomRight: Radius.circular(6),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            senderLabel,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isMe ? Colors.white.withValues(alpha: 0.8) : context.brandPrimary,
+            ),
+          ),
+          Text(
+            quoteText,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: isMe ? Colors.white.withValues(alpha: 0.6) : Colors.black54,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMessageAttachments(List<ChatAttachment> attachments, bool isMe) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

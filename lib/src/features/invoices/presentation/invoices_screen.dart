@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
@@ -599,6 +600,33 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   void _goToPayment(BuildContext context) {
     if (_isNavigatingToPayment) return;
     _isNavigatingToPayment = true;
+
+    final item = widget.item;
+
+    // Try Telegram payment first
+    final paymentTgUsername = ref.read(paymentTgUsernameProvider).whenOrNull(data: (v) => v);
+    if (paymentTgUsername != null && paymentTgUsername.isNotEmpty) {
+      final text = Uri.encodeComponent(
+        'Добрый день! Хочу оплатить счет ${item.invoiceNumber}',
+      );
+      final tgUrl = 'tg://resolve?domain=$paymentTgUsername&text=$text';
+      final webUrl = 'https://t.me/$paymentTgUsername';
+
+      launchUrl(Uri.parse(tgUrl), mode: LaunchMode.externalApplication).then((_) {
+        if (mounted) setState(() => _isNavigatingToPayment = false);
+      }).catchError((_) {
+        launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication).whenComplete(() {
+          if (mounted) setState(() => _isNavigatingToPayment = false);
+        });
+      });
+      return;
+    }
+
+    // Fallback: in-app payment chat
+    _goToPaymentChat(context);
+  }
+
+  void _goToPaymentChat(BuildContext context) {
     final money = NumberFormat.decimalPattern('ru');
     final item = widget.item;
     final buffer = StringBuffer();
@@ -1167,10 +1195,21 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                               'из ${item.totalTracks}'),
                       ],
 
-                      // Тариф
+                      // Тариф: базовый
                       if (item.clientPricePerKg != null && item.clientPricePerKg! > 0)
                         _buildInfoRow(context, 'Тариф',
                             '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг'),
+
+                      // Коэффициент за фото
+                      if (item.photoReportCoefficient != null && item.photoReportCoefficient! > 1.0)
+                        _buildInfoRow(context, 'Коэфф. фото',
+                            '×${item.photoReportCoefficient!.toStringAsFixed(2)}'),
+
+                      // Итоговый тариф с коэффициентом
+                      if (item.clientPricePerKgWithPhoto != null && item.clientPricePerKgWithPhoto! > 0 &&
+                          item.clientPricePerKgWithPhoto != item.clientPricePerKg)
+                        _buildInfoRow(context, 'Итого тариф',
+                            '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг'),
 
                       // Стоимость доставки
                       if (item.shippingCost != null && item.shippingCost! > 0)
@@ -1196,13 +1235,19 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                         _buildInfoRow(context, 'Упаковка',
                             '\$${item.packagingCostTotal!.toStringAsFixed(2)}'),
 
-                      // Страховка %
-                      if (item.insurancePercent != null && item.insurancePercent! > 0)
+                      // Страховка клиента
+                      if (item.insurancePercentClient != null && item.insurancePercentClient! > 0)
                         _buildInfoRow(context, 'Страховка',
-                            '${item.insurancePercent!.toStringAsFixed(2)}%'),
+                            '${item.insurancePercentClient!.toStringAsFixed(1)}%')
+                      else if (item.insurancePercent != null && item.insurancePercent! > 0)
+                        _buildInfoRow(context, 'Страховка',
+                            '${item.insurancePercent!.toStringAsFixed(1)}%'),
 
-                      // Страховка $
-                      if (item.insuranceCost != null && item.insuranceCost! > 0)
+                      // Страховка $ (клиентская сумма)
+                      if (item.insuranceCostClient != null && item.insuranceCostClient! > 0)
+                        _buildInfoRow(context, 'Страховка',
+                            '\$${item.insuranceCostClient!.toStringAsFixed(2)}')
+                      else if (item.insuranceCost != null && item.insuranceCost! > 0)
                         _buildInfoRow(context, 'Страховка',
                             '\$${item.insuranceCost!.toStringAsFixed(2)}'),
 

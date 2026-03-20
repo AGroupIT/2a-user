@@ -673,7 +673,8 @@ class _TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd.MM.yyyy');
     final isPositive =
-        transaction.type == 'earned' || transaction.type == 'referee_bonus';
+        transaction.type == 'earned' || transaction.type == 'referee_bonus' ||
+        (transaction.type == 'admin_credit' && transaction.kgAmount > 0);
     final color =
         isPositive ? Colors.green.shade600 : Colors.orange.shade700;
     final prefix = isPositive ? '+' : '-';
@@ -696,6 +697,10 @@ class _TransactionTile extends StatelessWidget {
       case 'expired':
         typeLabel = 'Истёк срок';
         icon = Icons.timer_off_outlined;
+        break;
+      case 'admin_credit':
+        typeLabel = transaction.kgAmount > 0 ? 'Начислено администратором' : 'Списано администратором';
+        icon = transaction.kgAmount > 0 ? Icons.admin_panel_settings_rounded : Icons.remove_circle_outline_rounded;
         break;
       default:
         typeLabel = transaction.type;

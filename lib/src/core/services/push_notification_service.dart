@@ -70,6 +70,8 @@ class PushNotificationService {
       FlutterLocalNotificationsPlugin();
   static FirebaseMessaging? _messaging;
   static bool _isInitialized = false;
+  static bool _firebaseReady = false; // Firebase SDK полностью инициализирован
+  static bool _fcmTokenObtained = false; // FCM токен получен
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
@@ -77,14 +79,23 @@ class PushNotificationService {
   // Callback для обработки FCM сообщений
   static Function(RemoteMessage)? onFCMMessageReceived;
 
-  /// Статическая инициализация Firebase (вызывать из main)
+  /// Статическая инициализация Firebase (вызывать из main).
+  /// Выполняется в фоне с таймаутом — не блокирует запуск приложения.
   static Future<void> initializeFirebase() async {
     try {
       debugPrint('🔔 Starting Firebase initialization...');
 
       if (Firebase.apps.isEmpty) {
+        // Таймаут 10с — если Google-серверы недоступны (DPI/ТСПУ),
+        // не зависаем бесконечно
         await Firebase.initializeApp(
           options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('🔔 Firebase.initializeApp() timed out (10s) — Google servers may be blocked by ISP');
+            return Firebase.app();
+          },
         );
         debugPrint('🔔 Firebase app initialized');
       } else {
@@ -97,24 +108,28 @@ class PushNotificationService {
         debugPrint('🔔 Firebase Messaging instance created');
 
         // Запрос разрешений
-        final settings = await _messaging!.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
-
-        debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
+        try {
+          final settings = await _messaging!.requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+          ).timeout(const Duration(seconds: 5));
+          debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
+        } catch (e) {
+          debugPrint('🔔 FCM Permission request failed/timed out: $e');
+        }
 
         // Получить токен сразу после инициализации
         try {
-          final token = await getFCMToken();
+          final token = await getFCMToken().timeout(const Duration(seconds: 10));
           if (token != null) {
+            _fcmTokenObtained = true;
             debugPrint('🔔 Initial FCM token obtained successfully');
           } else {
             debugPrint('🔔 Warning: Initial FCM token is null');
           }
         } catch (e) {
-          debugPrint('🔔 Error getting initial FCM token: $e');
+          debugPrint('🔔 Error getting initial FCM token (may retry later): $e');
         }
 
         // Background handler
@@ -136,9 +151,50 @@ class PushNotificationService {
         debugPrint('🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)');
       }
 
+      _firebaseReady = true;
       debugPrint('🔔 Firebase initialized');
+
+      // Если токен не получен — запускаем фоновый retry
+      if (!_fcmTokenObtained) {
+        _retryGetFCMToken();
+      }
     } catch (e) {
-      debugPrint('🔔 Firebase init error: $e');
+      debugPrint('🔔 Firebase init error (non-fatal): $e');
+      // Запускаем retry всей инициализации
+      _retryInitializeFirebase();
+    }
+  }
+
+  /// Повторные попытки инициализации Firebase (30с → 60с → ... → макс 600с)
+  static Future<void> _retryInitializeFirebase() async {
+    var delaySec = 30;
+    while (!_firebaseReady) {
+      debugPrint('🔔 Retrying Firebase init in ${delaySec}s...');
+      await Future.delayed(Duration(seconds: delaySec));
+      if (_firebaseReady) return;
+      try {
+        await initializeFirebase();
+      } catch (_) {}
+      delaySec = (delaySec * 2).clamp(30, 600); // макс 10 минут
+    }
+  }
+
+  /// Повторные попытки получения FCM токена (15с → 30с → ... → макс 600с)
+  static Future<void> _retryGetFCMToken() async {
+    var delaySec = 15;
+    while (!_fcmTokenObtained) {
+      debugPrint('🔔 Retrying FCM token in ${delaySec}s...');
+      await Future.delayed(Duration(seconds: delaySec));
+      if (_fcmTokenObtained) return;
+      try {
+        final token = await getFCMToken().timeout(const Duration(seconds: 10));
+        if (token != null) {
+          _fcmTokenObtained = true;
+          debugPrint('🔔 FCM token obtained on retry');
+          return;
+        }
+      } catch (_) {}
+      delaySec = (delaySec * 2).clamp(15, 600); // макс 10 минут
     }
   }
   

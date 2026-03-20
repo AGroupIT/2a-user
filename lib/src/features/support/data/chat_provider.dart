@@ -251,6 +251,7 @@ class ChatController extends Notifier<ChatState> {
   late final WebSocketService _wsService;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageEditedSubscription;
+  StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
   Timer? _fallbackPollingTimer;
 
   @override
@@ -263,6 +264,7 @@ class ChatController extends Notifier<ChatState> {
     ref.onDispose(() {
       _messageSubscription?.cancel();
       _messageEditedSubscription?.cancel();
+      _messageDeletedSubscription?.cancel();
       _fallbackPollingTimer?.cancel();
       if (state.conversation != null) {
         _wsService.leaveConversation(state.conversation!.id);
@@ -283,6 +285,11 @@ class ChatController extends Notifier<ChatState> {
           if (status == SocketConnectionStatus.connected) {
             // WebSocket подключен - отменяем fallback polling
             _fallbackPollingTimer?.cancel();
+            // Переприсоединяемся к комнате после reconnect
+            if (state.conversation != null) {
+              _wsService.joinConversation(state.conversation!.id);
+              _wsService.sendPresence(state.conversation!.id, true);
+            }
           } else if (status == SocketConnectionStatus.disconnected) {
             // WebSocket отключен - начинаем fallback polling
             _startFallbackPolling();
@@ -342,6 +349,22 @@ class ChatController extends Notifier<ChatState> {
         }
       } catch (e) {
         debugPrint('[WebSocket] Error parsing edited message: $e');
+      }
+    });
+
+    // Слушаем удаление сообщений
+    _messageDeletedSubscription?.cancel();
+    _messageDeletedSubscription = _wsService.messageDeleted.listen((data) {
+      try {
+        final msgId = data['id'] as int?;
+        final convId = data['conversationId'] as int?;
+        if (msgId != null && state.conversation?.id == convId) {
+          state = state.copyWith(
+            messages: state.messages.where((m) => m.id != msgId).toList(),
+          );
+        }
+      } catch (e) {
+        debugPrint('[WebSocket] Error parsing deleted message: $e');
       }
     });
   }

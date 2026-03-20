@@ -169,3 +169,20 @@ final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((ref, id
     return null;
   }
 });
+
+/// Payment TG username — cached after first load
+String? _paymentTgUsername;
+
+/// Provider that loads and caches payment TG config
+final paymentTgUsernameProvider = FutureProvider<String?>((ref) async {
+  if (_paymentTgUsername != null) return _paymentTgUsername;
+  try {
+    final api = ref.read(apiClientProvider);
+    final res = await api.get('/client/payment-tg-config');
+    final data = res.data['data'] as Map<String, dynamic>?;
+    if (data != null && data['enabled'] == true) {
+      _paymentTgUsername = data['businessUsername'] as String?;
+    }
+  } catch (_) {}
+  return _paymentTgUsername;
+});

@@ -36,8 +36,12 @@ void main() async {
   PaintingBinding.instance.imageCache.maximumSize = 300; // до 300 изображений (для списков с 100+ треками)
   PaintingBinding.instance.imageCache.maximumSizeBytes = 100 * 1024 * 1024; // 100 МБ
 
-  // Инициализация Firebase для push-уведомлений
-  await PushNotificationService.initializeFirebase();
+  // Firebase инициализируется в фоне — НЕ блокирует запуск приложения.
+  // Это критично для пользователей в РФ, где провайдеры могут замедлять
+  // трафик к googleapis.com через DPI (ТСПУ).
+  PushNotificationService.initializeFirebase().catchError((e) {
+    debugPrint('Firebase init failed (non-blocking): $e');
+  });
 
   // Запрос разрешения на отслеживание (ATT) - ОБЯЗАТЕЛЬНО до AppMetrica
   await _requestTrackingPermission();
