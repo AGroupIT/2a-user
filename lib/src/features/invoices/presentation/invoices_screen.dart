@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_layout.dart';
@@ -50,6 +51,7 @@ class InvoicesScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
+  final ScrollController _scrollController = ScrollController();
   String? _selectedStatusCode; // null = "Все"
   String _query = '';
 
@@ -175,10 +177,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
               targetKey: _firstInvoiceKey,
             ),
           ],
-          child: RefreshIndicator(
+          child: Stack(
+          children: [
+          RefreshIndicator(
           onRefresh: onRefresh,
           color: context.brandPrimary,
           child: ListView(
+            controller: _scrollController,
             key: _invoicesListKey,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, bottomPad + 16),
@@ -212,9 +217,18 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                 }),
             ],
           ),
+        ),
+        ScrollToTopButton(controller: _scrollController),
+        ],
         ));
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
 
@@ -251,7 +265,10 @@ class _FiltersState extends State<_Filters> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.query != widget.query &&
         _searchController.text != widget.query) {
-      _searchController.text = widget.query;
+      _searchController.value = TextEditingValue(
+        text: widget.query,
+        selection: TextSelection.collapsed(offset: widget.query.length),
+      );
     }
   }
 
@@ -263,82 +280,118 @@ class _FiltersState extends State<_Filters> {
 
   @override
   Widget build(BuildContext context) {
-    // Виджет поля поиска
-    Widget searchField = Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.brandPrimary, context.brandSecondary],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
+    final statusItems = <_DropdownItem<String?>>[
+      const _DropdownItem<String?>(value: null, label: 'Все'),
+      ...widget.statuses.map(
+        (s) => _DropdownItem<String?>(value: s.code, label: s.nameRu),
       ),
-      padding: const EdgeInsets.all(1.5),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12.5),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              color: context.brandPrimary,
-              size: 20,
+    ];
+    final selectedLabel = statusItems
+        .firstWhere((i) => i.value == widget.selectedStatusCode, orElse: () => statusItems.first)
+        .label;
+
+    return Row(
+      children: [
+        // Поиск
+        Expanded(
+          child: Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0x0F000000),
+              borderRadius: BorderRadius.circular(12),
             ),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Color(0xFF999999),
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      widget.onQueryChanged('');
-                    },
-                  )
-                : null,
-            hintText: 'Поиск по номеру счёта',
-            hintStyle: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF999999),
-              fontWeight: FontWeight.w500,
-            ),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded, color: context.brandPrimary, size: 18),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            _searchController.selection = const TextSelection.collapsed(offset: 0);
+                            _searchController.clear();
+                            widget.onQueryChanged('');
+                          },
+                          child: const Icon(Icons.close_rounded, color: Color(0xFF999999), size: 18),
+                        )
+                      : null,
+                  suffixIconConstraints: const BoxConstraints(minWidth: 36),
+                  hintText: 'Поиск по счёту',
+                  hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  isDense: true,
+                ),
+                onChanged: (value) {
+                  setState(() {});
+                  widget.onQueryChanged(value);
+                },
+              ),
             ),
           ),
-          onChanged: (value) {
-            setState(() {});
-            widget.onQueryChanged(value);
-          },
         ),
-      ),
-    );
-
-    return Column(
-      children: [
-        searchField,
-        const SizedBox(height: 10),
-        _CustomDropdown<String?>(
-          value: widget.selectedStatusCode,
-          label: 'Статус',
-          items: [
-            const _DropdownItem<String?>(value: null, label: 'Все'),
-            ...widget.statuses.map(
-              (s) => _DropdownItem<String?>(value: s.code, label: s.nameRu),
+        const SizedBox(width: 6),
+        // Статус
+        GestureDetector(
+          onTap: () {
+            showModalBottomSheet<String?>(
+              context: context,
+              useRootNavigator: true,
+              backgroundColor: Colors.white,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              builder: (ctx) => SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 8),
+                    Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 12),
+                    for (final item in statusItems)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          item.label,
+                          style: TextStyle(
+                            fontWeight: item.value == widget.selectedStatusCode ? FontWeight.w700 : FontWeight.w500,
+                            color: item.value == widget.selectedStatusCode ? context.brandPrimary : Colors.black87,
+                            fontSize: 14,
+                          ),
+                        ),
+                        trailing: item.value == widget.selectedStatusCode
+                            ? Icon(Icons.check_rounded, size: 18, color: context.brandPrimary)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          widget.onStatusChanged(item.value);
+                        },
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            );
+          },
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: const Color(0x0A000000),
+              borderRadius: BorderRadius.circular(10),
             ),
-          ],
-          onChanged: widget.onStatusChanged,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(selectedLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+                const SizedBox(width: 2),
+                const Icon(Icons.expand_more, size: 16, color: Colors.black38),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -563,7 +616,6 @@ class _InvoiceTile extends ConsumerStatefulWidget {
 }
 
 class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
-  bool _applyingBonus = false;
   bool _isNavigatingToPayment = false;
 
   bool get _isUnpaid =>
@@ -584,7 +636,9 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
         maxBonusPercent: maxBonusPct,
         onPay: () {
           Navigator.pop(sheetContext);
-          _goToPayment(context);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _goToPayment(context);
+          });
         },
         onBonusApplied: () {
           final clientCode = ref.read(activeClientCodeProvider);
@@ -627,6 +681,7 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   }
 
   void _goToPaymentChat(BuildContext context) {
+    if (!mounted) return;
     final money = NumberFormat.decimalPattern('ru');
     final item = widget.item;
     final buffer = StringBuffer();
@@ -665,50 +720,6 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     }).whenComplete(() {
       if (mounted) setState(() => _isNavigatingToPayment = false);
     });
-  }
-
-  Future<void> _quickApplyBonus(double balance, double maxBonusPct) async {
-    final item = widget.item;
-    final pricePerKg = item.clientPricePerKg ?? item.tariffBaseCost ?? 0;
-    if (pricePerKg <= 0) return;
-
-    final maxKg = (item.weight * maxBonusPct / 100).clamp(0.0, balance);
-    if (maxKg <= 0) return;
-
-    // Применяем максимально доступное количество кг
-    setState(() => _applyingBonus = true);
-    try {
-      final api = ref.read(apiClientProvider);
-      await api.post(
-        '/client/invoices/${item.id}/apply-bonus',
-        data: {'bonusKg': maxKg},
-      );
-      ref.invalidate(referralProvider);
-      final clientCode = ref.read(activeClientCodeProvider);
-      if (clientCode != null) ref.invalidate(invoicesListProvider(clientCode));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Применено ${maxKg.toStringAsFixed(2)} бонусных кг'),
-            backgroundColor: Colors.green.shade600,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ошибка применения бонуса'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _applyingBonus = false);
-    }
   }
 
   @override
@@ -841,9 +852,7 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: _applyingBonus
-                        ? null
-                        : () => _openDetail(context, bonusBalance, maxBonusPct),
+                    onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
                     child: Text(
                       'Применить →',
                       style: TextStyle(
@@ -979,6 +988,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         '/client/invoices/${item.id}/apply-bonus',
         data: {'bonusKg': kg},
       );
+      _bonusKgCtrl.selection = const TextSelection.collapsed(offset: 0);
       _bonusKgCtrl.clear();
       widget.onBonusApplied();
       if (mounted) {

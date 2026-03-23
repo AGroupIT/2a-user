@@ -271,6 +271,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   late final WebSocketService _wsService;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageEditedSubscription;
+  StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
   Timer? _fallbackPollingTimer;
 
   @override
@@ -283,6 +284,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     ref.onDispose(() {
       _messageSubscription?.cancel();
       _messageEditedSubscription?.cancel();
+      _messageDeletedSubscription?.cancel();
       _fallbackPollingTimer?.cancel();
       if (state.conversation != null) {
         _wsService.leaveConversation(state.conversation!.id);
@@ -357,6 +359,22 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         }
       } catch (e) {
         debugPrint('[WebSocket] Error parsing edited payment message: $e');
+      }
+    });
+
+    // Слушаем удаление сообщений
+    _messageDeletedSubscription?.cancel();
+    _messageDeletedSubscription = _wsService.messageDeleted.listen((data) {
+      try {
+        final deletedId = data['id'] as int?;
+        final convId = data['conversationId'] as int?;
+        if (deletedId != null && state.conversation != null &&
+            convId == state.conversation!.id) {
+          final filtered = state.messages.where((m) => m.id != deletedId).toList();
+          state = state.copyWith(messages: filtered);
+        }
+      } catch (e) {
+        debugPrint('[WebSocket] Error parsing deleted payment message: $e');
       }
     });
   }

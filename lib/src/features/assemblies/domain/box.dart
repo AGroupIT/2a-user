@@ -25,12 +25,15 @@ class BoxPhoto {
 /// Коробка в сборке
 class Box {
   final int id;
-  final int number; // Порядковый номер коробки (1, 2, 3...)
-  final double height; // см (ОБЯЗАТЕЛЬНОЕ)
-  final double width; // см (ОБЯЗАТЕЛЬНОЕ)
-  final double length; // см (ОБЯЗАТЕЛЬНОЕ)
-  final double weight; // кг (ОБЯЗАТЕЛЬНОЕ)
-  final List<BoxPhoto> photos; // Фото на весах
+  final int number;
+  final double height;
+  final double width;
+  final double length;
+  final double weight;
+  final List<BoxPhoto> photos;
+  final String? orderNumber;
+  final String? tariffName;
+  final List<String> packagingTypes;
 
   const Box({
     required this.id,
@@ -40,15 +43,24 @@ class Box {
     required this.length,
     required this.weight,
     this.photos = const [],
+    this.orderNumber,
+    this.tariffName,
+    this.packagingTypes = const [],
   });
 
   factory Box.fromJson(Map<String, dynamic> json) {
-    // Безопасный парсинг чисел
     double parseDouble(dynamic value) {
       if (value == null) return 0.0;
       if (value is num) return value.toDouble();
       if (value is String) return double.tryParse(value) ?? 0.0;
       return 0.0;
+    }
+
+    // Парсим типы упаковки
+    List<String> parsePackaging(dynamic value) {
+      if (value == null) return [];
+      if (value is List) return value.map((e) => e.toString()).toList();
+      return [];
     }
 
     return Box(
@@ -62,6 +74,10 @@ class Box {
               ?.map((p) => BoxPhoto.fromJson(p as Map<String, dynamic>))
               .toList() ??
           [],
+      orderNumber: json['orderNumber'] as String?,
+      tariffName: json['tariffName'] as String? ??
+          (json['tariff'] as Map<String, dynamic>?)?['name'] as String?,
+      packagingTypes: parsePackaging(json['packagingTypeNames']),
     );
   }
 

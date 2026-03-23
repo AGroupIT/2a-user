@@ -15,7 +15,7 @@ class AnalyticsService {
 
     if (!AppMetricaSettings.enabled) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Аналитика отключена');
+        debugPrint('📊 AppMetrica: Аналитика отключена');
       }
       return;
     }
@@ -36,12 +36,12 @@ class AnalyticsService {
       _initialized = true;
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Инициализация успешна');
-        print('📊 AppMetrica: App ID - ${AppMetricaSettings.appId}');
+        debugPrint('📊 AppMetrica: Инициализация успешна');
+        debugPrint('📊 AppMetrica: App ID - ${AppMetricaSettings.appId}');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка инициализации - $e');
+        debugPrint('📊 AppMetrica: Ошибка инициализации - $e');
       }
     }
   }
@@ -58,11 +58,11 @@ class AnalyticsService {
       }
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Событие "$eventName"${parameters != null ? ' с параметрами: $parameters' : ''}');
+        debugPrint('📊 AppMetrica: Событие "$eventName"${parameters != null ? ' с параметрами: $parameters' : ''}');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка отправки события "$eventName" - $e');
+        debugPrint('📊 AppMetrica: Ошибка отправки события "$eventName" - $e');
       }
     }
   }
@@ -75,11 +75,11 @@ class AnalyticsService {
       await AppMetrica.setUserProfileID(userId);
 
       if (kDebugMode) {
-        print('📊 AppMetrica: User ID установлен - $userId');
+        debugPrint('📊 AppMetrica: User ID установлен - $userId');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка установки User ID - $e');
+        debugPrint('📊 AppMetrica: Ошибка установки User ID - $e');
       }
     }
   }
@@ -94,11 +94,11 @@ class AnalyticsService {
       await AppMetrica.reportUserProfile(userProfile);
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Атрибут пользователя "$key" = "$value"');
+        debugPrint('📊 AppMetrica: Атрибут пользователя "$key" = "$value"');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка установки атрибута "$key" - $e');
+        debugPrint('📊 AppMetrica: Ошибка установки атрибута "$key" - $e');
       }
     }
   }
@@ -116,11 +116,11 @@ class AnalyticsService {
       });
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка зарегистрирована - $message');
+        debugPrint('📊 AppMetrica: Ошибка зарегистрирована - $message');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка отправки error report - $e');
+        debugPrint('📊 AppMetrica: Ошибка отправки error report - $e');
       }
     }
   }
@@ -133,11 +133,11 @@ class AnalyticsService {
       await AppMetrica.resumeSession();
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Сессия возобновлена');
+        debugPrint('📊 AppMetrica: Сессия возобновлена');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка возобновления сессии - $e');
+        debugPrint('📊 AppMetrica: Ошибка возобновления сессии - $e');
       }
     }
   }
@@ -150,11 +150,11 @@ class AnalyticsService {
       await AppMetrica.pauseSession();
 
       if (kDebugMode) {
-        print('📊 AppMetrica: Сессия приостановлена');
+        debugPrint('📊 AppMetrica: Сессия приостановлена');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('📊 AppMetrica: Ошибка приостановки сессии - $e');
+        debugPrint('📊 AppMetrica: Ошибка приостановки сессии - $e');
       }
     }
   }

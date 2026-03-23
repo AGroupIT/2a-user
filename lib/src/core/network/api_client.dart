@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -31,9 +33,12 @@ class ApiClient {
   
   // In-memory fallback для web и desktop
   static String? _inMemoryToken;
+  static Future<String?>? _tokenLoadInFlight;
+  static const Duration _prefsTimeout = Duration(seconds: 3);
   
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
+  bool _unauthorizedCallbackScheduled = false;
   
   /// Установить callback для обработки 401 ошибки
   void setOnUnauthorizedCallback(OnUnauthorizedCallback callback) {
@@ -68,30 +73,71 @@ class ApiClient {
     return InterceptorsWrapper(
       onRequest: (options, handler) async {
         final token = await getToken();
-        if (token != null) {
+        if (token != null && token.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        // Помечаем, был ли у запроса токен, чтобы корректно обрабатывать 401.
+        // Это важно: если токен не прочитался из Keychain/Keystore и мы отправили
+        // запрос без Authorization, 401 НЕ должен приводить к очистке токена/логауту.
+        options.extra['sent_auth_token'] = token != null && token.isNotEmpty;
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // Если 401 (unauthorized), очищаем токен и вызываем callback
+        // Если 401 (unauthorized), вызываем callback
         // НО только если это НЕ запрос на /login (т.к. там 401 = неверный пароль)
+        // и только если запрос был реально аутентифицирован (отправляли Authorization).
         if (error.response?.statusCode == 401) {
           final isLoginRequest = error.requestOptions.path.contains('/login');
 
           if (!isLoginRequest) {
-            // Это не login, значит токен истёк - делаем logout
-            await clearToken();
-            // Вызываем callback на main thread (Dio interceptor может работать не на main isolate)
-            SchedulerBinding.instance.addPostFrameCallback((_) {
-              _onUnauthorized?.call();
-            });
+            final sentAuth = error.requestOptions.extra['sent_auth_token'] == true ||
+                _hasAuthorizationHeader(error.requestOptions);
+            if (sentAuth) {
+              // Защита от "шторма" 401: если много запросов одновременно — callback один раз.
+              _scheduleUnauthorizedCallback();
+            } else {
+              if (kDebugMode) {
+                debugPrint(
+                  '401 received without Authorization header — skipping automatic logout '
+                  '(path=${error.requestOptions.path})',
+                );
+              }
+            }
           }
           // Если это login request, просто пробрасываем ошибку дальше
         }
         return handler.next(error);
       },
     );
+  }
+
+  void _scheduleUnauthorizedCallback() {
+    if (_unauthorizedCallbackScheduled) return;
+    _unauthorizedCallbackScheduled = true;
+
+    void run() {
+      try {
+        _onUnauthorized?.call();
+      } finally {
+        _unauthorizedCallbackScheduled = false;
+      }
+    }
+
+    // addPostFrameCallback не срабатывает, если кадры не рисуются (background).
+    // Поэтому вызываем через microtask в idle фазе.
+    final scheduler = SchedulerBinding.instance;
+    if (scheduler.schedulerPhase == SchedulerPhase.idle) {
+      Future.microtask(run);
+    } else {
+      scheduler.addPostFrameCallback((_) => run());
+    }
+  }
+
+  bool _hasAuthorizationHeader(RequestOptions options) {
+    for (final entry in options.headers.entries) {
+      if (entry.key.toLowerCase() == 'authorization') return true;
+    }
+    return false;
   }
 
   /// Sentry интерсептор для отслеживания HTTP ошибок
@@ -151,53 +197,100 @@ class ApiClient {
   // Token management
   Future<String?> getToken() async {
     // Сначала проверяем кеш в памяти
-    if (_inMemoryToken != null) {
-      return _inMemoryToken;
-    }
+    final cached = _inMemoryToken;
+    if (cached != null) return cached;
 
-    // На web и desktop используем SharedPreferences (localStorage)
-    if (kIsWeb || _isDesktop) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final token = prefs.getString(_tokenKey);
-        _inMemoryToken = token; // Кешируем
-        return token;
-      } catch (e) {
-        debugPrint('Error reading token from SharedPreferences: $e');
-        return null;
+    // Single-flight: при одновременных запросах не дергаем storage многократно.
+    final inFlight = _tokenLoadInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _loadTokenFromStorage();
+    _tokenLoadInFlight = future;
+    try {
+      final token = await future;
+      if (token != null && token.isNotEmpty) {
+        _inMemoryToken = token;
+      }
+      return token;
+    } finally {
+      // Сбрасываем in-flight даже при ошибках/таймаутах.
+      if (identical(_tokenLoadInFlight, future)) {
+        _tokenLoadInFlight = null;
       }
     }
+  }
 
-    // На мобильных платформах используем FlutterSecureStorage
+  Future<String?> _loadTokenFromStorage() async {
+    // На web и desktop используем SharedPreferences (localStorage)
+    if (kIsWeb || _isDesktop) {
+      return _readTokenFromPrefs();
+    }
+
+    // На мобильных платформах пытаемся читать из SecureStorage,
+    // а при ошибке/таймауте — fallback в SharedPreferences.
     try {
       // Таймаут 5 сек: на некоторых Android устройствах EncryptedSharedPreferences
       // может зависнуть при первом обращении (генерация ключей шифрования).
-      final token = await _storage.read(key: _tokenKey)
+      final token = await _storage
+          .read(key: _tokenKey)
           .timeout(const Duration(seconds: 5));
-      if (token != null) _inMemoryToken = token; // Кешируем только не-null
-      return token;
+      if (token != null && token.isNotEmpty) {
+        // Делаем best-effort копию в SharedPreferences, чтобы переживать
+        // транзиентные ошибки Keychain/Keystore без повторного логина.
+        unawaited(_writeTokenToPrefs(token));
+        return token;
+      }
     } catch (e) {
-      // Не кешируем null при ошибке — следующий вызов попробует storage снова.
       // PlatformException может быть транзиентной (iOS Keychain до первой разблокировки,
       // после обновления приложения и т.д.).
-      debugPrint('Error reading token from SecureStorage: $e');
+      debugPrint('Error/timeout reading token from SecureStorage: $e');
+    }
+
+    final fallback = await _readTokenFromPrefs();
+    if (fallback != null && fallback.isNotEmpty) {
+      debugPrint('🔐 Token loaded from SharedPreferences fallback');
+    }
+    return fallback;
+  }
+
+  Future<String?> _readTokenFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      return prefs.getString(_tokenKey);
+    } catch (e) {
+      debugPrint('Error/timeout reading token from SharedPreferences: $e');
       return null;
+    }
+  }
+
+  Future<void> _writeTokenToPrefs(String token) async {
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      await prefs.setString(_tokenKey, token);
+    } catch (e) {
+      debugPrint('Error/timeout saving token to SharedPreferences: $e');
+    }
+  }
+
+  Future<void> _removeTokenFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      await prefs.remove(_tokenKey);
+    } catch (e) {
+      debugPrint('Error/timeout clearing token from SharedPreferences: $e');
     }
   }
 
   Future<void> setToken(String token) async {
     // Кешируем в памяти
     _inMemoryToken = token;
+    // Сбрасываем single-flight, чтобы следующий getToken не ждал старую попытку.
+    _tokenLoadInFlight = null;
 
     // На web и desktop сохраняем в SharedPreferences (localStorage)
     if (kIsWeb || _isDesktop) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_tokenKey, token);
-        debugPrint('Token saved to localStorage');
-      } catch (e) {
-        debugPrint('Error saving token to SharedPreferences: $e');
-      }
+      await _writeTokenToPrefs(token);
+      debugPrint('Token saved to localStorage');
       return;
     }
 
@@ -206,37 +299,43 @@ class ApiClient {
       // Таймаут 5 сек: при первой записи после переустановки EncryptedSharedPreferences
       // может зависнуть на Android при генерации ключей шифрования.
       // Токен уже в памяти (_inMemoryToken), поэтому таймаут не ломает авторизацию.
-      await _storage.write(key: _tokenKey, value: token)
+      await _storage
+          .write(key: _tokenKey, value: token)
           .timeout(const Duration(seconds: 5));
       debugPrint('Token saved to SecureStorage');
     } catch (e) {
       debugPrint('Error/timeout saving token to SecureStorage: $e');
     }
+
+    // Fallback: дублируем токен в SharedPreferences.
+    // Причина: на части устройств чтение/запись SecureStorage бывает транзиентно
+    // недоступно (Keychain/Keystore). Без fallback это выглядит как "слёт авторизации".
+    await _writeTokenToPrefs(token);
   }
 
   Future<void> clearToken() async {
     _inMemoryToken = null;
+    _tokenLoadInFlight = null;
 
     // На web и desktop удаляем из SharedPreferences
     if (kIsWeb || _isDesktop) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_tokenKey);
-        debugPrint('Token cleared from localStorage');
-      } catch (e) {
-        debugPrint('Error clearing token from SharedPreferences: $e');
-      }
+      await _removeTokenFromPrefs();
+      debugPrint('Token cleared from localStorage');
       return;
     }
 
     // На мобильных платформах удаляем из FlutterSecureStorage
     try {
-      await _storage.delete(key: _tokenKey)
+      await _storage
+          .delete(key: _tokenKey)
           .timeout(const Duration(seconds: 5));
       debugPrint('Token cleared from SecureStorage');
     } catch (e) {
       debugPrint('Error/timeout clearing token from SecureStorage: $e');
     }
+
+    // Также чистим fallback в SharedPreferences (если использовался)
+    await _removeTokenFromPrefs();
   }
   
   /// Проверка на Desktop платформу

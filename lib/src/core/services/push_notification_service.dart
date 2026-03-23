@@ -79,6 +79,9 @@ class PushNotificationService {
   // Callback для обработки FCM сообщений
   static Function(RemoteMessage)? onFCMMessageReceived;
 
+  // Callback для обработки обновления FCM токена
+  static Function(String)? onTokenRefreshed;
+
   /// Статическая инициализация Firebase (вызывать из main).
   /// Выполняется в фоне с таймаутом — не блокирует запуск приложения.
   static Future<void> initializeFirebase() async {
@@ -135,6 +138,14 @@ class PushNotificationService {
         // Background handler
         FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+        // Token refresh — Firebase периодически обновляет FCM токен.
+        // Без этого listener старый токен становится невалидным и пуши перестают приходить.
+        _messaging!.onTokenRefresh.listen((newToken) {
+          debugPrint('🔔 FCM token refreshed: ${newToken.substring(0, 20)}...');
+          _fcmTokenObtained = true;
+          onTokenRefreshed?.call(newToken);
+        });
+
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
           debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
@@ -179,9 +190,9 @@ class PushNotificationService {
     }
   }
 
-  /// Повторные попытки получения FCM токена (15с → 30с → ... → макс 600с)
+  /// Повторные попытки получения FCM токена (30с → 60с → макс 300с, бесконечно)
   static Future<void> _retryGetFCMToken() async {
-    var delaySec = 15;
+    var delaySec = 30;
     while (!_fcmTokenObtained) {
       debugPrint('🔔 Retrying FCM token in ${delaySec}s...');
       await Future.delayed(Duration(seconds: delaySec));
@@ -193,8 +204,14 @@ class PushNotificationService {
           debugPrint('🔔 FCM token obtained on retry');
           return;
         }
-      } catch (_) {}
-      delaySec = (delaySec * 2).clamp(15, 600); // макс 10 минут
+      } catch (e) {
+        // На симуляторе APNS никогда не будет доступен — прекращаем retry
+        if (e.toString().contains('apns-token-not-set')) {
+          debugPrint('🔔 APNS not available (simulator?) — stopping FCM retry');
+          return;
+        }
+      }
+      delaySec = (delaySec * 2).clamp(30, 300); // макс 5 минут между попытками
     }
   }
   

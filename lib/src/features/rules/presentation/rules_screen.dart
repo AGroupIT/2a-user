@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/utils/error_utils.dart';
@@ -18,6 +19,7 @@ class RulesScreen extends ConsumerStatefulWidget {
 }
 
 class _RulesScreenState extends ConsumerState<RulesScreen> {
+  final ScrollController _scrollController = ScrollController();
   final GlobalKey _rulesListKey = GlobalKey();
   final GlobalKey _firstRuleKey = GlobalKey();
 
@@ -67,10 +69,13 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
             ),
           ],
           child: Builder(
-          builder: (ctx) => RefreshIndicator(
+          builder: (ctx) => Stack(
+          children: [
+          RefreshIndicator(
             onRefresh: onRefresh,
             color: ctx.brandPrimary,
             child: ListView.builder(
+              controller: _scrollController,
               key: _rulesListKey,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
@@ -109,9 +114,18 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
               },
             ),
           ),
+          ScrollToTopButton(controller: _scrollController),
+          ],
+          ),
         ));
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
 

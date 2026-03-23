@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -142,7 +143,9 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
       // только видимые ячейки держатся в дереве, остальные уничтожаются.
       // Ранее использовался ListView + shrinkWrap:true GridView, который рендерил
       // ВСЕ фото одновременно → OOM crash при большом количестве.
-      child: CustomScrollView(
+      child: Stack(
+        children: [
+        CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -261,6 +264,9 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             child: SizedBox(height: (24 + bottomPad) * 0.55),
           ),
         ],
+      ),
+      ScrollToTopButton(controller: _scrollController),
+      ],
       ),
     ));
   }
@@ -709,12 +715,13 @@ class _PhotoThumbnail extends StatelessWidget {
                   else
                     CachedNetworkImage(
                       imageUrl: ApiConfig.getMediaUrl(item.url),
-                      fit: BoxFit.cover,
-                      // Ограничиваем размер в памяти до thumbnail-разрешения.
-                      // Без этого каждое фото грузится в полном разрешении (~5-20 МБ).
-                      // При 200+ фото это вызывает OOM crash (EXC_RESOURCE MEMORY).
                       memCacheWidth: 300,
                       memCacheHeight: 300,
+                      imageBuilder: (_, imageProvider) => DecoratedBox(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                        ),
+                      ),
                       placeholder: (_, _) => Container(
                         color: Colors.black.withValues(alpha: 0.06),
                         child: const Center(

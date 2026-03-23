@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
 
@@ -144,6 +145,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   final GlobalKey _calcButtonKey = GlobalKey();
   final GlobalKey _photoSurchargeKey = GlobalKey();
 
+  final _scrollController = ScrollController();
   final _weightCtrl = TextEditingController();
   final _placesCtrl = TextEditingController(text: '1');
   final _totalCtrl = TextEditingController(text: '1');
@@ -154,6 +156,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _weightCtrl.dispose();
     _placesCtrl.dispose();
     _totalCtrl.dispose();
@@ -262,7 +265,10 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       ],
       child: Scaffold(
         backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
+      body: Stack(
+        children: [
+        SingleChildScrollView(
+          controller: _scrollController,
           padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 32 + bottomPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -446,6 +452,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
             ],
           ),
         ),
+        ScrollToTopButton(controller: _scrollController),
+        ],
+      ),
       ),
     );
   }

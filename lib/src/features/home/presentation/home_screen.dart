@@ -740,17 +740,20 @@ class _PhotoThumb extends StatelessWidget {
                     else
                       CachedNetworkImage(
                         imageUrl: ApiConfig.getMediaUrl(item.url),
-                        fit: BoxFit.cover,
-                        // Оптимизация: уменьшаем размер загружаемого изображения
                         maxHeightDiskCache: 400,
                         maxWidthDiskCache: 400,
                         memCacheHeight: 200,
                         memCacheWidth: 200,
-                        placeholder: (context, url) => Container(
+                        imageBuilder: (_, imageProvider) => DecoratedBox(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                          ),
+                        ),
+                        placeholder: (_, _) => Container(
                           color: Colors.black.withValues(alpha: 0.06),
                           child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         ),
-                        errorWidget: (context, url, error) => Container(
+                        errorWidget: (_, _, _) => Container(
                           color: Colors.black.withValues(alpha: 0.06),
                           child: const Center(child: Icon(Icons.broken_image_outlined)),
                         ),

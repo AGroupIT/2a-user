@@ -87,6 +87,15 @@ class AuthNotifier extends Notifier<AuthState> {
   AuthState build() {
     _apiClient = ref.read(apiClientProvider);
     _initialLoadDone = false;
+
+    // Подписываемся на обновление FCM токена — перерегистрируем на бэкенде.
+    // Без этого при обновлении токена Firebase старый становится невалидным и пуши пропадают.
+    PushNotificationService.onTokenRefreshed = (newToken) {
+      if (state.isLoggedIn) {
+        _reRegisterDeviceToken(newToken);
+      }
+    };
+
     _loadAuthState();
     return const AuthState();
   }
@@ -438,6 +447,24 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
   
+  /// Перерегистрация device token при обновлении FCM токена Firebase
+  Future<void> _reRegisterDeviceToken(String newToken) async {
+    try {
+      final platform = getPlatformNameImpl();
+      await _apiClient.post(
+        '/devices',
+        data: {
+          'platform': platform,
+          'token': newToken,
+          'deviceId': await _getDeviceId(),
+        },
+      );
+      debugPrint('🔔 Device token re-registered after FCM refresh');
+    } catch (e) {
+      debugPrint('🔔 Error re-registering device token: $e');
+    }
+  }
+
   /// Получить уникальный ID устройства
   Future<String?> _getDeviceId() async {
     try {

@@ -14,6 +14,7 @@ import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
 
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/utils/error_utils.dart';
@@ -115,6 +116,8 @@ class TracksScreen extends ConsumerStatefulWidget {
 }
 
 class _TracksScreenState extends ConsumerState<TracksScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   // Local tracking for photo report requests and their notes
   final Set<String> _requestedPhotoReports = <String>{};
   final Map<String, String> _photoRequestNotes = <String, String>{};
@@ -174,6 +177,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _searchDebounce?.cancel();
     _currentNotifier?.removeListener(_onNotifierStateChanged);
     super.dispose();
@@ -795,9 +799,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final apiService = ref.read(tracksApiServiceProvider);
       final success = await apiService.updatePhotoWish(activeRequest.id, wish);
 
-      if (!mounted) return;
+      if (!context.mounted) return;
       if (success) {
-        // Обновляем локальный кеш пожелания и список треков
         setState(() {
           _photoRequestNotes[track.code] = wish;
         });
@@ -1720,223 +1723,128 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                 },
                               ),
                             ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Тип упаковки',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (packagingTypes.isEmpty)
-                            const Text(
-                              'Нет доступных типов упаковки',
-                              style: TextStyle(color: Colors.grey),
-                            )
-                          else
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: packagingTypes.map((packing) {
-                                final isSelected = selectedPackingIds.contains(
-                                  packing.id,
-                                );
-
-                                return GestureDetector(
-                                  onTap: () {
-                                    setSheetState(() {
-                                      if (isSelected) {
-                                        selectedPackingIds.remove(packing.id);
-                                      } else {
-                                        selectedPackingIds.add(packing.id);
-                                      }
-                                    });
-                                  },
-                                  child: Container(
-                                    constraints: BoxConstraints(
-                                      minWidth: (MediaQuery.of(sheetContext).size.width - 48) / 2,
-                                      maxWidth: (MediaQuery.of(sheetContext).size.width - 48) / 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      gradient: isSelected
-                                          ? LinearGradient(
-                                              colors: [
-                                                context.brandPrimary,
-                                                context.brandSecondary,
-                                              ],
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                            )
-                                          : null,
-                                      color: isSelected ? null : Colors.white,
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : Colors.grey.shade300,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
+                          const Divider(height: 24),
+                          // ── Тип упаковки ──
+                          GestureDetector(
+                            onTap: () async {
+                              if (packagingTypes.isEmpty) return;
+                              final tempSelected = Set<int>.from(selectedPackingIds);
+                              await showModalBottomSheet<void>(
+                                context: sheetContext,
+                                useRootNavigator: true,
+                                backgroundColor: Colors.white,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                                ),
+                                builder: (ctx) => StatefulBuilder(
+                                  builder: (ctx, setModalState) => SafeArea(
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
                                       children: [
-                                        Text(
-                                          packing.nameRu ?? packing.name,
-                                          style: TextStyle(
-                                            color: isSelected
-                                                ? Colors.white
-                                                : Colors.black87,
-                                            fontWeight: isSelected
-                                                ? FontWeight.w600
-                                                : FontWeight.w500,
-                                            fontSize: 13,
+                                        const SizedBox(height: 8),
+                                        Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                                        const SizedBox(height: 12),
+                                        const Text('Тип упаковки', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                                        const SizedBox(height: 8),
+                                        Flexible(
+                                          child: ListView(
+                                            shrinkWrap: true,
+                                            children: packagingTypes.map((p) {
+                                              final checked = tempSelected.contains(p.id);
+                                              return CheckboxListTile(
+                                                dense: true,
+                                                value: checked,
+                                                activeColor: context.brandPrimary,
+                                                title: Text(p.nameRu ?? p.name, style: const TextStyle(fontSize: 14)),
+                                                onChanged: (v) {
+                                                  setModalState(() {
+                                                    if (v == true) { tempSelected.add(p.id); } else { tempSelected.remove(p.id); }
+                                                  });
+                                                },
+                                              );
+                                            }).toList(),
                                           ),
-                                          textAlign: TextAlign.center,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                                          child: SizedBox(
+                                            width: double.infinity,
+                                            child: FilledButton(
+                                              onPressed: () {
+                                                Navigator.pop(ctx);
+                                                setSheetState(() {
+                                                  selectedPackingIds.clear();
+                                                  selectedPackingIds.addAll(tempSelected);
+                                                });
+                                              },
+                                              child: const Text('Готово'),
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                );
-                              }).toList(),
-                            ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Страховка',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0x0A000000),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined, size: 18, color: context.brandPrimary),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: selectedPackingIds.isEmpty
+                                        ? const Text('Выбрать упаковку', style: TextStyle(color: Colors.black38, fontSize: 14))
+                                        : Wrap(
+                                            spacing: 4,
+                                            runSpacing: 4,
+                                            children: selectedPackingIds.map((id) {
+                                              final p = packagingTypes.firstWhere((t) => t.id == id);
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: context.brandPrimary.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  p.nameRu ?? p.name,
+                                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.brandPrimary),
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                  ),
+                                  const Icon(Icons.expand_more, size: 18, color: Colors.black38),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const Divider(height: 24),
+                          // ── Страховка ──
                           Row(
                             children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setSheetState(
-                                    () => selectedInsurance = 'yes',
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: selectedInsurance == 'yes'
-                                          ? LinearGradient(
-                                              colors: [
-                                                context.brandPrimary,
-                                                context.brandSecondary,
-                                              ],
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                            )
-                                          : null,
-                                      color: selectedInsurance == 'yes'
-                                          ? null
-                                          : Colors.white,
-                                      border: Border.all(
-                                        color: selectedInsurance == 'yes'
-                                            ? Colors.transparent
-                                            : Colors.grey.shade300,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 10,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        'Да',
-                                        style: TextStyle(
-                                          color: selectedInsurance == 'yes'
-                                              ? Colors.white
-                                              : Colors.black87,
-                                          fontWeight: selectedInsurance == 'yes'
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setSheetState(
-                                    () => selectedInsurance = 'no',
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: selectedInsurance == 'no'
-                                          ? LinearGradient(
-                                              colors: [
-                                                context.brandPrimary,
-                                                context.brandSecondary,
-                                              ],
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                            )
-                                          : null,
-                                      color: selectedInsurance == 'no'
-                                          ? null
-                                          : Colors.white,
-                                      border: Border.all(
-                                        color: selectedInsurance == 'no'
-                                            ? Colors.transparent
-                                            : Colors.grey.shade300,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 10,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        'Нет',
-                                        style: TextStyle(
-                                          color: selectedInsurance == 'no'
-                                              ? Colors.white
-                                              : Colors.black87,
-                                          fontWeight: selectedInsurance == 'no'
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              Icon(Icons.shield_outlined, size: 18, color: context.brandPrimary),
+                              const SizedBox(width: 10),
+                              const Text('Страховка', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+                              const Spacer(),
+                              Switch.adaptive(
+                                value: selectedInsurance == 'yes',
+                                activeColor: context.brandPrimary,
+                                onChanged: (v) => setSheetState(() => selectedInsurance = v ? 'yes' : 'no'),
                               ),
                             ],
                           ),
                           if (selectedInsurance == 'yes') ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Сумма стоимости товаров в юанях',
-                              style: TextStyle(
-                                color: Colors.black54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             _outlinedInput(
                               context,
                               insuranceAmountController,
-                              hint: 'Например: 5000',
+                              hint: 'Сумма товаров в юанях',
                               keyboardType: TextInputType.number,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
@@ -1948,19 +1856,36 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           ],
                           const SizedBox(height: 20),
                           SizedBox(
-                            width: MediaQuery.of(sheetContext).size.width * 0.8 - 32, // 80% ширины минус padding (16*2)
-                            child: FilledButton(
-                              onPressed:
-                                  selectedPackingIds.isNotEmpty &&
-                                      selectedInsurance != null &&
-                                      selectedTariff != null &&
-                                      (selectedInsurance == 'no' ||
-                                          (selectedInsurance == 'yes' &&
-                                              insuranceAmount?.isNotEmpty ==
-                                                  true))
-                                  ? () => Navigator.of(sheetContext).pop(true)
-                                  : null,
-                              child: const Text('Отправить на сборку'),
+                            width: double.infinity,
+                            height: 48,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: selectedPackingIds.isNotEmpty &&
+                                        selectedInsurance != null &&
+                                        selectedTariff != null &&
+                                        (selectedInsurance == 'no' || (insuranceAmount?.isNotEmpty == true))
+                                    ? LinearGradient(colors: [context.brandPrimary, context.brandSecondary])
+                                    : null,
+                                color: selectedPackingIds.isEmpty ? Colors.black12 : null,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                                onPressed:
+                                    selectedPackingIds.isNotEmpty &&
+                                        selectedInsurance != null &&
+                                        selectedTariff != null &&
+                                        (selectedInsurance == 'no' ||
+                                            (selectedInsurance == 'yes' &&
+                                                insuranceAmount?.isNotEmpty == true))
+                                    ? () => Navigator.of(sheetContext).pop(true)
+                                    : null,
+                                child: const Text('Отправить на сборку', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                              ),
                             ),
                           ),
                         ],
@@ -2317,161 +2242,137 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: _ActionChipButton(
-                          icon: Icons.add_photo_alternate_rounded,
-                          label: 'Выбрать изображения',
-                          onPressed: () async {
-                            try {
-                              final picker = ImagePicker();
-                              final pickedFiles = await picker.pickMultiImage(
-                                imageQuality: 85,
-                              );
-                              if (pickedFiles.isNotEmpty) {
-                                setSheetState(() => newFiles.addAll(pickedFiles));
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                _showStyledSnackBar(
-                                  context,
-                                  'Не удалось открыть галерею: $e',
-                                  isError: true,
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Существующие изображения (URL с сервера)
-                      if (images.isNotEmpty)
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: images.map((path) {
-                            // URL с сервера
-                            final isUrl = path.startsWith('http') || path.startsWith('/');
+                      // Одно изображение товара — можно заменить
+                      Builder(builder: (_) {
+                        // Определяем текущее изображение: новое > существующее
+                        final hasNew = newFiles.isNotEmpty;
+                        final hasExisting = images.isNotEmpty;
+                        final hasImage = hasNew || hasExisting;
 
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 72,
-                                  height: 72,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x14000000),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: isUrl
-                                      ? CachedNetworkImage(
-                                          imageUrl: ApiConfig.getMediaUrl(path),
-                                          fit: BoxFit.cover,
-                                          memCacheWidth: 200,
-                                          memCacheHeight: 200,
-                                          placeholder: (_, _) => const Center(
-                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                          ),
-                                          errorWidget: (_, _, _) =>
-                                              const ColoredBox(color: Colors.black12),
-                                        )
-                                      : (!kIsWeb
-                                          ? Image.file(
-                                              File(path),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, _, _) =>
-                                                  const ColoredBox(color: Colors.black12),
-                                            )
-                                          : const ColoredBox(color: Colors.black12)),
-                                ),
-                                Positioned(
-                                  right: 2,
-                                  top: 2,
-                                  child: InkWell(
-                                    onTap: () => setSheetState(() => images.remove(path)),
-                                    child: const CircleAvatar(
-                                      radius: 12,
-                                      backgroundColor: Colors.white,
-                                      child: Icon(
-                                        Icons.close_rounded,
-                                        size: 16,
-                                      ),
+                        Future<void> pickImage() async {
+                          try {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 85,
+                            );
+                            if (picked != null) {
+                              setSheetState(() {
+                                newFiles.clear();
+                                newFiles.add(picked);
+                              });
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              _showStyledSnackBar(context, 'Не удалось открыть галерею: $e', isError: true);
+                            }
+                          }
+                        }
+
+                        if (!hasImage) {
+                          return SizedBox(
+                            width: double.infinity,
+                            child: _ActionChipButton(
+                              icon: Icons.add_photo_alternate_rounded,
+                              label: 'Добавить фото товара',
+                              onPressed: pickImage,
+                            ),
+                          );
+                        }
+
+                        Widget imageWidget;
+                        if (hasNew) {
+                          final file = newFiles.first;
+                          imageWidget = kIsWeb
+                              ? FutureBuilder<Uint8List>(
+                                  future: file.readAsBytes(),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData) {
+                                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                                    }
+                                    return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                  },
+                                )
+                              : Image.file(File(file.path), fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black12));
+                        } else {
+                          final path = images.first;
+                          final isUrl = path.startsWith('http') || path.startsWith('/');
+                          imageWidget = isUrl
+                              ? CachedNetworkImage(
+                                  imageUrl: ApiConfig.getMediaUrl(path),
+                                  memCacheWidth: 400,
+                                  imageBuilder: (_, imageProvider) => DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
                                     ),
                                   ),
+                                  placeholder: (_, _) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                  errorWidget: (_, _, _) => const ColoredBox(color: Colors.black12),
+                                )
+                              : (!kIsWeb
+                                  ? Image.file(File(path), fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black12))
+                                  : const ColoredBox(color: Colors.black12));
+                        }
+
+                        return Stack(
+                          children: [
+                            GestureDetector(
+                              onTap: pickImage,
+                              child: Container(
+                                width: double.infinity,
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, 4)),
+                                  ],
                                 ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                      // Новые выбранные файлы
-                      if (newFiles.isNotEmpty)
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: newFiles.map((file) {
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 72,
-                                  height: 72,
+                                clipBehavior: Clip.antiAlias,
+                                child: imageWidget,
+                              ),
+                            ),
+                            Positioned(
+                              right: 6,
+                              bottom: 6,
+                              child: GestureDetector(
+                                onTap: pickImage,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x14000000),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
-                                      ),
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.swap_horiz, size: 16, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text('Заменить', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                                     ],
                                   ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: kIsWeb
-                                      ? FutureBuilder<Uint8List>(
-                                          future: file.readAsBytes(),
-                                          builder: (context, snapshot) {
-                                            if (snapshot.hasData) {
-                                              return Image.memory(
-                                                snapshot.data!,
-                                                fit: BoxFit.cover,
-                                              );
-                                            }
-                                            return const Center(
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            );
-                                          },
-                                        )
-                                      : Image.file(
-                                          File(file.path),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, _, _) =>
-                                              const ColoredBox(color: Colors.black12),
-                                        ),
                                 ),
-                                Positioned(
-                                  right: 2,
-                                  top: 2,
-                                  child: InkWell(
-                                    onTap: () => setSheetState(() => newFiles.remove(file)),
-                                    child: const CircleAvatar(
-                                      radius: 12,
-                                      backgroundColor: Colors.white,
-                                      child: Icon(
-                                        Icons.close_rounded,
-                                        size: 16,
-                                      ),
-                                    ),
-                                  ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 6,
+                              top: 6,
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() {
+                                  images.clear();
+                                  newFiles.clear();
+                                }),
+                                child: const CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Colors.white,
+                                  child: Icon(Icons.close_rounded, size: 18),
                                 ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
                       const SizedBox(height: 14),
                       FilledButton(
                         onPressed: () => Navigator.of(sheetContext).pop(true),
@@ -2490,15 +2391,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final productName = nameController.text.trim();
       final quantity = int.tryParse(qtyController.text.trim()) ?? 1;
 
-      // Сохраняем локально для отображения
-      setState(() {
-        _productInfos[track.code] = _ProductInfo(
-          name: productName,
-          quantity: quantity,
-          images: [...images, if (!kIsWeb) ...newFiles.map((f) => f.path)],
-        );
-      });
-
       // Отправляем на сервер
       if (track.id != null) {
         final apiService = ref.read(tracksApiServiceProvider);
@@ -2510,18 +2402,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         if (newFiles.isNotEmpty) {
           try {
             if (kIsWeb) {
-              // На Web загружаем через байты
               final bytes = await newFiles.first.readAsBytes();
               uploadedImageUrl = await apiService.uploadImageFromBytes(
                 bytes,
                 newFiles.first.name,
                 'product-info',
               );
-              if (uploadedImageUrl != null) {
-                debugPrint('Image uploaded successfully: $uploadedImageUrl');
-              }
             } else {
-              // На нативных платформах используем File
               imageFile = File(newFiles.first.path);
             }
           } catch (e) {
@@ -2529,28 +2416,40 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           }
         }
 
-        // Обновляем информацию о товаре
         final success = await apiService.updateProductInfo(
           trackId: track.id!,
           productName: productName,
           quantity: quantity,
-          imageFile: imageFile, // Для native платформ
-          imageUrl: uploadedImageUrl, // Для Web платформы
+          imageFile: imageFile,
+          imageUrl: uploadedImageUrl,
         );
 
         if (success) {
+          // После успешного сохранения — обновляем треки с сервера,
+          // чтобы получить актуальные URL изображений
+          _refreshTracks();
           if (!context.mounted) return;
           _showStyledSnackBar(context, 'Информация о товаре сохранена');
-          _refreshTracks();
         } else {
+          // Сохраняем локально как fallback
+          setState(() {
+            _productInfos[track.code] = _ProductInfo(
+              name: productName,
+              quantity: quantity,
+              images: images,
+            );
+          });
           if (!context.mounted) return;
-          _showStyledSnackBar(
-            context,
-            'Ошибка сохранения на сервере',
-            isError: true,
-          );
+          _showStyledSnackBar(context, 'Ошибка сохранения на сервере', isError: true);
         }
       } else {
+        setState(() {
+          _productInfos[track.code] = _ProductInfo(
+            name: productName,
+            quantity: quantity,
+            images: images,
+          );
+        });
         if (!context.mounted) return;
         _showStyledSnackBar(context, 'Информация о товаре сохранена локально');
       }
@@ -2735,6 +2634,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     return false;
                   },
                   child: CustomScrollView(
+                    controller: _scrollController,
                     key: _tracksListKey,
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
@@ -2848,6 +2748,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   ],
                 ),
               ),
+              ScrollToTopButton(controller: _scrollController),
             ],
           ),
     );
@@ -3172,6 +3073,7 @@ class _FiltersState extends State<_Filters> {
                           size: 20,
                         ),
                         onPressed: () {
+                          _searchController.selection = const TextSelection.collapsed(offset: 0);
                           _searchController.clear();
                           widget.onQueryChanged('');
                         },
@@ -3300,97 +3202,70 @@ class _FiltersNewState extends State<_FiltersNew> {
       ),
     ];
 
-    // Виджет ViewMode dropdown
-    Widget viewModeDropdown = _CustomDropdown<ViewMode>(
-      value: widget.viewMode,
-      label: 'Вид',
-      items: const [
-        _DropdownItem(value: ViewMode.all, label: 'Все'),
-        _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
-        _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
-      ],
-      onChanged: (v) => v != null ? widget.onViewModeChanged(v) : null,
-    );
-
-    // Виджет поля поиска
-    Widget searchField = Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.brandPrimary, context.brandSecondary],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.all(1.5),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12.5),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              color: context.brandPrimary,
-              size: 20,
+    return Row(
+      children: [
+        // Поиск — занимает оставшееся место
+        Expanded(
+          child: Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0x0F000000),
+              borderRadius: BorderRadius.circular(12),
             ),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Color(0xFF999999),
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      widget.onQueryChanged('');
-                    },
-                  )
-                : null,
-            hintText: 'Поиск по треку',
-            hintStyle: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF999999),
-              fontWeight: FontWeight.w500,
-            ),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
+            child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: context.brandPrimary,
+                  size: 18,
+                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          _searchController.selection = const TextSelection.collapsed(offset: 0);
+                          _searchController.clear();
+                          widget.onQueryChanged('');
+                        },
+                        child: const Icon(Icons.close_rounded, color: Color(0xFF999999), size: 18),
+                      )
+                    : null,
+                suffixIconConstraints: const BoxConstraints(minWidth: 36),
+                hintText: 'Поиск по треку',
+                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                isDense: true,
+              ),
+              onChanged: (value) {
+                setState(() {});
+                widget.onQueryChanged(value);
+              },
             ),
           ),
-          onChanged: (value) {
-            setState(() {});
-            widget.onQueryChanged(value);
-          },
         ),
-      ),
-    );
-
-    return Column(
-      children: [
-        searchField,
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: viewModeDropdown),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _CustomDropdown<String?>(
-                value: widget.statusCode,
-                label: 'Статус',
-                items: statusItems,
-                onChanged: (v) => widget.onStatusChanged(v),
-              ),
-            ),
+        ),
+        const SizedBox(width: 6),
+        // Вид
+        _MiniDropdown<ViewMode>(
+          value: widget.viewMode,
+          items: const [
+            _DropdownItem(value: ViewMode.all, label: 'Все'),
+            _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+            _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
           ],
+          onChanged: (v) => v != null ? widget.onViewModeChanged(v) : null,
+        ),
+        const SizedBox(width: 6),
+        // Статус
+        _MiniDropdown<String?>(
+          value: widget.statusCode,
+          items: statusItems,
+          onChanged: (v) => widget.onStatusChanged(v),
         ),
       ],
     );
@@ -3479,6 +3354,7 @@ class _TrackGroupCard extends StatefulWidget {
 class _TrackGroupCardState extends State<_TrackGroupCard> {
   bool _showAssemblyDetails = false;
   bool _showBoxes = false;
+  bool _showTracks = true;
 
   @override
   Widget build(BuildContext context) {
@@ -3550,34 +3426,36 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                           _showAssemblyDetails = !_showAssemblyDetails;
                         });
                       },
-                      child: Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F5F5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.settings_outlined, size: 16, color: Colors.black54),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Детали сборки',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _showAssemblyDetails ? Icons.expand_less : Icons.expand_more,
+                                size: 20,
+                                color: Colors.black54,
+                              ),
+                            ],
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeInOut,
+                            alignment: Alignment.topCenter,
+                            child: _showAssemblyDetails ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Детали сборки',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Icon(
-                                  _showAssemblyDetails ? Icons.expand_less : Icons.expand_more,
-                                  size: 20,
-                                  color: Colors.black54,
-                                ),
-                              ],
-                            ),
-                            if (_showAssemblyDetails) ...[
                               const SizedBox(height: 8),
                               if (widget.assembly!.tariffName != null) ...[
                                 Row(
@@ -3741,8 +3619,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                 ),
                               ],
                             ],
-                          ],
-                        ),
+                        ) : const SizedBox.shrink(),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -3868,7 +3747,32 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               ),
             ),
             const Divider(height: 1),
+            // Заголовок «Треки (N)» — сворачиваемый
+            GestureDetector(
+              onTap: () => setState(() => _showTracks = !_showTracks),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.local_shipping_outlined, size: 16, color: Colors.black54),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Треки (${widget.tracks.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      _showTracks ? Icons.expand_less : Icons.expand_more,
+                      size: 20,
+                      color: Colors.black54,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
+          if (_showTracks || widget.assembly == null)
           ...widget.tracks.asMap().entries.map((entry) {
             final index = entry.key;
             final track = entry.value;
@@ -3898,7 +3802,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 track.status == 'В ожидании' && !isPhotoRequested;
             // Отменить можно только если статус запроса «new»
             final canCancelPhoto = activePhoto?.status == 'new';
-            final availablePhotoReport = canRequestPhoto || canCancelPhoto;
             final commentText = widget.overrideComments[track.code] ?? track.comment;
             final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '').trim();
             final hasQuestion =
@@ -3933,22 +3836,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             final commentValue = (commentText ?? '').trim();
             if (commentValue.isNotEmpty) {
               infoSections.add(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Заметка',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      commentValue,
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                  ],
+                _CollapsibleNote(
+                  text: commentValue,
+                  onEdit: () => widget.onEditComment(track),
                 ),
               );
             }
@@ -3973,198 +3863,18 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               }
 
               infoSections.add(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Фотоотчёт',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Статус: $photoStatusLabel',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                    if (photoNote.isNotEmpty || canCancelPhoto) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              photoNote.isNotEmpty ? 'Пожелание: $photoNote' : 'Пожелание: не указано',
-                              style: TextStyle(
-                                color: photoNote.isNotEmpty ? Colors.black54 : Colors.black38,
-                              ),
-                            ),
-                          ),
-                          if (canCancelPhoto) ...[
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () => widget.onEditPhotoWish(track),
-                              child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                    if (activePhoto?.warehouseComment != null && activePhoto!.warehouseComment!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF8E1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFFFE082), width: 1),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Комментарий от склада',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFF57F17),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              activePhoto.warehouseComment!,
-                              style: const TextStyle(fontSize: 13, color: Colors.black87),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (photoCreated != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Создан: ${df.format(photoCreated)}',
-                        style: const TextStyle(color: Colors.black45),
-                      ),
-                    ],
-                    if (photoUpdated != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Обновлён: ${df.format(photoUpdated)}',
-                        style: const TextStyle(color: Colors.black45),
-                      ),
-                    ],
-                    // Отображение фото/видео
-                    if (allMediaUrls.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 80,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: allMediaUrls.length,
-                          itemBuilder: (context, mediaIndex) {
-                            final mediaUrl = allMediaUrls[mediaIndex];
-                            final fullUrl = ApiConfig.getMediaUrl(mediaUrl);
-                            final isVideo = _isVideoUrl(fullUrl);
-
-                            return Padding(
-                              padding: EdgeInsets.only(right: mediaIndex < allMediaUrls.length - 1 ? 8 : 0),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      // Конвертируем в PhotoItem для просмотра
-                                      final allPhotos = allMediaUrls.map((url) => PhotoItem(
-                                        url: url,
-                                        date: photoCreated ?? DateTime.now(),
-                                        trackingNumber: track.code,
-                                      )).toList();
-
-                                      Navigator.of(
-                                        context,
-                                        rootNavigator: true,
-                                      ).push(
-                                        MaterialPageRoute<void>(
-                                          fullscreenDialog: true,
-                                          builder: (_) => PhotoViewerScreen(
-                                            item: allPhotos[mediaIndex],
-                                            allPhotos: allPhotos,
-                                            initialIndex: mediaIndex,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Container(
-                                      width: 80,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.03),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          CachedNetworkImage(
-                                            imageUrl: fullUrl,
-                                            fit: BoxFit.cover,
-                                            memCacheWidth: 160,
-                                            memCacheHeight: 160,
-                                            placeholder: (_, _) => Container(
-                                              color: Colors.black.withValues(alpha: 0.06),
-                                              child: const Center(
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              ),
-                                            ),
-                                            errorWidget: (_, _, _) => Container(
-                                              color: Colors.black.withValues(alpha: 0.06),
-                                              child: const Center(
-                                                child: Icon(Icons.broken_image_outlined, size: 20),
-                                              ),
-                                            ),
-                                          ),
-                                          if (isVideo)
-                                            Center(
-                                              child: Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.6),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(
-                                                  Icons.play_arrow_rounded,
-                                                  color: Colors.white,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                    if (canCancelPhoto) ...[
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => widget.onCancelPhotoRequest(track),
-                        child: const Text(
-                          'Отменить запрос',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                _CollapsiblePhotoReport(
+                  statusLabel: photoStatusLabel,
+                  photoNote: photoNote,
+                  canCancel: canCancelPhoto,
+                  warehouseComment: activePhoto?.warehouseComment,
+                  createdAt: photoCreated != null ? df.format(photoCreated) : null,
+                  updatedAt: photoUpdated != null ? df.format(photoUpdated) : null,
+                  mediaUrls: allMediaUrls,
+                  trackCode: track.code,
+                  photoCreatedDate: photoCreated,
+                  onEditWish: () => widget.onEditPhotoWish(track),
+                  onCancel: () => widget.onCancelPhotoRequest(track),
                 ),
               );
             }
@@ -4173,117 +3883,43 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               // Показываем все видимые вопросы (из API)
               for (var i = 0; i < visibleQuestions.length; i++) {
                 final q = visibleQuestions[i];
+                final statusColor = q.hasAnswer
+                    ? Colors.green
+                    : q.status == 'cancelled'
+                        ? Colors.red
+                        : Colors.orange;
                 infoSections.add(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Статус: ${q.statusLabel}',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                      if (q.question.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Вопрос: ${q.question}',
-                          style: const TextStyle(color: Colors.black54),
-                        ),
-                      ],
-                      if (q.hasAnswer) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Ответ: ${q.answer}',
-                          style: const TextStyle(color: Colors.black54),
-                        ),
-                      ],
-                      const SizedBox(height: 2),
-                      Text(
-                        'Создан: ${df.format(q.createdAt)}',
-                        style: const TextStyle(color: Colors.black45),
-                      ),
-                      if (q.answeredAt != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Отвечен: ${df.format(q.answeredAt!)}',
-                          style: const TextStyle(color: Colors.black45),
-                        ),
-                      ],
-                    ],
+                  _CollapsibleQuestion(
+                    title: visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
+                    statusLabel: q.statusLabel,
+                    statusColor: statusColor,
+                    question: q.question,
+                    answer: q.hasAnswer ? q.answer : null,
+                    createdAt: df.format(q.createdAt),
+                    answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
+                    canCancel: q.isActive,
+                    onCancel: () => widget.onCancelQuestion(track),
                   ),
                 );
               }
               // Показываем локально добавленный вопрос (ещё не сохранён в API)
               if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty) {
                 infoSections.add(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Вопрос',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Статус: ${widget.questionStatus[track.code] ?? 'Новый'}',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Вопрос: $pendingLocalQuestion',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    ],
+                  _CollapsibleQuestion(
+                    title: 'Вопрос',
+                    statusLabel: widget.questionStatus[track.code] ?? 'Новый',
+                    statusColor: Colors.orange,
+                    question: pendingLocalQuestion,
+                    answer: null,
+                    createdAt: df.format(DateTime.now()),
+                    answeredAt: null,
+                    canCancel: true,
+                    onCancel: () => widget.onCancelQuestion(track),
                   ),
                 );
               }
             }
 
-            if (hasProductInfo) {
-              infoSections.add(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'О товаре',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    if (productInfoName.isNotEmpty)
-                      Text(
-                        'Название: $productInfoName',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    if (productInfoQuantity != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Количество: $productInfoQuantity',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    ],
-                    if (productInfoImages.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Изображений: ${productInfoImages.length}',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            }
 
             return Column(
               children: [
@@ -4352,6 +3988,16 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         df.format(track.date),
                         style: const TextStyle(color: Colors.black54),
                       ),
+                      if (hasProductInfo) ...[
+                        const SizedBox(height: 8),
+                        _ProductInfoInline(
+                          name: productInfoName,
+                          quantity: productInfoQuantity,
+                          imageUrls: productInfoImages,
+                          trackCode: track.code,
+                          onEdit: () => widget.onEditProduct(track),
+                        ),
+                      ],
                       if (infoSections.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Container(
@@ -4373,74 +4019,48 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         ),
                       ],
                       const SizedBox(height: 10),
-                      Row(
+                      Wrap(
                         key: index == 0 ? widget.tutorialActionsKey : null,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
-                          // Icon buttons on the left
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (availablePhotoReport) ...[
-                                _ActionChipButton(
-                                  icon: Icons.photo_camera_rounded,
-                                  iconOnly: true,
-                                  onPressed: () => canCancelPhoto
-                                      ? widget.onCancelPhotoRequest(track)
-                                      : widget.onPhotoRequest(track),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              if (canAskQuestion) ...[
-                                _ActionChipButton(
-                                  icon: Icons.help_outline_rounded,
-                                  iconOnly: true,
-                                  onPressed: () => hasQuestion
-                                      ? widget.onCancelQuestion(track)
-                                      : widget.onAskQuestion(track),
-                                ),
-                              ],
-                              if (canRequestReturn) ...[
-                                const SizedBox(width: 6),
-                                _ActionChipButton(
-                                  icon: Icons.assignment_return_outlined,
-                                  iconOnly: true,
-                                  onPressed: () => widget.onReturnRequest(track),
-                                ),
-                              ],
-                              if (track.status == 'В ожидании') ...[
-                                const SizedBox(width: 6),
-                                _ActionChipButton(
-                                  icon: Icons.delete_outline_rounded,
-                                  iconOnly: true,
-                                  isDestructive: true,
-                                  onPressed: () => widget.onDeleteTrack(track),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                          // Text buttons on the right, wrapped to avoid overflow
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                alignment: WrapAlignment.end,
-                                children: [
-                                  _ActionChipButton(
-                                    label: 'Заметка',
-                                    onPressed: () => widget.onEditComment(track),
-                                  ),
-                                  if (availableFillInfo)
-                                    _ActionChipButton(
-                                      label: 'О товаре',
-                                      onPressed: () => widget.onEditProduct(track),
-                                    ),
-                                ],
-                              ),
+                          if (canRequestPhoto)
+                            _ActionChipButton(
+                              label: 'Фотоотчёт',
+                              icon: Icons.photo_camera_outlined,
+                              onPressed: () => widget.onPhotoRequest(track),
                             ),
-                          ),
+                          if (canAskQuestion && !hasQuestion)
+                            _ActionChipButton(
+                              label: 'Вопрос',
+                              icon: Icons.help_outline_rounded,
+                              onPressed: () => widget.onAskQuestion(track),
+                            ),
+                          if (commentValue.isEmpty)
+                            _ActionChipButton(
+                              label: 'Заметка',
+                              icon: Icons.edit_note_rounded,
+                              onPressed: () => widget.onEditComment(track),
+                            ),
+                          if (availableFillInfo && !hasProductInfo)
+                            _ActionChipButton(
+                              label: 'О товаре',
+                              icon: Icons.inventory_2_outlined,
+                              onPressed: () => widget.onEditProduct(track),
+                            ),
+                          if (canRequestReturn)
+                            _ActionChipButton(
+                              label: 'Возврат',
+                              icon: Icons.assignment_return_outlined,
+                              onPressed: () => widget.onReturnRequest(track),
+                            ),
+                          if (track.status == 'В ожидании')
+                            _ActionChipButton(
+                              label: 'Удалить',
+                              icon: Icons.delete_outline_rounded,
+                              isDestructive: true,
+                              onPressed: () => widget.onDeleteTrack(track),
+                            ),
                         ],
                       ),
                     ],
@@ -4500,128 +4120,71 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           const SizedBox(height: 12),
 
           // Параметры коробки
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.02),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                // Габариты
-                _buildBoxParam(
-                  context,
-                  icon: Icons.straighten,
-                  label: tr(context, ru: 'Габариты', zh: '尺寸'),
-                  value: box.dimensionsDisplay,
-                ),
-                const SizedBox(height: 8),
-                // Вес
-                _buildBoxParam(
-                  context,
-                  icon: Icons.scale,
-                  label: tr(context, ru: 'Вес', zh: '重量'),
-                  value: box.weightDisplay,
-                ),
-                const SizedBox(height: 8),
-                // Объём
-                _buildBoxParam(
-                  context,
-                  icon: Icons.inventory_2_outlined,
-                  label: tr(context, ru: 'Объём', zh: '体积'),
-                  value: box.volumeDisplay,
-                ),
-                const SizedBox(height: 8),
-                // Плотность
-                _buildBoxParam(
-                  context,
-                  icon: Icons.compress,
-                  label: tr(context, ru: 'Плотность', zh: '密度'),
-                  value: box.densityDisplay,
-                ),
-              ],
-            ),
-          ),
+          _buildBoxParam(context, icon: Icons.straighten, label: tr(context, ru: 'Габариты', zh: '尺寸'), value: box.dimensionsDisplay),
+          const SizedBox(height: 6),
+          _buildBoxParam(context, icon: Icons.scale, label: tr(context, ru: 'Вес', zh: '重量'), value: box.weightDisplay),
+          const SizedBox(height: 6),
+          _buildBoxParam(context, icon: Icons.inventory_2_outlined, label: tr(context, ru: 'Объём', zh: '体积'), value: box.volumeDisplay),
+          const SizedBox(height: 6),
+          _buildBoxParam(context, icon: Icons.compress, label: tr(context, ru: 'Плотность', zh: '密度'), value: box.densityDisplay),
 
-          // Фото на весах
-          if (box.photos.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              tr(context, ru: 'Фото на весах (${box.photos.length})', zh: '称重照片 (${box.photos.length})'),
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: Colors.black54,
-              ),
-            ),
+          // Тариф и упаковка коробки (если отличаются от сборки)
+          if (box.tariffName != null || box.packagingTypes.isNotEmpty || box.orderNumber != null) ...[
             const SizedBox(height: 8),
-            SizedBox(
-              height: 80,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: box.photos.length,
-                itemBuilder: (context, index) {
-                  final photo = box.photos[index];
-                  final photoUrl = ApiConfig.getMediaUrl(photo.url);
-
-                  return Padding(
-                    padding: EdgeInsets.only(right: index < box.photos.length - 1 ? 8 : 0),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            // Конвертируем фото коробки в PhotoItem для просмотра
-                            final allPhotos = box.photos.map((p) => PhotoItem(
-                              url: p.url,
-                              date: DateTime.now(),
-                            )).toList();
-
-                            Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).push(
-                              MaterialPageRoute<void>(
-                                fullscreenDialog: true,
-                                builder: (_) => PhotoViewerScreen(
-                                  item: allPhotos[index],
-                                  allPhotos: allPhotos,
-                                  initialIndex: index,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            width: 80,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: CachedNetworkImage(
-                              imageUrl: photoUrl,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 160,
-                              memCacheHeight: 160,
-                              placeholder: (_, _) => Container(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                              errorWidget: (_, _, _) => Container(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                child: const Center(
-                                  child: Icon(Icons.broken_image_outlined, size: 20),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+            if (box.orderNumber != null && box.orderNumber!.isNotEmpty)
+              _buildBoxParam(context, icon: Icons.tag, label: tr(context, ru: 'Заказ', zh: '单号'), value: box.orderNumber!),
+            if (box.orderNumber != null && box.orderNumber!.isNotEmpty && (box.tariffName != null || box.packagingTypes.isNotEmpty))
+              const SizedBox(height: 6),
+            if (box.tariffName != null)
+              _buildBoxParam(context, icon: Icons.local_shipping_outlined, label: tr(context, ru: 'Тариф', zh: '费率'), value: box.tariffName!),
+            if (box.tariffName != null && box.packagingTypes.isNotEmpty)
+              const SizedBox(height: 6),
+            if (box.packagingTypes.isNotEmpty)
+              _buildBoxParam(context, icon: Icons.inventory_2_outlined, label: tr(context, ru: 'Упаковка', zh: '包装'), value: box.packagingTypes.join(', ')),
+          ],
+          // Фото на весах — одно большое
+          if (box.photos.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () {
+                final allPhotos = box.photos.map((p) => PhotoItem(
+                  url: p.url,
+                  date: DateTime.now(),
+                )).toList();
+                Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute<void>(
+                    fullscreenDialog: true,
+                    builder: (_) => PhotoViewerScreen(
+                      item: allPhotos.first,
+                      allPhotos: allPhotos,
+                      initialIndex: 0,
                     ),
-                  );
-                },
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                height: 140,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: ApiConfig.getMediaUrl(box.photos.first.url),
+                  memCacheWidth: 400,
+                  imageBuilder: (_, imageProvider) => DecoratedBox(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                    ),
+                  ),
+                  placeholder: (_, _) => const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  errorWidget: (_, _, _) => const Center(
+                    child: Icon(Icons.broken_image_outlined, size: 24),
+                  ),
+                ),
               ),
             ),
           ],
@@ -4648,26 +4211,21 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           ),
         ),
         const SizedBox(width: 6),
-        Text(
+        Flexible(
+          child: Text(
           value,
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: Colors.black87,
           ),
+          overflow: TextOverflow.ellipsis,
+        ),
         ),
       ],
     );
   }
 
-  /// Определяет, является ли URL видео-файлом
-  bool _isVideoUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.m4v') ||
-        lower.endsWith('.webm') ||
-        lower.endsWith('.mov');
-  }
 }
 
 class _DropdownItem<T> {
@@ -4675,6 +4233,88 @@ class _DropdownItem<T> {
   final String label;
 
   const _DropdownItem({required this.value, required this.label});
+}
+
+/// Компактный dropdown-чип для фильтров в одну строку
+class _MiniDropdown<T> extends StatelessWidget {
+  final T value;
+  final List<_DropdownItem<T>> items;
+  final ValueChanged<T?> onChanged;
+
+  const _MiniDropdown({
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = items.firstWhere(
+      (i) => i.value == value,
+      orElse: () => items.first,
+    );
+    return GestureDetector(
+      onTap: () {
+        showModalBottomSheet<T>(
+          context: context,
+          useRootNavigator: true,
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 12),
+                for (final item in items)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      item.label,
+                      style: TextStyle(
+                        fontWeight: item.value == value ? FontWeight.w700 : FontWeight.w500,
+                        color: item.value == value ? context.brandPrimary : Colors.black87,
+                        fontSize: 14,
+                      ),
+                    ),
+                    trailing: item.value == value
+                        ? Icon(Icons.check_rounded, size: 18, color: context.brandPrimary)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onChanged(item.value);
+                    },
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: const Color(0x0A000000),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              selected.label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.expand_more, size: 16, color: Colors.black38),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _CustomDropdown<T> extends StatefulWidget {
@@ -4904,14 +4544,12 @@ class _ActionChipButton extends StatelessWidget {
   final IconData? icon;
   final String? label;
   final VoidCallback? onPressed;
-  final bool iconOnly;
   final bool isDestructive;
 
   const _ActionChipButton({
     this.icon,
     this.label,
     required this.onPressed,
-    this.iconOnly = false,
     this.isDestructive = false,
   });
 
@@ -4925,8 +4563,8 @@ class _ActionChipButton extends StatelessWidget {
     final activeColor = isDestructive ? const Color(0xFFD32F2F) : context.brandPrimary;
     final isDisabled = onPressed == null;
 
-    // Icon-only button (circular)
-    if (iconOnly && icon != null) {
+    // Icon-only button (circular) — fallback if no label
+    if (label == null && icon != null) {
       return Opacity(
         opacity: isDisabled ? 0.45 : 1,
         child: Container(
@@ -4948,41 +4586,36 @@ class _ActionChipButton extends StatelessWidget {
       );
     }
 
-    // Text-only or text+icon button
+    // Text-only or text+icon button — compact chip style
     return Opacity(
       opacity: isDisabled ? 0.45 : 1,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(1),
-        child: Material(
-          color: Colors.white,
-          borderRadius: const BorderRadius.all(Radius.circular(11)),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(11),
-            onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 16, color: context.brandPrimary),
-                    const SizedBox(width: 6),
-                  ],
-                  if (label != null)
-                    Text(
-                      label!,
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
+      child: Material(
+        color: isDestructive
+            ? const Color(0x14FF5252)
+            : const Color(0x0A000000),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 14, color: activeColor.withOpacity(0.7)),
+                  const SizedBox(width: 4),
                 ],
-              ),
+                if (label != null)
+                  Text(
+                    label!,
+                    style: TextStyle(
+                      color: isDestructive ? activeColor : Colors.black54,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -5146,6 +4779,665 @@ class _DeliveryOptionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Определяет, является ли URL видео-файлом
+bool _isVideoUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.endsWith('.mp4') ||
+      lower.endsWith('.m4v') ||
+      lower.endsWith('.webm') ||
+      lower.endsWith('.mov');
+}
+
+/// Сворачиваемый блок «Заметка»
+class _CollapsibleNote extends StatefulWidget {
+  final String text;
+  final VoidCallback? onEdit;
+
+  const _CollapsibleNote({required this.text, this.onEdit});
+
+  @override
+  State<_CollapsibleNote> createState() => _CollapsibleNoteState();
+}
+
+class _CollapsibleNoteState extends State<_CollapsibleNote> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              Icon(
+                _expanded ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+                color: Colors.black54,
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'Заметка',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
+              ),
+              if (widget.onEdit != null) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: widget.onEdit,
+                  child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
+                ),
+              ],
+              if (!_expanded) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black38,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    widget.text,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.black54,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+/// Инлайн блок «О товаре» — всегда развёрнут, под датой трека
+class _ProductInfoInline extends StatelessWidget {
+  final String name;
+  final int? quantity;
+  final List<String> imageUrls;
+  final String trackCode;
+  final VoidCallback? onEdit;
+
+  const _ProductInfoInline({
+    required this.name,
+    this.quantity,
+    required this.imageUrls,
+    required this.trackCode,
+    this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImages = imageUrls.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Название + количество + карандаш
+        Row(
+          children: [
+            if (name.isNotEmpty)
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            if (quantity != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$quantity шт',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+            ],
+            if (onEdit != null) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onEdit,
+                child: const Icon(Icons.edit_outlined,
+                    size: 16, color: Colors.black45),
+              ),
+            ],
+          ],
+        ),
+        if (hasImages) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () {
+              final photo = PhotoItem(
+                url: imageUrls.first,
+                date: DateTime.now(),
+                trackingNumber: trackCode,
+              );
+              Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute<void>(
+                  fullscreenDialog: true,
+                  builder: (_) => PhotoViewerScreen(
+                    item: photo,
+                    allPhotos: [photo],
+                    initialIndex: 0,
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              width: double.infinity,
+              height: 120,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: CachedNetworkImage(
+                imageUrl: ApiConfig.getMediaUrl(imageUrls.first),
+                memCacheWidth: 400,
+                imageBuilder: (_, imageProvider) => DecoratedBox(
+                  decoration: BoxDecoration(
+                    image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                  ),
+                ),
+                placeholder: (_, _) => const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                errorWidget: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 24),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Сворачиваемый блок фотоотчёта по треку
+class _CollapsiblePhotoReport extends StatefulWidget {
+  final String statusLabel;
+  final String photoNote;
+  final bool canCancel;
+  final String? warehouseComment;
+  final String? createdAt;
+  final String? updatedAt;
+  final List<String> mediaUrls;
+  final String trackCode;
+  final DateTime? photoCreatedDate;
+  final VoidCallback onEditWish;
+  final VoidCallback onCancel;
+
+  const _CollapsiblePhotoReport({
+    required this.statusLabel,
+    required this.photoNote,
+    required this.canCancel,
+    this.warehouseComment,
+    this.createdAt,
+    this.updatedAt,
+    required this.mediaUrls,
+    required this.trackCode,
+    this.photoCreatedDate,
+    required this.onEditWish,
+    required this.onCancel,
+  });
+
+  @override
+  State<_CollapsiblePhotoReport> createState() => _CollapsiblePhotoReportState();
+}
+
+class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = widget.statusLabel == 'Выполнен'
+        ? Colors.green
+        : widget.statusLabel == 'Отменён'
+            ? Colors.red
+            : Colors.orange;
+    final hasPhotos = widget.mediaUrls.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Заголовок
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              Icon(
+                _expanded ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+                color: Colors.black54,
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'Фотоотчёт',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
+              ),
+              if (hasPhotos) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '${widget.mediaUrls.length}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black45,
+                  ),
+                ),
+                const Icon(Icons.photo_outlined, size: 14, color: Colors.black45),
+              ],
+              if (widget.canCancel) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: widget.onEditWish,
+                  child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: widget.onCancel,
+                  child: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                ),
+              ],
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  widget.statusLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Раскрытый контент
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Пожелание
+                      if (widget.photoNote.isNotEmpty || widget.canCancel)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.photoNote.isNotEmpty
+                                    ? widget.photoNote
+                                    : 'Пожелание не указано',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: widget.photoNote.isNotEmpty
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                  color: widget.photoNote.isNotEmpty
+                                      ? Colors.black87
+                                      : Colors.black38,
+                                ),
+                              ),
+                            ),
+                            if (widget.canCancel)
+                              GestureDetector(
+                                onTap: widget.onEditWish,
+                                child: const Icon(Icons.edit_outlined,
+                                    size: 16, color: Colors.black45),
+                              ),
+                          ],
+                        ),
+                      // Комментарий от склада
+                      if (widget.warehouseComment != null &&
+                          widget.warehouseComment!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF8E1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: const Color(0xFFFFE082), width: 1),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Комментарий от склада',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFF57F17),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.warehouseComment!,
+                                style: const TextStyle(
+                                    fontSize: 13, color: Colors.black87),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      // Фото/видео — сетка 3 в ряду
+                      if (hasPhotos) ...[
+                        const SizedBox(height: 4),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 4,
+                            mainAxisSpacing: 4,
+                            childAspectRatio: 1,
+                          ),
+                          itemCount: widget.mediaUrls.length,
+                          itemBuilder: (context, i) {
+                            final fullUrl = ApiConfig.getMediaUrl(widget.mediaUrls[i]);
+                            final isVideo = _isVideoUrl(fullUrl);
+                            return GestureDetector(
+                              onTap: () {
+                                final allPhotos = widget.mediaUrls
+                                    .map((url) => PhotoItem(
+                                          url: url,
+                                          date: widget.photoCreatedDate ?? DateTime.now(),
+                                          trackingNumber: widget.trackCode,
+                                        ))
+                                    .toList();
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute<void>(
+                                    fullscreenDialog: true,
+                                    builder: (_) => PhotoViewerScreen(
+                                      item: allPhotos[i],
+                                      allPhotos: allPhotos,
+                                      initialIndex: i,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    CachedNetworkImage(
+                                      imageUrl: fullUrl,
+                                      memCacheWidth: 200,
+                                      memCacheHeight: 200,
+                                      imageBuilder: (context, imageProvider) => DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          image: DecorationImage(
+                                            image: imageProvider,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                      placeholder: (_, _) => const Center(
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      errorWidget: (_, _, _) => const Center(
+                                        child: Icon(Icons.broken_image_outlined, size: 20),
+                                      ),
+                                    ),
+                                    if (isVideo)
+                                      Center(
+                                        child: Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.6),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.play_arrow_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                      // Даты
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (widget.createdAt != null)
+                            Text(
+                              widget.createdAt!,
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.black38),
+                            ),
+                          if (widget.updatedAt != null) ...[
+                            const Spacer(),
+                            Text(
+                              widget.updatedAt!,
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.black38),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+/// Сворачиваемый блок вопроса по треку
+class _CollapsibleQuestion extends StatefulWidget {
+  final String title;
+  final String statusLabel;
+  final Color statusColor;
+  final String question;
+  final String? answer;
+  final String createdAt;
+  final String? answeredAt;
+  final bool canCancel;
+  final VoidCallback? onCancel;
+
+  const _CollapsibleQuestion({
+    required this.title,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.question,
+    this.answer,
+    required this.createdAt,
+    this.answeredAt,
+    this.canCancel = false,
+    this.onCancel,
+  });
+
+  @override
+  State<_CollapsibleQuestion> createState() => _CollapsibleQuestionState();
+}
+
+class _CollapsibleQuestionState extends State<_CollapsibleQuestion>
+    with SingleTickerProviderStateMixin {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Заголовок: тап для раскрытия
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              Icon(
+                _expanded ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+                color: Colors.black54,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
+              ),
+              if (widget.canCancel) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: widget.onCancel,
+                  child: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                ),
+              ],
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: widget.statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  widget.statusLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: widget.statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Раскрытый контент
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.question.isNotEmpty)
+                        Text(
+                          widget.question,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      if (widget.answer != null &&
+                          widget.answer!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.answer!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            widget.createdAt,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black38,
+                            ),
+                          ),
+                          if (widget.answeredAt != null) ...[
+                            const Spacer(),
+                            Text(
+                              widget.answeredAt!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.black38,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

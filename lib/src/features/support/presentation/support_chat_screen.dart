@@ -165,6 +165,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     _isSendingLocally = true;
     try {
       HapticFeedback.lightImpact();
+      _textController.selection = const TextSelection.collapsed(offset: 0);
       _textController.clear();
 
       // Собираем ID вложений

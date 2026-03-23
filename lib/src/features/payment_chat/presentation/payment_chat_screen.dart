@@ -195,6 +195,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     _isSendingLocally = true;
     try {
       HapticFeedback.lightImpact();
+      _textController.selection = const TextSelection.collapsed(offset: 0);
       _textController.clear();
 
       // Собираем ID вложений

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../data/sp_models.dart';
 import '../data/sp_provider.dart';
@@ -17,6 +18,7 @@ class SpAssembliesScreen extends ConsumerStatefulWidget {
 }
 
 class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
+  final ScrollController _scrollController = ScrollController();
   final GlobalKey _assembliesListKey = GlobalKey();
   final GlobalKey _firstAssemblyKey = GlobalKey();
   @override
@@ -76,12 +78,15 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
           targetKey: _firstAssemblyKey,
         ),
       ],
-      child: RefreshIndicator(
+      child: Stack(
+      children: [
+      RefreshIndicator(
         onRefresh: () async {
           await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
         },
         color: context.brandPrimary,
       child: ListView.builder(
+        controller: _scrollController,
         key: _assembliesListKey,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
@@ -114,7 +119,16 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
           );
         },
       ),
+    ),
+    ScrollToTopButton(controller: _scrollController),
+    ],
     ));
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
 

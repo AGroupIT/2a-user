@@ -218,6 +218,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 ),
                                 onPressed: () {
                                   setState(() {
+                                    _ctrl.selection = const TextSelection.collapsed(offset: 0);
                                     _ctrl.clear();
                                   });
                                 },

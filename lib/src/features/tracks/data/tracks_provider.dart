@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:twoalogistic_shared/twoalogistic_shared.dart' show DeltaEvent;
 
 import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
@@ -209,6 +208,13 @@ class PaginatedTracksNotifier {
     loadInitial();
   }
 
+  void dispose() {
+    _deltaSub?.cancel();
+    _dataChangedSub?.cancel();
+    _reconnectSub?.cancel();
+    _debounceTimer?.cancel();
+  }
+
   void _debouncedSilentRefresh() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
@@ -356,7 +362,7 @@ class PaginatedTracksNotifier {
       'clientCode': _state.filters.clientCode,
       'take': take,
       'skip': skip,
-      'sortBy': 'updatedAt',
+      'sortBy': 'createdAt',
     };
 
     // Фильтр по статусу (код статуса из БД)
@@ -466,7 +472,7 @@ final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListPara
       'clientCode': params.clientCode,
       'take': params.take,
       'skip': params.skip,
-      'sortBy': 'updatedAt',
+      'sortBy': 'createdAt',
     };
     
     if (params.status != null && params.status!.isNotEmpty) {
@@ -504,7 +510,7 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
       queryParameters: {
         'clientCode': clientCode,
         'take': 100,
-        'sortBy': 'updatedAt',
+        'sortBy': 'createdAt',
       },
     );
     
@@ -532,7 +538,7 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
       queryParameters: {
         'clientCode': clientCode,
         'take': 10,
-        'sortBy': 'updatedAt',
+        'sortBy': 'createdAt',
       },
     );
     

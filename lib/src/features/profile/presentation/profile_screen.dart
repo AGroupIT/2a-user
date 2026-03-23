@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../../core/ui/app_layout.dart';
@@ -78,6 +79,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // Export button keys for sharePositionOrigin on iPad
+  final ScrollController _scrollController = ScrollController();
   final _invoicesExportButtonKey = GlobalKey();
   final _tracksExportButtonKey = GlobalKey();
 
@@ -110,6 +112,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _fullNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -194,10 +197,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     targetKey: _logoutKey,
                   ),
                 ],
-                child: RefreshIndicator(
+                child: Stack(
+                children: [
+                RefreshIndicator(
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView(
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
                   children: [
@@ -335,6 +341,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ],
                 ),
+              ),
+                ScrollToTopButton(controller: _scrollController),
+                ],
               ));
             },
           );
@@ -622,9 +631,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     onPressed: _isSavingPassword ? null : () {
                       setState(() {
                         _isChangingPassword = false;
-                        _currentPasswordController.clear();
-                        _newPasswordController.clear();
-                        _confirmPasswordController.clear();
+                        for (final c in [_currentPasswordController, _newPasswordController, _confirmPasswordController]) {
+                          c.selection = const TextSelection.collapsed(offset: 0);
+                          c.clear();
+                        }
                       });
                     },
                     style: OutlinedButton.styleFrom(
@@ -760,9 +770,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         setState(() {
           _isSavingPassword = false;
           _isChangingPassword = false;
-          _currentPasswordController.clear();
-          _newPasswordController.clear();
-          _confirmPasswordController.clear();
+          for (final c in [_currentPasswordController, _newPasswordController, _confirmPasswordController]) {
+            c.selection = const TextSelection.collapsed(offset: 0);
+            c.clear();
+          }
         });
         _showStyledSnackBar(context, 'Пароль успешно изменён');
       }

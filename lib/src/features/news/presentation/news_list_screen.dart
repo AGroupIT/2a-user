@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
@@ -20,6 +21,7 @@ class NewsListScreen extends ConsumerStatefulWidget {
 }
 
 class _NewsListScreenState extends ConsumerState<NewsListScreen> {
+  final ScrollController _scrollController = ScrollController();
   final GlobalKey _newsListKey = GlobalKey();
   final GlobalKey _firstNewsKey = GlobalKey();
 
@@ -68,10 +70,13 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
               targetKey: _firstNewsKey,
             ),
           ],
-          child: RefreshIndicator(
+          child: Stack(
+          children: [
+          RefreshIndicator(
             onRefresh: onRefresh,
             color: context.brandPrimary,
             child: ListView.builder(
+              controller: _scrollController,
               key: _newsListKey,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
@@ -108,9 +113,18 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
             },
           ),
           ),
+          ScrollToTopButton(controller: _scrollController),
+          ],
+          ),
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
 
