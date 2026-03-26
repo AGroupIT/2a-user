@@ -77,7 +77,7 @@ class Assembly {
         [];
 
     return Assembly(
-      id: int.parse(json['id'].toString()),
+      id: int.tryParse(json['id'].toString()) ?? 0,
       number: json['number'] as String? ?? '',
       name: json['name'] as String?,
       status: json['status'] as String? ?? '',
@@ -135,7 +135,7 @@ class AssemblyTrack {
 
   factory AssemblyTrack.fromJson(Map<String, dynamic> json) {
     return AssemblyTrack(
-      id: int.parse(json['id'].toString()),
+      id: int.tryParse(json['id'].toString()) ?? 0,
       trackNumber: json['trackNumber'] as String? ?? '',
       productName: json['productName'] as String?,
       quantity: json['quantity'] as int? ?? 1,

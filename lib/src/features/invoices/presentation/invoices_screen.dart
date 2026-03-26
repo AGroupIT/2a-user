@@ -96,9 +96,11 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     final topPad = AppLayout.topBarTotalHeight(context);
 
     Future<void> onRefresh() async {
+      debugPrint('[Invoices] pull-to-refresh triggered');
       ref.invalidate(invoicesListProvider(clientCode));
       ref.invalidate(invoiceStatusesProvider);
       await ref.read(invoicesListProvider(clientCode).future);
+      debugPrint('[Invoices] pull-to-refresh completed');
     }
 
     final List<InvoiceStatus> dbStatuses = statusesAsync.when(
@@ -651,14 +653,20 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     );
   }
 
-  void _goToPayment(BuildContext context) {
+  Future<void> _goToPayment(BuildContext context) async {
     if (_isNavigatingToPayment) return;
     _isNavigatingToPayment = true;
 
     final item = widget.item;
 
-    // Try Telegram payment first
-    final paymentTgUsername = ref.read(paymentTgUsernameProvider).whenOrNull(data: (v) => v);
+    // Ensure payment TG config is loaded before navigating
+    String? paymentTgUsername = ref.read(paymentTgUsernameProvider).whenOrNull(data: (v) => v);
+    if (paymentTgUsername == null) {
+      try {
+        paymentTgUsername = await ref.read(paymentTgUsernameProvider.future);
+      } catch (_) {}
+      if (!mounted) return;
+    }
     if (paymentTgUsername != null && paymentTgUsername.isNotEmpty) {
       final text = Uri.encodeComponent(
         'Добрый день! Хочу оплатить счет ${item.invoiceNumber}',
@@ -718,7 +726,14 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
       if (item.clientRubRate != null) 'clientRubRate': item.clientRubRate,
       if (item.clientYuanRate != null) 'clientYuanRate': item.clientYuanRate,
     }).whenComplete(() {
-      if (mounted) setState(() => _isNavigatingToPayment = false);
+      if (mounted) {
+        setState(() => _isNavigatingToPayment = false);
+        // Обновляем список счетов после возврата из чата оплаты
+        final clientCode = ref.read(activeClientCodeProvider);
+        if (clientCode != null) {
+          ref.invalidate(invoicesListProvider(clientCode));
+        }
+      }
     });
   }
 
@@ -1027,7 +1042,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         .clamp(0.0, widget.bonusBalance);
     final enteredKg =
         double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.')) ?? 0;
-    final bonusDiscount = enteredKg * pricePerKg;
+    final bonusDiscount = (enteredKg * pricePerKg).clamp(0.0, item.totalCostUsd);
     final showBonusSection =
         _isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
 
@@ -1221,9 +1236,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                         _buildInfoRow(context, 'Итого тариф',
                             '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг'),
 
-                      // Стоимость доставки
+                      // Стоимость по тарифу
                       if (item.shippingCost != null && item.shippingCost! > 0)
-                        _buildInfoRow(context, 'Стоимость доставки',
+                        _buildInfoRow(context, 'Стоимость по тарифу',
                             '\$${item.shippingCost!.toStringAsFixed(2)}'),
 
                       const Divider(height: 20),
@@ -1233,33 +1248,40 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                         _buildInfoRow(context, 'Разгрузка',
                             '\$${item.transshipmentCost!.toStringAsFixed(2)}'),
 
-                      // Упаковка (детализация или сумма)
-                      if (item.packagings.isNotEmpty)
+                      // Упаковка — детализация по типам + итого
+                      if (item.packagings.isNotEmpty) ...[
                         ...item.packagings.map(
                           (p) => _buildInfoRow(context,
                               'Упаковка: ${p.name}',
                               '\$${p.cost.toStringAsFixed(2)}'),
-                        )
-                      else if (item.packagingCostTotal != null &&
+                        ),
+                        if (item.packagingCostTotal != null &&
+                            item.packagingCostTotal! > 0 &&
+                            item.placesCount > 1)
+                          _buildInfoRow(context,
+                              'Итого упаковка (×${item.placesCount})',
+                              '\$${item.packagingCostTotal!.toStringAsFixed(2)}'),
+                      ] else if (item.packagingCostTotal != null &&
                           item.packagingCostTotal! > 0)
                         _buildInfoRow(context, 'Упаковка',
                             '\$${item.packagingCostTotal!.toStringAsFixed(2)}'),
 
-                      // Страховка клиента
-                      if (item.insurancePercentClient != null && item.insurancePercentClient! > 0)
-                        _buildInfoRow(context, 'Страховка',
-                            '${item.insurancePercentClient!.toStringAsFixed(1)}%')
-                      else if (item.insurancePercent != null && item.insurancePercent! > 0)
-                        _buildInfoRow(context, 'Страховка',
-                            '${item.insurancePercent!.toStringAsFixed(1)}%'),
-
-                      // Страховка $ (клиентская сумма)
-                      if (item.insuranceCostClient != null && item.insuranceCostClient! > 0)
-                        _buildInfoRow(context, 'Страховка',
-                            '\$${item.insuranceCostClient!.toStringAsFixed(2)}')
-                      else if (item.insuranceCost != null && item.insuranceCost! > 0)
-                        _buildInfoRow(context, 'Страховка',
-                            '\$${item.insuranceCost!.toStringAsFixed(2)}'),
+                      // Страховка — показываем только если есть стоимость
+                      if ((item.insuranceCostClient != null && item.insuranceCostClient! > 0) ||
+                          (item.insuranceCost != null && item.insuranceCost! > 0)) ...[
+                        if (item.insurancePercentClient != null && item.insurancePercentClient! > 0)
+                          _buildInfoRow(context, 'Страховка',
+                              '${item.insurancePercentClient!.toStringAsFixed(1)}%')
+                        else if (item.insurancePercent != null && item.insurancePercent! > 0)
+                          _buildInfoRow(context, 'Страховка',
+                              '${item.insurancePercent!.toStringAsFixed(1)}%'),
+                        if (item.insuranceCostClient != null && item.insuranceCostClient! > 0)
+                          _buildInfoRow(context, 'Страховка',
+                              '\$${item.insuranceCostClient!.toStringAsFixed(2)}')
+                        else if (item.insuranceCost != null && item.insuranceCost! > 0)
+                          _buildInfoRow(context, 'Страховка',
+                              '\$${item.insuranceCost!.toStringAsFixed(2)}'),
+                      ],
 
                       // Скидка
                       if (item.discountAmount != null && item.discountAmount! > 0)
@@ -1273,24 +1295,24 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
 
                       const Divider(height: 20),
 
-                      // Итого $
+                      // Стоимость доставки в $
                       if (item.totalCostUsd > 0)
-                        _buildInfoRow(context, 'К оплате',
+                        _buildInfoRow(context, 'Стоимость доставки',
                             '\$${item.totalCostUsd.toStringAsFixed(2)}',
                             isTotal: true),
 
-                      // Итого ¥
+                      // К оплате в ¥
                       if (item.totalCostCny > 0) ...[
                         const SizedBox(height: 4),
-                        _buildInfoRow(context, 'К оплате',
+                        _buildInfoRow(context, 'К оплате в юанях',
                             '¥${money.format(item.totalCostCny.round())}',
                             isTotal: true),
                       ],
 
-                      // Итого ₽
+                      // К оплате в ₽
                       if (item.totalCostRub > 0) ...[
                         const SizedBox(height: 4),
-                        _buildInfoRow(context, 'К оплате',
+                        _buildInfoRow(context, 'К оплате в рублях',
                             '${money.format(item.totalCostRub.round())} ₽',
                             isTotal: true),
                       ],

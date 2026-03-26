@@ -445,6 +445,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       // Отправляем запрос в API
       final apiService = ref.read(tracksApiServiceProvider);
+      if (track.id == null) return;
       final success = await apiService.createPhotoRequest(
         clientId: clientId,
         clientCodeId: clientCodeId,
@@ -636,6 +637,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       // Отправляем запрос в API
       final apiService = ref.read(tracksApiServiceProvider);
+      if (track.id == null) return;
       final success = await apiService.createTrackQuestion(
         clientId: clientId,
         clientCodeId: clientCodeId,
@@ -2125,7 +2127,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       // Создаём сборку через API
       final apiService = ref.read(assembliesApiServiceProvider);
-      final clientCodeId = ref.read(activeClientCodeIdProvider);
+      // Берём clientCodeId из выбранных треков, а не из dropdown (чтобы не привязать к NOCODE)
+      final trackClientCodeId = selectedTracks.firstOrNull?.clientCodeId;
+      final clientCodeId = trackClientCodeId ?? ref.read(activeClientCodeIdProvider);
       final assembly = await apiService.createAssembly(
         clientId: clientId,
         clientCodeId: clientCodeId,

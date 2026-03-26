@@ -274,14 +274,18 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
   Timer? _fallbackPollingTimer;
 
+  bool _isDisposed = false;
+
   @override
   PaymentChatState build() {
+    _isDisposed = false;
     _repository = ref.read(paymentChatRepositoryProvider);
     _wsService = ref.watch(webSocketServiceProvider);
     _listenToWebSocket();
 
     // Cleanup при dispose
     ref.onDispose(() {
+      _isDisposed = true;
       _messageSubscription?.cancel();
       _messageEditedSubscription?.cancel();
       _messageDeletedSubscription?.cancel();
@@ -383,6 +387,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   void _startFallbackPolling() {
     _fallbackPollingTimer?.cancel();
     _fallbackPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_isDisposed) { _fallbackPollingTimer?.cancel(); return; }
       if (_wsService.currentStatus != SocketConnectionStatus.connected) {
         pollNewMessages();
       }
@@ -523,7 +528,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
-    if (state.conversation == null) return;
+    if (_isDisposed || state.conversation == null) return;
     
     final lastMessageId = state.lastMessageId ?? 0;
     

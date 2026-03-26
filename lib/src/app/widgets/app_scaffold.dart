@@ -40,7 +40,6 @@ class AppScaffold extends StatelessWidget {
           child: Stack(
             children: [
               const Positioned.fill(child: AppBackground()),
-              // Allow content to extend under the floating top bar (for true blur)
               Padding(
                 padding: EdgeInsets.only(top: statusTop),
                 child: ClipRect(child: child),
@@ -219,3 +218,4 @@ class _ActionsPill extends StatelessWidget {
     );
   }
 }
+

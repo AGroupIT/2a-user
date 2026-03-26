@@ -123,6 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final topPad = AppLayout.topBarTotalHeight(context);
 
     Future<void> onRefresh() async {
+      debugPrint('[Home] pull-to-refresh triggered');
       ref.invalidate(clientProfileProvider);
       ref.invalidate(tracksDigestProvider(clientCode));
       ref.invalidate(invoicesDigestProvider(clientCode));

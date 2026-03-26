@@ -52,7 +52,19 @@ void main() async {
   // Инициализация SharedPreferences для showcase
   final sharedPreferences = await SharedPreferences.getInstance();
 
-  // Инициализация Sentry для error tracking
+  // Инициализация Sentry для error tracking (только в release с DSN)
+  if (!SentryConfig.enabled) {
+    // В debug без DSN — запускаем без Sentry чтобы не спамить native логи
+    runApp(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+        ],
+        child: const App(),
+      ),
+    );
+    return;
+  }
   await SentryFlutter.init(
     (options) {
       options.dsn = SentryConfig.dsn;
@@ -67,6 +79,32 @@ void main() async {
 
       options.beforeSend = (event, hint) {
         if (!SentryConfig.enabled) return null;
+
+        // Фильтруем сетевые ошибки — не баги, а ожидаемое поведение при плохом интернете
+        final exType = event.exceptions?.firstOrNull?.type ?? '';
+        const networkErrors = {
+          'SocketException',
+          '_ClientSocketException',
+          'ClientException',
+          'HandshakeException',
+          'TlsException',
+          'HttpException',
+          'HttpExceptionWithStatus',
+          'TimeoutException',
+          'WebSocketException',
+          'DioException',
+        };
+        if (networkErrors.contains(exType)) return null;
+        // Also filter by exception value containing network-related keywords
+        final exValue = event.exceptions?.firstOrNull?.value ?? '';
+        if (exValue.contains('Connection refused') ||
+            exValue.contains('Connection reset') ||
+            exValue.contains('Connection closed') ||
+            exValue.contains('Connection timed out') ||
+            exValue.contains('Network is unreachable') ||
+            exValue.contains('Software caused connection abort')) {
+          return null;
+        }
 
         // Удалить чувствительные данные из user
         if (event.user != null) {

@@ -35,16 +35,19 @@ final webSocketAutoConnectProvider = Provider<void>((ref) {
   debugPrint('[WS] Provider triggered: isLoggedIn=${authState.isLoggedIn}, isLoading=${authState.isLoading}');
 
   if (authState.isLoggedIn && !authState.isLoading) {
+    // Skip if already connected or connecting
+    if (service.currentStatus == SocketConnectionStatus.connected ||
+        service.currentStatus == SocketConnectionStatus.connecting) {
+      return;
+    }
     Future.microtask(() async {
       try {
+        // Double-check after microtask
+        if (service.currentStatus == SocketConnectionStatus.connected) return;
         final token = await apiClient.getToken();
-        debugPrint('[WS] Token: ${token != null ? "${token.substring(0, 20)}..." : "NULL"}');
-        debugPrint('[WS] URL: ${ApiConfig.baseUrl.replaceAll('/api', '')}');
         if (token != null && token.isNotEmpty) {
           await service.connect(token);
           debugPrint('[WS] Connect called successfully');
-        } else {
-          debugPrint('[WS] No token — skipping WebSocket connect');
         }
       } catch (e) {
         debugPrint('[WS] Connection error: $e');

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -103,6 +104,25 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _loadAuthState() async {
     debugPrint('🔄 Loading auth state...');
 
+    // Гарантируем что auth state загрузится за 10 секунд максимум
+    // Если что-то зависает (SecureStorage, SharedPrefs) — не блокируем UI навсегда
+    try {
+      await Future.any([
+        _doLoadAuthState(),
+        Future.delayed(const Duration(seconds: 10), () {
+          throw TimeoutException('Auth state loading timed out after 10s');
+        }),
+      ]);
+    } catch (e) {
+      debugPrint('❌ _loadAuthState timeout/error: $e');
+      if (!_initialLoadDone) {
+        _initialLoadDone = true;
+        state = const AuthState(isLoggedIn: false, isLoading: false);
+      }
+    }
+  }
+
+  Future<void> _doLoadAuthState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final isLoggedIn = prefs.getBool(_kIsLoggedInKey) ?? false;
@@ -481,7 +501,14 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  bool _isLoggingOut = false;
+
   Future<void> logout() async {
+    if (_isLoggingOut) {
+      debugPrint('🚪 Logout already in progress, skipping');
+      return;
+    }
+    _isLoggingOut = true;
     try {
       debugPrint('🚪 Starting logout process...');
 
@@ -565,6 +592,8 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Invalidate providers even on error
       _invalidateAllProviders();
+    } finally {
+      _isLoggingOut = false;
     }
   }
 

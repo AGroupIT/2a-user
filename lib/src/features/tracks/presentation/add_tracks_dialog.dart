@@ -103,10 +103,12 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
         // Не критично
       }
 
-      // Если успешно - закрываем диалог через 2 секунды
+      // Если успешно - закрываем диалог через 1.5 секунды
+      // Используем route-aware проверку чтобы не закрыть чужой диалог
       if (result.added > 0 && mounted) {
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
+        final route = ModalRoute.of(context);
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (mounted && route != null && route.isCurrent) {
           Navigator.of(context).pop();
         }
       }
