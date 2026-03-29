@@ -13,18 +13,19 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _domainCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _companyCtrl = TextEditingController();
-  final _commentCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
   final _referralCodeCtrl = TextEditingController();
+
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   @override
   void initState() {
     super.initState();
-    // Сбрасываем состояние при входе на экран
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(registrationProvider.notifier).reset();
     });
@@ -32,40 +33,47 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
-    _domainCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
-    _companyCtrl.dispose();
-    _commentCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     _referralCodeCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    // Валидация
-    if (_domainCtrl.text.trim().isEmpty) {
-      _showError('Введите домен партнёра');
-      return;
-    }
-
     if (_nameCtrl.text.trim().isEmpty) {
       _showError('Введите ваше ФИО');
       return;
     }
-
     if (_phoneCtrl.text.trim().isEmpty) {
       _showError('Введите номер телефона');
       return;
     }
+    if (_emailCtrl.text.trim().isEmpty) {
+      _showError('Введите email');
+      return;
+    }
+    if (_passwordCtrl.text.isEmpty) {
+      _showError('Введите пароль');
+      return;
+    }
+    if (_passwordCtrl.text.length < 6) {
+      _showError('Пароль должен быть не менее 6 символов');
+      return;
+    }
+    if (_passwordCtrl.text != _confirmPasswordCtrl.text) {
+      _showError('Пароли не совпадают');
+      return;
+    }
 
-    final success = await ref.read(registrationProvider.notifier).submitRequest(
+    final success = await ref.read(registrationProvider.notifier).register(
           fullName: _nameCtrl.text,
           phone: _phoneCtrl.text,
-          domain: _domainCtrl.text,
           email: _emailCtrl.text,
-          companyName: _companyCtrl.text,
-          comment: _commentCtrl.text,
+          password: _passwordCtrl.text,
+          confirmPassword: _confirmPasswordCtrl.text,
           referralCode: _referralCodeCtrl.text,
         );
 
@@ -73,8 +81,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (!success) {
       final error = ref.read(registrationProvider).error;
-      _showError(error ?? 'Не удалось отправить заявку');
+      _showError(error ?? 'Не удалось зарегистрироваться');
     }
+    // При успехе: loginWithData меняет authState → роутер сам редиректит на главную
   }
 
   void _showError(String message) {
@@ -88,11 +97,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final state = ref.watch(registrationProvider);
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
-
-    // Показываем экран успеха
-    if (state.isSuccess) {
-      return _buildSuccessScreen(topPadding, bottomPadding);
-    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
@@ -179,13 +183,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
               // Title
               const Text(
-                'Заявка на регистрацию',
+                'Регистрация',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Заполните форму и мы свяжемся с вами',
+                'Создайте аккаунт и получите код клиента',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Color(0xFF666666)),
               ),
@@ -209,14 +213,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildTextField(
-                      controller: _domainCtrl,
-                      label: 'Домен партнёра *',
-                      hint: 'example-company',
-                      prefixIcon: Icons.business_rounded,
-                      keyboardType: TextInputType.url,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
                       controller: _nameCtrl,
                       label: 'ФИО *',
                       hint: 'Иванов Иван Иванович',
@@ -234,25 +230,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     const SizedBox(height: 16),
                     _buildTextField(
                       controller: _emailCtrl,
-                      label: 'Email',
+                      label: 'Email *',
                       hint: 'example@mail.com',
                       prefixIcon: Icons.email_rounded,
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _companyCtrl,
-                      label: 'Название компании',
-                      hint: 'ООО "Компания"',
-                      prefixIcon: Icons.store_rounded,
+                    _buildPasswordField(
+                      controller: _passwordCtrl,
+                      label: 'Пароль *',
+                      hint: 'Не менее 6 символов',
+                      obscure: _obscurePassword,
+                      onToggle: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                     const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _commentCtrl,
-                      label: 'Комментарий',
-                      hint: 'Дополнительная информация...',
-                      prefixIcon: Icons.comment_rounded,
-                      maxLines: 3,
+                    _buildPasswordField(
+                      controller: _confirmPasswordCtrl,
+                      label: 'Подтвердите пароль *',
+                      hint: 'Повторите пароль',
+                      obscure: _obscureConfirm,
+                      onToggle: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -275,7 +274,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               ),
                             )
                           : const Text(
-                              'Отправить заявку',
+                              'Зарегистрироваться',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
@@ -309,110 +308,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSuccessScreen(double topPadding, double bottomPadding) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      body: Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          topPadding + 60,
-          24,
-          bottomPadding + 24,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Success icon
-            Center(
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  size: 80,
-                  color: Colors.green.shade600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Title
-            const Text(
-              'Заявка отправлена!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Message
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 16,
-                    offset: Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.phone_callback_rounded,
-                    size: 48,
-                    color: Color(0xFFfe3301),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Ожидайте звонка менеджера',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Мы свяжемся с вами в ближайшее время для уточнения деталей и создания аккаунта.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF666666),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Back to login button
-            FilledButton(
-              onPressed: () => context.go('/login'),
-              child: const Text(
-                'Вернуться ко входу',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -473,6 +368,64 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ],
     );
   }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required bool obscure,
+    required VoidCallback onToggle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFE0E0E0)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 14,
+              ),
+              prefixIcon: const Icon(
+                Icons.lock_rounded,
+                color: Color(0xFF999999),
+                size: 20,
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  color: const Color(0xFF999999),
+                  size: 20,
+                ),
+                onPressed: onToggle,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _PhoneInputFormatter extends TextInputFormatter {
@@ -489,7 +442,6 @@ class _PhoneInputFormatter extends TextInputFormatter {
     final buffer = StringBuffer();
     int index = 0;
 
-    // Format as +7 (XXX) XXX-XX-XX
     if (digits.isNotEmpty) {
       buffer.write('+');
       buffer.write(digits[index++]);

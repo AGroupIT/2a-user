@@ -94,6 +94,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
+  ClientTerminal? _selectedTerminal;
 
   // Password change state
   bool _isChangingPassword = false;
@@ -357,6 +358,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _fullNameController.text = profile.fullName;
       _phoneController.text = profile.phone ?? '';
       _emailController.text = profile.email;
+      _selectedTerminal = profile.terminal;
     });
   }
 
@@ -383,6 +385,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         fullName: fullName,
         phone: phone,
         email: email,
+        terminal: _selectedTerminal,
+        clearTerminal: _selectedTerminal == null,
       );
 
       ref.invalidate(clientProfileProvider);
@@ -454,6 +458,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
             ),
+            const SizedBox(height: 12),
+            _buildTerminalSelector(),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -533,6 +539,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           _buildReadonlyField(label: 'Email', value: profile.email),
+          const SizedBox(height: 12),
+          _buildReadonlyField(
+            label: 'Терминал получения груза',
+            value: profile.terminal?.nameRu ?? 'Не выбрано',
+          ),
         ],
       ),
     );
@@ -564,6 +575,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
+    );
+  }
+
+  Widget _buildTerminalSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Терминал получения груза',
+          style: TextStyle(
+            fontSize: 12,
+            color: Color(0xFF666666),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _TerminalChip(
+                label: 'Не выбрано',
+                selected: _selectedTerminal == null,
+                onTap: () => setState(() => _selectedTerminal = null),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _TerminalChip(
+                label: ClientTerminal.lyublino.nameRu,
+                selected: _selectedTerminal == ClientTerminal.lyublino,
+                onTap: () => setState(() => _selectedTerminal = ClientTerminal.lyublino),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _TerminalChip(
+                label: ClientTerminal.km19.nameRu,
+                selected: _selectedTerminal == ClientTerminal.km19,
+                onTap: () => setState(() => _selectedTerminal = ClientTerminal.km19),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1358,5 +1413,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
       }
     }
+  }
+}
+
+class _TerminalChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TerminalChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? context.brandPrimary : const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? context.brandPrimary : const Color(0xFFE0E0E0),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : const Color(0xFF333333),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -65,20 +65,46 @@ class _WeightTier {
       );
 }
 
+class _DensityTier {
+  final double minDensity;
+  final double? maxDensity;
+  final double? clientPricePerKg;
+  final double? clientPricePerM3;
+
+  _DensityTier({required this.minDensity, this.maxDensity, this.clientPricePerKg, this.clientPricePerM3});
+
+  bool get isVolumetric => clientPricePerM3 != null;
+
+  factory _DensityTier.fromJson(Map<String, dynamic> j) => _DensityTier(
+        minDensity: (j['minDensity'] as num?)?.toDouble() ?? 0,
+        maxDensity: j['maxDensity'] != null ? (j['maxDensity'] as num).toDouble() : null,
+        clientPricePerKg: j['clientPricePerKg'] != null ? (j['clientPricePerKg'] as num).toDouble() : null,
+        clientPricePerM3: j['clientPricePerM3'] != null ? (j['clientPricePerM3'] as num).toDouble() : null,
+      );
+}
+
 class _Tariff {
   final int id;
   final String name;
   final double baseCost;
+  final String pricingType; // 'weight' или 'density'
   final List<_WeightTier> weightTiers;
+  final List<_DensityTier> densityTiers;
 
-  _Tariff({required this.id, required this.name, required this.baseCost, required this.weightTiers});
+  _Tariff({required this.id, required this.name, required this.baseCost, this.pricingType = 'weight', required this.weightTiers, this.densityTiers = const []});
+
+  bool get isDensity => pricingType == 'density';
 
   factory _Tariff.fromJson(Map<String, dynamic> j) => _Tariff(
         id: (j['id'] is int) ? j['id'] as int : int.tryParse(j['id'].toString()) ?? 0,
         name: (j['name'] as String?) ?? '',
         baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
+        pricingType: (j['pricingType'] as String?) ?? 'weight',
         weightTiers: ((j['weightTiers'] as List?) ?? [])
             .map((t) => _WeightTier.fromJson(t as Map<String, dynamic>))
+            .toList(),
+        densityTiers: ((j['densityTiers'] as List?) ?? [])
+            .map((t) => _DensityTier.fromJson(t as Map<String, dynamic>))
             .toList(),
       );
 
@@ -89,6 +115,27 @@ class _Tariff {
       }
     }
     return baseCost;
+  }
+
+  /// Расчёт для тарифа по плотности
+  ({double price, double shipping, String unit}) calcDensity(double weight, double volume, double photoCoef) {
+    if (volume <= 0 || weight <= 0) return (price: baseCost, shipping: weight * baseCost * photoCoef, unit: 'кг');
+    final density = weight / volume;
+    final sorted = List<_DensityTier>.from(densityTiers)
+      ..sort((a, b) => a.minDensity.compareTo(b.minDensity));
+    for (int i = sorted.length - 1; i >= 0; i--) {
+      final tier = sorted[i];
+      if (density >= tier.minDensity && (tier.maxDensity == null || density <= tier.maxDensity!)) {
+        if (tier.isVolumetric) {
+          final p = tier.clientPricePerM3 ?? 0;
+          return (price: p, shipping: volume * p * photoCoef, unit: 'м³');
+        } else {
+          final p = tier.clientPricePerKg ?? baseCost;
+          return (price: p, shipping: weight * p * photoCoef, unit: 'кг');
+        }
+      }
+    }
+    return (price: baseCost, shipping: weight * baseCost * photoCoef, unit: 'кг');
   }
 }
 
@@ -147,6 +194,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   final _scrollController = ScrollController();
   final _weightCtrl = TextEditingController();
+  final _volumeCtrl = TextEditingController();
   final _placesCtrl = TextEditingController(text: '1');
   final _totalCtrl = TextEditingController(text: '1');
   final _photoCtrl = TextEditingController(text: '0');
@@ -158,6 +206,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   void dispose() {
     _scrollController.dispose();
     _weightCtrl.dispose();
+    _volumeCtrl.dispose();
     _placesCtrl.dispose();
     _totalCtrl.dispose();
     _photoCtrl.dispose();
@@ -171,12 +220,11 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     if (tariff == null) return null;
 
     final weight = double.tryParse(_weightCtrl.text.replaceAll(',', '.')) ?? 0;
+    final volume = double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
     final places = int.tryParse(_placesCtrl.text) ?? 0;
     final total = int.tryParse(_totalCtrl.text) ?? 0;
     final withPhoto = int.tryParse(_photoCtrl.text) ?? 0;
     if (weight <= 0 || places <= 0 || total <= 0) return null;
-
-    final pricePerKg = tariff.priceForWeight(weight);
 
     // Процент треков с фото
     final photoPercent = total > 0 ? (withPhoto / total * 100) : 0.0;
@@ -186,13 +234,24 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         photoCoef = c.coefficient;
         break;
       }
-      // Если 100%
       if (photoPercent >= 100 && c.maxPercent >= 100) {
         photoCoef = c.coefficient;
       }
     }
 
-    final shipping = weight * pricePerKg * photoCoef;
+    double pricePerKg;
+    double shipping;
+    String priceUnit = 'кг';
+
+    if (tariff.isDensity && volume > 0) {
+      final result = tariff.calcDensity(weight, volume, photoCoef);
+      pricePerKg = result.price;
+      shipping = result.shipping;
+      priceUnit = result.unit;
+    } else {
+      pricePerKg = tariff.priceForWeight(weight);
+      shipping = weight * pricePerKg * photoCoef;
+    }
     // Разгрузка = кол-во мест × $5
     final transshipment = places * 5.0;
     // Упаковка = базовая стоимость × кол-во мест
@@ -215,6 +274,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       packagingCost: packagingCost,
       packagingName: _selectedPackaging?.name,
       total: totalCost,
+      priceUnit: priceUnit,
     );
   }
 
@@ -393,6 +453,17 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                             ),
                           ],
                         ),
+                        // Объём (для тарифов по плотности)
+                        if (_selectedTariff?.isDensity == true) ...[
+                          const SizedBox(height: 10),
+                          _NumField(
+                            label: 'Объём, м³',
+                            controller: _volumeCtrl,
+                            hint: 'например 0.15',
+                            decimal: true,
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ],
                         const SizedBox(height: 10),
                         KeyedSubtree(
                           key: _photoSurchargeKey,
@@ -476,6 +547,7 @@ class _CalcResult {
   final double packagingCost;
   final String? packagingName;
   final double total;
+  final String priceUnit;
 
   const _CalcResult({
     required this.tariffName,
@@ -491,6 +563,7 @@ class _CalcResult {
     required this.packagingCost,
     this.packagingName,
     required this.total,
+    this.priceUnit = 'кг',
   });
 }
 
@@ -510,7 +583,7 @@ class _ResultCard extends StatelessWidget {
 
           // Тариф
           _Row('Тариф', result.tariffName),
-          _Row('Цена за кг', '\$${result.pricePerKg.toStringAsFixed(2)}/кг'),
+          _Row('Цена за ${result.priceUnit}', '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}'),
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
 
           // Фотоотчёт
@@ -531,7 +604,7 @@ class _ResultCard extends StatelessWidget {
             'Доставка',
             '\$${result.shipping.toStringAsFixed(2)}',
             subtitle:
-                '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}',
+                '${result.priceUnit == 'м³' ? '${(result.shipping / (result.pricePerKg * result.photoCoef)).toStringAsFixed(3)} м³' : '${result.weight.toStringAsFixed(2)} кг'} × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}',
           ),
           const SizedBox(height: 6),
           _Row(

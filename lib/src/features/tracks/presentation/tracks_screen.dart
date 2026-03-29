@@ -231,6 +231,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         _questionUpdatedAt.remove(track.code);
         changed = true;
       }
+      // Если сервер вернул productInfo — оптимистика больше не нужна
+      if (track.productInfo != null && _productInfos.containsKey(track.code)) {
+        _productInfos.remove(track.code);
+        changed = true;
+      }
     }
     if (changed && mounted) setState(() {});
   }
@@ -684,8 +689,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       if (success) {
         if (!mounted) return;
-        // Обновляем список треков
-        _refreshTracks();
+        setState(() {
+          _requestedPhotoReports.remove(track.code);
+          _photoRequestNotes.remove(track.code);
+          _photoRequestCreatedAt.remove(track.code);
+          _photoRequestUpdatedAt.remove(track.code);
+        });
         _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
       } else {
         if (!mounted) return;
@@ -693,7 +702,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       }
     } else {
       if (!mounted) return;
-      // Удаляем из локального state
       setState(() {
         _requestedPhotoReports.remove(track.code);
         _photoRequestNotes.remove(track.code);
@@ -832,8 +840,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       if (success) {
         if (!mounted) return;
-        // Обновляем список треков
-        _refreshTracks();
+        setState(() {
+          _askedQuestions.remove(track.code);
+          _questionStatus.remove(track.code);
+          _questionAnswers.remove(track.code);
+          _questionCreatedAt.remove(track.code);
+          _questionUpdatedAt.remove(track.code);
+        });
         _showStyledSnackBar(context, 'Вопрос отменён');
       } else {
         if (!mounted) return;
@@ -1626,7 +1639,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
-    String? selectedInsurance;
+    String selectedInsurance = 'no';
     String? insuranceAmount;
 
     // Создаём контроллер ДО StatefulBuilder чтобы не терять фокус
@@ -1852,7 +1865,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
                               onChanged: (value) {
-                                insuranceAmount = value;
+                                setSheetState(() => insuranceAmount = value);
                               },
                             ),
                           ],
@@ -1863,7 +1876,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: selectedPackingIds.isNotEmpty &&
-                                        selectedInsurance != null &&
                                         selectedTariff != null &&
                                         (selectedInsurance == 'no' || (insuranceAmount?.isNotEmpty == true))
                                     ? LinearGradient(colors: [context.brandPrimary, context.brandSecondary])
@@ -1879,7 +1891,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                 ),
                                 onPressed:
                                     selectedPackingIds.isNotEmpty &&
-                                        selectedInsurance != null &&
                                         selectedTariff != null &&
                                         (selectedInsurance == 'no' ||
                                             (selectedInsurance == 'yes' &&

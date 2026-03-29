@@ -4,6 +4,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 
+enum ClientTerminal {
+  lyublino,
+  km19;
+
+  String get nameRu {
+    switch (this) {
+      case ClientTerminal.lyublino:
+        return 'Люблино';
+      case ClientTerminal.km19:
+        return '19 километр';
+    }
+  }
+
+  static ClientTerminal? fromJson(String? value) {
+    switch (value) {
+      case 'lyublino':
+        return ClientTerminal.lyublino;
+      case 'km19':
+        return ClientTerminal.km19;
+      default:
+        return null;
+    }
+  }
+
+  String toJson() {
+    switch (this) {
+      case ClientTerminal.lyublino:
+        return 'lyublino';
+      case ClientTerminal.km19:
+        return 'km19';
+    }
+  }
+}
+
 /// Модель профиля клиента
 class ClientProfile {
   final int id;
@@ -16,6 +50,7 @@ class ClientProfile {
   final AgentInfo? agent;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final ClientTerminal? terminal;
 
   const ClientProfile({
     required this.id,
@@ -28,6 +63,7 @@ class ClientProfile {
     this.agent,
     required this.createdAt,
     this.updatedAt,
+    this.terminal,
   });
 
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
@@ -59,6 +95,7 @@ class ClientProfile {
       updatedAt: json['updatedAt'] != null
           ? DateTime.tryParse(json['updatedAt'].toString())
           : null,
+      terminal: ClientTerminal.fromJson(json['terminal'] as String?),
     );
   }
 }
@@ -239,11 +276,18 @@ class ProfileRepository {
     String? fullName,
     String? email,
     String? phone,
+    ClientTerminal? terminal,
+    bool clearTerminal = false,
   }) async {
     final data = <String, dynamic>{};
     if (fullName != null) data['fullName'] = fullName;
     if (email != null) data['email'] = email;
     if (phone != null) data['phone'] = phone;
+    if (clearTerminal) {
+      data['terminal'] = null;
+    } else if (terminal != null) {
+      data['terminal'] = terminal.toJson();
+    }
 
     final response = await _apiClient.patch('/client/profile', data: data);
 

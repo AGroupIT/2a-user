@@ -3,28 +3,25 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import 'auth_provider.dart';
 
 /// Состояние регистрации
 class RegistrationState {
   final bool isLoading;
-  final bool isSuccess;
   final String? error;
 
   const RegistrationState({
     this.isLoading = false,
-    this.isSuccess = false,
     this.error,
   });
 
   RegistrationState copyWith({
     bool? isLoading,
-    bool? isSuccess,
     String? error,
     bool clearError = false,
   }) {
     return RegistrationState(
       isLoading: isLoading ?? this.isLoading,
-      isSuccess: isSuccess ?? this.isSuccess,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -45,50 +42,57 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     state = const RegistrationState();
   }
 
-  /// Отправить заявку на регистрацию
-  Future<bool> submitRequest({
+  /// Самостоятельная регистрация — создаёт клиента, выдаёт код 2A-XXXX, логинит.
+  Future<bool> register({
     required String fullName,
     required String phone,
-    required String domain,
-    String? email,
-    String? companyName,
-    String? comment,
+    required String email,
+    required String password,
+    required String confirmPassword,
     String? referralCode,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final response = await _apiClient.post(
-        '/registration-requests',
+        '/register',
         data: {
           'fullName': fullName.trim(),
           'phone': phone.trim(),
-          'domain': domain.trim().toLowerCase(),
-          if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
-          if (companyName != null && companyName.isNotEmpty) 'companyName': companyName.trim(),
-          if (comment != null && comment.isNotEmpty) 'comment': comment.trim(),
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'confirmPassword': confirmPassword,
           if (referralCode != null && referralCode.isNotEmpty)
             'referralCode': referralCode.trim().toUpperCase(),
         },
       );
 
       if (response.statusCode == 201) {
-        state = state.copyWith(isLoading: false, isSuccess: true);
+        final data = response.data as Map<String, dynamic>;
+        final token = data['token'] as String;
+        final userData = data['user'] as Map<String, dynamic>;
+
+        // Автологин — тот же метод что использует сброс пароля
+        await ref.read(authProvider.notifier).loginWithData(
+          token: token,
+          userData: userData,
+        );
+
+        state = state.copyWith(isLoading: false);
         return true;
       } else {
-        final errorMsg = response.data?['error'] as String? ?? 'Не удалось отправить заявку';
+        final errorMsg =
+            response.data?['error'] as String? ?? 'Не удалось зарегистрироваться';
         state = state.copyWith(isLoading: false, error: errorMsg);
         return false;
       }
     } on DioException catch (e) {
-      debugPrint('Registration error: $e');
+      debugPrint('Register error: $e');
 
       String errorMessage;
-      if (e.response?.statusCode == 404) {
-        errorMessage = 'Компания с указанным доменом не найдена';
-      } else if (e.response?.statusCode == 409) {
+      if (e.response?.statusCode == 409) {
         final msg = e.response?.data?['error'] as String?;
-        errorMessage = msg ?? 'Заявка уже существует';
+        errorMessage = msg ?? 'Пользователь с такими данными уже зарегистрирован';
       } else if (e.response?.statusCode == 400) {
         final msg = e.response?.data?['error'] as String?;
         errorMessage = msg ?? 'Проверьте введённые данные';
@@ -99,17 +103,15 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
       state = state.copyWith(isLoading: false, error: errorMessage);
       return false;
     } catch (e) {
-      debugPrint('Registration error: $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Произошла ошибка: $e',
-      );
+      debugPrint('Register error: $e');
+      state = state.copyWith(isLoading: false, error: 'Произошла ошибка. Попробуйте позже');
       return false;
     }
   }
 }
 
 /// Провайдер состояния регистрации
-final registrationProvider = NotifierProvider<RegistrationNotifier, RegistrationState>(
+final registrationProvider =
+    NotifierProvider<RegistrationNotifier, RegistrationState>(
   RegistrationNotifier.new,
 );

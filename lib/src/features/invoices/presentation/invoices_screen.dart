@@ -1201,6 +1201,26 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                         ),
                       ],
                     ]),
+
+                    // ══ Накладная от ТК ═══════════════════════════════
+                    if (item.tkWaybillPhotoUrl != null) ...[
+                      const SizedBox(height: 20),
+                      _buildSection('Накладная от ТК', [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              height: 120,
+                              color: const Color(0xFFEEEEEE),
+                              child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 40)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ],
                     const SizedBox(height: 20),
 
                     // ══ Финансовая информация ════════════════════════════

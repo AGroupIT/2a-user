@@ -39,6 +39,7 @@ class InvoiceItem {
   final double? clientPricePerKgWithPhoto;
   final double? insurancePercentClient;
   final double? insuranceCostClient;
+  final String? tkWaybillPhotoUrl;
 
   const InvoiceItem({
     required this.id,
@@ -81,6 +82,7 @@ class InvoiceItem {
     this.clientPricePerKgWithPhoto,
     this.insurancePercentClient,
     this.insuranceCostClient,
+    this.tkWaybillPhotoUrl,
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
@@ -229,6 +231,7 @@ class InvoiceItem {
       insuranceCostClient: json['insuranceCostClient'] != null
           ? _parseDouble(json['insuranceCostClient']).let((v) => v > 0 ? v : null)
           : null,
+      tkWaybillPhotoUrl: json['tkWaybillPhotoUrl'] as String?,
     );
   }
 
