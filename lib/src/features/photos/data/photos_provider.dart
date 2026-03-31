@@ -185,19 +185,17 @@ class PaginatedPhotosNotifier {
 
   final List<void Function()> _listeners = [];
   StreamSubscription? _deltaSub;
-  StreamSubscription? _dataChangedSub;
   StreamSubscription? _reconnectSub;
   Timer? _refreshTimer;
 
   PaginatedPhotosNotifier(this._ref, String clientCode, String date)
       : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
-    // Subscribe to WS events for auto-refresh
+    // Delta sync is the primary update mechanism.
+    // data_changed broadcast is not used to avoid full page reloads
+    // that reset scroll position and pagination.
     final wsService = _ref.read(webSocketServiceProvider);
     _deltaSub = wsService.deltas
         .where((delta) => _photoTypes.contains(delta.type))
-        .listen((_) => _debouncedRefresh());
-    _dataChangedSub = wsService.dataChanged
-        .where((data) => _photoTypes.contains(data['type'] as String?))
         .listen((_) => _debouncedRefresh());
     _reconnectSub = wsService.reconnected
         .listen((_) => _debouncedRefresh());
@@ -208,14 +206,42 @@ class PaginatedPhotosNotifier {
   void _debouncedRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer(const Duration(milliseconds: 500), () {
-      debugPrint('[PaginatedPhotos] WS event — reloading photos for ${_state.date}');
-      loadInitial();
+      debugPrint('[PaginatedPhotos] WS event — silent refresh for ${_state.date}');
+      _silentRefresh();
     });
+  }
+
+  /// Фоновое обновление без сброса скролла и пагинации.
+  /// Перезагружает столько же фото, сколько уже подгружено.
+  Future<void> _silentRefresh() async {
+    try {
+      final currentCount = _state.photos.length;
+      final take = currentCount > _pageSize ? currentCount : _pageSize;
+      final response = await _apiClient.get('/photos', queryParameters: {
+        'clientCode': _state.clientCode,
+        'source': 'photoRequest',
+        'date': _state.date,
+        'take': take,
+        'skip': 0,
+      });
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final json = data['data'] as List<dynamic>? ?? [];
+        final total = data['total'] as int? ?? 0;
+        final photos = json.map((j) => PhotoItem.fromJson(j as Map<String, dynamic>)).toList();
+        _update(_state.copyWith(
+          photos: photos,
+          total: total,
+          hasMore: photos.length < total,
+        ));
+      }
+    } catch (e) {
+      debugPrint('[PaginatedPhotos] Silent refresh error: $e');
+    }
   }
 
   void dispose() {
     _deltaSub?.cancel();
-    _dataChangedSub?.cancel();
     _reconnectSub?.cancel();
     _refreshTimer?.cancel();
   }

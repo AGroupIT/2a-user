@@ -183,7 +183,6 @@ class PaginatedTracksNotifier {
   final List<void Function()> _listeners = [];
 
   StreamSubscription? _deltaSub;
-  StreamSubscription? _dataChangedSub;
   StreamSubscription? _reconnectSub;
   Timer? _debounceTimer;
   bool _silentRefreshInProgress = false;
@@ -192,14 +191,12 @@ class PaginatedTracksNotifier {
 
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
       : _state = PaginatedTracksState(filters: initialFilters) {
-    // Подписка на WS дельты для автообновления (с debounce 500ms)
+    // Delta sync is the primary update mechanism.
+    // data_changed broadcast is not used to avoid full page reloads
+    // that reset scroll position and pagination.
     final wsService = _ref.read(webSocketServiceProvider);
     _deltaSub = wsService.deltas
         .where((delta) => _tracksTypes.contains(delta.type))
-        .listen((_) => _debouncedSilentRefresh());
-    // Fallback: data_changed events (broadcast, no room filtering)
-    _dataChangedSub = wsService.dataChanged
-        .where((data) => _tracksTypes.contains(data['type'] as String?))
         .listen((_) => _debouncedSilentRefresh());
     _reconnectSub = wsService.reconnected
         .listen((_) => _debouncedSilentRefresh());
@@ -210,7 +207,6 @@ class PaginatedTracksNotifier {
 
   void dispose() {
     _deltaSub?.cancel();
-    _dataChangedSub?.cancel();
     _reconnectSub?.cancel();
     _debounceTimer?.cancel();
   }
@@ -260,12 +256,16 @@ class PaginatedTracksNotifier {
     }
     if (_state.isLoading) return;
 
-    // При silent refresh не показываем loader и не очищаем текущие данные
+    // При silent refresh не показываем loader и не очищаем текущие данные.
+    // Загружаем столько же треков, сколько уже подгружено, чтобы сохранить
+    // позицию скролла и пагинацию.
     if (silent) {
       if (_silentRefreshInProgress) return;
       _silentRefreshInProgress = true;
       try {
-        final result = await _fetchTracks(skip: 0, take: _pageSize);
+        final currentCount = _state.tracks.length;
+        final take = currentCount > _pageSize ? currentCount : _pageSize;
+        final result = await _fetchTracks(skip: 0, take: take);
         _updateState(_state.copyWith(
           tracks: result.tracks,
           total: result.total,
