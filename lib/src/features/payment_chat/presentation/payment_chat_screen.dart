@@ -291,13 +291,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.picture_as_pdf, color: Colors.orange),
+                child: const Icon(Icons.insert_drive_file, color: Colors.orange),
               ),
-              title: Text(tr(context, ru: 'PDF документ', zh: 'PDF文档'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'Выбрать файл', zh: '选择文件'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(tr(context, ru: 'Документ', zh: '文档'), style: const TextStyle(color: Colors.white)),
+              subtitle: Text(tr(context, ru: 'PDF, Word, Excel и другие', zh: 'PDF、Word、Excel等'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
               onTap: () {
                 Navigator.pop(context);
-                _pickPdfFile();
+                _pickDocumentFile();
               },
             ),
             const SizedBox(height: 20),
@@ -378,12 +378,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     }
   }
   
-  /// Выбрать PDF файл
-  Future<void> _pickPdfFile() async {
+  /// Выбрать документ (PDF, Word, Excel и др.)
+  Future<void> _pickDocumentFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf'],
+        allowedExtensions: [
+          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv',
+          'ppt', 'pptx', 'txt', 'rtf', 'zip', 'rar', '7z',
+        ],
       );
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
@@ -1127,7 +1130,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             ),
           );
         } else {
-          // PDF или другой файл
+          // Документ (PDF, Word, Excel и др.)
+          final docIcon = _getDocumentIcon(attachment.fileName);
+          final docColor = _getDocumentColor(attachment.fileName);
           return GestureDetector(
             onTap: () => _downloadFile(fullUrl, attachment.fileName),
             child: Container(
@@ -1144,12 +1149,12 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE8F5E9),
+                      color: isMe ? Colors.white.withValues(alpha: 0.2) : docColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      Icons.picture_as_pdf,
-                      color: isMe ? Colors.white : const Color(0xFF4CAF50),
+                      docIcon,
+                      color: isMe ? Colors.white : docColor,
                       size: 22,
                     ),
                   ),
@@ -1182,7 +1187,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   const SizedBox(width: 8),
                   Icon(
                     Icons.download_rounded,
-                    color: isMe ? Colors.white70 : const Color(0xFF4CAF50),
+                    color: isMe ? Colors.white70 : docColor,
                     size: 20,
                   ),
                 ],
@@ -1192,6 +1197,62 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         }
       }).toList(),
     );
+  }
+
+  /// Иконка документа по расширению файла
+  IconData _getDocumentIcon(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+      case 'rtf':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+      case 'csv':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return Icons.folder_zip;
+      case 'txt':
+        return Icons.article;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  /// Цвет иконки документа по расширению
+  Color _getDocumentColor(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'pdf':
+        return Colors.red;
+      case 'doc':
+      case 'docx':
+      case 'rtf':
+        return Colors.blue;
+      case 'xls':
+      case 'xlsx':
+      case 'csv':
+        return Colors.green;
+      case 'ppt':
+      case 'pptx':
+        return Colors.orange;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return Colors.amber;
+      case 'txt':
+        return Colors.grey;
+      default:
+        return context.brandPrimary;
+    }
   }
   
   String _formatFileSize(int bytes) {
@@ -1552,15 +1613,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F5E9),
+                                color: _getDocumentColor(fileName).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(
-                                    Icons.picture_as_pdf,
-                                    color: Color(0xFF4CAF50),
+                                  Icon(
+                                    _getDocumentIcon(fileName),
+                                    color: _getDocumentColor(fileName),
                                     size: 28,
                                   ),
                                   const SizedBox(height: 4),

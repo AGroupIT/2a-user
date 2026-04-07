@@ -175,7 +175,7 @@ class PaginatedTracksState {
 /// Использует Provider.family для создания экземпляров с разными фильтрами
 class PaginatedTracksNotifier {
   final Ref _ref;
-  static const int _pageSize = 25;
+  static const int _pageSize = 50;
   
   PaginatedTracksState _state;
   PaginatedTracksState get state => _state;
@@ -270,10 +270,11 @@ class PaginatedTracksNotifier {
           tracks: result.tracks,
           total: result.total,
           hasMore: result.tracks.length < result.total,
+          clearError: true,
         ));
       } catch (e) {
         // При silent refresh ошибки не показываем пользователю
-        debugPrint('Silent refresh error: $e');
+        debugPrint('[TracksProvider] Silent refresh error: $e');
       } finally {
         _silentRefreshInProgress = false;
       }
@@ -309,7 +310,7 @@ class PaginatedTracksNotifier {
   Future<void> loadMore() async {
     if (_state.isLoading || !_state.hasMore) return;
 
-    _updateState(_state.copyWith(isLoading: true));
+    _updateState(_state.copyWith(isLoading: true, clearError: true));
 
     try {
       final result = await _fetchTracks(

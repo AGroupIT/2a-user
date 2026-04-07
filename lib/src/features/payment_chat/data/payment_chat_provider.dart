@@ -153,6 +153,54 @@ class PaymentChatRepository {
         mimeType = 'application';
         mimeSubtype = 'pdf';
         break;
+      case 'doc':
+        mimeType = 'application';
+        mimeSubtype = 'msword';
+        break;
+      case 'docx':
+        mimeType = 'application';
+        mimeSubtype = 'vnd.openxmlformats-officedocument.wordprocessingml.document';
+        break;
+      case 'xls':
+        mimeType = 'application';
+        mimeSubtype = 'vnd.ms-excel';
+        break;
+      case 'xlsx':
+        mimeType = 'application';
+        mimeSubtype = 'vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        break;
+      case 'ppt':
+        mimeType = 'application';
+        mimeSubtype = 'vnd.ms-powerpoint';
+        break;
+      case 'pptx':
+        mimeType = 'application';
+        mimeSubtype = 'vnd.openxmlformats-officedocument.presentationml.presentation';
+        break;
+      case 'csv':
+        mimeType = 'text';
+        mimeSubtype = 'csv';
+        break;
+      case 'txt':
+        mimeType = 'text';
+        mimeSubtype = 'plain';
+        break;
+      case 'rtf':
+        mimeType = 'application';
+        mimeSubtype = 'rtf';
+        break;
+      case 'zip':
+        mimeType = 'application';
+        mimeSubtype = 'zip';
+        break;
+      case 'rar':
+        mimeType = 'application';
+        mimeSubtype = 'x-rar-compressed';
+        break;
+      case '7z':
+        mimeType = 'application';
+        mimeSubtype = 'x-7z-compressed';
+        break;
       default:
         mimeType = 'application';
         mimeSubtype = 'octet-stream';

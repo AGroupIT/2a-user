@@ -44,6 +44,12 @@ final deltaSyncProvider = Provider<void>((ref) {
     scheduleFlush(delta.type);
   });
 
+  // Listen to delta_batch events (mass operations)
+  final deltaBatchSub = wsService.deltaBatches.listen((batch) {
+    debugPrint('[DeltaSync] DeltaBatch: ${batch.type} ${batch.items.length} items');
+    scheduleFlush(batch.type);
+  });
+
   // Listen to data_changed events (broadcast, fallback)
   final dataChangedSub = wsService.dataChanged.listen((data) {
     final type = data['type'] as String?;
@@ -61,6 +67,7 @@ final deltaSyncProvider = Provider<void>((ref) {
 
   ref.onDispose(() {
     deltaSub.cancel();
+    deltaBatchSub.cancel();
     dataChangedSub.cancel();
     reconnectSub.cancel();
     debounceTimer?.cancel();

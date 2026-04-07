@@ -1645,7 +1645,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     // Создаём контроллер ДО StatefulBuilder чтобы не терять фокус
     final insuranceAmountController = TextEditingController();
 
-    // Загружаем тарифы и типы упаковки
+    // Загружаем тарифы и типы упаковки (invalidate чтобы не получить кешированный пустой список при сбое сети)
+    ref.invalidate(tariffsProvider);
+    ref.invalidate(packagingTypesProvider);
     final tariffs = await ref.read(tariffsProvider.future);
     if (!context.mounted) return;
     final packagingTypes = await ref.read(packagingTypesProvider.future);
@@ -1940,11 +1942,26 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       // Ensure all pages are loaded so every selected track code can be resolved to an ID
       final notifier = ref.read(paginatedTracksProvider(clientCode));
-      while (notifier.state.hasMore && !notifier.state.isLoading) {
-        await notifier.loadMore();
-        if (!context.mounted) return;
-        if (notifier.state.error != null) break; // прерываем при ошибке API
+      if (notifier.state.hasMore) {
+        // Показываем индикатор загрузки
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const Center(child: CircularProgressIndicator()),
+          );
+        }
+        var iterations = 0;
+        const maxIterations = 100; // Предохранитель от бесконечного цикла
+        while (notifier.state.hasMore && !notifier.state.isLoading && iterations < maxIterations) {
+          await notifier.loadMore();
+          iterations++;
+          if (!context.mounted) return;
+          if (notifier.state.error != null) break;
+        }
+        if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // Убираем индикатор
       }
+      if (!context.mounted) return;
       final tracks = notifier.state.tracks;
 
       final selectedTracks = tracks
@@ -2952,10 +2969,21 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     final notifier = ref.read(paginatedTracksProvider(clientCode));
 
     // Load all remaining pages so we select every track, not just the loaded page
-    while (notifier.state.hasMore && !notifier.state.isLoading) {
-      await notifier.loadMore();
-      if (!mounted) return;
-      if (notifier.state.error != null) break; // прерываем при ошибке API
+    if (notifier.state.hasMore) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      var iterations = 0;
+      const maxIterations = 100;
+      while (notifier.state.hasMore && !notifier.state.isLoading && iterations < maxIterations) {
+        await notifier.loadMore();
+        iterations++;
+        if (!mounted) return;
+        if (notifier.state.error != null) break;
+      }
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
 
     final allWithStatus = notifier.state.tracks
