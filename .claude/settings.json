@@ -1,0 +1,78 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__gitnexus__gitnexus_query",
+      "mcp__gitnexus__gitnexus_context",
+      "mcp__gitnexus__gitnexus_impact",
+      "mcp__gitnexus__gitnexus_detect_changes",
+      "mcp__gitnexus__gitnexus_status",
+      "mcp__code-review-graph__crg_get_minimal_context",
+      "mcp__code-review-graph__crg_query_graph",
+      "mcp__code-review-graph__crg_detect_changes",
+      "mcp__code-review-graph__crg_status",
+      "mcp__codegraph__codegraph_search",
+      "mcp__codegraph__codegraph_context",
+      "mcp__codegraph__codegraph_callers",
+      "mcp__codegraph__codegraph_callees",
+      "mcp__codegraph__codegraph_impact",
+      "mcp__codegraph__codegraph_node",
+      "mcp__codegraph__codegraph_status",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter test:*)",
+      "Bash(dart format:*)",
+      "Bash(dart analyze:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter pub run build_runner build:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf /Users/ostapenkobogdan/2a-logistic:*)",
+      "Edit(**/*.g.dart)",
+      "Edit(**/*.freezed.dart)",
+      "Edit(**/*.mocks.dart)",
+      "Edit(**/pubspec.lock)",
+      "Edit(.gitnexus/**)",
+      "Edit(.code-review-graph/**)",
+      "Edit(.codegraph/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-commit-check.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-generated-files.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-detect-marker.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

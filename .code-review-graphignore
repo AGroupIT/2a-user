@@ -1,0 +1,19 @@
+# Flutter generated
+**/*.g.dart
+**/*.freezed.dart
+**/*.mocks.dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/Pods/
+android/.gradle/
+# Next.js
+.next/
+out/
+# Common
+node_modules/
+dist/
+coverage/
+*.min.js
+.cache/
