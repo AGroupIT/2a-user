@@ -125,7 +125,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
           child: ListView(
             padding: EdgeInsets.fromLTRB(
               16,
-              AppLayout.topBarTotalHeight(context) * 0.7 + 6,
+              AppLayout.topBarTotalHeight(context) * 0.7 + 16,
               16,
               AppLayout.bottomScrollPadding(context) + 16,
             ),

@@ -329,7 +329,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         children: [
         SingleChildScrollView(
           controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 32 + bottomPad),
+          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 32 + bottomPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

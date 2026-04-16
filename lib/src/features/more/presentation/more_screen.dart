@@ -79,6 +79,12 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                 subtitle: 'История заявок',
                 onTap: () => context.push('/shop/purchases'),
               ),
+              _MenuItem(
+                icon: Icons.description_rounded,
+                title: 'Выкуп по бланку',
+                subtitle: 'Бланки на выкуп товаров',
+                onTap: () => context.push('/purchase-blanks'),
+              ),
             ],
           ),
           const SizedBox(height: 24),

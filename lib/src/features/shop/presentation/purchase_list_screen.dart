@@ -89,7 +89,7 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
 
   Widget _buildEmpty(BuildContext context, double topPad) {
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 100),
+      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 100),
       children: [
         Text(
           'Список выкупа',
@@ -140,7 +140,7 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
   Widget _buildContent(BuildContext context, PurchaseList list, double topPad,
       double bottomPad) {
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 120 + bottomPad),
+      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 120 + bottomPad),
       children: [
         Text(
           'Список выкупа',

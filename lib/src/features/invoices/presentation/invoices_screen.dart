@@ -188,7 +188,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
             controller: _scrollController,
             key: _invoicesListKey,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, bottomPad + 16),
+            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad + 16),
             children: [
               Text(
                 'Счета',
@@ -1052,7 +1052,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       maxChildSize: 1.0,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
+        return GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
@@ -1132,11 +1134,12 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
               Expanded(
                 child: ListView(
                   controller: scrollController,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.only(
                     top: 20,
                     left: 16,
                     right: 16,
-                    bottom: MediaQuery.of(context).padding.bottom + 24,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
                   ),
                   children: [
 
@@ -1404,6 +1407,10 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                             decimal: true),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+[.,]?\d*')),
+                                    ],
                                     decoration: InputDecoration(
                                       hintText:
                                           'Кол-во кг (макс ${maxKg.toStringAsFixed(2)})',
@@ -1500,6 +1507,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
               ),
             ],
           ),
+        ),
         );
       },
     );

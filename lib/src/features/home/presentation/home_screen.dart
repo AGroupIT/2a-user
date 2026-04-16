@@ -172,7 +172,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: context.brandPrimary,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, (24 + bottomPad) * 0.55),
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, (24 + bottomPad) * 0.55),
         cacheExtent: 500,
         children: [
           _GreetingBlock(fullName: clientName),

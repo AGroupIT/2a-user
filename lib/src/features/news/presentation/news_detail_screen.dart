@@ -61,7 +61,7 @@ class NewsDetailScreen extends ConsumerWidget {
           child: ListView(
           padding: EdgeInsets.fromLTRB(
             16,
-            topPad * 0.7 + 6,
+            topPad * 0.7 + 16,
             16,
             24 + bottomPad,
           ),

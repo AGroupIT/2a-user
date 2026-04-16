@@ -58,6 +58,13 @@ class MoreSheet extends ConsumerWidget {
                   // ── Полезные инструменты ──────────────────────
                   const _SectionLabel(text: 'Полезные инструменты'),
                   _MenuItem(
+                    icon: Icons.description_rounded,
+                    title: 'Выкуп по бланку',
+                    iconColor: const Color(0xFFFF5722),
+                    onTap: () => _go(context, '/purchase-blanks'),
+                  ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
                     icon: Icons.shopping_bag_rounded,
                     title: 'Совместные покупки',
                     iconColor: const Color(0xFF9C27B0),

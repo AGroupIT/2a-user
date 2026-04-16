@@ -2,29 +2,39 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 
 /// Конфигурация API
 class ApiConfig {
-  // Можно переопределить через --dart-define=API_BASE_URL=...
-  static const String _defaultBaseUrl = 'https://2alogistic.2a-marketing.ru/api';
-  static const String _defaultMediaUrl = 'https://2alogistic.2a-marketing.ru';
-  
-  /// Base URL для API (из env или дефолт)
+  static const _mainHost = 'https://2alogistic.2a-marketing.ru';
+  static const _hkHost = 'https://api.2a-logistic.com';
+
+  /// Флаг китайского режима.
+  /// Устанавливается при старте приложения и при смене языка на основе
+  /// выбранного языка в настройках приложения (zh → HK-прокси).
+  static bool _chineseMode = false;
+
+  /// Вызывается из main.dart при старте и из AppLanguageNotifier при смене языка.
+  static void setChineseMode(bool isChinese) {
+    _chineseMode = isChinese;
+  }
+
+  static bool get _isChineseLocale => _chineseMode;
+
+  static String get _host => _isChineseLocale ? _hkHost : _mainHost;
+
+  /// Base URL для API
   static String get baseUrl {
     const envUrl = String.fromEnvironment('API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    
-    // В debug можно использовать прямой IP для отладки
-    if (kDebugMode) {
-      // Раскомментируйте для локальной отладки:
-      // return 'http://188.124.54.40:3333/api';
-    }
-    return _defaultBaseUrl;
+    return '$_host/api';
   }
   
-  /// Base URL для статических файлов (uploads) - через Nginx
+  /// Base URL для статических файлов (uploads)
   static String get mediaBaseUrl {
     const envUrl = String.fromEnvironment('MEDIA_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    return _defaultMediaUrl;
+    return _host;
   }
+
+  /// Флаг: используем ли сейчас HK-прокси в качестве основного хоста
+  static bool get isUsingHkProxy => _isChineseLocale;
   
   /// Формирует полный URL для медиа-файла
   /// Использует /api/uploads/ endpoint для надёжной работы на всех платформах
@@ -36,19 +46,17 @@ class ApiConfig {
     }
 
     if (path.startsWith('http://') || path.startsWith('https://')) {
-      // Преобразуем прямые ссылки на uploads через API (для всех платформ)
-      if (path.contains('/uploads/') && !path.contains('/api/uploads/')) {
-        // Заменяем /uploads/ на /api/uploads/
-        final result = path.replaceFirst('/uploads/', '/api/uploads/');
-        if (kDebugMode) {
-          print('📸 getMediaUrl output (replaced /uploads/): "$result"');
-        }
-        return result;
+      // Заменяем домен основного сервера на актуальный хост (HK или основной)
+      var result = path.replaceFirst(_mainHost, _host);
+
+      // Преобразуем /uploads/ → /api/uploads/ для надёжной работы на всех платформах
+      if (result.contains('/uploads/') && !result.contains('/api/uploads/')) {
+        result = result.replaceFirst('/uploads/', '/api/uploads/');
       }
       if (kDebugMode) {
-        print('📸 getMediaUrl output (already full URL): "$path"');
+        print('📸 getMediaUrl output (absolute): "$result"');
       }
-      return path;
+      return result;
     }
 
     // Для относительных путей

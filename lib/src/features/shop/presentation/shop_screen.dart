@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
@@ -112,7 +113,10 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                   Expanded(
                     child: TextField(
                       controller: minCtrl,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d*')),
+                      ],
                       decoration: InputDecoration(
                         labelText: 'От',
                         border: OutlineInputBorder(
@@ -129,7 +133,10 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                   Expanded(
                     child: TextField(
                       controller: maxCtrl,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d*')),
+                      ],
                       decoration: InputDecoration(
                         labelText: 'До',
                         border: OutlineInputBorder(
@@ -170,8 +177,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                     child: FilledButton(
                       onPressed: () {
                         setState(() {
-                          final minVal = double.tryParse(minCtrl.text);
-                          final maxVal = double.tryParse(maxCtrl.text);
+                          final minVal = double.tryParse(minCtrl.text.replaceAll(',', '.'));
+                          final maxVal = double.tryParse(maxCtrl.text.replaceAll(',', '.'));
                           _minPrice = minVal;
                           _maxPrice = maxVal;
                         });
@@ -239,7 +246,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       children: [
         Column(
           children: [
-            const SizedBox(height: 60),
+            const SizedBox(height: 70),
 
             // Marketplace selector
             MarketplaceSelector(onChanged: _onMarketplaceChanged),

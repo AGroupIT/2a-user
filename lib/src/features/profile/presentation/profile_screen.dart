@@ -206,7 +206,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: ListView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+                  padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 24 + bottomPad),
                   children: [
                   Text(
                     'Профиль',

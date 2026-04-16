@@ -149,7 +149,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     if (_assembly == null) return null;
 
     // Текущий вес трека (из поля ввода)
-    final currentNetWeight = double.tryParse(_netWeightController.text);
+    final currentNetWeight = double.tryParse(_netWeightController.text.replaceAll(',', '.'));
     if (currentNetWeight == null || currentNetWeight <= 0) return null;
 
     // Проверяем, что у всех треков заполнен чистый вес
@@ -194,8 +194,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Цена поставщика (руб) = цена поставщика (юань) × курс
   double? _calculateSupplierPriceRub() {
-    final supplierPriceYuan = double.tryParse(_supplierPriceController.text);
-    final rate = double.tryParse(_purchaseRateController.text);
+    final supplierPriceYuan = double.tryParse(_supplierPriceController.text.replaceAll(',', '.'));
+    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
 
     if (supplierPriceYuan != null && rate != null) {
       return supplierPriceYuan * rate;
@@ -205,8 +205,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Себестоимость = цена выкупа × курс
   double? _calculateCostPrice() {
-    final purchasePrice = double.tryParse(_purchasePriceController.text);
-    final rate = double.tryParse(_purchaseRateController.text);
+    final purchasePrice = double.tryParse(_purchasePriceController.text.replaceAll(',', '.'));
+    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
 
     if (purchasePrice != null && rate != null) {
       return purchasePrice * rate;
@@ -216,8 +216,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Цена для участника (руб) = цена участника (юань) × курс
   double? _calculateClientPriceRub() {
-    final clientPriceYuan = double.tryParse(_clientPriceController.text);
-    final rate = double.tryParse(_purchaseRateController.text);
+    final clientPriceYuan = double.tryParse(_clientPriceController.text.replaceAll(',', '.'));
+    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
 
     if (clientPriceYuan != null && rate != null) {
       return clientPriceYuan * rate;
@@ -231,7 +231,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     // Используем авто-расчёт доставки если доступен
     final shippingCostRub = _calculateShippingCost() ?? _track?.shippingCostRub ?? 0;
     // Дополнительные расходы
-    final additionalExpenses = double.tryParse(_additionalExpensesController.text) ?? 0;
+    final additionalExpenses = double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')) ?? 0;
 
     if (clientPriceRub != null) {
       return clientPriceRub + shippingCostRub + additionalExpenses;
@@ -263,12 +263,12 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     try {
       final update = SpTrackUpdate(
         spParticipantName: _participantController.text.isNotEmpty ? _participantController.text : null,
-        supplierPriceYuan: double.tryParse(_supplierPriceController.text),
-        purchasePriceYuan: double.tryParse(_purchasePriceController.text),
-        purchaseRate: double.tryParse(_purchaseRateController.text),
-        clientPriceYuan: double.tryParse(_clientPriceController.text),
-        netWeightKg: double.tryParse(_netWeightController.text),
-        additionalExpensesRub: double.tryParse(_additionalExpensesController.text),
+        supplierPriceYuan: double.tryParse(_supplierPriceController.text.replaceAll(',', '.')),
+        purchasePriceYuan: double.tryParse(_purchasePriceController.text.replaceAll(',', '.')),
+        purchaseRate: double.tryParse(_purchaseRateController.text.replaceAll(',', '.')),
+        clientPriceYuan: double.tryParse(_clientPriceController.text.replaceAll(',', '.')),
+        netWeightKg: double.tryParse(_netWeightController.text.replaceAll(',', '.')),
+        additionalExpensesRub: double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')),
         note: _noteController.text.isNotEmpty ? _noteController.text : null,
       );
 
@@ -447,7 +447,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                                   ),
                                 ),
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
                                 ],
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -467,7 +467,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                                   ),
                                 ),
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
                                 ],
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -487,7 +487,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                                   ),
                                 ),
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
                                 ],
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -506,7 +506,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                                   ),
                                 ),
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,4}')),
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,4}')),
                                 ],
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -561,7 +561,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                               _buildCalculatedRow(
                                 icon: Icons.add_shopping_cart_rounded,
                                 label: 'Дополнительные расходы',
-                                value: double.tryParse(_additionalExpensesController.text),
+                                value: double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')),
                                 color: Colors.deepOrange,
                               ),
 
@@ -657,7 +657,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   Widget _buildWeightSection() {
     final theme = Theme.of(context);
-    final netWeight = double.tryParse(_netWeightController.text);
+    final netWeight = double.tryParse(_netWeightController.text.replaceAll(',', '.'));
 
     // Сначала пробуем рассчитать автоматически, если не получается - берём сохранённое значение
     final calculatedShipping = _calculateShippingCost();
@@ -722,7 +722,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 ),
               ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,3}')),
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,3}')),
               ],
               onChanged: (_) => setState(() {}),
             ),
@@ -742,7 +742,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 ),
               ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
               ],
               onChanged: (_) => setState(() {}),
             ),

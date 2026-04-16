@@ -122,7 +122,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       child: ListView(
       padding: EdgeInsets.fromLTRB(
         16,
-        topPad * 0.7 + 6,
+        topPad * 0.7 + 16,
         16,
         24 + bottomPad,
       ),

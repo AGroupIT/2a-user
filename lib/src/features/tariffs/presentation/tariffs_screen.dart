@@ -74,7 +74,7 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
         }
 
         final content = SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 24 + bottomPad),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

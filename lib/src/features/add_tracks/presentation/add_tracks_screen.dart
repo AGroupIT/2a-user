@@ -81,7 +81,7 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
       child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               16,
-              topPad * 0.7 + 6,
+              topPad * 0.7 + 16,
               16,
               100 + bottomPad + MediaQuery.of(context).viewInsets.bottom,
             ),

@@ -71,7 +71,7 @@ class PurchaseListDetailScreen extends ConsumerWidget {
         ),
       ],
       child: ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 24 + bottomPad),
       children: [
         Text(
           'Заявка #${list.id}',

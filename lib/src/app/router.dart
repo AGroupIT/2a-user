@@ -25,6 +25,8 @@ import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/referral/presentation/referral_screen.dart';
 import '../features/tariffs/presentation/tariffs_screen.dart';
+import '../features/purchase_blanks/presentation/purchase_blank_detail_screen.dart';
+import '../features/purchase_blanks/presentation/purchase_blanks_screen.dart';
 import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
 import 'widgets/app_scaffold.dart';
@@ -314,6 +316,28 @@ final routerProvider = Provider<GoRouter>((ref) {
                   trackId: id,
                   assemblyId: assemblyId,
                 ),
+              );
+            },
+          ),
+        ],
+      ),
+      // Purchase Blanks routes
+      GoRoute(
+        path: '/purchase-blanks',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AppScaffold(
+          title: 'Выкуп по бланку',
+          child: PurchaseBlanksScreen(),
+        ),
+        routes: [
+          GoRoute(
+            path: ':id',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              return AppScaffold(
+                title: 'Бланк #$id',
+                child: PurchaseBlankDetailScreen(blankId: id),
               );
             },
           ),

@@ -119,7 +119,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(0, topPad * 0.7 + 6, 0, 100 + bottomPad),
+      padding: EdgeInsets.fromLTRB(0, topPad * 0.7 + 16, 0, 100 + bottomPad),
       children: [
         // Page title (like other screens)
         Padding(

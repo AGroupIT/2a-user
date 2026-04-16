@@ -151,7 +151,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 0),
+              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

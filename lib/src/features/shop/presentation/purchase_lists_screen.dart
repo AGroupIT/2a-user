@@ -26,7 +26,7 @@ class PurchaseListsScreen extends ConsumerWidget {
 
         if (submitted.isEmpty) {
           return ListView(
-            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 6, 16, 100),
+            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 100),
             children: [
               Text(
                 'Мои заявки',
@@ -84,7 +84,7 @@ class PurchaseListsScreen extends ConsumerWidget {
           ],
           child: ListView(
           padding: EdgeInsets.fromLTRB(
-              16, topPad * 0.7 + 6, 16, 24 + bottomPad),
+              16, topPad * 0.7 + 16, 16, 24 + bottomPad),
           children: [
             Text(
               'Мои заявки',

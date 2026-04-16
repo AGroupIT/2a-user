@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/network/api_client.dart';
+import '../core/network/api_config.dart';
 import '../core/services/app_language_service.dart';
 import '../core/services/chat_presence_service.dart';
 import '../core/services/delta_sync_provider.dart';
@@ -66,6 +67,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final router = ref.watch(routerProvider);
     final brandColors = ref.watch(brandColorsProvider);
     final language = ref.watch(appLanguageProvider);
+
+    // Определяем эффективную локаль (explicit или системная)
+    final effectiveLocale = language.locale ?? WidgetsBinding.instance.platformDispatcher.locale;
+    ApiConfig.setChineseMode(effectiveLocale.languageCode == 'zh');
 
     return MaterialApp.router(
       title: 'Карго',
