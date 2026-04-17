@@ -97,6 +97,9 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(invoicesListProvider);
       ref.invalidate(invoicesDigestProvider);
       ref.invalidate(invoicesCountProvider);
+      // Инвалидируем детальные провайдеры (family) — нужно для мгновенного
+      // обновления открытого инвойса, например, на экране оплаты.
+      ref.invalidate(invoiceByIdProvider);
 
     case 'news':
       ref.invalidate(newsListProvider);
