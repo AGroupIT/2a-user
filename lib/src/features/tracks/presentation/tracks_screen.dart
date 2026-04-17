@@ -3801,7 +3801,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                     const Icon(Icons.local_shipping_outlined, size: 16, color: Colors.black54),
                     const SizedBox(width: 6),
                     Text(
-                      'Треки (${widget.tracks.length})',
+                      // Используем реальное количество треков в сборке с бэка
+                      // (не зависит от пагинации и загруженной страницы).
+                      'Треки (${widget.assembly?.trackCount ?? widget.tracks.length})',
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                     ),
                     const Spacer(),

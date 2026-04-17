@@ -181,6 +181,10 @@ class TrackAssembly {
   // Фото на весах (старые, для обратной совместимости)
   final List<ScalePhoto> scalePhotos;
 
+  // Количество треков в сборке (с бэка через _count, не зависит от
+  // пагинации клиента). Null если бэк не вернул поле.
+  final int? trackCount;
+
   const TrackAssembly({
     required this.id,
     required this.number,
@@ -202,6 +206,7 @@ class TrackAssembly {
     this.transportCompanyName,
     this.boxes = const [],
     this.scalePhotos = const [],
+    this.trackCount,
   });
 
   factory TrackAssembly.fromJson(Map<String, dynamic> json) {
@@ -260,6 +265,9 @@ class TrackAssembly {
       transportCompanyName: json['transportCompanyName']?.toString(),
       boxes: boxesList,
       scalePhotos: scalePhotosList,
+      trackCount: json['trackCount'] is int
+          ? json['trackCount'] as int
+          : int.tryParse(json['trackCount']?.toString() ?? ''),
     );
   }
 }
