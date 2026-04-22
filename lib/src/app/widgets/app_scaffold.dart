@@ -12,14 +12,12 @@ class AppScaffold extends StatelessWidget {
   final String title;
   final Widget child;
   final bool showBack;
-  final bool showSearch;
 
   const AppScaffold({
     super.key,
     required this.title,
     required this.child,
     this.showBack = true,
-    this.showSearch = true,
   });
 
   @override
@@ -51,7 +49,6 @@ class AppScaffold extends StatelessWidget {
                 child: AppFloatingTopBar(
                   title: title,
                   showBack: showBack,
-                  showSearch: showSearch,
                 ),
               ),
             ],
@@ -65,13 +62,11 @@ class AppScaffold extends StatelessWidget {
 class AppFloatingTopBar extends StatelessWidget {
   final String title;
   final bool showBack;
-  final bool showSearch;
 
   const AppFloatingTopBar({
     super.key,
     required this.title,
     required this.showBack,
-    this.showSearch = true,
   });
 
   @override
@@ -96,7 +91,6 @@ class AppFloatingTopBar extends StatelessWidget {
           content: _TopBarContent(
             title: title,
             showBack: showBack,
-            showSearch: showSearch,
           ),
         ),
       ),
@@ -118,12 +112,10 @@ Widget _buildTopBarSurface({
 class _TopBarContent extends StatelessWidget {
   final String title;
   final bool showBack;
-  final bool showSearch;
 
   const _TopBarContent({
     required this.title,
     required this.showBack,
-    required this.showSearch,
   });
 
   @override
@@ -144,19 +136,14 @@ class _TopBarContent extends StatelessWidget {
           ),
         const ClientSwitcherButton(),
         const Spacer(),
-        if (showSearch)
-          _ActionsPill(onSearch: () => context.push('/search'))
-        else
-          const _ActionsPill(),
+        const _ActionsPill(),
       ],
     );
   }
 }
 
 class _ActionsPill extends StatelessWidget {
-  final VoidCallback? onSearch;
-
-  const _ActionsPill({this.onSearch});
+  const _ActionsPill();
 
   @override
   Widget build(BuildContext context) {
@@ -205,12 +192,6 @@ class _ActionsPill extends StatelessWidget {
                 ),
               ),
               const NotificationsBellButton(),
-              if (onSearch != null)
-                IconButton(
-                  tooltip: 'Поиск',
-                  onPressed: onSearch,
-                  icon: const Icon(Icons.search_rounded),
-                ),
             ],
           ),
         ),

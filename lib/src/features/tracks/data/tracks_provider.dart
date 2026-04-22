@@ -556,17 +556,19 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
   }
 });
 
-/// Провайдер для общего количества треков
+/// Провайдер количества треков для карточки на главном экране.
+/// Считаются только треки в активной обработке: pending / in_warehouse / in_assembly.
 final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
   if (ref.watch(demoModeProvider)) return DemoData.tracksCount;
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
       queryParameters: {
         'clientCode': clientCode,
         'take': 1,
+        'statuses': 'pending,in_warehouse,in_assembly',
       },
     );
     

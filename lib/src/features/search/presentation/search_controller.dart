@@ -1,6 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../clients/application/client_codes_controller.dart';
 import '../data/fake_search_repository.dart';
 import '../domain/search_result.dart';
 
@@ -11,6 +12,7 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
   @override
   Future<List<SearchResult>> build() async => const [];
 
+  /// Ищет только nocode-треки своего агента.
   Future<void> search(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
@@ -18,13 +20,17 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
       return;
     }
 
-    final activeClientCode = ref.read(activeClientCodeProvider);
-
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final repo = ref.read(searchRepositoryProvider);
-      return repo.searchTracks(trimmed, clientCode: activeClientCode);
+      return repo.searchNoCodeTracks(trimmed);
     });
+  }
+
+  /// Загружает фото и возвращает URL. null при ошибке.
+  Future<String?> uploadBindingPhoto(Uint8List bytes, String fileName) {
+    final repo = ref.read(searchRepositoryProvider);
+    return repo.uploadBindingPhoto(bytes, fileName);
   }
 
   Future<bool> requestBinding({
@@ -34,6 +40,7 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
     required int clientId,
     required int? clientCodeId,
     String? currentClientCode,
+    required String photoUrl,
   }) async {
     try {
       final repo = ref.read(searchRepositoryProvider);
@@ -44,9 +51,10 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
         clientId: clientId,
         clientCodeId: clientCodeId,
         currentClientCode: currentClientCode,
+        photoUrl: photoUrl,
       );
-      
-      // Обновляем список - помечаем трек как имеющий вопрос
+
+      // Локально помечаем трек как имеющий pending-вопрос.
       final current = state.value;
       if (current != null) {
         final updated = current.map((item) {
@@ -63,14 +71,14 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
               isNocode: item.isNocode,
               hasQuestion: true,
               hasPendingQuestion: true,
-              showBindButton: false, // Скрываем кнопку после отправки запроса
+              showBindButton: false,
             );
           }
           return item;
         }).toList();
         state = AsyncValue.data(updated);
       }
-      
+
       return true;
     } catch (e) {
       return false;

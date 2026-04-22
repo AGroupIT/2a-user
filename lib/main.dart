@@ -80,30 +80,72 @@ void main() async {
       options.beforeSend = (event, hint) {
         if (!SentryConfig.enabled) return null;
 
-        // Фильтруем сетевые ошибки — не баги, а ожидаемое поведение при плохом интернете
+        // Фильтруем сетевые ошибки — не баги, а ожидаемое поведение при плохом интернете.
         final exType = event.exceptions?.firstOrNull?.type ?? '';
         const networkErrors = {
           'SocketException',
           '_ClientSocketException',
+          '_HttpException',
           'ClientException',
           'HandshakeException',
           'TlsException',
+          '_TlsException',
           'HttpException',
           'HttpExceptionWithStatus',
           'TimeoutException',
           'WebSocketException',
           'DioException',
+          'OSError',
         };
         if (networkErrors.contains(exType)) return null;
-        // Also filter by exception value containing network-related keywords
+
+        // Ошибки файловой системы — stale пути, удалённые кеш-файлы и т.п.
+        // Обычно приходят из FileImage._loadAsync для превью фото из кеша.
+        const fileErrors = {
+          'PathNotFoundException',
+          'FileSystemException',
+        };
+        if (fileErrors.contains(exType)) return null;
+
+        // Flutter error reporter оборачивает реальный exception в DiagnosticsProperty,
+        // из-за чего тип события в Sentry становится непредсказуемым, а value —
+        // "Instance of 'DiagnosticsProperty<void>'". Такие события приходят из
+        // системных сетевых/файловых сбоев и не являются багами приложения.
         final exValue = event.exceptions?.firstOrNull?.value ?? '';
+        if (exValue.contains("DiagnosticsProperty")) return null;
+
+        // Also filter by exception value containing network-related keywords
         if (exValue.contains('Connection refused') ||
             exValue.contains('Connection reset') ||
             exValue.contains('Connection closed') ||
             exValue.contains('Connection timed out') ||
             exValue.contains('Network is unreachable') ||
-            exValue.contains('Software caused connection abort')) {
+            exValue.contains('Software caused connection abort') ||
+            exValue.contains('No such file or directory') ||
+            exValue.contains('Cannot open file')) {
           return null;
+        }
+
+        // Фильтрация по стек-трейсу: если фреймы указывают на сетевой/файловый
+        // слой dart:io или painting.FileImage — это такая же "network/filesystem noise".
+        final frames = event.exceptions?.firstOrNull?.stackTrace?.frames;
+        if (frames != null && frames.isNotEmpty) {
+          final joined = frames
+              .map((f) => '${f.package ?? ''}:${f.fileName ?? ''}:${f.function ?? ''}')
+              .join('\n');
+          const noisyStackMarkers = [
+            '_HttpParser',
+            '_RawSecureSocket',
+            '_NativeSocket',
+            'secure_socket.dart',
+            'socket_patch.dart',
+            'http_impl.dart',
+            'http_parser.dart',
+            'FileImage._loadAsync',
+          ];
+          for (final marker in noisyStackMarkers) {
+            if (joined.contains(marker)) return null;
+          }
         }
 
         // Удалить чувствительные данные из user

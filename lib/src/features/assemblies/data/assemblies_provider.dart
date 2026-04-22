@@ -32,16 +32,18 @@ final assembliesListProvider = FutureProvider.family<List<AssemblyItem>, String>
   }
 });
 
-/// Провайдер для общего количества сборок
+/// Провайдер количества сборок для карточки на главном экране.
+/// Считаются только сборки в активной обработке: new / in_warehouse / in_assembly.
 final assembliesCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/assemblies',
       queryParameters: {
         'clientCode': clientCode,
         'take': 1,
+        'statuses': 'new,in_warehouse,in_assembly',
       },
     );
     

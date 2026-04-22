@@ -16,7 +16,7 @@ import '../features/photos/presentation/photos_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/rules/presentation/rule_detail_screen.dart';
 import '../features/rules/presentation/rules_screen.dart';
-import '../features/search/presentation/search_screen.dart';
+import '../features/search/presentation/track_search_no_code_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
 import '../features/sp_finance/presentation/sp_assemblies_screen.dart';
@@ -152,17 +152,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: '/search',
+        path: '/search-nocode',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final initialQuery = state.extra as String? ??
-              state.uri.queryParameters['q'];
-          return AppScaffold(
-            title: 'Поиск',
-            showSearch: false,
-            child: SearchScreen(initialQuery: initialQuery),
-          );
-        },
+        builder: (context, state) => const AppScaffold(
+          title: 'Поиск по трек-номеру',
+          child: TrackSearchNoCodeScreen(),
+        ),
       ),
       GoRoute(
         path: '/support',

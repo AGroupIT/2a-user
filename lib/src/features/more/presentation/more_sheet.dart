@@ -77,6 +77,13 @@ class MoreSheet extends ConsumerWidget {
                     iconColor: const Color(0xFF2196F3),
                     onTap: () => _go(context, '/calculator'),
                   ),
+                  const SizedBox(height: 8),
+                  _MenuItem(
+                    icon: Icons.travel_explore_rounded,
+                    title: 'Поиск по трек-номеру без кода клиента',
+                    iconColor: const Color(0xFF00BCD4),
+                    onTap: () => _go(context, '/search-nocode'),
+                  ),
 
                   // ── Поддержка ─────────────────────────────────
                   const _SectionLabel(text: 'Поддержка'),

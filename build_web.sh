@@ -55,9 +55,23 @@ if $BUILD_WEB; then
   cp web/firebase-messaging-sw.js build/web/
 
   echo "📤 Deploying Web to FTP..."
+  # --parallel=3 — 3 одновременных upload'а, безопасно для тонкого канала.
+  # --continue   — возобновлять недокачанные файлы.
+  # БЕЗ --delete на этом шаге — чтобы не удалить рабочие файлы если
+  # новая заливка упадёт (потом делаем второй проход с --delete).
+  # net:timeout 120 + max-retries 10 — FTP к нашему серверу часто
+  # тормозит (10-20 KB/sec), большие файлы (main.dart.js 5MB) нужно
+  # много времени.
   lftp -u "$FTP_USER","$FTP_PASS" "ftp://$FTP_HOST:$FTP_PORT" -e "
     set ssl:verify-certificate no
-    mirror --reverse --verbose --delete build/web/ $FTP_PATH/
+    set net:timeout 120
+    set net:max-retries 10
+    set net:reconnect-interval-base 5
+    set net:reconnect-interval-multiplier 1
+    set xfer:clobber yes
+    mirror --reverse --verbose --parallel=3 --continue --no-perms build/web/ $FTP_PATH/
+    # Второй проход с --delete для удаления стерых файлов (только после успеха заливки)
+    mirror --reverse --verbose --delete --parallel=3 --continue --no-perms build/web/ $FTP_PATH/
     quit
   "
   echo "✅ Web deployed: https://cabinet.2a-logistic.ru"

@@ -122,17 +122,19 @@ final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>(
   }
 });
 
-/// Провайдер для общего количества счетов
+/// Провайдер количества счетов для карточки на главном экране.
+/// Считаются только неоплаченные счета (status=unpaid).
 final invoicesCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
   if (ref.watch(demoModeProvider)) return DemoData.invoicesCount;
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/invoices',
       queryParameters: {
         'clientCode': clientCode,
         'take': 1,
+        'status': 'unpaid',
       },
     );
     
