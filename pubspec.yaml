@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.7+35
+version: 1.2.8+36
 
 environment:
   sdk: ^3.10.4
@@ -56,6 +56,9 @@ dependencies:
   excel: ^4.0.6
   file_picker: ^8.1.2
   image_picker: ^1.1.2
+  # Нативное сжатие в WebP/JPEG перед upload (iOS/Android libwebp).
+  # Даёт −70-80% трафика для китайских клиентов.
+  flutter_image_compress: ^2.3.0
   # flutter_native_splash: ^2.4.4 # Temporarily disabled due to compileSdk issue
   flutter_chat_ui: ^2.11.1
   flutter_chat_types: ^3.6.2
