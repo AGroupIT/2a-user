@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/agent_domain_resolver.dart';
 import '../data/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final detectedDomain = AgentDomainResolver.currentAgentDomain;
+    if (detectedDomain != null) {
+      _domainCtrl.text = detectedDomain;
+    }
+  }
 
   @override
   void dispose() {

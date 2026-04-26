@@ -7,6 +7,7 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/agent_domain_resolver.dart';
 import '../data/auth_provider.dart';
 
 /// Этапы восстановления пароля
@@ -30,14 +31,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _domainCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
-  
+
   /// Маска для ввода телефона: +7 (999) 123-45-67
   final _phoneMask = MaskTextInputFormatter(
     mask: '+7 (###) ###-##-##',
     filter: {'#': RegExp(r'[0-9]')},
     type: MaskAutoCompletionType.lazy,
   );
-  
+
   String? _phoneError;
   String? _domainError;
 
@@ -56,6 +57,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Timer? _pollTimer;
   Timer? _countdownTimer;
   int _secondsLeft = 300; // 5 минут
+
+  @override
+  void initState() {
+    super.initState();
+    final detectedDomain = AgentDomainResolver.currentAgentDomain;
+    if (detectedDomain != null) {
+      _domainCtrl.text = detectedDomain;
+    }
+  }
 
   void _cancelTimers() {
     _pollTimer?.cancel();
@@ -77,33 +87,33 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   /// Валидация телефона для SMS.RU (формат: 79XXXXXXXXX)
   String? _validatePhone() {
     final digits = _phoneMask.getUnmaskedText();
-    
+
     if (digits.isEmpty) {
       return 'Введите номер телефона';
     }
-    
+
     if (digits.length != 10) {
       return 'Введите полный номер телефона (10 цифр после +7)';
     }
-    
+
     if (!RegExp(r'^[0-9]+$').hasMatch(digits)) {
       return 'Номер должен содержать только цифры';
     }
-    
+
     return null;
   }
-  
+
   /// Валидация домена компании
   String? _validateDomain() {
     final domain = _domainCtrl.text.trim();
-    
+
     if (domain.isEmpty) {
       return 'Введите домен компании';
     }
-    
+
     return null;
   }
-  
+
   /// Получить телефон в формате для SMS.RU: 79XXXXXXXXX
   String _getPhoneForApi() {
     final digits = _phoneMask.getUnmaskedText();
@@ -114,7 +124,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Future<void> _requestReset() async {
     final phoneError = _validatePhone();
     final domainError = _validateDomain();
-    
+
     if (phoneError != null || domainError != null) {
       setState(() {
         _phoneError = phoneError;
@@ -122,13 +132,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       });
       return;
     }
-    
+
     setState(() {
       _phoneError = null;
       _domainError = null;
       _isLoading = true;
     });
-    
+
     final phone = _getPhoneForApi();
     final domain = _domainCtrl.text.trim();
 
@@ -245,23 +255,23 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         final data = response.data;
         final token = data['token'] as String?;
         final userData = data['user'] as Map<String, dynamic>?;
-        
+
         HapticFeedback.heavyImpact();
-        
+
         // Если есть токен - авторизуем пользователя
         if (token != null && userData != null) {
           final success = await ref.read(authProvider.notifier).loginWithData(
             token: token,
             userData: userData,
           );
-          
+
           if (success && mounted) {
             // Перенаправляем в приложение
             context.go('/');
             return;
           }
         }
-        
+
         // Если авторизация не удалась - показываем экран успеха
         setState(() {
           _currentStep = ResetStep.success;
@@ -486,7 +496,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget _buildPhoneStep() {
     final hasPhoneError = _phoneError != null;
     final hasDomainError = _domainError != null;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -543,7 +553,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           ),
         ],
         const SizedBox(height: 16),
-        
+
         // Поле номера телефона
         const Text(
           'Номер телефона',
@@ -815,7 +825,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       ],
     );
   }
-  
+
   /// Форматирование номера для отображения
   String _formatPhoneDisplay() {
     final digits = _phoneMask.getUnmaskedText();
