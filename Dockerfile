@@ -2,17 +2,15 @@ FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 ARG API_BASE_URL=https://prod-api.cp.2a-logistic.com/api
 ARG MEDIA_BASE_URL=https://prod-api.cp.2a-logistic.com
-ARG SHARED_REPO=https://github.com/Ostaapich/2a-shared.git
-ARG SHARED_REF=main
 
 USER root
 WORKDIR /workspace
 
 RUN git config --global --add safe.directory /sdks/flutter
-RUN git clone --depth 1 --branch "$SHARED_REF" "$SHARED_REPO" 2a-shared
 
 WORKDIR /workspace/2a-user
 COPY . .
+RUN cp -a .coolify/2a-shared /workspace/2a-shared
 
 RUN flutter pub get
 RUN flutter build web --release --pwa-strategy none \
