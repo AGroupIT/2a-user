@@ -1,0 +1,15 @@
+.dart_tool/
+.git/
+.gitnexus/
+.code-review-graph/
+.codegraph/
+build/
+ios/build/
+ios/Pods/
+android/.gradle/
+macos/Pods/
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+*.tar.gz
+*.log
+.DS_Store
