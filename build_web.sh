@@ -1,31 +1,395 @@
 #!/bin/bash
-# Build script for Flutter Web with Firebase Messaging Service Worker
-# Includes automatic FTP deployment
+# Build script for Flutter Web + Android AAB/APK
+# Web deploy goes through GitHub + Coolify. APK files are uploaded to the
+# production backend releases volume on the new Coolify server.
 
 set -e  # Exit on error
 
-# FTP Configuration
-FTP_HOST="188.124.54.40"
-FTP_PORT="21"
-FTP_USER="administrator_cabinetapp"
-FTP_PASS='hS2cCt3!b1@{;$VV'
-FTP_PATH="/home/administrator_cabinetapp"
+# ── Configuration ──
+PRODUCTION_SSH="root@5.188.158.33"
+RELEASES_DIR="/var/lib/docker/volumes/zc9s2du0h9jtyxlnaq552rkd-releases/_data"
+DOWNLOAD_BASE="https://2alogistic.2a-marketing.ru/releases"
 
-echo "🚀 Building Flutter Web..."
-flutter build web --release
+COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
+COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
+COOLIFY_WEB_BRANCH="coolify-web-production"
+WEB_URL="https://cabinet.2a-logistic.ru"
+WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
+WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
 
-echo "📋 Copying firebase-messaging-sw.js..."
-cp web/firebase-messaging-sw.js build/web/
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
-echo "✅ Build complete!"
+# RuStore API
+RUSTORE_API="https://public-api.rustore.ru"
+RUSTORE_KEY_ID="2351027924"
+RUSTORE_PRIVATE_KEY="$HOME/.rustore/private_key_user.pem"
+RUSTORE_PACKAGE="com.twoalogistic.user"
 
+# ── Extract version from pubspec.yaml ──
+FULL_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+VERSION=$(echo "$FULL_VERSION" | cut -d'+' -f1)
+BUILD_NUMBER=$(echo "$FULL_VERSION" | cut -d'+' -f2)
+echo "📦 Version: $VERSION (build $BUILD_NUMBER)"
+
+sync_coolify_shared() {
+  local src="../2a-shared"
+  local dst=".coolify/2a-shared"
+
+  if [ ! -d "$src" ]; then
+    echo "❌ Shared package not found at $src"
+    exit 1
+  fi
+
+  echo "🔁 Syncing 2a-shared for Coolify Docker build..."
+  mkdir -p .coolify
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude '.dart_tool' \
+      --exclude '.gitnexus' \
+      --exclude '.code-review-graph' \
+      --exclude '.codegraph' \
+      --exclude 'build' \
+      --exclude '.DS_Store' \
+      "$src/" "$dst/"
+  else
+    rm -rf "$dst"
+    mkdir -p "$dst"
+    cp -R "$src/." "$dst/"
+    find "$dst" -name '.git' -o -name '.dart_tool' -o -name 'build' -o -name '.DS_Store' | xargs rm -rf
+  fi
+}
+
+commit_if_needed() {
+  local status
+  status=$(git status --short)
+  if [ -z "$status" ]; then
+    return 0
+  fi
+
+  echo ""
+  echo "⚠️  Есть незакоммиченные изменения, которые нужны для web deploy:"
+  git status --short
+  echo ""
+  read -p "Закоммитить все изменения и продолжить deploy? [y/N]: " COMMIT_CONFIRM
+  if [[ ! "$COMMIT_CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "Остановлено. Закоммить изменения вручную и запусти скрипт снова."
+    exit 1
+  fi
+
+  read -p "Commit message [Deploy user web ${FULL_VERSION}]: " COMMIT_MESSAGE
+  COMMIT_MESSAGE=${COMMIT_MESSAGE:-"Deploy user web ${FULL_VERSION}"}
+  git add -A
+  git commit -m "$COMMIT_MESSAGE"
+}
+
+push_coolify_branch() {
+  echo "📤 Pushing current HEAD to origin/${COOLIFY_WEB_BRANCH}..."
+  git fetch origin "$COOLIFY_WEB_BRANCH" >/dev/null 2>&1 || true
+
+  if git rev-parse --verify "origin/${COOLIFY_WEB_BRANCH}" >/dev/null 2>&1 &&
+     ! git merge-base --is-ancestor "origin/${COOLIFY_WEB_BRANCH}" HEAD; then
+    echo "⚠️  Текущий HEAD не является fast-forward для origin/${COOLIFY_WEB_BRANCH}."
+    echo "   Это нормально для параллельной release-ветки, но требует force-with-lease."
+    read -p "Обновить ${COOLIFY_WEB_BRANCH} через --force-with-lease? [y/N]: " FORCE_CONFIRM
+    if [[ ! "$FORCE_CONFIRM" =~ ^[Yy]$ ]]; then
+      echo "Остановлено. Переключись на ${COOLIFY_WEB_BRANCH}, смержи изменения и запусти скрипт снова."
+      exit 1
+    fi
+    git push --force-with-lease="refs/heads/${COOLIFY_WEB_BRANCH}" origin "HEAD:${COOLIFY_WEB_BRANCH}"
+  else
+    git push origin "HEAD:${COOLIFY_WEB_BRANCH}"
+  fi
+}
+
+trigger_coolify_deploy() {
+  if [ -z "${COOLIFY_TOKEN:-}" ]; then
+    echo "⚠️  COOLIFY_TOKEN не задан. Код запушен; запусти deploy в Coolify вручную:"
+    echo "   ${WEB_URL} / app ${COOLIFY_APP_UUID}"
+    return 0
+  fi
+
+  echo "🚀 Triggering Coolify deploy..."
+  curl -fsS \
+    -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+    "${COOLIFY_API}/deploy?uuid=${COOLIFY_APP_UUID}&force=false"
+  echo ""
+}
+
+update_manifest_section() {
+  local manifest_file="$1"
+  local section="$2"
+  local latest_version="$3"
+  local download_url="$4"
+  local size="$5"
+  local sha256="$6"
+  local changelog="$7"
+  local changelog_b64
+  changelog_b64=$(printf '%s' "$changelog" | base64 | tr -d '\n')
+
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "python3 - '$RELEASES_DIR/$manifest_file' '$section' '$latest_version' '$download_url' '$size' '$sha256' '$changelog_b64' <<'PYEOF'
+import base64
+import json
+import os
+import sys
+
+path, section, latest_version, download_url, size, sha256, changelog_b64 = sys.argv[1:]
+try:
+    with open(path, 'r') as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+data[section] = {
+    'minVersion': '1.0.0',
+    'latestVersion': latest_version,
+    'downloadUrl': download_url,
+    'size': int(size),
+    'sha256': sha256,
+    'changelog': base64.b64decode(changelog_b64).decode('utf-8'),
+}
+
+if 'ios' not in data:
+    data['ios'] = {'minVersion': '1.0.0', 'latestVersion': latest_version, 'storeUrl': ''}
+
+tmp = path + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+os.rename(tmp, path)
+print('OK')
+PYEOF"
+}
+
+# ── Ask what to build ──
 echo ""
-echo "📤 Deploying to FTP server..."
-lftp -u "$FTP_USER","$FTP_PASS" "ftp://$FTP_HOST:$FTP_PORT" -e "
-  set ssl:verify-certificate no
-  mirror --reverse --verbose build/web/ $FTP_PATH/
-  quit
-"
+echo "Что собрать?"
+echo "  1) Только Web"
+echo "  2) Только AAB (Android → RuStore)"
+echo "  3) Web + AAB"
+echo "  4) Только APK (прямая установка)"
+echo "  5) Web + APK"
+read -p "Выбор [3]: " BUILD_CHOICE
+BUILD_CHOICE=${BUILD_CHOICE:-3}
 
-echo ""
-echo "🎉 Deployment complete!"
+BUILD_WEB=false
+BUILD_AAB=false
+BUILD_APK=false
+[[ "$BUILD_CHOICE" == "1" || "$BUILD_CHOICE" == "3" || "$BUILD_CHOICE" == "5" ]] && BUILD_WEB=true
+[[ "$BUILD_CHOICE" == "2" || "$BUILD_CHOICE" == "3" ]] && BUILD_AAB=true
+[[ "$BUILD_CHOICE" == "4" || "$BUILD_CHOICE" == "5" ]] && BUILD_APK=true
+
+# ── Build Web ──
+if $BUILD_WEB; then
+  echo ""
+  sync_coolify_shared
+
+  echo "🌐 Building Flutter Web..."
+  flutter build web --release --pwa-strategy none \
+    --dart-define=API_BASE_URL="$WEB_API_BASE_URL" \
+    --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL"
+
+  echo "📋 Copying firebase-messaging-sw.js..."
+  cp web/firebase-messaging-sw.js build/web/
+
+  commit_if_needed
+  push_coolify_branch
+  trigger_coolify_deploy
+  echo "✅ Web deploy queued: ${WEB_URL}"
+fi
+
+# ── Build AAB for RuStore ──
+if $BUILD_AAB; then
+  echo ""
+  echo "🤖 Building Android AAB..."
+  flutter build appbundle --release
+
+  AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
+
+  if [ ! -f "$AAB_PATH" ]; then
+    echo "❌ AAB not found at $AAB_PATH"
+    exit 1
+  fi
+
+  AAB_SIZE=$(stat -f%z "$AAB_PATH" 2>/dev/null || stat -c%s "$AAB_PATH" 2>/dev/null)
+  echo "  Size: $AAB_SIZE bytes ($(echo "$AAB_SIZE / 1048576" | bc) MB)"
+
+  # ── RuStore: Ask for whatsNew ──
+  echo ""
+  echo "📝 Что нового для RuStore (Enter чтобы пропустить):"
+  read -r RUSTORE_WHATS_NEW
+  RUSTORE_WHATS_NEW=${RUSTORE_WHATS_NEW:-"Исправление ошибок и улучшения стабильности"}
+
+  # ── RuStore: Check private key ──
+  if [ ! -f "$RUSTORE_PRIVATE_KEY" ]; then
+    echo "❌ RuStore private key not found at $RUSTORE_PRIVATE_KEY"
+    echo "   Создайте файл с приватным ключом: ~/.rustore/private_key_user.pem"
+    exit 1
+  fi
+
+  # ── RuStore: Step 1 — Auth ──
+  echo ""
+  echo "🔐 RuStore: Авторизация..."
+
+  TIMESTAMP=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000+00:00'))")
+  SIGN_DATA="${RUSTORE_KEY_ID}${TIMESTAMP}"
+
+  SIGNATURE=$(echo -n "$SIGN_DATA" | openssl dgst -sha512 -sign "$RUSTORE_PRIVATE_KEY" | base64)
+
+  AUTH_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/auth/" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"keyId\": ${RUSTORE_KEY_ID},
+      \"timestamp\": \"${TIMESTAMP}\",
+      \"signature\": \"${SIGNATURE}\"
+    }")
+
+  AUTH_CODE=$(echo "$AUTH_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+  if [ "$AUTH_CODE" != "OK" ]; then
+    echo "❌ RuStore auth failed:"
+    echo "$AUTH_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$AUTH_RESPONSE"
+    exit 1
+  fi
+
+  JWE_TOKEN=$(echo "$AUTH_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['body']['jwe'])")
+  echo "  ✅ Токен получен (TTL: 15 мин)"
+
+  # ── RuStore: Step 2 — Get last published version ──
+  echo "📋 RuStore: Получение последней опубликованной версии..."
+
+  VERSIONS_RESPONSE=$(curl -s -X GET "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version?page=0&size=10" \
+    -H "Public-Token: ${JWE_TOKEN}")
+
+  PARSED=$(echo "$VERSIONS_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+items = data.get('body', {}).get('content', [])
+active = None
+drafts = []
+for v in items:
+    if v.get('versionStatus') == 'ACTIVE' and not active:
+        active = v
+    if v.get('versionStatus') == 'DRAFT':
+        drafts.append(str(v['versionId']))
+if active:
+    print(f\"ACTIVE_ID={active['versionId']}\")
+    print(f\"ACTIVE_NAME={active.get('versionName','')}\")
+    print(f\"ACTIVE_CODE={active.get('versionCode','')}\")
+else:
+    print('ACTIVE_ID=')
+print(f\"DRAFT_IDS={' '.join(drafts)}\")
+" 2>/dev/null)
+
+  eval "$PARSED"
+
+  if [ -n "$ACTIVE_ID" ]; then
+    echo "  ✅ Последняя опубликованная: v${ACTIVE_NAME} (code ${ACTIVE_CODE}, id ${ACTIVE_ID})"
+  else
+    echo "  ⚠️  Активная версия не найдена, будет создан новый черновик"
+  fi
+
+  # Clean up existing drafts (API allows only one draft)
+  if [ -n "$DRAFT_IDS" ] && [ "$DRAFT_IDS" != "" ]; then
+    for DRAFT_ID in $DRAFT_IDS; do
+      echo "  🗑 Удаление старого черновика #${DRAFT_ID}..."
+      curl -s -X DELETE "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${DRAFT_ID}" \
+        -H "Public-Token: ${JWE_TOKEN}" > /dev/null
+    done
+  fi
+
+  # ── RuStore: Step 3 — Create draft as copy of published version ──
+  echo "📝 RuStore: Создание черновика на основе опубликованной версии..."
+
+  WHATS_NEW_JSON=$(RUSTORE_WHATS_NEW="$RUSTORE_WHATS_NEW" python3 -c 'import json, os; print(json.dumps(os.environ["RUSTORE_WHATS_NEW"], ensure_ascii=False))')
+
+  DRAFT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version" \
+    -H "Content-Type: application/json" \
+    -H "Public-Token: ${JWE_TOKEN}" \
+    -d "{
+      \"whatsNew\": ${WHATS_NEW_JSON},
+      \"publishType\": \"INSTANTLY\",
+      \"partialValue\": 100
+    }")
+
+  DRAFT_CODE=$(echo "$DRAFT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+  if [ "$DRAFT_CODE" != "OK" ]; then
+    echo "❌ Ошибка создания черновика:"
+    echo "$DRAFT_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$DRAFT_RESPONSE"
+    exit 1
+  fi
+
+  VERSION_ID=$(echo "$DRAFT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['body'])")
+  echo "  ✅ Черновик создан: versionId=${VERSION_ID}"
+
+  # ── RuStore: Step 4 — Upload AAB ──
+  echo "📤 RuStore: Загрузка AAB (это может занять несколько минут)..."
+
+  UPLOAD_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/aab" \
+    -H "Public-Token: ${JWE_TOKEN}" \
+    -F "file=@${AAB_PATH}")
+
+  UPLOAD_CODE=$(echo "$UPLOAD_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+  if [ "$UPLOAD_CODE" != "OK" ]; then
+    echo "❌ Ошибка загрузки AAB:"
+    echo "$UPLOAD_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$UPLOAD_RESPONSE"
+    exit 1
+  fi
+  echo "  ✅ AAB загружен"
+
+  # ── RuStore: Step 5 — Submit for moderation ──
+  echo "📨 RuStore: Отправка на модерацию..."
+
+  COMMIT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/commit?priorityUpdate=0" \
+    -H "Public-Token: ${JWE_TOKEN}")
+
+  COMMIT_CODE=$(echo "$COMMIT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+  if [ "$COMMIT_CODE" != "OK" ]; then
+    echo "⚠️  Ошибка отправки на модерацию:"
+    echo "$COMMIT_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$COMMIT_RESPONSE"
+    echo ""
+    echo "   AAB загружен как черновик. Отправьте на модерацию вручную в консоли RuStore."
+  else
+    echo "  ✅ Отправлено на модерацию"
+  fi
+
+  echo "✅ RuStore: Версия ${VERSION} загружена и отправлена на модерацию"
+fi
+
+# ── Build APK (direct install) ──
+if $BUILD_APK; then
+  echo ""
+  echo "🤖 Building Android APK..."
+  flutter build apk --release
+
+  APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+
+  if [ ! -f "$APK_PATH" ]; then
+    echo "❌ APK not found at $APK_PATH"
+    exit 1
+  fi
+
+  APK_SHA256=$(shasum -a 256 "$APK_PATH" | awk '{print $1}')
+  APK_SIZE=$(stat -f%z "$APK_PATH" 2>/dev/null || stat -c%s "$APK_PATH" 2>/dev/null)
+  APK_FILENAME="2a-user-${VERSION}.apk"
+
+  echo "  SHA256: $APK_SHA256"
+  echo "  Size:   $APK_SIZE bytes ($(echo "$APK_SIZE / 1048576" | bc) MB)"
+
+  echo ""
+  read -p "Changelog (Enter чтобы пропустить): " CHANGELOG
+  CHANGELOG=${CHANGELOG:-""}
+
+  echo ""
+  echo "📤 Uploading APK to new production server..."
+  scp "${SSH_OPTS[@]}" "$APK_PATH" "${PRODUCTION_SSH}:${RELEASES_DIR}/${APK_FILENAME}"
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "chmod 644 '${RELEASES_DIR}/${APK_FILENAME}'"
+
+  # Create/update symlink for latest APK (used on site footer)
+  echo "🔗 Updating latest APK symlink..."
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "cd '${RELEASES_DIR}' && ln -sf '${APK_FILENAME}' 2a-user-latest.apk"
+
+  echo "📝 Updating version.json (android-user section)..."
+
+  update_manifest_section "version-user.json" "android" "$FULL_VERSION" "${DOWNLOAD_BASE}/${APK_FILENAME}" "$APK_SIZE" "$APK_SHA256" "$CHANGELOG"
+
+  echo "✅ APK deployed: ${DOWNLOAD_BASE}/${APK_FILENAME}"
+fi
