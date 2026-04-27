@@ -17,10 +17,14 @@ import '../../../core/utils/error_utils.dart';
 import '../../assemblies/data/assemblies_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
+import '../../news/data/news_provider.dart';
 import '../../notifications/application/notifications_controller.dart';
+import '../../payment_chat/data/payment_chat_provider.dart';
 import '../../photos/data/photos_provider.dart';
 import '../../profile/data/profile_provider.dart';
+import '../../rules/data/rules_provider.dart';
 import '../../sp_finance/data/sp_provider.dart';
+import '../../support/data/chat_provider.dart';
 import '../../tracks/data/assemblies_provider.dart' as tracks_assemblies;
 import '../../tracks/data/tracks_provider.dart';
 
@@ -237,6 +241,9 @@ class AuthNotifier extends Notifier<AuthState> {
           'email': email,
           'password': password,
           'type': 'client',  // Важно! Для клиентов type = 'client'
+          // PU-C1: передаём domain, чтобы backend нашёл агента и не
+          // подхватил клиента с тем же email из другого тенанта.
+          'domain': domain,
         },
       );
       
@@ -275,9 +282,9 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
         
-        // Сбрасываем showcase чтобы показать обучение при каждом логине
+        // Сбрасываем только обучение, не принятие правил.
         final showcaseService = ref.read(showcaseServiceProvider);
-        await showcaseService.resetAllShowcases();
+        await showcaseService.resetTutorials();
         
         // Обновляем состояние ПЕРЕД invalidate чтобы избежать циклических зависимостей
         state = AuthState(
@@ -390,9 +397,9 @@ class AuthNotifier extends Notifier<AuthState> {
       await prefs.setString(_kClientNameKey, clientName);
       await prefs.setString(_kClientDataKey, jsonEncode(userData));
       
-      // Сбрасываем showcase чтобы показать обучение при каждом логине
+      // Сбрасываем только обучение, не принятие правил.
       final showcaseService = ref.read(showcaseServiceProvider);
-      await showcaseService.resetAllShowcases();
+      await showcaseService.resetTutorials();
 
       // Обновляем state ПЕРЕД invalidate — чтобы при перестройке провайдеры
       // видели уже нового пользователя (новый clientId/clientCode)
@@ -652,6 +659,12 @@ class AuthNotifier extends Notifier<AuthState> {
 
     // SP Finance
     inv(spAssembliesControllerProvider);
+
+    // Tenant-scoped content and chats
+    inv(chatControllerProvider);
+    inv(paymentChatControllerProvider);
+    inv(newsListProvider);
+    inv(rulesListProvider);
 
     debugPrint('✅ All providers invalidated');
   }

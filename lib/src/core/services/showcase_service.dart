@@ -203,7 +203,7 @@ class ShowcaseService {
     await _prefs.setBool('$_prefix${page.name}', true);
   }
 
-  Future<void> resetAllShowcases() async {
+  Future<void> resetTutorials() async {
     for (final block in ShowcaseBlock.values) {
       await _prefs.remove('$_blockPrefix${block.name}');
     }
@@ -211,7 +211,16 @@ class ShowcaseService {
       await _prefs.remove('$_prefix${page.name}');
     }
     await _prefs.remove(_firstLoginKey);
+    await resetAllTutorials();
+  }
+
+  Future<void> resetTermsAcceptance() async {
     await _prefs.remove(_termsAcceptedKey);
+  }
+
+  Future<void> resetAllShowcases() async {
+    await resetTutorials();
+    await resetTermsAcceptance();
   }
 
   Future<void> resetShowcase(ShowcasePage page) async {
