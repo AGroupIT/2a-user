@@ -21,7 +21,7 @@ class ShowcaseWrapper extends StatelessWidget {
   final Widget child;
   final VoidCallback? onComplete;
   final VoidCallback? onStart;
-  
+
   const ShowcaseWrapper({
     super.key,
     required this.child,
@@ -75,20 +75,20 @@ class ShowcaseService {
   final SharedPreferences _prefs;
 
   ShowcaseService(this._prefs);
-  
+
   /// Проверить, нужно ли показывать showcase для страницы
   bool shouldShowShowcase(ShowcasePage page) {
     return !(_prefs.getBool('$_prefix${page.name}') ?? false);
   }
-  
+
   /// Отметить страницу как просмотренную
   Future<void> markPageAsSeen(ShowcasePage page) async {
     await _prefs.setBool('$_prefix${page.name}', true);
   }
-  
+
   /// Проверить, был ли первый вход (авторизация)
   bool get isFirstLogin => !(_prefs.getBool(_firstLoginKey) ?? false);
-  
+
   /// Отметить что первый вход выполнен
   Future<void> markFirstLoginDone() async {
     await _prefs.setBool(_firstLoginKey, true);
@@ -102,15 +102,32 @@ class ShowcaseService {
     await _prefs.setBool(_termsAcceptedKey, true);
   }
 
-  /// Сбросить все просмотренные страницы (для тестирования)
-  Future<void> resetAllShowcases() async {
+/// PU-M3: сбрасываем только туториалы (showcases), не правила.
+  /// Используется на login — каждый новый юзер должен пройти онбординг,
+  /// но если он раньше принимал правила — заставлять его принимать снова
+  /// при каждом logout/login некорректно.
+  Future<void> resetTutorials() async {
     for (final page in ShowcasePage.values) {
       await _prefs.remove('$_prefix${page.name}');
     }
     await _prefs.remove(_firstLoginKey);
+  }
+
+  /// PU-M3: отдельный сброс только согласия с правилами.
+  /// Дёргается, например, когда правила опубликованы новой версией
+  /// (в этом случае нужно явно перепринять).
+  Future<void> resetTermsAcceptance() async {
     await _prefs.remove(_termsAcceptedKey);
   }
-  
+
+  /// Сбросить всё (для тестирования / уход из приложения с reinstall).
+  /// На обычный logout НЕ вызываем — иначе юзер потеряет согласие с
+  /// правилами и нам придётся показывать их повторно.
+  Future<void> resetAllShowcases() async {
+    await resetTutorials();
+    await resetTermsAcceptance();
+  }
+
   /// Сбросить showcase для конкретной страницы
   Future<void> resetShowcase(ShowcasePage page) async {
     await _prefs.remove('$_prefix${page.name}');
@@ -127,12 +144,12 @@ final showcaseServiceProvider = Provider<ShowcaseService>((ref) {
 class ShowcaseState {
   final bool shouldShow;
   final List<GlobalKey> keys;
-  
+
   const ShowcaseState({
     required this.shouldShow,
     this.keys = const [],
   });
-  
+
   ShowcaseState copyWith({
     bool? shouldShow,
     List<GlobalKey>? keys,
@@ -148,12 +165,12 @@ class ShowcaseState {
 /// Используем Notifier из Riverpod 3.x
 class ShowcaseNotifier extends Notifier<ShowcaseState> {
   late ShowcasePage _page;
-  
+
   @override
   ShowcaseState build() {
     return const ShowcaseState(shouldShow: false);
   }
-  
+
   /// Запустить showcase
   void startShowcase(BuildContext context, List<GlobalKey> keys) {
     if (state.shouldShow && keys.isNotEmpty) {
@@ -163,14 +180,14 @@ class ShowcaseNotifier extends Notifier<ShowcaseState> {
       });
     }
   }
-  
+
   /// Отметить как просмотренное
   Future<void> markAsSeen() async {
     final service = ref.read(showcaseServiceProvider);
     await service.markPageAsSeen(_page);
     state = state.copyWith(shouldShow: false);
   }
-  
+
   /// Сбросить (для тестирования)
   Future<void> reset() async {
     final service = ref.read(showcaseServiceProvider);
@@ -195,14 +212,14 @@ final showcaseNotifierProvider = Provider.family<_ShowcaseController, ShowcasePa
 class _ShowcaseController {
   final Ref _ref;
   final ShowcasePage _page;
-  
+
   _ShowcaseController(this._ref, this._page);
-  
+
   bool get shouldShow {
     final service = _ref.read(showcaseServiceProvider);
     return service.shouldShowShowcase(_page);
   }
-  
+
   /// Запустить showcase
   void startShowcase(BuildContext context, List<GlobalKey> keys) {
     if (shouldShow && keys.isNotEmpty) {
@@ -211,7 +228,7 @@ class _ShowcaseController {
       });
     }
   }
-  
+
   /// Отметить как просмотренное
   Future<void> markAsSeen() async {
     final service = _ref.read(showcaseServiceProvider);
@@ -219,7 +236,7 @@ class _ShowcaseController {
     // Инвалидируем провайдер чтобы он перечитал данные из SharedPreferences
     _ref.invalidate(showcaseProvider(_page));
   }
-  
+
   /// Сбросить (для тестирования)
   Future<void> reset() async {
     final service = _ref.read(showcaseServiceProvider);
@@ -482,30 +499,30 @@ class ShowcaseKeys {
   static final homeInvoicesCard = GlobalKey(debugLabel: 'home_invoices_card');
   static final homeDigest = GlobalKey(debugLabel: 'home_digest');
   static final homePhotos = GlobalKey(debugLabel: 'home_photos');
-  
+
   // Bottom navigation keys
   static final navHome = GlobalKey(debugLabel: 'nav_home');
   static final navPhotos = GlobalKey(debugLabel: 'nav_photos');
   static final navTracks = GlobalKey(debugLabel: 'nav_tracks');
   static final navInvoices = GlobalKey(debugLabel: 'nav_invoices');
   static final navAdd = GlobalKey(debugLabel: 'nav_add');
-  
+
   // Tracks screen keys
   static final tracksFilter = GlobalKey(debugLabel: 'tracks_filter');
   static final tracksSearch = GlobalKey(debugLabel: 'tracks_search');
   static final tracksViewMode = GlobalKey(debugLabel: 'tracks_view_mode');
   static final tracksItem = GlobalKey(debugLabel: 'tracks_item');
-  
+
   // Invoices screen keys
   static final invoicesFilter = GlobalKey(debugLabel: 'invoices_filter');
   static final invoicesSearch = GlobalKey(debugLabel: 'invoices_search');
   static final invoicesItem = GlobalKey(debugLabel: 'invoices_item');
-  
+
   // Profile screen keys
   static final profileInfo = GlobalKey(debugLabel: 'profile_info');
   static final profileStats = GlobalKey(debugLabel: 'profile_stats');
   static final profileSettings = GlobalKey(debugLabel: 'profile_settings');
-  
+
   // Top bar keys
   static final topBarNotifications = GlobalKey(debugLabel: 'topbar_notifications');
   static final topBarProfile = GlobalKey(debugLabel: 'topbar_profile');
@@ -513,17 +530,17 @@ class ShowcaseKeys {
   static final topBarMenu = GlobalKey(debugLabel: 'topbar_menu');
   static final topBarHome = GlobalKey(debugLabel: 'topbar_home');
   static final topBarSearch = GlobalKey(debugLabel: 'topbar_search');
-  
+
   // Search screen keys
   static final searchInput = GlobalKey(debugLabel: 'search_input');
   static final searchResult = GlobalKey(debugLabel: 'search_result');
-  
+
   // News screen keys
   static final newsList = GlobalKey(debugLabel: 'news_list');
-  
+
   // Rules screen keys
   static final rulesList = GlobalKey(debugLabel: 'rules_list');
-  
+
   // Notifications keys
   static final notificationsFilter = GlobalKey(debugLabel: 'notifications_filter');
   static final notificationsList = GlobalKey(debugLabel: 'notifications_list');

@@ -16,9 +16,13 @@ import '../../../core/utils/error_utils.dart';
 import '../../assemblies/data/assemblies_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
+import '../../news/data/news_provider.dart';
 import '../../notifications/application/notifications_controller.dart';
+import '../../payment_chat/data/payment_chat_provider.dart';
 import '../../profile/data/profile_provider.dart';
+import '../../rules/data/rules_provider.dart';
 import '../../sp_finance/data/sp_provider.dart';
+import '../../support/data/chat_provider.dart';
 import '../../tracks/data/tracks_provider.dart';
 
 const _kIsLoggedInKey = 'is_logged_in';
@@ -140,7 +144,7 @@ class AuthNotifier extends Notifier<AuthState> {
     required String password,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       final response = await _apiClient.post(
         '/login',
@@ -148,14 +152,19 @@ class AuthNotifier extends Notifier<AuthState> {
           'email': email,
           'password': password,
           'type': 'client',  // Важно! Для клиентов type = 'client'
+          // PU-C1: передаём domain, чтобы backend нашёл агента и не
+          // подхватил клиента с тем же email из другого тенанта.
+          // На web backend дополнительно проверит Origin/Referer header,
+          // но мы всё равно отправляем явно — это надёжнее.
+          'domain': domain,
         },
       );
-      
+
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
         final token = data['token'] as String?;
         final userData = data['user'] as Map<String, dynamic>?;
-        
+
         if (token == null || userData == null) {
           state = state.copyWith(
             isLoading: false,
@@ -163,18 +172,18 @@ class AuthNotifier extends Notifier<AuthState> {
           );
           return false;
         }
-        
+
         // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
         await _apiClient.setToken(token);
-        
+
         // Извлекаем данные клиента
         final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
-        final clientName = userData['fullName'] as String? ?? 
-                          userData['name'] as String? ?? 
+        final clientName = userData['fullName'] as String? ??
+                          userData['name'] as String? ??
                           email;
         final agentData = userData['agent'] as Map<String, dynamic>?;
         final clientDomain = agentData?['domain'] as String? ?? domain;
-        
+
         // Сохраняем в SharedPreferences (без токена - он в secure storage)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_kIsLoggedInKey, true);
@@ -185,11 +194,13 @@ class AuthNotifier extends Notifier<AuthState> {
         }
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
-        
-        // Сбрасываем showcase чтобы показать обучение при каждом логине
+
+        // PU-M3: сбрасываем ТОЛЬКО туториалы (showcases), не правила.
+        // Раньше resetAllShowcases() удалял и termsAccepted, и при каждом
+        // login приходилось заново принимать правила оказания услуг.
         final showcaseService = ref.read(showcaseServiceProvider);
-        await showcaseService.resetAllShowcases();
-        
+        await showcaseService.resetTutorials();
+
         // Обновляем состояние ПЕРЕД invalidate чтобы избежать циклических зависимостей
         state = AuthState(
           isLoggedIn: true,
@@ -200,7 +211,7 @@ class AuthNotifier extends Notifier<AuthState> {
           clientName: clientName,
           clientData: userData,
         );
-        
+
         // Invalidate провайдеры ПОСЛЕ обновления state
         // НЕ invalidate clientCodesControllerProvider - он сам пересоберётся через watch(authProvider)
         // Используем Future.microtask чтобы отложить до следующего микротаска
@@ -210,10 +221,10 @@ class AuthNotifier extends Notifier<AuthState> {
             ref.invalidate(showcaseProvider(page));
           }
         });
-        
+
         // Регистрируем устройство для push-уведомлений
         _registerForPush(clientDomain);
-        
+
         return true;
       } else {
         state = state.copyWith(
@@ -267,27 +278,27 @@ class AuthNotifier extends Notifier<AuthState> {
       return false;
     }
   }
-  
+
   /// Авторизация по данным от password-reset (после подтверждения по звонку)
   Future<bool> loginWithData({
     required String token,
     required Map<String, dynamic> userData,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
       await _apiClient.setToken(token);
-      
+
       // Извлекаем данные клиента
       final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
       final email = userData['email'] as String? ?? '';
-      final clientName = userData['fullName'] as String? ?? 
-                        userData['name'] as String? ?? 
+      final clientName = userData['fullName'] as String? ??
+                        userData['name'] as String? ??
                         email;
       final agentData = userData['agent'] as Map<String, dynamic>?;
       final clientDomain = agentData?['domain'] as String? ?? '';
-      
+
       // Сохраняем в SharedPreferences (без токена - он в secure storage)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kIsLoggedInKey, true);
@@ -298,20 +309,20 @@ class AuthNotifier extends Notifier<AuthState> {
       }
       await prefs.setString(_kClientNameKey, clientName);
       await prefs.setString(_kClientDataKey, jsonEncode(userData));
-      
-      // Сбрасываем showcase чтобы показать обучение при каждом логине
+
+      // PU-M3: см. login() выше — только туториалы, без сброса termsAccepted.
       final showcaseService = ref.read(showcaseServiceProvider);
-      await showcaseService.resetAllShowcases();
-      
+      await showcaseService.resetTutorials();
+
       // Invalidate client codes and profile to reload data
       ref.invalidate(clientCodesControllerProvider);
       ref.invalidate(clientProfileProvider);
-      
+
       // Invalidate все showcase провайдеры чтобы они перечитали состояние
       for (final page in ShowcasePage.values) {
         ref.invalidate(showcaseProvider(page));
       }
-      
+
       state = AuthState(
         isLoggedIn: true,
         userEmail: email,
@@ -321,12 +332,12 @@ class AuthNotifier extends Notifier<AuthState> {
         clientName: clientName,
         clientData: userData,
       );
-      
+
       // Регистрируем устройство для push-уведомлений
       if (clientDomain.isNotEmpty) {
         _registerForPush(clientDomain);
       }
-      
+
       return true;
     } catch (e) {
       debugPrint('LoginWithData error: $e');
@@ -337,17 +348,17 @@ class AuthNotifier extends Notifier<AuthState> {
       return false;
     }
   }
-  
+
   /// Регистрация устройства для push-уведомлений
   Future<void> _registerForPush(String domain) async {
     try {
       final fcmToken = await PushNotificationService.getFCMToken();
       if (fcmToken != null) {
         debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
-        
+
         // Определяем платформу через хелпер
         final platform = getPlatformNameImpl();
-        
+
         // Отправляем токен на сервер
         try {
           await _apiClient.post(
@@ -363,7 +374,7 @@ class AuthNotifier extends Notifier<AuthState> {
           debugPrint('🔔 Error registering device: $e');
         }
       }
-      
+
       // Подписываемся на топики клиентов
       await PushNotificationService.subscribeToTopic('clients');
       await PushNotificationService.subscribeToTopic('domain_$domain');
@@ -371,7 +382,7 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('🔔 Error registering for push: $e');
     }
   }
-  
+
   /// Получить уникальный ID устройства
   Future<String?> _getDeviceId() async {
     try {
@@ -466,6 +477,11 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   /// Инвалидация всех провайдеров данных при logout
+  ///
+  /// PU-H7: при account switch без перезапуска приложения данные предыдущего
+  /// клиента могли «протекать» через кешированные провайдеры (новости,
+  /// правила, чаты). Теперь инвалидируем всё состояние, привязанное к
+  /// клиенту/тенанту, чтобы новый юзер начинал с чистого листа.
   void _invalidateAllProviders() {
     try {
       debugPrint('🗑️ Invalidating all data providers...');
@@ -492,17 +508,28 @@ class AuthNotifier extends Notifier<AuthState> {
       // SP Finance
       ref.invalidate(spAssembliesControllerProvider);
 
+      // PU-H7: chats и payment-chat. Раньше при смене аккаунта новый юзер
+      // мог увидеть последнее сообщение/историю предыдущего.
+      ref.invalidate(chatControllerProvider);
+      ref.invalidate(paymentChatControllerProvider);
+
+      // PU-H7: news и rules — они tenant-specific (агентский контент).
+      // Без invalidation новый клиент видел news предыдущего агента, пока
+      // не приходил websocket update.
+      ref.invalidate(newsListProvider);
+      ref.invalidate(rulesListProvider);
+
       debugPrint('✅ All providers invalidated');
     } catch (e) {
       debugPrint('⚠️ Error invalidating providers: $e');
     }
   }
-  
+
   /// Отписка от push-уведомлений
   Future<void> _unregisterFromPush() async {
     try {
       final domain = state.userDomain;
-      
+
       // Деактивируем устройство на сервере только если есть токен
       if (_apiClient.hasToken) {
         final fcmToken = await PushNotificationService.getFCMToken();
@@ -520,7 +547,7 @@ class AuthNotifier extends Notifier<AuthState> {
           }
         }
       }
-      
+
       // Отписываемся от топиков
       await PushNotificationService.unsubscribeFromTopic('clients');
       if (domain != null) {
