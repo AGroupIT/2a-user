@@ -150,6 +150,8 @@ class ApiClient {
             statusCode >= 500; // Серверная ошибка
 
         if (shouldReport) {
+          // Audit M3 (2026-04-26): не отправляем response body в Sentry,
+          // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
           await Sentry.captureException(
             error,
             stackTrace: error.stackTrace,
@@ -158,7 +160,6 @@ class ApiClient {
               'url': error.requestOptions.uri.toString(),
               'method': error.requestOptions.method,
               'status_code': statusCode,
-              'response_data': error.response?.data,
             }),
           );
 
