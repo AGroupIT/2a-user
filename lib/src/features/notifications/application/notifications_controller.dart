@@ -84,29 +84,65 @@ void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
   }
 }
 
+// PU-H3: синхронизировано со списком backend-типов в lib/notifications.ts
+// и с NotificationItem._parseNotificationType. Если backend пришлёт новый
+// тип, которого здесь нет, — fallback на trackStatus (как в основном
+// парсере), а НЕ на news (раньше дефолт был news, что давало
+// «случайные» переходы на /news для незнакомых push-ов, например для
+// payment_chat_message и service_rule_created).
 NotificationType _parseNotificationType(String? type) {
   switch (type?.toLowerCase()) {
     case 'track_status':
     case 'trackstatus':
+    case 'track_created':
+    case 'track_update':
+    case 'track_status_changed':
       return NotificationType.trackStatus;
     case 'assembly_status':
     case 'assemblystatus':
+    case 'assembly_update':
+    case 'assembly_status_changed':
       return NotificationType.assemblyStatus;
     case 'photo_report_status':
     case 'photoreportstatus':
+    case 'photo_report_update':
+    case 'photo_report_ready':
+    case 'photo_request':
+    case 'photo_request_completed':
+    case 'photo_request_status_changed':
       return NotificationType.photoReportStatus;
     case 'question_status':
     case 'questionstatus':
+    case 'question_answered':
+    case 'question_update':
+    case 'question_status_changed':
       return NotificationType.questionStatus;
     case 'chat_message':
     case 'chatmessage':
+    case 'support_message':
+    case 'new_message':
       return NotificationType.chatMessage;
+    case 'payment_chat_message':
+    case 'payment_message':
+      return NotificationType.paymentChatMessage;
     case 'news':
+    case 'news_created':
+    case 'new_news':
       return NotificationType.news;
+    case 'service_rule_created':
+    case 'service_rule':
+    case 'service_rules':
+      return NotificationType.serviceRules;
     case 'invoice':
+    case 'new_invoice':
+    case 'invoice_created':
+    case 'invoice_status_changed':
+    case 'invoice_paid':
       return NotificationType.invoice;
     default:
-      return NotificationType.news; // По умолчанию
+      // Безопасный fallback — trackStatus, чтобы непонятный push открывал
+      // главный список треков, а не утаскивал юзера в /news.
+      return NotificationType.trackStatus;
   }
 }
 
@@ -124,13 +160,22 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     }
 
     final repo = ref.watch(notificationsRepositoryProvider);
-    final items = await repo.fetchNotifications(clientCode: _clientCode!);
-    _updateBadge(items);
-    return items;
+    // PU-M13: используем page-based fetch, чтобы получить unreadCount из
+    // backend (работает корректно при >100 уведомлений) и иметь возможность
+    // в будущем подключить loadMore.
+    final page = await repo.fetchPage(
+      clientCode: _clientCode!,
+      page: 1,
+      limit: 50,
+    );
+    _updateBadge(page.items, backendUnread: page.unreadCount);
+    return page.items;
   }
 
-  void _updateBadge(List<NotificationItem> items) {
-    final unreadCount = items.where((n) => !n.isRead).length;
+  void _updateBadge(List<NotificationItem> items, {int? backendUnread}) {
+    // PU-M13: предпочитаем unreadCount из backend, fallback на локальный
+    // подсчёт, если функция вызвана не из fetch (например, после markRead).
+    final unreadCount = backendUnread ?? items.where((n) => !n.isRead).length;
     ref.read(unreadNotificationsCountProvider.notifier).set(unreadCount);
 
     // Обновляем badge на иконке приложения
