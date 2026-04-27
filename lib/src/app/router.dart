@@ -82,7 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
       ),
-      
+
       // Auth routes
       GoRoute(
         path: '/login',
@@ -96,7 +96,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
-      
+
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
@@ -291,7 +291,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'assemblies/:id',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
-              final id = int.parse(state.pathParameters['id']!);
+              // PU-S6: int.tryParse с invalid screen вместо int.parse,
+              // чтобы кривой URL (`/sp-finance/assemblies/abc`) не валил
+              // приложение exception'ом, а показывал понятную ошибку.
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return const _InvalidLinkScreen(
+                  reason: 'Некорректный ID сборки',
+                );
+              }
               return AppScaffold(
                 title: 'Детали сборки',
                 child: SpAssemblyDetailScreen(assemblyId: id),
@@ -302,9 +310,30 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'tracks/:id',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
-              final id = int.parse(state.pathParameters['id']!);
+              // PU-S6: int.tryParse и для path id, и для query assemblyId.
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return const _InvalidLinkScreen(
+                  reason: 'Некорректный ID трека',
+                );
+              }
+              // PU-H4: assemblyId можно передать как query (?assemblyId=42),
+              // если переход внутри приложения — через state.extra (legacy).
+              // Раньше extra?['assemblyId'] as int падал NoSuchMethodError,
+              // если open происходил по deep link без extra.
               final extra = state.extra as Map<String, dynamic>?;
-              final assemblyId = extra?['assemblyId'] as int;
+              final extraAssemblyId = extra?['assemblyId'];
+              final queryAssemblyId =
+                  int.tryParse(state.uri.queryParameters['assemblyId'] ?? '');
+              final assemblyId = (extraAssemblyId is int)
+                  ? extraAssemblyId
+                  : queryAssemblyId;
+              if (assemblyId == null) {
+                return const _InvalidLinkScreen(
+                  reason: 'Не указана сборка для трека. '
+                      'Откройте трек из карточки сборки.',
+                );
+              }
               return AppScaffold(
                 title: 'Редактирование трека',
                 child: SpTrackEditScreen(
@@ -351,4 +380,48 @@ class _AuthRefreshNotifier extends ChangeNotifier {
   }
 
   final Ref _ref;
+}
+
+/// PU-S6/H4: показывается когда роут не смог распарсить параметры
+/// (некорректный ID, отсутствует обязательный query). Не падаем ассертом,
+/// показываем дружелюбный экран с кнопкой возврата.
+class _InvalidLinkScreen extends StatelessWidget {
+  const _InvalidLinkScreen({required this.reason});
+
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      title: 'Ссылка недействительна',
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.link_off_rounded, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                reason,
+                style: const TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/');
+                  }
+                },
+                child: const Text('Назад'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
