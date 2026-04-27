@@ -71,6 +71,9 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
       );
     }
 
+    // Держим WebSocket-подписку для фонового обновления фото без перезагрузки экрана.
+    ref.watch(photosRealtimeBridgeProvider);
+
     final photosCountAsync = ref.watch(photosTotalCountProvider(clientCode));
     final daysAsync = ref.watch(
       photosDaysProvider((clientCode: clientCode, month: _month, year: _year)),

@@ -183,6 +183,7 @@ class PaginatedTracksNotifier {
   final List<void Function()> _listeners = [];
 
   StreamSubscription? _deltaSub;
+  StreamSubscription? _dataChangedSub;
   StreamSubscription? _reconnectSub;
   Timer? _debounceTimer;
   bool _silentRefreshInProgress = false;
@@ -191,12 +192,13 @@ class PaginatedTracksNotifier {
 
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
       : _state = PaginatedTracksState(filters: initialFilters) {
-    // Delta sync is the primary update mechanism.
-    // data_changed broadcast is not used to avoid full page reloads
-    // that reset scroll position and pagination.
+    // Delta/data_changed sync is handled silently to preserve scroll and pagination.
     final wsService = _ref.read(webSocketServiceProvider);
     _deltaSub = wsService.deltas
         .where((delta) => _tracksTypes.contains(delta.type))
+        .listen((_) => _debouncedSilentRefresh());
+    _dataChangedSub = wsService.dataChanged
+        .where((event) => _tracksTypes.contains(event['type']))
         .listen((_) => _debouncedSilentRefresh());
     _reconnectSub = wsService.reconnected
         .listen((_) => _debouncedSilentRefresh());
@@ -207,6 +209,7 @@ class PaginatedTracksNotifier {
 
   void dispose() {
     _deltaSub?.cancel();
+    _dataChangedSub?.cancel();
     _reconnectSub?.cancel();
     _debounceTimer?.cancel();
   }
