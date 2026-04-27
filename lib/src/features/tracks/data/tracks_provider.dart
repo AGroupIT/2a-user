@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/websocket_provider.dart';
 import '../domain/track_item.dart';
 
 // ==================== Status Model ====================
@@ -50,7 +52,7 @@ class TrackStatus {
 /// Провайдер для получения статусов треков из БД
 final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/statuses',
@@ -59,15 +61,15 @@ final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
         'activeOnly': 'true',
       },
     );
-    
+
     debugPrint('trackStatusesProvider: statusCode=${response.statusCode}, data=${response.data}');
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final statusesJson = data['data'] as List<dynamic>? ?? [];
-      
+
       debugPrint('trackStatusesProvider: parsed ${statusesJson.length} statuses');
-      
+
       return statusesJson
           .map((json) => TrackStatus.fromJson(json as Map<String, dynamic>))
           .toList();
@@ -172,16 +174,61 @@ class PaginatedTracksState {
 class PaginatedTracksNotifier {
   final Ref _ref;
   static const int _pageSize = 100;
-  
+
   PaginatedTracksState _state;
   PaginatedTracksState get state => _state;
-  
+
   final List<void Function()> _listeners = [];
+
+  // DS-H2: WS realtime подписки.
+  StreamSubscription? _deltaSub;
+  StreamSubscription<Map<String, dynamic>>? _dataChangedSub;
+  Timer? _silentRefetchDebounce;
 
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
       : _state = PaginatedTracksState(filters: initialFilters) {
     // Загружаем начальные данные при создании
     loadInitial();
+    _subscribeToRealtime();
+  }
+
+  /// DS-H2: realtime обновления списка треков клиента.
+  ///
+  /// Раньше user-приложение полагалось только на timer-based autoRefresh
+  /// (раз в N секунд) — изменения бэкенда (новый трек, смена статуса)
+  /// видны только до следующего тика. Теперь:
+  ///   - delta('tracks', _, _, fullData) → silentRefresh (не direct apply,
+  ///     потому что backend `tracks` payload не всегда совпадает с тем,
+  ///     что user-API отдаёт через /tracks).
+  ///   - data_changed('tracks') → silentRefresh.
+  /// Дебаунс 250ms — пачка событий на bulk операции даёт один refetch.
+  void _subscribeToRealtime() {
+    final ws = _ref.read(webSocketServiceProvider);
+    _deltaSub?.cancel();
+    _deltaSub = ws.deltas
+        .where((d) => d.type == 'tracks' || d.type == 'photo_requests')
+        .listen((_) => _scheduleSilentRefetch('delta'));
+    _dataChangedSub?.cancel();
+    _dataChangedSub = ws.dataChanged
+        .where((d) => d['type'] == 'tracks' || d['type'] == 'photo_requests')
+        .listen((_) => _scheduleSilentRefetch('data_changed'));
+  }
+
+  void _scheduleSilentRefetch(String reason) {
+    _silentRefetchDebounce?.cancel();
+    _silentRefetchDebounce = Timer(const Duration(milliseconds: 250), () {
+      debugPrint('[UserTracks] silent refetch ($reason)');
+      loadInitial(silent: true);
+    });
+  }
+
+  /// Отменяет все WS-подписки. Вызывается при dispose клиента (auto-managed
+  /// через ref.onDispose в провайдере).
+  void dispose() {
+    _deltaSub?.cancel();
+    _dataChangedSub?.cancel();
+    _silentRefetchDebounce?.cancel();
+    _listeners.clear();
   }
 
   ApiClient get _apiClient => _ref.read(apiClientProvider);
@@ -214,7 +261,7 @@ class PaginatedTracksNotifier {
     if (silent) {
       try {
         final result = await _fetchTracks(skip: 0, take: _pageSize);
-        
+
         // Обновляем только если данные изменились
         if (_hasDataChanged(result.tracks)) {
           _updateState(_state.copyWith(
@@ -253,23 +300,23 @@ class PaginatedTracksNotifier {
       ));
     }
   }
-  
+
   /// Проверяет, изменились ли данные
   bool _hasDataChanged(List<TrackItem> newTracks) {
     if (_state.tracks.length != newTracks.length) return true;
-    
+
     // Сравниваем ID и даты обновления
     for (var i = 0; i < _state.tracks.length; i++) {
       final oldTrack = _state.tracks[i];
       final newTrack = newTracks[i];
-      
-      if (oldTrack.id != newTrack.id || 
+
+      if (oldTrack.id != newTrack.id ||
           oldTrack.updatedAt != newTrack.updatedAt ||
           oldTrack.status != newTrack.status) {
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -325,7 +372,7 @@ class PaginatedTracksNotifier {
     };
 
     // Фильтр по статусу (код статуса из БД)
-    if (_state.filters.statusCode != null && 
+    if (_state.filters.statusCode != null &&
         _state.filters.statusCode!.isNotEmpty) {
       queryParams['status'] = _state.filters.statusCode;
     }
@@ -343,7 +390,7 @@ class PaginatedTracksNotifier {
       // Одиночные треки - без сборки
       queryParams['assemblyId'] = 'null';
     }
-    
+
     debugPrint('Fetching tracks: $queryParams');
 
     final response = await _apiClient.get('/tracks', queryParameters: queryParams);
@@ -356,7 +403,7 @@ class PaginatedTracksNotifier {
       final tracks = tracksJson
           .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
           .toList();
-      
+
       debugPrint('Fetched ${tracks.length} tracks, total: $total');
 
       return _TracksResult(tracks: tracks, total: total);
@@ -377,7 +424,16 @@ class _TracksResult {
 /// Ключ - clientCode, фильтры обновляются через updateFilters
 final paginatedTracksProvider = Provider.family<
     PaginatedTracksNotifier, String>(
-  (ref, clientCode) => PaginatedTracksNotifier(ref, TracksFilterParams(clientCode: clientCode)),
+  (ref, clientCode) {
+    final notifier = PaginatedTracksNotifier(
+      ref,
+      TracksFilterParams(clientCode: clientCode),
+    );
+    // DS-H2: при выгрузке провайдера (logout, switch clientCode) отменяем
+    // WS-подписки notifier'а, чтобы не было утечки stream subscription.
+    ref.onDispose(notifier.dispose);
+    return notifier;
+  },
 );
 
 // ==================== Legacy Providers (for compatibility) ====================
@@ -425,7 +481,7 @@ class TracksListParams {
 /// Провайдер для получения списка треков с параметрами
 final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListParams>((ref, params) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final queryParams = <String, dynamic>{
       'clientCode': params.clientCode,
@@ -433,7 +489,7 @@ final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListPara
       'skip': params.skip,
       'sortBy': 'updatedAt',
     };
-    
+
     if (params.status != null && params.status!.isNotEmpty) {
       queryParams['status'] = params.status;
     }
@@ -443,13 +499,13 @@ final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListPara
     if (params.assemblyId != null) {
       queryParams['assemblyId'] = params.assemblyId;
     }
-    
+
     final response = await apiClient.get('/tracks', queryParameters: queryParams);
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
+
       return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
     }
     return [];
@@ -462,7 +518,7 @@ final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListPara
 /// Провайдер для получения списка треков по коду клиента (простой)
 final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>((ref, clientCode) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -472,11 +528,11 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
         'sortBy': 'updatedAt',
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
+
       return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
     }
     return [];
@@ -489,7 +545,7 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
 /// Провайдер для дайджеста - последние 10 треков отсортированные по дате изменения
 final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref, clientCode) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -499,11 +555,11 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
         'sortBy': 'updatedAt',
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
+
       return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
     }
     return [];
@@ -516,7 +572,7 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
 /// Провайдер для общего количества треков
 final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -525,7 +581,7 @@ final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode)
         'take': 1,
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       return data['total'] as int? ?? 0;
@@ -540,7 +596,7 @@ final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode)
 /// Провайдер для количества треков без сборки
 final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -550,7 +606,7 @@ final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((r
         'take': 1,
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       return data['total'] as int? ?? 0;
@@ -567,11 +623,11 @@ final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((r
 /// Сервис для API операций с треками
 class TracksApiService {
   final Ref _ref;
-  
+
   TracksApiService(this._ref);
-  
+
   ApiClient get _apiClient => _ref.read(apiClientProvider);
-  
+
   /// Создать запрос фотоотчета
   Future<bool> createPhotoRequest({
     required int clientId,
@@ -597,7 +653,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Отменить запрос фотоотчета
   Future<bool> cancelPhotoRequest(int photoRequestId) async {
     try {
@@ -613,7 +669,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Создать вопрос по треку
   Future<bool> createTrackQuestion({
     required int clientId,
@@ -639,7 +695,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Отменить вопрос
   Future<bool> cancelTrackQuestion(int questionId) async {
     try {
@@ -655,7 +711,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Обновить информацию о товаре
   Future<bool> updateProductInfo({
     required int trackId,
@@ -689,7 +745,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Загрузить изображение
   /// [type] - тип загружаемого изображения: 'product-info', 'general', etc.
   Future<String?> _uploadImage(File file, [String type = 'general']) async {
@@ -749,7 +805,7 @@ class TracksApiService {
       return null;
     }
   }
-  
+
   /// Добавить/обновить комментарий к треку (поле note)
   Future<bool> addTrackComment({
     required int trackId,

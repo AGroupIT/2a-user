@@ -52,15 +52,15 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
   void _startShowcaseIfNeeded(BuildContext showcaseContext) {
     // Проверяем локальный флаг чтобы не запускать повторно при rebuild
     if (_showcaseStarted) return;
-    
+
     final showcaseState = ref.read(showcaseProvider(ShowcasePage.photos));
     if (!showcaseState.shouldShow) return;
-    
+
     _showcaseStarted = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
+
       ShowCaseWidget.of(showcaseContext).startShowCase([
         _showcaseKeyStats,
         _showcaseKeyDateFilter,
@@ -105,6 +105,13 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
             'Чтобы увидеть фотографии, сначала выберите или добавьте код клиента.',
       );
     }
+
+    // P7: подключаем realtime-мост для photos. Он держит подписку на
+    // ws.deltas/dataChanged для photo_requests и tracks, и при событиях
+    // дебаунсенно инвалидирует все family providers фото — экран
+    // обновляется без visible loader. autoDispose снимает подписку
+    // при выходе с экрана.
+    ref.watch(photosRealtimeBridgeProvider);
 
     final photosCountAsync = ref.watch(photosTotalCountProvider(clientCode));
     final daysAsync = ref.watch(
@@ -155,7 +162,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen>
       child: Builder(
         builder: (showcaseContext) {
           _showcaseContext = showcaseContext;
-          
+
           // Запускаем showcase когда данные загружены
           if (photosCount != null) {
             _startShowcaseIfNeeded(showcaseContext);
