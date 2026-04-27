@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local code-index databases
+.gitnexus/
+.codegraph/
+
 # Symbolication related
 app.*.symbols
 

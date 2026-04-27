@@ -1,19 +1,23 @@
 #!/bin/bash
 # Build script for Flutter Web + Android AAB/APK
-# Includes automatic deployment (FTP for web, SCP for APK, RuStore for AAB)
+# Web deploy goes through GitHub + Coolify. APK files are uploaded to the
+# production backend releases volume on the new Coolify server.
 
 set -e  # Exit on error
 
 # ── Configuration ──
-FTP_HOST="188.124.54.40"
-FTP_PORT="21"
-FTP_USER="administrator_cabinetapp"
-FTP_PASS='hS2cCt3!b1@{;$VV'
-FTP_PATH="/home/administrator_cabinetapp"
-
-SSH_HOST="administrator@188.124.54.40"
-RELEASES_DIR="/home/administrator/web/2alogistic.2a-marketing.ru/public_html/backend/public/releases"
+PRODUCTION_SSH="root@5.188.158.33"
+RELEASES_DIR="/var/lib/docker/volumes/zc9s2du0h9jtyxlnaq552rkd-releases/_data"
 DOWNLOAD_BASE="https://2alogistic.2a-marketing.ru/releases"
+
+COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
+COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
+COOLIFY_WEB_BRANCH="coolify-web-production"
+WEB_URL="https://cabinet.2a-logistic.ru"
+WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
+WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
+
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
 # RuStore API
 RUSTORE_API="https://public-api.rustore.ru"
@@ -26,6 +30,135 @@ FULL_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
 VERSION=$(echo "$FULL_VERSION" | cut -d'+' -f1)
 BUILD_NUMBER=$(echo "$FULL_VERSION" | cut -d'+' -f2)
 echo "📦 Version: $VERSION (build $BUILD_NUMBER)"
+
+sync_coolify_shared() {
+  local src="../2a-shared"
+  local dst=".coolify/2a-shared"
+
+  if [ ! -d "$src" ]; then
+    echo "❌ Shared package not found at $src"
+    exit 1
+  fi
+
+  echo "🔁 Syncing 2a-shared for Coolify Docker build..."
+  mkdir -p .coolify
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude '.dart_tool' \
+      --exclude '.gitnexus' \
+      --exclude '.code-review-graph' \
+      --exclude '.codegraph' \
+      --exclude 'build' \
+      --exclude '.DS_Store' \
+      "$src/" "$dst/"
+  else
+    rm -rf "$dst"
+    mkdir -p "$dst"
+    cp -R "$src/." "$dst/"
+    find "$dst" -name '.git' -o -name '.dart_tool' -o -name 'build' -o -name '.DS_Store' | xargs rm -rf
+  fi
+}
+
+commit_if_needed() {
+  local status
+  status=$(git status --short)
+  if [ -z "$status" ]; then
+    return 0
+  fi
+
+  echo ""
+  echo "⚠️  Есть незакоммиченные изменения, которые нужны для web deploy:"
+  git status --short
+  echo ""
+  read -p "Закоммитить все изменения и продолжить deploy? [y/N]: " COMMIT_CONFIRM
+  if [[ ! "$COMMIT_CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "Остановлено. Закоммить изменения вручную и запусти скрипт снова."
+    exit 1
+  fi
+
+  read -p "Commit message [Deploy user web ${FULL_VERSION}]: " COMMIT_MESSAGE
+  COMMIT_MESSAGE=${COMMIT_MESSAGE:-"Deploy user web ${FULL_VERSION}"}
+  git add -A
+  git commit -m "$COMMIT_MESSAGE"
+}
+
+push_coolify_branch() {
+  echo "📤 Pushing current HEAD to origin/${COOLIFY_WEB_BRANCH}..."
+  git fetch origin "$COOLIFY_WEB_BRANCH" >/dev/null 2>&1 || true
+
+  if git rev-parse --verify "origin/${COOLIFY_WEB_BRANCH}" >/dev/null 2>&1 &&
+     ! git merge-base --is-ancestor "origin/${COOLIFY_WEB_BRANCH}" HEAD; then
+    echo "⚠️  Текущий HEAD не является fast-forward для origin/${COOLIFY_WEB_BRANCH}."
+    echo "   Это нормально для параллельной release-ветки, но требует force-with-lease."
+    read -p "Обновить ${COOLIFY_WEB_BRANCH} через --force-with-lease? [y/N]: " FORCE_CONFIRM
+    if [[ ! "$FORCE_CONFIRM" =~ ^[Yy]$ ]]; then
+      echo "Остановлено. Переключись на ${COOLIFY_WEB_BRANCH}, смержи изменения и запусти скрипт снова."
+      exit 1
+    fi
+    git push --force-with-lease="refs/heads/${COOLIFY_WEB_BRANCH}" origin "HEAD:${COOLIFY_WEB_BRANCH}"
+  else
+    git push origin "HEAD:${COOLIFY_WEB_BRANCH}"
+  fi
+}
+
+trigger_coolify_deploy() {
+  if [ -z "${COOLIFY_TOKEN:-}" ]; then
+    echo "⚠️  COOLIFY_TOKEN не задан. Код запушен; запусти deploy в Coolify вручную:"
+    echo "   ${WEB_URL} / app ${COOLIFY_APP_UUID}"
+    return 0
+  fi
+
+  echo "🚀 Triggering Coolify deploy..."
+  curl -fsS \
+    -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+    "${COOLIFY_API}/deploy?uuid=${COOLIFY_APP_UUID}&force=false"
+  echo ""
+}
+
+update_manifest_section() {
+  local manifest_file="$1"
+  local section="$2"
+  local latest_version="$3"
+  local download_url="$4"
+  local size="$5"
+  local sha256="$6"
+  local changelog="$7"
+  local changelog_b64
+  changelog_b64=$(printf '%s' "$changelog" | base64 | tr -d '\n')
+
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "python3 - '$RELEASES_DIR/$manifest_file' '$section' '$latest_version' '$download_url' '$size' '$sha256' '$changelog_b64' <<'PYEOF'
+import base64
+import json
+import os
+import sys
+
+path, section, latest_version, download_url, size, sha256, changelog_b64 = sys.argv[1:]
+try:
+    with open(path, 'r') as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+data[section] = {
+    'minVersion': '1.0.0',
+    'latestVersion': latest_version,
+    'downloadUrl': download_url,
+    'size': int(size),
+    'sha256': sha256,
+    'changelog': base64.b64decode(changelog_b64).decode('utf-8'),
+}
+
+if 'ios' not in data:
+    data['ios'] = {'minVersion': '1.0.0', 'latestVersion': latest_version, 'storeUrl': ''}
+
+tmp = path + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+os.rename(tmp, path)
+print('OK')
+PYEOF"
+}
 
 # ── Ask what to build ──
 echo ""
@@ -48,33 +181,20 @@ BUILD_APK=false
 # ── Build Web ──
 if $BUILD_WEB; then
   echo ""
+  sync_coolify_shared
+
   echo "🌐 Building Flutter Web..."
-  flutter build web --release --pwa-strategy none
+  flutter build web --release --pwa-strategy none \
+    --dart-define=API_BASE_URL="$WEB_API_BASE_URL" \
+    --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL"
 
   echo "📋 Copying firebase-messaging-sw.js..."
   cp web/firebase-messaging-sw.js build/web/
 
-  echo "📤 Deploying Web to FTP..."
-  # --parallel=3 — 3 одновременных upload'а, безопасно для тонкого канала.
-  # --continue   — возобновлять недокачанные файлы.
-  # БЕЗ --delete на этом шаге — чтобы не удалить рабочие файлы если
-  # новая заливка упадёт (потом делаем второй проход с --delete).
-  # net:timeout 120 + max-retries 10 — FTP к нашему серверу часто
-  # тормозит (10-20 KB/sec), большие файлы (main.dart.js 5MB) нужно
-  # много времени.
-  lftp -u "$FTP_USER","$FTP_PASS" "ftp://$FTP_HOST:$FTP_PORT" -e "
-    set ssl:verify-certificate no
-    set net:timeout 120
-    set net:max-retries 10
-    set net:reconnect-interval-base 5
-    set net:reconnect-interval-multiplier 1
-    set xfer:clobber yes
-    mirror --reverse --verbose --parallel=3 --continue --no-perms build/web/ $FTP_PATH/
-    # Второй проход с --delete для удаления стерых файлов (только после успеха заливки)
-    mirror --reverse --verbose --delete --parallel=3 --continue --no-perms build/web/ $FTP_PATH/
-    quit
-  "
-  echo "✅ Web deployed: https://cabinet.2a-logistic.ru"
+  commit_if_needed
+  push_coolify_branch
+  trigger_coolify_deploy
+  echo "✅ Web deploy queued: ${WEB_URL}"
 fi
 
 # ── Build AAB for RuStore ──
@@ -179,7 +299,7 @@ print(f\"DRAFT_IDS={' '.join(drafts)}\")
   # ── RuStore: Step 3 — Create draft as copy of published version ──
   echo "📝 RuStore: Создание черновика на основе опубликованной версии..."
 
-  WHATS_NEW_JSON=$(python3 -c "import json; print(json.dumps('$RUSTORE_WHATS_NEW'))")
+  WHATS_NEW_JSON=$(RUSTORE_WHATS_NEW="$RUSTORE_WHATS_NEW" python3 -c 'import json, os; print(json.dumps(os.environ["RUSTORE_WHATS_NEW"], ensure_ascii=False))')
 
   DRAFT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version" \
     -H "Content-Type: application/json" \
@@ -259,42 +379,17 @@ if $BUILD_APK; then
   CHANGELOG=${CHANGELOG:-""}
 
   echo ""
-  echo "📤 Uploading APK to server..."
-  scp "$APK_PATH" "${SSH_HOST}:${RELEASES_DIR}/${APK_FILENAME}"
+  echo "📤 Uploading APK to new production server..."
+  scp "${SSH_OPTS[@]}" "$APK_PATH" "${PRODUCTION_SSH}:${RELEASES_DIR}/${APK_FILENAME}"
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "chmod 644 '${RELEASES_DIR}/${APK_FILENAME}'"
 
   # Create/update symlink for latest APK (used on site footer)
   echo "🔗 Updating latest APK symlink..."
-  ssh "$SSH_HOST" "cd ${RELEASES_DIR} && ln -sf ${APK_FILENAME} 2a-user-latest.apk"
+  ssh "${SSH_OPTS[@]}" "$PRODUCTION_SSH" "cd '${RELEASES_DIR}' && ln -sf '${APK_FILENAME}' 2a-user-latest.apk"
 
   echo "📝 Updating version.json (android-user section)..."
 
-  CHANGELOG_ESCAPED=$(echo "$CHANGELOG" | sed 's/"/\\"/g' | tr '\n' ' ')
-
-  ssh "$SSH_HOST" "python3 - <<'PYEOF'
-import json, os
-path = '${RELEASES_DIR}/version-user.json'
-try:
-    with open(path, 'r') as f:
-        data = json.load(f)
-except:
-    data = {}
-data['android'] = {
-    'minVersion': '1.0.0',
-    'latestVersion': '${FULL_VERSION}',
-    'downloadUrl': '${DOWNLOAD_BASE}/${APK_FILENAME}',
-    'size': ${APK_SIZE},
-    'sha256': '${APK_SHA256}',
-    'changelog': '${CHANGELOG_ESCAPED}'
-}
-tmp = path + '.tmp'
-with open(tmp, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-os.rename(tmp, path)
-print('OK')
-PYEOF"
+  update_manifest_section "version-user.json" "android" "$FULL_VERSION" "${DOWNLOAD_BASE}/${APK_FILENAME}" "$APK_SIZE" "$APK_SHA256" "$CHANGELOG"
 
   echo "✅ APK deployed: ${DOWNLOAD_BASE}/${APK_FILENAME}"
 fi
-
-echo ""
-echo "🎉 Done!"
