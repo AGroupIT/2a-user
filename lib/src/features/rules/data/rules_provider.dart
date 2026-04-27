@@ -41,14 +41,34 @@ final rulesListProvider = FutureProvider<List<RuleItem>>((ref) async {
   }
 });
 
-/// Провайдер для получения одного правила по ID
+/// Провайдер для получения одного правила по ID/slug.
+///
+/// PU-M9: сначала прямой fetch GET `/service-rules/:id`, fallback на
+/// поиск в загруженном списке. Зачем: detail screen, открытый по push
+/// или deep link, мог быть пустым, если правило вне первых 50 или
+/// список ещё не загружен.
 final ruleItemProvider = FutureProvider.family<RuleItem?, String>((
   ref,
   idOrSlug,
 ) async {
-  // Получаем из списка
-  final rulesList = await ref.watch(rulesListProvider.future);
+  final apiClient = ref.read(apiClientProvider);
 
+  final id = int.tryParse(idOrSlug);
+  if (id != null) {
+    try {
+      final response = await apiClient.get('/service-rules/$id');
+      if (response.statusCode == 200 && response.data != null) {
+        // Backend отдаёт плоский объект (не `{data: ...}`), как list-эндпоинт.
+        final raw = response.data as Map<String, dynamic>;
+        return RuleItem.fromJson(raw);
+      }
+    } on DioException catch (e) {
+      debugPrint('Rule fetchById fallback: $e');
+    }
+  }
+
+  // Fallback: ищем в уже загруженном списке.
+  final rulesList = await ref.watch(rulesListProvider.future);
   return rulesList.cast<RuleItem?>().firstWhere(
     (r) => r?.slug == idOrSlug,
     orElse: () => null,

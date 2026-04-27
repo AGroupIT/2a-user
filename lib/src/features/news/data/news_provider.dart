@@ -52,23 +52,39 @@ final newsListProvider = FutureProvider<List<NewsItem>>((ref) async {
   }
 });
 
-/// Провайдер для получения одной новости по ID
+/// Провайдер для получения одной новости по ID/slug.
+///
+/// PU-M9: сначала пробуем прямой fetch GET `/news/:id`. Раньше всегда
+/// тянули весь список и искали в нём — для новости вне последних 50
+/// (или по deep link/push до загрузки списка) detail screen открывался
+/// пустым. Если прямой fetch упал — fallback на поиск в списке (старое
+/// поведение), чтобы не ломать UX в офлайне.
 final newsItemProvider = FutureProvider.family<NewsItem?, String>((
   ref,
   idOrSlug,
 ) async {
-  // Сначала пробуем получить из списка
-  final newsList = await ref.watch(newsListProvider.future);
+  final apiClient = ref.read(apiClientProvider);
 
-  // Ищем по id (преобразуем slug в int если возможно)
+  // 1) Прямой fetch по id.
   final id = int.tryParse(idOrSlug);
   if (id != null) {
-    return newsList.cast<NewsItem?>().firstWhere(
-      (n) => n?.slug == idOrSlug,
-      orElse: () => null,
-    );
+    try {
+      final response = await apiClient.get('/news/$id');
+      if (response.statusCode == 200 && response.data != null) {
+        final body = response.data as Map<String, dynamic>;
+        final raw = body['data'] as Map<String, dynamic>?;
+        if (raw != null) {
+          return NewsItemFromJson.fromJson(raw);
+        }
+      }
+    } on DioException catch (e) {
+      // 404 / 401 / 5xx — fallback на список ниже.
+      debugPrint('News fetchById fallback: $e');
+    }
   }
 
+  // 2) Fallback: ищем в уже загруженном списке.
+  final newsList = await ref.watch(newsListProvider.future);
   return newsList.cast<NewsItem?>().firstWhere(
     (n) => n?.slug == idOrSlug,
     orElse: () => null,
