@@ -16,7 +16,7 @@ import '../../../core/services/websocket_provider.dart';
 class IsPaymentChatScreenOpenNotifier extends Notifier<bool> {
   @override
   bool build() => false;
-  
+
   void set(bool value) => state = value;
 }
 
@@ -39,14 +39,14 @@ class PaymentChatRepository {
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        
+
         // API возвращает conversation и messages отдельно
         final conversationJson = data['conversation'] as Map<String, dynamic>;
         final messagesJson = data['messages'] as List<dynamic>? ?? [];
-        
+
         // Добавляем messages в conversation json для парсинга
         conversationJson['messages'] = messagesJson;
-        
+
         return ChatConversation.fromJson(conversationJson);
       }
       throw Exception('Failed to load payment conversation');
@@ -83,28 +83,28 @@ class PaymentChatRepository {
       rethrow;
     }
   }
-  
+
   /// Загрузить файл в чат (изображение или PDF)
   Future<Map<String, dynamic>?> uploadAttachment(File file, int conversationId) async {
     try {
       final fileName = file.path.split('/').last;
       final extension = fileName.split('.').last.toLowerCase();
-      
+
       // Читаем файл в память сразу, чтобы избежать проблем с временными файлами iOS
       final bytes = await file.readAsBytes();
-      
+
       if (bytes.isEmpty) {
         debugPrint('Error: File is empty');
         return null;
       }
-      
+
       return _uploadAttachmentBytes(bytes, fileName, extension, conversationId);
     } on DioException catch (e) {
       debugPrint('Error uploading payment chat attachment: $e');
       return null;
     }
   }
-  
+
   /// Загрузить файл из bytes в чат (для iOS - обход sandbox ограничений)
   Future<Map<String, dynamic>?> uploadAttachmentFromBytes(Uint8List bytes, String fileName, int conversationId) async {
     try {
@@ -112,7 +112,7 @@ class PaymentChatRepository {
         debugPrint('Error: File is empty');
         return null;
       }
-      
+
       final extension = fileName.split('.').last.toLowerCase();
       return _uploadAttachmentBytes(bytes, fileName, extension, conversationId);
     } on DioException catch (e) {
@@ -120,7 +120,7 @@ class PaymentChatRepository {
       return null;
     }
   }
-  
+
   /// Внутренний метод загрузки bytes
   Future<Map<String, dynamic>?> _uploadAttachmentBytes(Uint8List bytes, String fileName, String extension, int conversationId) async {
     // Определяем MIME-тип
@@ -205,7 +205,7 @@ class PaymentChatRepository {
         mimeType = 'application';
         mimeSubtype = 'octet-stream';
     }
-    
+
     final formData = FormData.fromMap({
       'file': MultipartFile.fromBytes(
         bytes,
@@ -214,7 +214,7 @@ class PaymentChatRepository {
       ),
       'conversationId': conversationId.toString(),
     });
-    
+
     final response = await _apiClient.post(
       '/support/attachments',
       data: formData,
@@ -222,7 +222,7 @@ class PaymentChatRepository {
         headers: {'Content-Type': 'multipart/form-data'},
       ),
     );
-    
+
     if (response.statusCode == 201 && response.data != null) {
       return response.data as Map<String, dynamic>;
     }
@@ -241,9 +241,9 @@ class PaymentChatRepository {
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        
+
         final messagesJson = data['messages'] as List<dynamic>? ?? [];
-        
+
         return messagesJson
             .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
             .where((m) => m.id > afterMessageId)
@@ -475,18 +475,18 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     List<int>? attachmentIds,
   }) async {
     if (content.trim().isEmpty && (attachmentIds == null || attachmentIds.isEmpty)) return false;
-    
+
     state = state.copyWith(isSending: true, clearError: true);
-    
+
     try {
       final message = await _repository.sendMessage(
         content.trim(),
         metadata: metadata,
         attachmentIds: attachmentIds,
       );
-      
+
       final newMessages = [...state.messages, message];
-      
+
       state = state.copyWith(
         messages: newMessages,
         isSending: false,
@@ -501,14 +501,14 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       return false;
     }
   }
-  
+
   /// Загрузить файл на сервер
   Future<Map<String, dynamic>?> uploadFile(File file, int conversationId) async {
     state = state.copyWith(isUploading: true, clearError: true);
-    
+
     try {
       final result = await _repository.uploadAttachment(file, conversationId);
-      
+
       if (result != null) {
         // Добавляем в pending attachments
         state = state.copyWith(
@@ -517,7 +517,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         );
         return result;
       }
-      
+
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
@@ -531,14 +531,14 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       return null;
     }
   }
-  
+
   /// Загрузить файл из bytes на сервер (для iOS - обход sandbox ограничений)
   Future<Map<String, dynamic>?> uploadFileFromBytes(Uint8List bytes, String fileName, int conversationId) async {
     state = state.copyWith(isUploading: true, clearError: true);
-    
+
     try {
       final result = await _repository.uploadAttachmentFromBytes(bytes, fileName, conversationId);
-      
+
       if (result != null) {
         // Добавляем в pending attachments
         state = state.copyWith(
@@ -547,7 +547,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         );
         return result;
       }
-      
+
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
@@ -561,14 +561,19 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       return null;
     }
   }
-  
+
   /// Удалить pending attachment
   void removePendingAttachment(String id) {
+    // PU-M6: a['id'] обычно приходит как int (id из backend), а параметр id —
+    // String. Прямое сравнение `a['id'] != id` всегда истинно → never removed.
+    // Приводим обе стороны к String, тогда сравнение корректно.
     state = state.copyWith(
-      pendingAttachments: state.pendingAttachments.where((a) => a['id'] != id).toList(),
+      pendingAttachments: state.pendingAttachments
+          .where((a) => a['id']?.toString() != id)
+          .toList(),
     );
   }
-  
+
   /// Очистить все pending attachments
   void clearPendingAttachments() {
     state = state.copyWith(pendingAttachments: []);
@@ -577,28 +582,28 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
     if (_isDisposed || state.conversation == null) return;
-    
+
     final lastMessageId = state.lastMessageId ?? 0;
-    
+
     try {
       final newMessages = await _repository.getNewMessages(
         state.conversation!.id,
         lastMessageId,
       );
-      
+
       if (newMessages.isNotEmpty) {
         final existingIds = state.messages.map((m) => m.id).toSet();
         final uniqueNewMessages = newMessages.where((m) => !existingIds.contains(m.id)).toList();
-        
+
         if (uniqueNewMessages.isNotEmpty) {
           final allMessages = [...state.messages, ...uniqueNewMessages];
           final lastId = allMessages.isNotEmpty ? allMessages.last.id : lastMessageId;
-          
+
           state = state.copyWith(
             messages: allMessages,
             lastMessageId: lastId,
           );
-          
+
           // Показать локальное уведомление для сообщений от бухгалтерии
           final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
           if (!isChatOpen) {

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:typed_data';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/app_colors.dart';
@@ -162,7 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               if (profile == null) {
                 return const Center(child: Text('Профиль не найден'));
               }
-              
+
               final companyDomain = profile.agent?.domain ?? '';
               final stats = statsAsync.when(
                 data: (s) => s,
@@ -1092,11 +1093,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
       return;
     }
-    
+
     try {
-      // Получаем все счета из реального провайдера
-      final invoices = await ref.read(invoicesListProvider(clientCode).future);
-      
+      // PU-H9: для экспорта тянем ВСЕ счета батчами через fetchAllInvoicesForExport.
+      // invoicesListProvider обрезается на 100 — раньше юзеры с >100 счетов
+      // получали неполный Excel. Передаём ApiClient напрямую — функция
+      // не привязана к Ref/WidgetRef, чтобы её было удобно мокать в тестах.
+      final invoices = await fetchAllInvoicesForExport(
+        ref.read(apiClientProvider),
+        clientCode,
+      );
+
       if (!mounted) return;
 
       if (invoices.isEmpty) {
@@ -1107,31 +1114,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // Создаём Excel файл
       final excel = xls.Excel.createExcel();
       final sheet = excel['Счета'];
-      
-      // Заголовки
-      sheet.appendRow([
-        xls.TextCellValue('№ счёта'),
-        xls.TextCellValue('Дата'),
-        xls.TextCellValue('Статус'),
-        xls.TextCellValue('Тариф'),
-        xls.TextCellValue('Метод расчёта'),
-        xls.TextCellValue('Мест'),
-        xls.TextCellValue('Вес (кг)'),
-        xls.TextCellValue('Объём (м³)'),
-        xls.TextCellValue('Плотность'),
-        xls.TextCellValue('Перевалка USD'),
-        xls.TextCellValue('Страховка USD'),
-        xls.TextCellValue('Скидка USD'),
-        xls.TextCellValue('Упаковка USD'),
-        xls.TextCellValue('Доставка USD'),
-        xls.TextCellValue('Курс'),
-        xls.TextCellValue('К оплате RUB'),
-      ]);
-      
+
+      // PU-H8: единый список headers, чтобы можно было asserт-нуть длину
+      // против количества values ниже. Если кто-то добавит колонку в
+      // headers, но забудет про values (или наоборот) — assert упадёт в
+      // debug, и баг «всё съехало на одну колонку» не уйдёт в прод.
+      const exportHeaders = <String>[
+        '№ счёта',
+        'Дата',
+        'Статус',
+        'Тариф',
+        'Метод расчёта',
+        'Мест',
+        'Вес (кг)',
+        'Объём (м³)',
+        'Плотность',
+        'Перевалка USD',
+        'Страховка USD',
+        'Скидка USD',
+        'Упаковка USD',
+        'Доставка USD',
+        'Курс',
+        'К оплате RUB',
+      ];
+
+      sheet.appendRow(exportHeaders.map(xls.TextCellValue.new).toList());
+
       // Данные
       final dateFormat = DateFormat('dd.MM.yyyy');
       for (final invoice in invoices) {
-        sheet.appendRow([
+        final row = <xls.CellValue>[
           xls.TextCellValue(invoice.invoiceNumber),
           xls.TextCellValue(invoice.sendDate != null ? dateFormat.format(invoice.sendDate!) : ''),
           xls.TextCellValue(invoice.statusName ?? invoice.status),
@@ -1143,16 +1155,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           xls.DoubleCellValue(invoice.density),
           xls.DoubleCellValue(invoice.transshipmentCost ?? 0),
           xls.DoubleCellValue(invoice.insuranceCost ?? 0),
+          xls.DoubleCellValue(invoice.discountAmount ?? 0),
           xls.DoubleCellValue(invoice.packagingCostTotal ?? 0),
           xls.DoubleCellValue(invoice.totalCostUsd),
           invoice.clientRubRate != null ? xls.DoubleCellValue(invoice.clientRubRate!) : xls.TextCellValue(''),
           xls.DoubleCellValue(invoice.totalCostRub),
-        ]);
+        ];
+        // PU-H8: страховка от «съехавшей» колонки.
+        assert(
+          row.length == exportHeaders.length,
+          'Excel export: row.length(${row.length}) != headers.length(${exportHeaders.length})',
+        );
+        sheet.appendRow(row);
       }
-      
+
       // Удаляем дефолтный лист
       excel.delete('Sheet1');
-      
+
       // Сохраняем
       final bytes = excel.encode();
       if (bytes == null) {
