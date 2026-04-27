@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 /// Типы уведомлений в приложении
@@ -91,7 +93,8 @@ extension NotificationTypeExtension on NotificationType {
       case NotificationType.news:
         return '/news';
       case NotificationType.serviceRules:
-        return '/service-rules';
+        // PU-H1: route в приложении называется /rules (а не /service-rules).
+        return '/rules';
       case NotificationType.invoice:
         return '/invoices';
     }
@@ -150,21 +153,27 @@ class NotificationItem {
     final typeStr = json['type'] as String? ?? '';
     final title = json['title'] as String? ?? '';
     final body = json['body'] as String? ?? '';
-    
-    // data может быть Map или String (JSON строка)
+
+    // data может быть Map или String (JSON строка). FCM-уведомления всегда
+    // отдают payload строкой — без декодирования мы теряли newsId/serviceRuleId
+    // и роутер не мог построить deep link к конкретной сущности.
     Map<String, dynamic> data = {};
     final rawData = json['data'];
     if (rawData is Map<String, dynamic>) {
       data = rawData;
-    } else if (rawData is String) {
-      // Если data - это строка, пробуем распарсить как JSON
+    } else if (rawData is String && rawData.isNotEmpty) {
+      // PU-H2: реально парсим JSON-строку. Если приходит мусор — оставляем
+      // пустую Map (route деградирует до общего, без падения).
       try {
-        // ignore parsing, use empty map
+        final parsed = jsonDecode(rawData);
+        if (parsed is Map<String, dynamic>) {
+          data = parsed;
+        }
       } catch (_) {
-        // ignore
+        // Невалидный JSON — оставляем data пустым.
       }
     }
-    
+
     // Определяем тип уведомления (сначала по type, потом по заголовку/телу)
     NotificationType type;
     if (typeStr.isNotEmpty) {
@@ -173,7 +182,7 @@ class NotificationItem {
       // Пробуем определить по заголовку и телу
       type = _inferTypeFromContent(title, body);
     }
-    
+
     // Если тип всё ещё дефолтный - пробуем уточнить по содержимому
     if (type == NotificationType.trackStatus) {
       final inferredType = _inferTypeFromContent(title, body);
@@ -181,10 +190,10 @@ class NotificationItem {
         type = inferredType;
       }
     }
-    
+
     // Определяем маршрут
     String? route = _getRouteForType(type, data);
-    
+
     return NotificationItem(
       id: json['id'].toString(),
       type: type,
@@ -193,8 +202,8 @@ class NotificationItem {
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
       isRead: json['isRead'] as bool? ?? false,
       route: route,
-      relatedId: data['trackNumber'] as String? ?? 
-                 data['assemblyNumber'] as String? ?? 
+      relatedId: data['trackNumber'] as String? ??
+                 data['assemblyNumber'] as String? ??
                  data['invoiceNumber'] as String? ??
                  data['trackId']?.toString() ??
                  data['assemblyId']?.toString() ??
@@ -203,34 +212,34 @@ class NotificationItem {
       newStatus: data['newStatus'] as String? ?? data['status'] as String?,
     );
   }
-  
+
   /// Парсинг типа уведомления из строки API
   static NotificationType _parseNotificationType(String typeStr) {
     // Приводим к нижнему регистру для универсального сравнения
     final type = typeStr.toLowerCase().trim();
-    
+
     // Трек статусы (включая создание нового трека)
     if (type.contains('track') && (type.contains('status') || type.contains('update') || type.contains('created'))) {
       return NotificationType.trackStatus;
     }
-    
+
     // Сборка статусы
     if (type.contains('assembly') && (type.contains('status') || type.contains('update'))) {
       return NotificationType.assemblyStatus;
     }
-    
+
     // Фотоотчёт
     if (type.contains('photo') || type.contains('фото')) {
       return NotificationType.photoReportStatus;
     }
-    
+
     // Вопрос/ответ
     if (type.contains('question') || type.contains('answer') || type.contains('вопрос') || type.contains('ответ')) {
       return NotificationType.questionStatus;
     }
-    
+
     // Чат / сообщение от поддержки
-    if (type.contains('chat') || type.contains('message') || type.contains('support') || 
+    if (type.contains('chat') || type.contains('message') || type.contains('support') ||
         type.contains('сообщение') || type.contains('поддержк')) {
       // Различаем чат по оплате и обычный чат поддержки
       if (type.contains('payment') || type.contains('оплат')) {
@@ -238,22 +247,22 @@ class NotificationItem {
       }
       return NotificationType.chatMessage;
     }
-    
+
     // Новости
     if (type.contains('news') || type.contains('новост')) {
       return NotificationType.news;
     }
-    
+
     // Правила оказания услуг
     if (type.contains('service') && type.contains('rule') || type.contains('правил')) {
       return NotificationType.serviceRules;
     }
-    
+
     // Счета
     if (type.contains('invoice') || type.contains('счет') || type.contains('счёт') || type.contains('payment')) {
       return NotificationType.invoice;
     }
-    
+
     // Точные совпадения для обратной совместимости
     switch (type) {
       case 'track_created':
@@ -301,68 +310,68 @@ class NotificationItem {
         return NotificationType.trackStatus;
     }
   }
-  
+
   /// Определить тип уведомления по содержимому (заголовку и телу)
   static NotificationType _inferTypeFromContent(String title, String body) {
     final combined = '$title $body'.toLowerCase();
-    
+
     // Сообщение от поддержки / чат
-    if (combined.contains('сообщение от поддержки') || 
+    if (combined.contains('сообщение от поддержки') ||
         combined.contains('поддержка') ||
         combined.contains('чат') ||
         combined.contains('support') ||
         combined.contains('message')) {
       return NotificationType.chatMessage;
     }
-    
+
     // Фотоотчёт
-    if (combined.contains('фото') || 
+    if (combined.contains('фото') ||
         combined.contains('photo') ||
         combined.contains('фотоотчёт') ||
         combined.contains('фотоотчет')) {
       return NotificationType.photoReportStatus;
     }
-    
+
     // Вопрос/ответ
-    if (combined.contains('вопрос') || 
+    if (combined.contains('вопрос') ||
         combined.contains('ответ') ||
         combined.contains('question') ||
         combined.contains('answer')) {
       return NotificationType.questionStatus;
     }
-    
+
     // Счёт
-    if (combined.contains('счёт') || 
+    if (combined.contains('счёт') ||
         combined.contains('счет') ||
         combined.contains('invoice') ||
         combined.contains('оплат')) {
       return NotificationType.invoice;
     }
-    
+
     // Сборка
-    if (combined.contains('сборк') || 
+    if (combined.contains('сборк') ||
         combined.contains('assembly') ||
         combined.contains('sb-')) {
       return NotificationType.assemblyStatus;
     }
-    
+
     // Новость
-    if (combined.contains('новост') || 
+    if (combined.contains('новост') ||
         combined.contains('news')) {
       return NotificationType.news;
     }
-    
+
     // Правила оказания услуг
-    if (combined.contains('правил') || 
+    if (combined.contains('правил') ||
         combined.contains('service') && combined.contains('rule') ||
         combined.contains('услуг')) {
       return NotificationType.serviceRules;
     }
-    
+
     // По умолчанию - статус трека
     return NotificationType.trackStatus;
   }
-  
+
   /// Получить маршрут для типа уведомления
   static String? _getRouteForType(NotificationType type, Map<String, dynamic> data) {
     switch (type) {
@@ -370,19 +379,28 @@ class NotificationItem {
       case NotificationType.assemblyStatus:
       case NotificationType.photoReportStatus:
       case NotificationType.questionStatus:
+        // PU-H1: NOCODE digest (сводка незарегистрированных треков) ведёт
+        // на /search-nocode, если backend пометил тип в data.
+        final isNocodeDigest = data['kind'] == 'nocode_digest' ||
+            data['notification_type'] == 'nocode_digest';
+        if (isNocodeDigest) {
+          return '/search-nocode';
+        }
         return '/tracks';
       case NotificationType.chatMessage:
         return '/support';
       case NotificationType.paymentChatMessage:
         return '/payment-chat';
       case NotificationType.news:
+        // /news/:slug в роутере принимает любую строку — id тоже подойдёт.
         final newsId = data['newsId'];
         if (newsId != null) return '/news/$newsId';
         return '/news';
       case NotificationType.serviceRules:
+        // PU-H1: route называется /rules (не /service-rules).
         final ruleId = data['serviceRuleId'];
-        if (ruleId != null) return '/service-rules/$ruleId';
-        return '/service-rules';
+        if (ruleId != null) return '/rules/$ruleId';
+        return '/rules';
       case NotificationType.invoice:
         return '/invoices';
     }

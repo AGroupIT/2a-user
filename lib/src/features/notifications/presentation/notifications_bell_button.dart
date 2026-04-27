@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/push_notification_service.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../application/notifications_controller.dart';
 import 'notifications_sheet.dart';
@@ -20,8 +21,13 @@ class NotificationsBellButton extends ConsumerWidget {
       );
     }
 
-    final itemsAsync = ref.watch(notificationsControllerProvider);
-    final unreadCount = itemsAsync.value?.where((n) => !n.isRead).length ?? 0;
+    // PU-M13 follow-up: badge берёт count из глобального
+    // unreadNotificationsCountProvider, в который контроллер пишет backend
+    // unreadCount по ВСЕМ уведомлениям (а не только по первой странице).
+    // Контроллер всё ещё watch'им — иначе он autoDispose, и без него никто
+    // не пишет в unreadNotificationsCountProvider.
+    ref.watch(notificationsControllerProvider);
+    final unreadCount = ref.watch(unreadNotificationsCountProvider);
 
     return Stack(
       clipBehavior: Clip.none,
