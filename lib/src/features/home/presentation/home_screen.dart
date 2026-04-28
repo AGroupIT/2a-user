@@ -880,6 +880,11 @@ class _InvoicesDigest extends StatelessWidget {
   /// Расчёт Доставки USD по формуле:
   /// Доставка = тариф * вес/объём + упаковка + перевалка + страховка - скидка
   double _calculateDeliveryCostUsd(InvoiceItem item) {
+    // Сначала используем сохранённый backend-итог. Клиентский пересчёт —
+    // только fallback для старых/неполных ответов API.
+    if (item.totalCostUsd > 0) {
+      return item.totalCostUsd;
+    }
     if (item.deliveryCostUsd > 0) {
       return item.deliveryCostUsd;
     }

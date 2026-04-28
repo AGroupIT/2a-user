@@ -689,7 +689,12 @@ class _InvoiceTile extends StatelessWidget {
   /// Расчёт Доставки USD по формуле из админа:
   /// Доставка = тариф + упаковка + перевалка + страховка - скидка
   double _calculateDeliveryCostUsd() {
-    // Если API вернул готовое значение - используем его
+    // Сохранённый итог счёта в backend является источником истины.
+    // Иначе старые счета без deliveryCost/calculationMethod могут
+    // пересчитаться на клиенте по другой формуле и показать меньшую сумму.
+    if (item.totalCostUsd > 0) {
+      return item.totalCostUsd;
+    }
     if (item.deliveryCostUsd > 0) {
       return item.deliveryCostUsd;
     }
@@ -883,7 +888,12 @@ class _InvoiceDetailSheet extends StatelessWidget {
   /// Расчёт Доставки USD по формуле из админа:
   /// Доставка = тариф + упаковка + перевалка + страховка - скидка
   double _calculateDeliveryCostUsd() {
-    // Если API вернул готовое значение - используем его
+    // Сохранённый итог счёта в backend является источником истины.
+    // Иначе старые счета без deliveryCost/calculationMethod могут
+    // пересчитаться на клиенте по другой формуле и показать меньшую сумму.
+    if (item.totalCostUsd > 0) {
+      return item.totalCostUsd;
+    }
     if (item.deliveryCostUsd > 0) {
       return item.deliveryCostUsd;
     }
