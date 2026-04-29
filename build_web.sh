@@ -45,10 +45,18 @@ sync_coolify_shared() {
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --delete \
       --exclude '.git' \
+      --exclude '.gitignore' \
       --exclude '.dart_tool' \
       --exclude '.gitnexus' \
       --exclude '.code-review-graph' \
+      --exclude '.code-review-graphignore' \
       --exclude '.codegraph' \
+      --exclude '.claude' \
+      --exclude 'AGENTS.md' \
+      --exclude 'CLAUDE.md' \
+      --exclude 'CHANGELOG.md' \
+      --exclude 'README.md' \
+      --exclude 'test' \
       --exclude 'build' \
       --exclude '.DS_Store' \
       "$src/" "$dst/"
@@ -56,7 +64,11 @@ sync_coolify_shared() {
     rm -rf "$dst"
     mkdir -p "$dst"
     cp -R "$src/." "$dst/"
-    find "$dst" -name '.git' -o -name '.dart_tool' -o -name 'build' -o -name '.DS_Store' | xargs rm -rf
+    find "$dst" \
+      \( -name '.git' -o -name '.gitignore' -o -name '.dart_tool' -o -name '.gitnexus' -o -name '.code-review-graph' \
+      -o -name '.code-review-graphignore' -o -name '.codegraph' -o -name '.claude' \
+      -o -name 'AGENTS.md' -o -name 'CLAUDE.md' -o -name 'CHANGELOG.md' -o -name 'README.md' \
+      -o -name 'test' -o -name 'build' -o -name '.DS_Store' \) -prune -exec rm -rf {} +
   fi
 }
 
