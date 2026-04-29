@@ -25,21 +25,19 @@ class ApiClient {
   // На мобильных платформах используем FlutterSecureStorage с правильными настройками
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock,
-    ),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
   static const String _tokenKey = 'auth_token';
-  
+
   // In-memory fallback для web и desktop
   static String? _inMemoryToken;
   static Future<String?>? _tokenLoadInFlight;
   static const Duration _prefsTimeout = Duration(seconds: 3);
-  
+
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
   bool _unauthorizedCallbackScheduled = false;
-  
+
   /// Установить callback для обработки 401 ошибки
   void setOnUnauthorizedCallback(OnUnauthorizedCallback callback) {
     _onUnauthorized = callback;
@@ -90,7 +88,8 @@ class ApiClient {
           final isLoginRequest = error.requestOptions.path.contains('/login');
 
           if (!isLoginRequest) {
-            final sentAuth = error.requestOptions.extra['sent_auth_token'] == true ||
+            final sentAuth =
+                error.requestOptions.extra['sent_auth_token'] == true ||
                 _hasAuthorizationHeader(error.requestOptions);
             if (sentAuth) {
               // Защита от "шторма" 401: если много запросов одновременно — callback один раз.
@@ -146,7 +145,8 @@ class ApiClient {
       onError: (error, handler) async {
         // Отправляем только серверные ошибки (5xx) и сетевые ошибки
         final statusCode = error.response?.statusCode;
-        final shouldReport = statusCode == null || // Сетевая ошибка
+        final shouldReport =
+            statusCode == null || // Сетевая ошибка
             statusCode >= 500; // Серверная ошибка
 
         if (shouldReport) {
@@ -166,7 +166,8 @@ class ApiClient {
           // Добавляем breadcrumb для контекста
           Sentry.addBreadcrumb(
             Breadcrumb(
-              message: 'API Error: ${error.requestOptions.method} ${error.requestOptions.path}',
+              message:
+                  'API Error: ${error.requestOptions.method} ${error.requestOptions.path}',
               category: 'http',
               level: SentryLevel.error,
               data: {
@@ -256,7 +257,9 @@ class ApiClient {
 
   Future<String?> _readTokenFromPrefs() async {
     try {
-      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(
+        _prefsTimeout,
+      );
       return prefs.getString(_tokenKey);
     } catch (e) {
       debugPrint('Error/timeout reading token from SharedPreferences: $e');
@@ -266,7 +269,9 @@ class ApiClient {
 
   Future<void> _writeTokenToPrefs(String token) async {
     try {
-      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(
+        _prefsTimeout,
+      );
       await prefs.setString(_tokenKey, token);
     } catch (e) {
       debugPrint('Error/timeout saving token to SharedPreferences: $e');
@@ -275,7 +280,9 @@ class ApiClient {
 
   Future<void> _removeTokenFromPrefs() async {
     try {
-      final prefs = await SharedPreferences.getInstance().timeout(_prefsTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(
+        _prefsTimeout,
+      );
       await prefs.remove(_tokenKey);
     } catch (e) {
       debugPrint('Error/timeout clearing token from SharedPreferences: $e');
@@ -327,9 +334,7 @@ class ApiClient {
 
     // На мобильных платформах удаляем из FlutterSecureStorage
     try {
-      await _storage
-          .delete(key: _tokenKey)
-          .timeout(const Duration(seconds: 5));
+      await _storage.delete(key: _tokenKey).timeout(const Duration(seconds: 5));
       debugPrint('Token cleared from SecureStorage');
     } catch (e) {
       debugPrint('Error/timeout clearing token from SecureStorage: $e');
@@ -338,13 +343,13 @@ class ApiClient {
     // Также чистим fallback в SharedPreferences (если использовался)
     await _removeTokenFromPrefs();
   }
-  
+
   /// Проверка на Desktop платформу
   bool get _isDesktop {
     if (kIsWeb) return false;
     return defaultTargetPlatform == TargetPlatform.windows ||
-           defaultTargetPlatform == TargetPlatform.linux ||
-           defaultTargetPlatform == TargetPlatform.macOS;
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS;
   }
 
   /// Проверка наличия токена (синхронная, проверяет только кеш в памяти)
@@ -357,7 +362,7 @@ class ApiClient {
   }
 
   // HTTP methods
-  
+
   /// GET запрос
   Future<Response<T>> get<T>(
     String path, {
@@ -444,10 +449,6 @@ class ApiClient {
       fieldName: await MultipartFile.fromFile(filePath),
     });
 
-    return _dio.post<T>(
-      path,
-      data: formData,
-      onSendProgress: onSendProgress,
-    );
+    return _dio.post<T>(path, data: formData, onSendProgress: onSendProgress);
   }
 }

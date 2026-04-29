@@ -82,9 +82,12 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
 
     // Subscribe to paginated photos notifier
     if (_selectedDate.isNotEmpty) {
-      final newNotifier = ref.read(paginatedPhotosByDateProvider(
-        (clientCode: clientCode, date: _selectedDate),
-      ));
+      final newNotifier = ref.read(
+        paginatedPhotosByDateProvider((
+          clientCode: clientCode,
+          date: _selectedDate,
+        )),
+      );
       if (_photosNotifier != newNotifier) {
         _photosNotifier?.removeListener(_onPhotosChanged);
         _photosNotifier = newNotifier;
@@ -123,161 +126,176 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
         TutorialStep(
           icon: Icons.photo_camera_rounded,
           title: 'Фотоотчёты',
-          description: 'Мы фотографируем ваши посылки на складе. Здесь хранятся все снимки и видео по вашим отправлениям.',
+          description:
+              'Мы фотографируем ваши посылки на складе. Здесь хранятся все снимки и видео по вашим отправлениям.',
           targetKey: _statsKey,
         ),
         TutorialStep(
           icon: Icons.calendar_month_rounded,
           title: 'Календарь дат',
-          description: 'Оранжевые даты — дни, когда есть фотографии. Нажмите на дату, чтобы открыть снимки за этот день.',
+          description:
+              'Оранжевые даты — дни, когда есть фотографии. Нажмите на дату, чтобы открыть снимки за этот день.',
           targetKey: _calendarKey,
         ),
         TutorialStep(
           icon: Icons.fullscreen_rounded,
           title: 'Просмотр фото',
-          description: 'Нажмите на любое фото для полноэкранного просмотра. Видеофайлы отмечены значком воспроизведения.',
+          description:
+              'Нажмите на любое фото для полноэкранного просмотра. Видеофайлы отмечены значком воспроизведения.',
           targetKey: _photoGridKey,
         ),
       ],
       child: RefreshIndicator(
-      onRefresh: onRefresh,
-      color: context.brandPrimary,
-      // CustomScrollView + SliverGrid обеспечивают виртуализацию фото-грида:
-      // только видимые ячейки держатся в дереве, остальные уничтожаются.
-      // Ранее использовался ListView + shrinkWrap:true GridView, который рендерил
-      // ВСЕ фото одновременно → OOM crash при большом количестве.
-      child: Stack(
-        children: [
-        CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Фотографии и видео',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
-                  KeyedSubtree(key: _statsKey, child: _PhotosStatsCard(count: photosCount)),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 1,
-                        child: _CustomDropdown<int>(
-                          value: _month,
-                          label: 'Месяц',
-                          items: List.generate(
-                            12,
-                            (i) => _DropdownItem(value: i, label: _monthLabel(i)),
+        onRefresh: onRefresh,
+        color: context.brandPrimary,
+        // CustomScrollView + SliverGrid обеспечивают виртуализацию фото-грида:
+        // только видимые ячейки держатся в дереве, остальные уничтожаются.
+        // Ранее использовался ListView + shrinkWrap:true GridView, который рендерил
+        // ВСЕ фото одновременно → OOM crash при большом количестве.
+        child: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Фотографии и видео',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 12),
+                        KeyedSubtree(
+                          key: _statsKey,
+                          child: _PhotosStatsCard(count: photosCount),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: _CustomDropdown<int>(
+                                value: _month,
+                                label: 'Месяц',
+                                items: List.generate(
+                                  12,
+                                  (i) => _DropdownItem(
+                                    value: i,
+                                    label: _monthLabel(i),
+                                  ),
+                                ),
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  setState(() {
+                                    _month = v;
+                                    _selectedDate = '';
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 1,
+                              child: _CustomDropdown<int>(
+                                value: _year,
+                                label: 'Год',
+                                items: List.generate(5, (i) {
+                                  final y = DateTime.now().year - 2 + i;
+                                  return _DropdownItem(value: y, label: '$y');
+                                }),
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  setState(() {
+                                    _year = v;
+                                    _selectedDate = '';
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        daysAsync.when(
+                          loading: () => const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
                           ),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() {
-                              _month = v;
-                              _selectedDate = '';
-                            });
+                          error: (e, _) => Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              'Не удалось загрузить даты: $e',
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ),
+                          data: (days) {
+                            _syncSelectedDate(days);
+                            return KeyedSubtree(
+                              key: _calendarKey,
+                              child: _CalendarGrid(
+                                year: _year,
+                                month: _month,
+                                selectedDate: _selectedDate,
+                                enabledDates: days,
+                                onPrevMonth: () {
+                                  setState(() {
+                                    if (_month == 0) {
+                                      _month = 11;
+                                      _year -= 1;
+                                    } else {
+                                      _month -= 1;
+                                    }
+                                    _selectedDate = '';
+                                  });
+                                },
+                                onNextMonth: () {
+                                  setState(() {
+                                    if (_month == 11) {
+                                      _month = 0;
+                                      _year += 1;
+                                    } else {
+                                      _month += 1;
+                                    }
+                                    _selectedDate = '';
+                                  });
+                                },
+                                onSelect: (date) =>
+                                    setState(() => _selectedDate = date),
+                              ),
+                            );
                           },
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 1,
-                        child: _CustomDropdown<int>(
-                          value: _year,
-                          label: 'Год',
-                          items: List.generate(5, (i) {
-                            final y = DateTime.now().year - 2 + i;
-                            return _DropdownItem(value: y, label: '$y');
-                          }),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() {
-                              _year = v;
-                              _selectedDate = '';
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  daysAsync.when(
-                    loading: () => const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(),
-                      ),
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                    error: (e, _) => Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        'Не удалось загрузить даты: $e',
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                    ),
-                    data: (days) {
-                      _syncSelectedDate(days);
-                      return KeyedSubtree(
-                        key: _calendarKey,
-                        child: _CalendarGrid(
-                          year: _year,
-                          month: _month,
-                          selectedDate: _selectedDate,
-                          enabledDates: days,
-                          onPrevMonth: () {
-                            setState(() {
-                              if (_month == 0) {
-                                _month = 11;
-                                _year -= 1;
-                              } else {
-                                _month -= 1;
-                              }
-                              _selectedDate = '';
-                            });
-                          },
-                          onNextMonth: () {
-                            setState(() {
-                              if (_month == 11) {
-                                _month = 0;
-                                _year += 1;
-                              } else {
-                                _month += 1;
-                              }
-                              _selectedDate = '';
-                            });
-                          },
-                          onSelect: (date) => setState(() => _selectedDate = date),
-                        ),
-                      );
-                    },
                   ),
-                  const SizedBox(height: 12),
-                ],
-              ),
+                ),
+                ..._buildPhotosSlivers(context, photosState),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: (24 + bottomPad) * 0.55),
+                ),
+              ],
             ),
-          ),
-          ..._buildPhotosSlivers(context, photosState),
-          SliverToBoxAdapter(
-            child: SizedBox(height: (24 + bottomPad) * 0.55),
-          ),
-        ],
+            ScrollToTopButton(controller: _scrollController),
+          ],
+        ),
       ),
-      ScrollToTopButton(controller: _scrollController),
-      ],
-      ),
-    ));
+    );
   }
 
   /// Возвращает список slivers для секции фотографий.
   /// Использует SliverGrid вместо shrinkWrap GridView — обеспечивает
   /// виртуализацию: только видимые ячейки держатся в дереве.
-  List<Widget> _buildPhotosSlivers(BuildContext context, PaginatedPhotosState? state) {
+  List<Widget> _buildPhotosSlivers(
+    BuildContext context,
+    PaginatedPhotosState? state,
+  ) {
     if (state == null) {
       return [
         const SliverToBoxAdapter(
@@ -341,25 +359,22 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             mainAxisSpacing: 8,
             childAspectRatio: 1,
           ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final item = items[index];
-              return _PhotoThumbnail(
-                item: item,
-                onOpen: () => Navigator.of(context, rootNavigator: true).push(
-                  MaterialPageRoute<void>(
-                    fullscreenDialog: true,
-                    builder: (_) => PhotoViewerScreen(
-                      item: item,
-                      allPhotos: items,
-                      initialIndex: index,
-                    ),
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final item = items[index];
+            return _PhotoThumbnail(
+              item: item,
+              onOpen: () => Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute<void>(
+                  fullscreenDialog: true,
+                  builder: (_) => PhotoViewerScreen(
+                    item: item,
+                    allPhotos: items,
+                    initialIndex: index,
                   ),
                 ),
-              );
-            },
-            childCount: items.length,
-          ),
+              ),
+            );
+          }, childCount: items.length),
         ),
       ),
       if (state.isLoading)
@@ -722,7 +737,10 @@ class _PhotoThumbnail extends StatelessWidget {
                       memCacheHeight: 300,
                       imageBuilder: (_, imageProvider) => DecoratedBox(
                         decoration: BoxDecoration(
-                          image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                          image: DecorationImage(
+                            image: imageProvider,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                       placeholder: (_, _) => Container(

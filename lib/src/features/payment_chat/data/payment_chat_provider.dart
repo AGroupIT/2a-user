@@ -21,9 +21,10 @@ class IsPaymentChatScreenOpenNotifier extends Notifier<bool> {
 }
 
 /// Провайдер флага открытия экрана чата по оплате
-final isPaymentChatScreenOpenProvider = NotifierProvider<IsPaymentChatScreenOpenNotifier, bool>(
-  IsPaymentChatScreenOpenNotifier.new,
-);
+final isPaymentChatScreenOpenProvider =
+    NotifierProvider<IsPaymentChatScreenOpenNotifier, bool>(
+      IsPaymentChatScreenOpenNotifier.new,
+    );
 
 /// Репозиторий для работы с чатом по оплате
 class PaymentChatRepository {
@@ -57,7 +58,8 @@ class PaymentChatRepository {
   }
 
   /// Отправить сообщение в чат по оплате
-  Future<ChatMessage> sendMessage(String content, {
+  Future<ChatMessage> sendMessage(
+    String content, {
     String contentType = 'text',
     Map<String, dynamic>? metadata,
     List<int>? attachmentIds,
@@ -69,7 +71,8 @@ class PaymentChatRepository {
           'content': content,
           'contentType': contentType,
           if (metadata != null) 'metadata': metadata,
-          if (attachmentIds != null && attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
+          if (attachmentIds != null && attachmentIds.isNotEmpty)
+            'attachmentIds': attachmentIds,
         },
       );
 
@@ -85,7 +88,10 @@ class PaymentChatRepository {
   }
 
   /// Загрузить файл в чат (изображение или PDF)
-  Future<Map<String, dynamic>?> uploadAttachment(File file, int conversationId) async {
+  Future<Map<String, dynamic>?> uploadAttachment(
+    File file,
+    int conversationId,
+  ) async {
     try {
       final fileName = file.path.split('/').last;
       final extension = fileName.split('.').last.toLowerCase();
@@ -106,7 +112,11 @@ class PaymentChatRepository {
   }
 
   /// Загрузить файл из bytes в чат (для iOS - обход sandbox ограничений)
-  Future<Map<String, dynamic>?> uploadAttachmentFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+  Future<Map<String, dynamic>?> uploadAttachmentFromBytes(
+    Uint8List bytes,
+    String fileName,
+    int conversationId,
+  ) async {
     try {
       if (bytes.isEmpty) {
         debugPrint('Error: File is empty');
@@ -122,7 +132,12 @@ class PaymentChatRepository {
   }
 
   /// Внутренний метод загрузки bytes
-  Future<Map<String, dynamic>?> _uploadAttachmentBytes(Uint8List bytes, String fileName, String extension, int conversationId) async {
+  Future<Map<String, dynamic>?> _uploadAttachmentBytes(
+    Uint8List bytes,
+    String fileName,
+    String extension,
+    int conversationId,
+  ) async {
     // Определяем MIME-тип
     String mimeType;
     String mimeSubtype;
@@ -159,7 +174,8 @@ class PaymentChatRepository {
         break;
       case 'docx':
         mimeType = 'application';
-        mimeSubtype = 'vnd.openxmlformats-officedocument.wordprocessingml.document';
+        mimeSubtype =
+            'vnd.openxmlformats-officedocument.wordprocessingml.document';
         break;
       case 'xls':
         mimeType = 'application';
@@ -175,7 +191,8 @@ class PaymentChatRepository {
         break;
       case 'pptx':
         mimeType = 'application';
-        mimeSubtype = 'vnd.openxmlformats-officedocument.presentationml.presentation';
+        mimeSubtype =
+            'vnd.openxmlformats-officedocument.presentationml.presentation';
         break;
       case 'csv':
         mimeType = 'text';
@@ -218,9 +235,7 @@ class PaymentChatRepository {
     final response = await _apiClient.post(
       '/support/attachments',
       data: formData,
-      options: Options(
-        headers: {'Content-Type': 'multipart/form-data'},
-      ),
+      options: Options(headers: {'Content-Type': 'multipart/form-data'}),
     );
 
     if (response.statusCode == 201 && response.data != null) {
@@ -230,13 +245,14 @@ class PaymentChatRepository {
   }
 
   /// Получить новые сообщения после указанного ID (для polling)
-  Future<List<ChatMessage>> getNewMessages(int conversationId, int afterMessageId) async {
+  Future<List<ChatMessage>> getNewMessages(
+    int conversationId,
+    int afterMessageId,
+  ) async {
     try {
       final response = await _apiClient.get(
         '/client/payment-chat',
-        queryParameters: {
-          'afterMessageId': afterMessageId.toString(),
-        },
+        queryParameters: {'afterMessageId': afterMessageId.toString()},
       );
 
       if (response.statusCode == 200 && response.data != null) {
@@ -382,7 +398,9 @@ class PaymentChatController extends Notifier<PaymentChatState> {
             if (message.isFromSupport) {
               final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
               if (!isChatOpen) {
-                final notificationService = ref.read(pushNotificationServiceProvider);
+                final notificationService = ref.read(
+                  pushNotificationServiceProvider,
+                );
                 notificationService.showChatMessageNotification(
                   senderName: message.senderName,
                   message: message.content,
@@ -420,9 +438,12 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       try {
         final deletedId = data['id'] as int?;
         final convId = data['conversationId'] as int?;
-        if (deletedId != null && state.conversation != null &&
+        if (deletedId != null &&
+            state.conversation != null &&
             convId == state.conversation!.id) {
-          final filtered = state.messages.where((m) => m.id != deletedId).toList();
+          final filtered = state.messages
+              .where((m) => m.id != deletedId)
+              .toList();
           state = state.copyWith(messages: filtered);
         }
       } catch (e) {
@@ -435,7 +456,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   void _startFallbackPolling() {
     _fallbackPollingTimer?.cancel();
     _fallbackPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_isDisposed) { _fallbackPollingTimer?.cancel(); return; }
+      if (_isDisposed) {
+        _fallbackPollingTimer?.cancel();
+        return;
+      }
       if (_wsService.currentStatus != SocketConnectionStatus.connected) {
         pollNewMessages();
       }
@@ -470,11 +494,15 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   }
 
   /// Отправить сообщение
-  Future<bool> sendMessage(String content, {
+  Future<bool> sendMessage(
+    String content, {
     Map<String, dynamic>? metadata,
     List<int>? attachmentIds,
   }) async {
-    if (content.trim().isEmpty && (attachmentIds == null || attachmentIds.isEmpty)) return false;
+    if (content.trim().isEmpty &&
+        (attachmentIds == null || attachmentIds.isEmpty)) {
+      return false;
+    }
 
     state = state.copyWith(isSending: true, clearError: true);
 
@@ -503,7 +531,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   }
 
   /// Загрузить файл на сервер
-  Future<Map<String, dynamic>?> uploadFile(File file, int conversationId) async {
+  Future<Map<String, dynamic>?> uploadFile(
+    File file,
+    int conversationId,
+  ) async {
     state = state.copyWith(isUploading: true, clearError: true);
 
     try {
@@ -533,11 +564,19 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   }
 
   /// Загрузить файл из bytes на сервер (для iOS - обход sandbox ограничений)
-  Future<Map<String, dynamic>?> uploadFileFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+  Future<Map<String, dynamic>?> uploadFileFromBytes(
+    Uint8List bytes,
+    String fileName,
+    int conversationId,
+  ) async {
     state = state.copyWith(isUploading: true, clearError: true);
 
     try {
-      final result = await _repository.uploadAttachmentFromBytes(bytes, fileName, conversationId);
+      final result = await _repository.uploadAttachmentFromBytes(
+        bytes,
+        fileName,
+        conversationId,
+      );
 
       if (result != null) {
         // Добавляем в pending attachments
@@ -593,23 +632,26 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
       if (newMessages.isNotEmpty) {
         final existingIds = state.messages.map((m) => m.id).toSet();
-        final uniqueNewMessages = newMessages.where((m) => !existingIds.contains(m.id)).toList();
+        final uniqueNewMessages = newMessages
+            .where((m) => !existingIds.contains(m.id))
+            .toList();
 
         if (uniqueNewMessages.isNotEmpty) {
           final allMessages = [...state.messages, ...uniqueNewMessages];
-          final lastId = allMessages.isNotEmpty ? allMessages.last.id : lastMessageId;
+          final lastId = allMessages.isNotEmpty
+              ? allMessages.last.id
+              : lastMessageId;
 
-          state = state.copyWith(
-            messages: allMessages,
-            lastMessageId: lastId,
-          );
+          state = state.copyWith(messages: allMessages, lastMessageId: lastId);
 
           // Показать локальное уведомление для сообщений от бухгалтерии
           final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
           if (!isChatOpen) {
             for (final msg in uniqueNewMessages) {
               if (msg.isFromSupport) {
-                final notificationService = ref.read(pushNotificationServiceProvider);
+                final notificationService = ref.read(
+                  pushNotificationServiceProvider,
+                );
                 await notificationService.showPaymentChatMessageNotification(
                   senderName: msg.senderName,
                   message: msg.content,
@@ -632,4 +674,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 }
 
 /// Провайдер контроллера чата по оплате
-final paymentChatControllerProvider = NotifierProvider<PaymentChatController, PaymentChatState>(PaymentChatController.new);
+final paymentChatControllerProvider =
+    NotifierProvider<PaymentChatController, PaymentChatState>(
+      PaymentChatController.new,
+    );

@@ -46,7 +46,9 @@ abstract class NotificationsRepository {
   Future<void> markAllAsRead();
 }
 
-final notificationsRepositoryProvider = Provider<NotificationsRepository>((ref) {
+final notificationsRepositoryProvider = Provider<NotificationsRepository>((
+  ref,
+) {
   return RealNotificationsRepository(ref);
 });
 
@@ -74,17 +76,16 @@ class RealNotificationsRepository implements NotificationsRepository {
     try {
       final response = await _api.get(
         '/notifications',
-        queryParameters: {
-          'page': page,
-          'limit': limit,
-        },
+        queryParameters: {'page': page, 'limit': limit},
       );
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
         final notificationsJson = data['notifications'] as List<dynamic>? ?? [];
         final items = notificationsJson
-            .map((json) => NotificationItem.fromJson(json as Map<String, dynamic>))
+            .map(
+              (json) => NotificationItem.fromJson(json as Map<String, dynamic>),
+            )
             .toList();
 
         // unreadCount пишется backend'ом по полному скоупу пользователя,
@@ -122,12 +123,7 @@ class RealNotificationsRepository implements NotificationsRepository {
   @override
   Future<void> markAsRead(List<int> ids) async {
     try {
-      await _api.patch(
-        '/notifications',
-        data: {
-          'ids': ids,
-        },
-      );
+      await _api.patch('/notifications', data: {'ids': ids});
     } on DioException catch (e) {
       debugPrint('Error marking notifications as read: $e');
       rethrow;
@@ -137,12 +133,7 @@ class RealNotificationsRepository implements NotificationsRepository {
   @override
   Future<void> markAllAsRead() async {
     try {
-      await _api.patch(
-        '/notifications',
-        data: {
-          'markAllAsRead': true,
-        },
-      );
+      await _api.patch('/notifications', data: {'markAllAsRead': true});
     } on DioException catch (e) {
       debugPrint('Error marking all notifications as read: $e');
       rethrow;

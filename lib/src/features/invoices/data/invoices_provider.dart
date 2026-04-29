@@ -32,7 +32,9 @@ class InvoiceStatus {
 }
 
 /// Провайдер для статусов счетов из БД
-final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((ref) async {
+final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((
+  ref,
+) async {
   if (ref.watch(demoModeProvider)) return [];
   final apiClient = ref.read(apiClientProvider);
 
@@ -64,17 +66,17 @@ final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((ref) async 
 });
 
 /// Провайдер для получения списка счетов
-final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((ref, clientCode) async {
+final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((
+  ref,
+  clientCode,
+) async {
   if (ref.watch(demoModeProvider)) return DemoData.invoices;
   final apiClient = ref.read(apiClientProvider);
 
   try {
     final response = await apiClient.get(
       '/invoices',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 100,
-      },
+      queryParameters: {'clientCode': clientCode, 'take': 100},
     );
 
     if (response.statusCode == 200 && response.data != null) {
@@ -93,34 +95,36 @@ final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((r
 });
 
 /// Провайдер для дайджеста счетов (последние 10, сортировка по updatedAt)
-final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>((ref, clientCode) async {
-  if (ref.watch(demoModeProvider)) return DemoData.invoices;
-  final apiClient = ref.read(apiClientProvider);
+final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>(
+  (ref, clientCode) async {
+    if (ref.watch(demoModeProvider)) return DemoData.invoices;
+    final apiClient = ref.read(apiClientProvider);
 
-  try {
-    final response = await apiClient.get(
-      '/invoices',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 10,
-        'sortBy': 'updatedAt',
-      },
-    );
+    try {
+      final response = await apiClient.get(
+        '/invoices',
+        queryParameters: {
+          'clientCode': clientCode,
+          'take': 10,
+          'sortBy': 'updatedAt',
+        },
+      );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final invoicesJson = data['data'] as List<dynamic>? ?? [];
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final invoicesJson = data['data'] as List<dynamic>? ?? [];
 
-      return invoicesJson
-          .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
-          .toList();
+        return invoicesJson
+            .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint('Error loading invoices digest: $e');
+      return [];
     }
-    return [];
-  } on DioException catch (e) {
-    debugPrint('Error loading invoices digest: $e');
-    return [];
-  }
-});
+  },
+);
 
 /// PU-H9: вытащить ВСЕ счета клиента батчами для экспорта.
 ///
@@ -143,7 +147,9 @@ Future<List<InvoiceItem>> fetchAllInvoicesForExport(
 
   while (true) {
     if (all.length >= safetyLimit) {
-      debugPrint('fetchAllInvoicesForExport: hit safetyLimit=$safetyLimit, stop');
+      debugPrint(
+        'fetchAllInvoicesForExport: hit safetyLimit=$safetyLimit, stop',
+      );
       break;
     }
     try {
@@ -178,7 +184,10 @@ Future<List<InvoiceItem>> fetchAllInvoicesForExport(
 
 /// Провайдер количества счетов для карточки на главном экране.
 /// Считаются только неоплаченные счета (status=unpaid).
-final invoicesCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+final invoicesCountProvider = FutureProvider.family<int, String>((
+  ref,
+  clientCode,
+) async {
   if (ref.watch(demoModeProvider)) return DemoData.invoicesCount;
   final apiClient = ref.read(apiClientProvider);
 
@@ -204,7 +213,10 @@ final invoicesCountProvider = FutureProvider.family<int, String>((ref, clientCod
 });
 
 /// Провайдер для получения одного счёта по ID (для актуальных данных в чате)
-final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((ref, id) async {
+final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((
+  ref,
+  id,
+) async {
   if (ref.watch(demoModeProvider)) {
     return DemoData.invoices.where((i) => i.id == id).firstOrNull;
   }

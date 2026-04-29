@@ -47,7 +47,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoading = authState.isLoading;
       final isLoggedIn = authState.isLoggedIn;
       final isSplashRoute = state.matchedLocation == '/splash';
-      final isAuthRoute = state.matchedLocation == '/login' ||
+      final isAuthRoute =
+          state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
           state.matchedLocation == '/forgot-password';
 
@@ -84,10 +85,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // Auth routes
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -215,10 +213,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/news',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Новости',
-          child: NewsListScreen(),
-        ),
+        builder: (context, state) =>
+            const AppScaffold(title: 'Новости', child: NewsListScreen()),
         routes: [
           GoRoute(
             path: ':slug',
@@ -236,18 +232,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Профиль',
-          child: ProfileScreen(),
-        ),
+        builder: (context, state) =>
+            const AppScaffold(title: 'Профиль', child: ProfileScreen()),
       ),
       GoRoute(
         path: '/rules',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Правила',
-          child: RulesScreen(),
-        ),
+        builder: (context, state) =>
+            const AppScaffold(title: 'Правила', child: RulesScreen()),
         routes: [
           GoRoute(
             path: ':slug',
@@ -273,10 +265,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/tariffs',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Тарифы',
-          child: TariffsScreen(),
-        ),
+        builder: (context, state) =>
+            const AppScaffold(title: 'Тарифы', child: TariffsScreen()),
       ),
       // SP Finance routes
       GoRoute(
@@ -323,23 +313,22 @@ final routerProvider = Provider<GoRouter>((ref) {
               // если open происходил по deep link без extra.
               final extra = state.extra as Map<String, dynamic>?;
               final extraAssemblyId = extra?['assemblyId'];
-              final queryAssemblyId =
-                  int.tryParse(state.uri.queryParameters['assemblyId'] ?? '');
+              final queryAssemblyId = int.tryParse(
+                state.uri.queryParameters['assemblyId'] ?? '',
+              );
               final assemblyId = (extraAssemblyId is int)
                   ? extraAssemblyId
                   : queryAssemblyId;
               if (assemblyId == null) {
                 return const _InvalidLinkScreen(
-                  reason: 'Не указана сборка для трека. '
+                  reason:
+                      'Не указана сборка для трека. '
                       'Откройте трек из карточки сборки.',
                 );
               }
               return AppScaffold(
                 title: 'Редактирование трека',
-                child: SpTrackEditScreen(
-                  trackId: id,
-                  assemblyId: assemblyId,
-                ),
+                child: SpTrackEditScreen(trackId: id, assemblyId: assemblyId),
               );
             },
           ),

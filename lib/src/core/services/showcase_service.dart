@@ -326,12 +326,14 @@ class ShowcaseTutorialResetNotifier extends Notifier<int> {
 
 final showcaseTutorialResetProvider =
     NotifierProvider<ShowcaseTutorialResetNotifier, int>(
-  ShowcaseTutorialResetNotifier.new,
-);
+      ShowcaseTutorialResetNotifier.new,
+    );
 
 /// Реактивный провайдер: возвращает shouldShow для конкретного блока.
-final showcaseBlockProvider =
-    Provider.family<bool, ShowcaseBlock>((ref, block) {
+final showcaseBlockProvider = Provider.family<bool, ShowcaseBlock>((
+  ref,
+  block,
+) {
   final service = ref.watch(showcaseServiceProvider);
   return service.shouldShowBlock(block);
 });
@@ -352,16 +354,18 @@ class ShowcaseState {
   }
 }
 
-final showcaseProvider =
-    Provider.family<ShowcaseState, ShowcasePage>((ref, page) {
+final showcaseProvider = Provider.family<ShowcaseState, ShowcasePage>((
+  ref,
+  page,
+) {
   final service = ref.watch(showcaseServiceProvider);
   return ShowcaseState(shouldShow: service.shouldShowShowcase(page));
 });
 
 final showcaseNotifierProvider =
     Provider.family<_ShowcaseController, ShowcasePage>((ref, page) {
-  return _ShowcaseController(ref, page);
-});
+      return _ShowcaseController(ref, page);
+    });
 
 class _ShowcaseController {
   final Ref _ref;
@@ -385,8 +389,8 @@ class _ShowcaseController {
 
 final showcaseBlockNotifierProvider =
     Provider.family<_ShowcaseBlockController, ShowcaseBlock>((ref, block) {
-  return _ShowcaseBlockController(ref, block);
-});
+      return _ShowcaseBlockController(ref, block);
+    });
 
 class _ShowcaseBlockController {
   final Ref _ref;

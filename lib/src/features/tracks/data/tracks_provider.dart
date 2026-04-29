@@ -54,24 +54,25 @@ class TrackStatus {
 /// Провайдер для получения статусов треков из БД
 final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/statuses',
-      queryParameters: {
-        'type': 'track',
-        'activeOnly': 'true',
-      },
+      queryParameters: {'type': 'track', 'activeOnly': 'true'},
     );
-    
-    debugPrint('trackStatusesProvider: statusCode=${response.statusCode}, data=${response.data}');
-    
+
+    debugPrint(
+      'trackStatusesProvider: statusCode=${response.statusCode}, data=${response.data}',
+    );
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final statusesJson = data['data'] as List<dynamic>? ?? [];
-      
-      debugPrint('trackStatusesProvider: parsed ${statusesJson.length} statuses');
-      
+
+      debugPrint(
+        'trackStatusesProvider: parsed ${statusesJson.length} statuses',
+      );
+
       return statusesJson
           .map((json) => TrackStatus.fromJson(json as Map<String, dynamic>))
           .toList();
@@ -176,10 +177,10 @@ class PaginatedTracksState {
 class PaginatedTracksNotifier {
   final Ref _ref;
   static const int _pageSize = 50;
-  
+
   PaginatedTracksState _state;
   PaginatedTracksState get state => _state;
-  
+
   final List<void Function()> _listeners = [];
 
   StreamSubscription? _deltaSub;
@@ -188,10 +189,15 @@ class PaginatedTracksNotifier {
   Timer? _debounceTimer;
   bool _silentRefreshInProgress = false;
 
-  static const _tracksTypes = {'tracks', 'photo_requests', 'questions', 'assemblies'};
+  static const _tracksTypes = {
+    'tracks',
+    'photo_requests',
+    'questions',
+    'assemblies',
+  };
 
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
-      : _state = PaginatedTracksState(filters: initialFilters) {
+    : _state = PaginatedTracksState(filters: initialFilters) {
     // Delta/data_changed sync is handled silently to preserve scroll and pagination.
     final wsService = _ref.read(webSocketServiceProvider);
     _deltaSub = wsService.deltas
@@ -200,8 +206,9 @@ class PaginatedTracksNotifier {
     _dataChangedSub = wsService.dataChanged
         .where((event) => _tracksTypes.contains(event['type']))
         .listen((_) => _debouncedSilentRefresh());
-    _reconnectSub = wsService.reconnected
-        .listen((_) => _debouncedSilentRefresh());
+    _reconnectSub = wsService.reconnected.listen(
+      (_) => _debouncedSilentRefresh(),
+    );
 
     // Загружаем начальные данные при создании
     loadInitial();
@@ -248,13 +255,15 @@ class PaginatedTracksNotifier {
   /// [silent] - если true, не показывать индикатор загрузки (для фонового обновления)
   Future<void> loadInitial({bool silent = false}) async {
     if (_ref.read(demoModeProvider)) {
-      _updateState(_state.copyWith(
-        tracks: DemoData.tracks,
-        total: DemoData.tracksCount,
-        hasMore: false,
-        isLoading: false,
-        clearError: true,
-      ));
+      _updateState(
+        _state.copyWith(
+          tracks: DemoData.tracks,
+          total: DemoData.tracksCount,
+          hasMore: false,
+          isLoading: false,
+          clearError: true,
+        ),
+      );
       return;
     }
     if (_state.isLoading) return;
@@ -269,12 +278,14 @@ class PaginatedTracksNotifier {
         final currentCount = _state.tracks.length;
         final take = currentCount > _pageSize ? currentCount : _pageSize;
         final result = await _fetchTracks(skip: 0, take: take);
-        _updateState(_state.copyWith(
-          tracks: result.tracks,
-          total: result.total,
-          hasMore: result.tracks.length < result.total,
-          clearError: true,
-        ));
+        _updateState(
+          _state.copyWith(
+            tracks: result.tracks,
+            total: result.total,
+            hasMore: result.tracks.length < result.total,
+            clearError: true,
+          ),
+        );
       } catch (e) {
         // При silent refresh ошибки не показываем пользователю
         debugPrint('[TracksProvider] Silent refresh error: $e');
@@ -285,29 +296,29 @@ class PaginatedTracksNotifier {
     }
 
     // Обычная загрузка с показом индикатора
-    _updateState(_state.copyWith(
-      isLoading: true,
-      clearError: true,
-      tracks: [],
-      hasMore: true,
-    ));
+    _updateState(
+      _state.copyWith(
+        isLoading: true,
+        clearError: true,
+        tracks: [],
+        hasMore: true,
+      ),
+    );
 
     try {
       final result = await _fetchTracks(skip: 0, take: _pageSize);
-      _updateState(_state.copyWith(
-        tracks: result.tracks,
-        total: result.total,
-        hasMore: result.tracks.length < result.total,
-        isLoading: false,
-      ));
+      _updateState(
+        _state.copyWith(
+          tracks: result.tracks,
+          total: result.total,
+          hasMore: result.tracks.length < result.total,
+          isLoading: false,
+        ),
+      );
     } catch (e) {
-      _updateState(_state.copyWith(
-        error: e.toString(),
-        isLoading: false,
-      ));
+      _updateState(_state.copyWith(error: e.toString(), isLoading: false));
     }
   }
-
 
   /// Загрузить следующую страницу
   Future<void> loadMore() async {
@@ -322,17 +333,16 @@ class PaginatedTracksNotifier {
       );
 
       final newTracks = [..._state.tracks, ...result.tracks];
-      _updateState(_state.copyWith(
-        tracks: newTracks,
-        total: result.total,
-        hasMore: newTracks.length < result.total,
-        isLoading: false,
-      ));
+      _updateState(
+        _state.copyWith(
+          tracks: newTracks,
+          total: result.total,
+          hasMore: newTracks.length < result.total,
+          isLoading: false,
+        ),
+      );
     } catch (e) {
-      _updateState(_state.copyWith(
-        error: e.toString(),
-        isLoading: false,
-      ));
+      _updateState(_state.copyWith(error: e.toString(), isLoading: false));
     }
   }
 
@@ -352,10 +362,12 @@ class PaginatedTracksNotifier {
   /// Оптимистично удалить трек из локального стейта
   void removeTrackOptimistically(int trackId) {
     final updatedTracks = _state.tracks.where((t) => t.id != trackId).toList();
-    _updateState(_state.copyWith(
-      tracks: updatedTracks,
-      total: _state.total > 0 ? _state.total - 1 : 0,
-    ));
+    _updateState(
+      _state.copyWith(
+        tracks: updatedTracks,
+        total: _state.total > 0 ? _state.total - 1 : 0,
+      ),
+    );
   }
 
   Future<_TracksResult> _fetchTracks({
@@ -370,7 +382,7 @@ class PaginatedTracksNotifier {
     };
 
     // Фильтр по статусу (код статуса из БД)
-    if (_state.filters.statusCode != null && 
+    if (_state.filters.statusCode != null &&
         _state.filters.statusCode!.isNotEmpty) {
       queryParams['status'] = _state.filters.statusCode;
     }
@@ -388,10 +400,13 @@ class PaginatedTracksNotifier {
       // Одиночные треки - без сборки
       queryParams['assemblyId'] = 'null';
     }
-    
+
     debugPrint('Fetching tracks: $queryParams');
 
-    final response = await _apiClient.get('/tracks', queryParameters: queryParams);
+    final response = await _apiClient.get(
+      '/tracks',
+      queryParameters: queryParams,
+    );
 
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
@@ -401,7 +416,7 @@ class PaginatedTracksNotifier {
       final tracks = tracksJson
           .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
           .toList();
-      
+
       debugPrint('Fetched ${tracks.length} tracks, total: $total');
 
       return _TracksResult(tracks: tracks, total: total);
@@ -420,10 +435,13 @@ class _TracksResult {
 
 /// Провайдер для пагинированного списка треков
 /// Ключ - clientCode, фильтры обновляются через updateFilters
-final paginatedTracksProvider = Provider.family<
-    PaginatedTracksNotifier, String>(
-  (ref, clientCode) => PaginatedTracksNotifier(ref, TracksFilterParams(clientCode: clientCode)),
-);
+final paginatedTracksProvider =
+    Provider.family<PaginatedTracksNotifier, String>(
+      (ref, clientCode) => PaginatedTracksNotifier(
+        ref,
+        TracksFilterParams(clientCode: clientCode),
+      ),
+    );
 
 // ==================== Legacy Providers (for compatibility) ====================
 
@@ -468,74 +486,90 @@ class TracksListParams {
 }
 
 /// Провайдер для получения списка треков с параметрами
-final tracksListProvider = FutureProvider.family<List<TrackItem>, TracksListParams>((ref, params) async {
-  final apiClient = ref.read(apiClientProvider);
-  
-  try {
-    final queryParams = <String, dynamic>{
-      'clientCode': params.clientCode,
-      'take': params.take,
-      'skip': params.skip,
-      'sortBy': 'createdAt',
-    };
-    
-    if (params.status != null && params.status!.isNotEmpty) {
-      queryParams['status'] = params.status;
-    }
-    if (params.search != null && params.search!.isNotEmpty) {
-      queryParams['search'] = params.search;
-    }
-    if (params.assemblyId != null) {
-      queryParams['assemblyId'] = params.assemblyId;
-    }
-    
-    final response = await apiClient.get('/tracks', queryParameters: queryParams);
-    
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
-      return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
-    }
-    return [];
-  } on DioException catch (e) {
-    debugPrint('Error loading tracks: $e');
-    return [];
-  }
-});
+final tracksListProvider =
+    FutureProvider.family<List<TrackItem>, TracksListParams>((
+      ref,
+      params,
+    ) async {
+      final apiClient = ref.read(apiClientProvider);
+
+      try {
+        final queryParams = <String, dynamic>{
+          'clientCode': params.clientCode,
+          'take': params.take,
+          'skip': params.skip,
+          'sortBy': 'createdAt',
+        };
+
+        if (params.status != null && params.status!.isNotEmpty) {
+          queryParams['status'] = params.status;
+        }
+        if (params.search != null && params.search!.isNotEmpty) {
+          queryParams['search'] = params.search;
+        }
+        if (params.assemblyId != null) {
+          queryParams['assemblyId'] = params.assemblyId;
+        }
+
+        final response = await apiClient.get(
+          '/tracks',
+          queryParameters: queryParams,
+        );
+
+        if (response.statusCode == 200 && response.data != null) {
+          final data = response.data as Map<String, dynamic>;
+          final tracksJson = data['data'] as List<dynamic>? ?? [];
+
+          return tracksJson
+              .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+              .toList();
+        }
+        return [];
+      } on DioException catch (e) {
+        debugPrint('Error loading tracks: $e');
+        return [];
+      }
+    });
 
 /// Провайдер для получения списка треков по коду клиента (простой)
-final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>((ref, clientCode) async {
-  final apiClient = ref.read(apiClientProvider);
-  
-  try {
-    final response = await apiClient.get(
-      '/tracks',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 100,
-        'sortBy': 'createdAt',
-      },
-    );
-    
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
-      return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
+final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
+  (ref, clientCode) async {
+    final apiClient = ref.read(apiClientProvider);
+
+    try {
+      final response = await apiClient.get(
+        '/tracks',
+        queryParameters: {
+          'clientCode': clientCode,
+          'take': 100,
+          'sortBy': 'createdAt',
+        },
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final tracksJson = data['data'] as List<dynamic>? ?? [];
+
+        return tracksJson
+            .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint('Error loading tracks: $e');
+      return [];
     }
-    return [];
-  } on DioException catch (e) {
-    debugPrint('Error loading tracks: $e');
-    return [];
-  }
-});
+  },
+);
 
 /// Провайдер для дайджеста - последние 10 треков отсортированные по дате изменения
-final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref, clientCode) async {
+final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
+  ref,
+  clientCode,
+) async {
   if (ref.watch(demoModeProvider)) return DemoData.tracks.take(10).toList();
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -545,12 +579,14 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
         'sortBy': 'createdAt',
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       final tracksJson = data['data'] as List<dynamic>? ?? [];
-      
-      return tracksJson.map((json) => TrackItem.fromJson(json as Map<String, dynamic>)).toList();
+
+      return tracksJson
+          .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+          .toList();
     }
     return [];
   } on DioException catch (e) {
@@ -561,7 +597,10 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((ref
 
 /// Провайдер количества треков для карточки на главном экране.
 /// Считаются только треки в активной обработке: pending / in_warehouse / in_assembly.
-final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+final tracksCountProvider = FutureProvider.family<int, String>((
+  ref,
+  clientCode,
+) async {
   if (ref.watch(demoModeProvider)) return DemoData.tracksCount;
   final apiClient = ref.read(apiClientProvider);
 
@@ -574,7 +613,7 @@ final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode)
         'statuses': 'pending,in_warehouse,in_assembly',
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       return data['total'] as int? ?? 0;
@@ -587,9 +626,12 @@ final tracksCountProvider = FutureProvider.family<int, String>((ref, clientCode)
 });
 
 /// Провайдер для количества треков без сборки
-final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((ref, clientCode) async {
+final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((
+  ref,
+  clientCode,
+) async {
   final apiClient = ref.read(apiClientProvider);
-  
+
   try {
     final response = await apiClient.get(
       '/tracks',
@@ -599,7 +641,7 @@ final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((r
         'take': 1,
       },
     );
-    
+
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
       return data['total'] as int? ?? 0;
@@ -616,11 +658,11 @@ final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((r
 /// Сервис для API операций с треками
 class TracksApiService {
   final Ref _ref;
-  
+
   TracksApiService(this._ref);
-  
+
   ApiClient get _apiClient => _ref.read(apiClientProvider);
-  
+
   /// Создать запрос фотоотчета
   Future<bool> createPhotoRequest({
     required int clientId,
@@ -630,14 +672,19 @@ class TracksApiService {
     String? wish,
   }) async {
     try {
-      debugPrint('Creating photo request: clientId=$clientId, clientCodeId=$clientCodeId, trackId=$trackId, trackNumber=$trackNumber');
-      final response = await _apiClient.post('/photo-requests', data: {
-        'clientId': clientId,
-        'clientCodeId': clientCodeId,
-        'trackId': trackId,
-        'trackNumber': trackNumber,
-        'wish': wish,
-      });
+      debugPrint(
+        'Creating photo request: clientId=$clientId, clientCodeId=$clientCodeId, trackId=$trackId, trackNumber=$trackNumber',
+      );
+      final response = await _apiClient.post(
+        '/photo-requests',
+        data: {
+          'clientId': clientId,
+          'clientCodeId': clientCodeId,
+          'trackId': trackId,
+          'trackNumber': trackNumber,
+          'wish': wish,
+        },
+      );
       debugPrint('Photo request response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
@@ -646,14 +693,15 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Отменить запрос фотоотчета
   Future<bool> cancelPhotoRequest(int photoRequestId) async {
     try {
       debugPrint('Cancelling photo request: id=$photoRequestId');
-      final response = await _apiClient.patch('/photo-requests/$photoRequestId', data: {
-        'status': 'cancelled',
-      });
+      final response = await _apiClient.patch(
+        '/photo-requests/$photoRequestId',
+        data: {'status': 'cancelled'},
+      );
       debugPrint('Cancel photo request response: ${response.statusCode}');
       return response.statusCode == 200;
     } on DioException catch (e) {
@@ -662,14 +710,15 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Обновить пожелание к фотоотчету
   Future<bool> updatePhotoWish(int photoRequestId, String wish) async {
     try {
       debugPrint('Updating photo wish: id=$photoRequestId, wish=$wish');
-      final response = await _apiClient.patch('/photo-requests/$photoRequestId', data: {
-        'wish': wish,
-      });
+      final response = await _apiClient.patch(
+        '/photo-requests/$photoRequestId',
+        data: {'wish': wish},
+      );
       debugPrint('Update photo wish response: ${response.statusCode}');
       return response.statusCode == 200;
     } on DioException catch (e) {
@@ -688,14 +737,19 @@ class TracksApiService {
     required String question,
   }) async {
     try {
-      debugPrint('Creating track question: clientId=$clientId, clientCodeId=$clientCodeId, trackId=$trackId, trackNumber=$trackNumber');
-      final response = await _apiClient.post('/track-questions', data: {
-        'clientId': clientId,
-        'clientCodeId': clientCodeId,
-        'trackId': trackId,
-        'trackNumber': trackNumber,
-        'question': question,
-      });
+      debugPrint(
+        'Creating track question: clientId=$clientId, clientCodeId=$clientCodeId, trackId=$trackId, trackNumber=$trackNumber',
+      );
+      final response = await _apiClient.post(
+        '/track-questions',
+        data: {
+          'clientId': clientId,
+          'clientCodeId': clientCodeId,
+          'trackId': trackId,
+          'trackNumber': trackNumber,
+          'question': question,
+        },
+      );
       debugPrint('Track question response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
@@ -704,7 +758,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Оформить возврат трека
   Future<bool> createTrackReturn({
     required int trackId,
@@ -713,12 +767,17 @@ class TracksApiService {
     String? note,
   }) async {
     try {
-      debugPrint('Creating track return: trackId=$trackId, returnCode=$returnCode');
-      final response = await _apiClient.post('/client/tracks/$trackId/return', data: {
-        'returnCode': returnCode,
-        if (screenshotUrl != null) 'screenshotUrl': screenshotUrl,
-        if (note != null && note.isNotEmpty) 'note': note,
-      });
+      debugPrint(
+        'Creating track return: trackId=$trackId, returnCode=$returnCode',
+      );
+      final response = await _apiClient.post(
+        '/client/tracks/$trackId/return',
+        data: {
+          'returnCode': returnCode,
+          if (screenshotUrl != null) 'screenshotUrl': screenshotUrl,
+          if (note != null && note.isNotEmpty) 'note': note,
+        },
+      );
       debugPrint('Track return response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
@@ -732,9 +791,10 @@ class TracksApiService {
   Future<bool> cancelTrackQuestion(int questionId) async {
     try {
       debugPrint('Cancelling track question: id=$questionId');
-      final response = await _apiClient.patch('/track-questions/$questionId', data: {
-        'status': 'cancelled',
-      });
+      final response = await _apiClient.patch(
+        '/track-questions/$questionId',
+        data: {'status': 'cancelled'},
+      );
       debugPrint('Cancel track question response: ${response.statusCode}');
       return response.statusCode == 200;
     } on DioException catch (e) {
@@ -743,7 +803,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Обновить информацию о товаре
   Future<bool> updateProductInfo({
     required int trackId,
@@ -761,13 +821,16 @@ class TracksApiService {
       }
 
       // Используем PUT /api/tracks/{id} с productInfo в теле
-      final response = await _apiClient.put('/tracks/$trackId', data: {
-        'productInfo': {
-          'name': productName,
-          'quantity': quantity,
-          if (uploadedImageUrl != null) 'imageUrl': uploadedImageUrl,
+      final response = await _apiClient.put(
+        '/tracks/$trackId',
+        data: {
+          'productInfo': {
+            'name': productName,
+            'quantity': quantity,
+            if (uploadedImageUrl != null) 'imageUrl': uploadedImageUrl,
+          },
         },
-      });
+      );
 
       debugPrint('updateProductInfo response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
@@ -777,7 +840,7 @@ class TracksApiService {
       return false;
     }
   }
-  
+
   /// Загрузить изображение
   /// [type] - тип загружаемого изображения: 'product-info', 'general', etc.
   Future<String?> _uploadImage(File file, [String type = 'general']) async {
@@ -815,10 +878,7 @@ class TracksApiService {
   ]) async {
     try {
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          bytes,
-          filename: fileName,
-        ),
+        'file': MultipartFile.fromBytes(bytes, filename: fileName),
         'type': type,
       });
 
@@ -837,16 +897,17 @@ class TracksApiService {
       return null;
     }
   }
-  
+
   /// Добавить/обновить комментарий к треку (поле note)
   Future<bool> addTrackComment({
     required int trackId,
     required String comment,
   }) async {
     try {
-      final response = await _apiClient.patch('/tracks/$trackId', data: {
-        'note': comment,
-      });
+      final response = await _apiClient.patch(
+        '/tracks/$trackId',
+        data: {'note': comment},
+      );
       return response.statusCode == 200;
     } on DioException catch (e) {
       debugPrint('Error adding track comment: $e');

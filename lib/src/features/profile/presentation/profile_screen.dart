@@ -61,9 +61,7 @@ void _showStyledSnackBar(
         ),
       ),
       behavior: SnackBarBehavior.floating,
-      backgroundColor: isError
-          ? const Color(0xFFE53935)
-          : context.brandPrimary,
+      backgroundColor: isError ? const Color(0xFFE53935) : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
       duration: const Duration(seconds: 3),
@@ -143,212 +141,228 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     return profileAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('Ошибка загрузки профиля: $e'),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => ref.invalidate(clientProfileProvider),
-                    child: const Text('Повторить'),
-                  ),
-                ],
-              ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('Ошибка загрузки профиля: $e'),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => ref.invalidate(clientProfileProvider),
+              child: const Text('Повторить'),
             ),
-            data: (profile) {
-              if (profile == null) {
-                return const Center(child: Text('Профиль не найден'));
-              }
+          ],
+        ),
+      ),
+      data: (profile) {
+        if (profile == null) {
+          return const Center(child: Text('Профиль не найден'));
+        }
 
-              final companyDomain = profile.agent?.domain ?? '';
-              final stats = statsAsync.when(
-                data: (s) => s,
-                loading: () => ClientStats.empty,
-                error: (_, _) => ClientStats.empty,
-              );
+        final companyDomain = profile.agent?.domain ?? '';
+        final stats = statsAsync.when(
+          data: (s) => s,
+          loading: () => ClientStats.empty,
+          error: (_, _) => ClientStats.empty,
+        );
 
-              return TutorialScreenWrapper(
-                screenKey: 'profile',
-                steps: [
-                  TutorialStep(
-                    icon: Icons.person_rounded,
-                    title: 'Личные данные',
-                    description: 'Ваше имя, email и телефон. «Редактировать» — обновить данные. «Сменить пароль» — изменить пароль входа.',
-                    targetKey: _personalDataKey,
-                  ),
-                  TutorialStep(
-                    icon: Icons.bar_chart_rounded,
-                    title: 'Статистика',
-                    description: 'Сколько треков, счетов и фотозапросов было создано. Удобно для отслеживания активности.',
-                    targetKey: _statsKey,
-                  ),
-                  TutorialStep(
-                    icon: Icons.file_download_rounded,
-                    title: 'Выгрузка данных',
-                    description: 'Скачайте все счета или треки в формате Excel — удобно для бухгалтерии и архивирования.',
-                    targetKey: _exportKey,
-                  ),
-                  TutorialStep(
-                    icon: Icons.logout_rounded,
-                    title: 'Выход из аккаунта',
-                    description: 'Кнопка выхода находится внизу страницы. Все данные будут удалены с устройства.',
-                    targetKey: _logoutKey,
-                  ),
-                ],
-                child: Stack(
-                children: [
-                RefreshIndicator(
+        return TutorialScreenWrapper(
+          screenKey: 'profile',
+          steps: [
+            TutorialStep(
+              icon: Icons.person_rounded,
+              title: 'Личные данные',
+              description:
+                  'Ваше имя, email и телефон. «Редактировать» — обновить данные. «Сменить пароль» — изменить пароль входа.',
+              targetKey: _personalDataKey,
+            ),
+            TutorialStep(
+              icon: Icons.bar_chart_rounded,
+              title: 'Статистика',
+              description:
+                  'Сколько треков, счетов и фотозапросов было создано. Удобно для отслеживания активности.',
+              targetKey: _statsKey,
+            ),
+            TutorialStep(
+              icon: Icons.file_download_rounded,
+              title: 'Выгрузка данных',
+              description:
+                  'Скачайте все счета или треки в формате Excel — удобно для бухгалтерии и архивирования.',
+              targetKey: _exportKey,
+            ),
+            TutorialStep(
+              icon: Icons.logout_rounded,
+              title: 'Выход из аккаунта',
+              description:
+                  'Кнопка выхода находится внизу страницы. Все данные будут удалены с устройства.',
+              targetKey: _logoutKey,
+            ),
+          ],
+          child: Stack(
+            children: [
+              RefreshIndicator(
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
                 child: ListView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 24 + bottomPad),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    topPad * 0.7 + 16,
+                    16,
+                    24 + bottomPad,
+                  ),
                   children: [
-                  Text(
-                    'Профиль',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Personal Info Section
-                  KeyedSubtree(key: _personalDataKey, child: _buildPersonalDataSection(profile)),
-                  const SizedBox(height: 16),
-
-                  // Password Change Section
-                  _buildPasswordSection(),
-                  const SizedBox(height: 16),
-
-            // Company Info Section
-            _buildSectionCard(
-              title: 'Компания',
-              children: [
-                _buildReadonlyField(label: 'Домен компании', value: companyDomain),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-
-            // Statistics Section
-            KeyedSubtree(
-              key: _statsKey,
-              child: _buildSectionCard(
-                title: 'Статистика',
-                children: [
-                  _buildStatsGroup('Трек-номера', stats.tracks),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Счета', stats.invoices),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Запросы фото', stats.photoRequests),
-                  const SizedBox(height: 16),
-                  _buildStatsGroup('Заданные вопросы', stats.questions),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Export Section
-            KeyedSubtree(
-              key: _exportKey,
-              child: _buildSectionCard(
-                title: 'Выгрузка данных',
-                children: [
-                  _buildExportButton(
-                    key: _invoicesExportButtonKey,
-                    icon: Icons.receipt_long_rounded,
-                    label: 'Выгрузить счета в Excel',
-                    onPressed: () => _exportInvoices(_invoicesExportButtonKey),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildExportButton(
-                    key: _tracksExportButtonKey,
-                    icon: Icons.local_shipping_rounded,
-                    label: 'Выгрузить треки в Excel',
-                    onPressed: () => _exportTracks(_tracksExportButtonKey),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Logout Button
-            Container(
-                key: _logoutKey,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 24,
-                      offset: Offset(0, 10),
+                    Text(
+                      'Профиль',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
                     ),
-                  ],
-                ),
-                child: Material(
-                  type: MaterialType.transparency,
-                  borderRadius: BorderRadius.circular(20),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: _logout,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                    const SizedBox(height: 18),
+
+                    // Personal Info Section
+                    KeyedSubtree(
+                      key: _personalDataKey,
+                      child: _buildPersonalDataSection(profile),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Password Change Section
+                    _buildPasswordSection(),
+                    const SizedBox(height: 16),
+
+                    // Company Info Section
+                    _buildSectionCard(
+                      title: 'Компания',
+                      children: [
+                        _buildReadonlyField(
+                          label: 'Домен компании',
+                          value: companyDomain,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Statistics Section
+                    KeyedSubtree(
+                      key: _statsKey,
+                      child: _buildSectionCard(
+                        title: 'Статистика',
                         children: [
-                          Icon(
-                            Icons.logout_rounded,
-                            color: Colors.red.shade600,
-                            size: 20,
+                          _buildStatsGroup('Трек-номера', stats.tracks),
+                          const SizedBox(height: 16),
+                          _buildStatsGroup('Счета', stats.invoices),
+                          const SizedBox(height: 16),
+                          _buildStatsGroup('Запросы фото', stats.photoRequests),
+                          const SizedBox(height: 16),
+                          _buildStatsGroup('Заданные вопросы', stats.questions),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Export Section
+                    KeyedSubtree(
+                      key: _exportKey,
+                      child: _buildSectionCard(
+                        title: 'Выгрузка данных',
+                        children: [
+                          _buildExportButton(
+                            key: _invoicesExportButtonKey,
+                            icon: Icons.receipt_long_rounded,
+                            label: 'Выгрузить счета в Excel',
+                            onPressed: () =>
+                                _exportInvoices(_invoicesExportButtonKey),
                           ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Выйти из аккаунта',
-                            style: TextStyle(
-                              color: Colors.red.shade600,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
+                          const SizedBox(height: 10),
+                          _buildExportButton(
+                            key: _tracksExportButtonKey,
+                            icon: Icons.local_shipping_rounded,
+                            label: 'Выгрузить треки в Excel',
+                            onPressed: () =>
+                                _exportTracks(_tracksExportButtonKey),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-              ),
+                    const SizedBox(height: 16),
 
-            // App version
-            const SizedBox(height: 24),
-            FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const SizedBox.shrink();
-                final info = snapshot.data!;
-                return Center(
-                  child: Text(
-                    'Версия ${info.version} (${info.buildNumber})',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
+                    // Logout Button
+                    Container(
+                      key: _logoutKey,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x14000000),
+                            blurRadius: 24,
+                            offset: Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        borderRadius: BorderRadius.circular(20),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: _logout,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.logout_rounded,
+                                  color: Colors.red.shade600,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Выйти из аккаунта',
+                                  style: TextStyle(
+                                    color: Colors.red.shade600,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-          ],
+
+                    // App version
+                    const SizedBox(height: 24),
+                    FutureBuilder<PackageInfo>(
+                      future: PackageInfo.fromPlatform(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const SizedBox.shrink();
+                        final info = snapshot.data!;
+                        return Center(
+                          child: Text(
+                            'Версия ${info.version} (${info.buildNumber})',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
-                ScrollToTopButton(controller: _scrollController),
-                ],
-              ));
-            },
-          );
+              ScrollToTopButton(controller: _scrollController),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ===== PERSONAL DATA EDITING =====
@@ -382,13 +396,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await ref.read(profileRepositoryProvider).updateProfile(
-        fullName: fullName,
-        phone: phone,
-        email: email,
-        terminal: _selectedTerminal,
-        clearTerminal: _selectedTerminal == null,
-      );
+      await ref
+          .read(profileRepositoryProvider)
+          .updateProfile(
+            fullName: fullName,
+            phone: phone,
+            email: email,
+            terminal: _selectedTerminal,
+            clearTerminal: _selectedTerminal == null,
+          );
 
       ref.invalidate(clientProfileProvider);
 
@@ -574,7 +590,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: context.brandPrimary, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -606,7 +625,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: _TerminalChip(
                 label: ClientTerminal.lyublino.nameRu,
                 selected: _selectedTerminal == ClientTerminal.lyublino,
-                onTap: () => setState(() => _selectedTerminal = ClientTerminal.lyublino),
+                onTap: () =>
+                    setState(() => _selectedTerminal = ClientTerminal.lyublino),
               ),
             ),
             const SizedBox(width: 8),
@@ -614,7 +634,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: _TerminalChip(
                 label: ClientTerminal.km19.nameRu,
                 selected: _selectedTerminal == ClientTerminal.km19,
-                onTap: () => setState(() => _selectedTerminal = ClientTerminal.km19),
+                onTap: () =>
+                    setState(() => _selectedTerminal = ClientTerminal.km19),
               ),
             ),
           ],
@@ -663,36 +684,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               controller: _currentPasswordController,
               label: 'Текущий пароль',
               obscure: _obscureCurrentPassword,
-              onToggle: () => setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+              onToggle: () => setState(
+                () => _obscureCurrentPassword = !_obscureCurrentPassword,
+              ),
             ),
             const SizedBox(height: 12),
             _buildPasswordField(
               controller: _newPasswordController,
               label: 'Новый пароль',
               obscure: _obscureNewPassword,
-              onToggle: () => setState(() => _obscureNewPassword = !_obscureNewPassword),
+              onToggle: () =>
+                  setState(() => _obscureNewPassword = !_obscureNewPassword),
             ),
             const SizedBox(height: 12),
             _buildPasswordField(
               controller: _confirmPasswordController,
               label: 'Подтвердите новый пароль',
               obscure: _obscureConfirmPassword,
-              onToggle: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+              onToggle: () => setState(
+                () => _obscureConfirmPassword = !_obscureConfirmPassword,
+              ),
             ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _isSavingPassword ? null : () {
-                      setState(() {
-                        _isChangingPassword = false;
-                        for (final c in [_currentPasswordController, _newPasswordController, _confirmPasswordController]) {
-                          c.selection = const TextSelection.collapsed(offset: 0);
-                          c.clear();
-                        }
-                      });
-                    },
+                    onPressed: _isSavingPassword
+                        ? null
+                        : () {
+                            setState(() {
+                              _isChangingPassword = false;
+                              for (final c in [
+                                _currentPasswordController,
+                                _newPasswordController,
+                                _confirmPasswordController,
+                              ]) {
+                                c.selection = const TextSelection.collapsed(
+                                  offset: 0,
+                                );
+                                c.clear();
+                              }
+                            });
+                          },
                     style: OutlinedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -789,7 +823,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: context.brandPrimary, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -799,13 +836,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final newPassword = _newPasswordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
-    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
       _showStyledSnackBar(context, 'Заполните все поля', isError: true);
       return;
     }
 
     if (newPassword.length < 6) {
-      _showStyledSnackBar(context, 'Новый пароль должен быть не менее 6 символов', isError: true);
+      _showStyledSnackBar(
+        context,
+        'Новый пароль должен быть не менее 6 символов',
+        isError: true,
+      );
       return;
     }
 
@@ -817,16 +860,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isSavingPassword = true);
 
     try {
-      await ref.read(profileRepositoryProvider).changePassword(
-        currentPassword: currentPassword,
-        newPassword: newPassword,
-      );
+      await ref
+          .read(profileRepositoryProvider)
+          .changePassword(
+            currentPassword: currentPassword,
+            newPassword: newPassword,
+          );
 
       if (mounted) {
         setState(() {
           _isSavingPassword = false;
           _isChangingPassword = false;
-          for (final c in [_currentPasswordController, _newPasswordController, _confirmPasswordController]) {
+          for (final c in [
+            _currentPasswordController,
+            _newPasswordController,
+            _confirmPasswordController,
+          ]) {
             c.selection = const TextSelection.collapsed(offset: 0);
             c.clear();
           }
@@ -1090,7 +1139,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _exportInvoices(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
-      _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
+      _showStyledSnackBar(
+        context,
+        'Сначала выберите код клиента',
+        isError: true,
+      );
       return;
     }
 
@@ -1107,7 +1160,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
 
       if (invoices.isEmpty) {
-        if (mounted) _showStyledSnackBar(context, 'Нет счетов для экспорта', isError: true);
+        if (mounted) {
+          _showStyledSnackBar(
+            context,
+            'Нет счетов для экспорта',
+            isError: true,
+          );
+        }
         return;
       }
 
@@ -1145,7 +1204,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       for (final invoice in invoices) {
         final row = <xls.CellValue>[
           xls.TextCellValue(invoice.invoiceNumber),
-          xls.TextCellValue(invoice.sendDate != null ? dateFormat.format(invoice.sendDate!) : ''),
+          xls.TextCellValue(
+            invoice.sendDate != null
+                ? dateFormat.format(invoice.sendDate!)
+                : '',
+          ),
           xls.TextCellValue(invoice.statusName ?? invoice.status),
           xls.TextCellValue(invoice.tariffName ?? ''),
           xls.TextCellValue(invoice.calculationMethod ?? ''),
@@ -1158,7 +1221,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           xls.DoubleCellValue(invoice.discountAmount ?? 0),
           xls.DoubleCellValue(invoice.packagingCostTotal ?? 0),
           xls.DoubleCellValue(invoice.totalCostUsd),
-          invoice.clientRubRate != null ? xls.DoubleCellValue(invoice.clientRubRate!) : xls.TextCellValue(''),
+          invoice.clientRubRate != null
+              ? xls.DoubleCellValue(invoice.clientRubRate!)
+              : xls.TextCellValue(''),
           xls.DoubleCellValue(invoice.totalCostRub),
         ];
         // PU-H8: страховка от «съехавшей» колонки.
@@ -1175,12 +1240,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // Сохраняем
       final bytes = excel.encode();
       if (bytes == null) {
-        if (mounted) _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        if (mounted) {
+          _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        }
         return;
       }
 
       final uint8Bytes = Uint8List.fromList(bytes);
-      final fileName = 'Счета_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
+      final fileName =
+          'Счета_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
 
       if (!mounted) return;
 
@@ -1192,7 +1260,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       if (!mounted) return;
       if (success) {
-        _showStyledSnackBar(context, 'Экспортировано ${invoices.length} счетов');
+        _showStyledSnackBar(
+          context,
+          'Экспортировано ${invoices.length} счетов',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1204,7 +1275,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _exportTracks(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
-      _showStyledSnackBar(context, 'Сначала выберите код клиента', isError: true);
+      _showStyledSnackBar(
+        context,
+        'Сначала выберите код клиента',
+        isError: true,
+      );
       return;
     }
 
@@ -1220,7 +1295,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
 
       if (tracks.isEmpty) {
-        if (mounted) _showStyledSnackBar(context, 'Нет треков для экспорта', isError: true);
+        if (mounted) {
+          _showStyledSnackBar(
+            context,
+            'Нет треков для экспорта',
+            isError: true,
+          );
+        }
         return;
       }
 
@@ -1314,91 +1395,211 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ..cellStyle = headerStyle;
 
       // Merge cells для заголовков
-      sheet.merge(xls.CellIndex.indexByString('A1'), xls.CellIndex.indexByString('A2')); // Трек номер
-      sheet.merge(xls.CellIndex.indexByString('B1'), xls.CellIndex.indexByString('B2')); // Статус
-      sheet.merge(xls.CellIndex.indexByString('C1'), xls.CellIndex.indexByString('D1')); // О товаре
-      sheet.merge(xls.CellIndex.indexByString('E1'), xls.CellIndex.indexByString('F1')); // Вопрос по треку
-      sheet.merge(xls.CellIndex.indexByString('G1'), xls.CellIndex.indexByString('G2')); // Комментарий
-      sheet.merge(xls.CellIndex.indexByString('H1'), xls.CellIndex.indexByString('L1')); // Сборка
+      sheet.merge(
+        xls.CellIndex.indexByString('A1'),
+        xls.CellIndex.indexByString('A2'),
+      ); // Трек номер
+      sheet.merge(
+        xls.CellIndex.indexByString('B1'),
+        xls.CellIndex.indexByString('B2'),
+      ); // Статус
+      sheet.merge(
+        xls.CellIndex.indexByString('C1'),
+        xls.CellIndex.indexByString('D1'),
+      ); // О товаре
+      sheet.merge(
+        xls.CellIndex.indexByString('E1'),
+        xls.CellIndex.indexByString('F1'),
+      ); // Вопрос по треку
+      sheet.merge(
+        xls.CellIndex.indexByString('G1'),
+        xls.CellIndex.indexByString('G2'),
+      ); // Комментарий
+      sheet.merge(
+        xls.CellIndex.indexByString('H1'),
+        xls.CellIndex.indexByString('L1'),
+      ); // Сборка
 
       // Данные начинаются с row 3 (index 2)
       int rowIndex = 2;
       for (final track in tracks) {
         // A: Трек номер
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
-          .value = xls.TextCellValue(track.code);
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 0,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          track.code,
+        );
 
         // B: Статус
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
-          .value = xls.TextCellValue(track.status);
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 1,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          track.status,
+        );
 
         // C: Наименование товара
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
-          .value = xls.TextCellValue(track.productInfo?.name ?? '');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 2,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          track.productInfo?.name ?? '',
+        );
 
         // D: Количество
         final quantity = track.productInfo?.quantity ?? 0;
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
-          .value = quantity > 0 ? xls.IntCellValue(quantity) : xls.TextCellValue('');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 3,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = quantity > 0
+            ? xls.IntCellValue(quantity)
+            : xls.TextCellValue('');
 
         // E: Вопрос (собираем все вопросы)
         final questions = track.questions
             .where((q) => q.status != 'cancelled')
             .map((q) => q.question)
             .join('\n');
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
-          .value = xls.TextCellValue(questions);
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 4,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          questions,
+        );
 
         // F: Ответ (собираем все ответы)
         final answers = track.questions
-            .where((q) => q.status != 'cancelled' && q.answer != null && q.answer!.isNotEmpty)
+            .where(
+              (q) =>
+                  q.status != 'cancelled' &&
+                  q.answer != null &&
+                  q.answer!.isNotEmpty,
+            )
             .map((q) => q.answer!)
             .join('\n');
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex))
-          .value = xls.TextCellValue(answers);
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 5,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          answers,
+        );
 
         // G: Комментарий по треку
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: rowIndex))
-          .value = xls.TextCellValue(track.comment ?? '');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 6,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          track.comment ?? '',
+        );
 
         // H: Наименование сборки
-        final assemblyName = track.assembly?.name ?? track.assembly?.number ?? '';
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: rowIndex))
-          .value = xls.TextCellValue(assemblyName);
+        final assemblyName =
+            track.assembly?.name ?? track.assembly?.number ?? '';
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 7,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          assemblyName,
+        );
 
         // I: Наименование тарифа
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: rowIndex))
-          .value = xls.TextCellValue(track.assembly?.tariffName ?? '');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 8,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          track.assembly?.tariffName ?? '',
+        );
 
         // J: Стоимость тарифа
         final tariffCost = track.assembly?.tariffCost;
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: rowIndex))
-          .value = tariffCost != null ? xls.DoubleCellValue(tariffCost) : xls.TextCellValue('');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 9,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = tariffCost != null
+            ? xls.DoubleCellValue(tariffCost)
+            : xls.TextCellValue('');
 
         // K: Тип упаковки
         final packagingTypes = track.assembly?.packagingTypes.join(', ') ?? '';
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: rowIndex))
-          .value = xls.TextCellValue(packagingTypes);
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 10,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = xls.TextCellValue(
+          packagingTypes,
+        );
 
         // L: Стоимость упаковки
         final packagingCost = track.assembly?.packagingCost;
-        sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: rowIndex))
-          .value = packagingCost != null ? xls.DoubleCellValue(packagingCost) : xls.TextCellValue('');
+        sheet
+            .cell(
+              xls.CellIndex.indexByColumnRow(
+                columnIndex: 11,
+                rowIndex: rowIndex,
+              ),
+            )
+            .value = packagingCost != null
+            ? xls.DoubleCellValue(packagingCost)
+            : xls.TextCellValue('');
 
         rowIndex++;
       }
 
       // Устанавливаем ширину колонок
-      sheet.setColumnWidth(0, 20);  // A: Трек номер
-      sheet.setColumnWidth(1, 15);  // B: Статус
-      sheet.setColumnWidth(2, 25);  // C: Наименование
-      sheet.setColumnWidth(3, 12);  // D: Количество
-      sheet.setColumnWidth(4, 30);  // E: Вопрос
-      sheet.setColumnWidth(5, 30);  // F: Ответ
-      sheet.setColumnWidth(6, 25);  // G: Комментарий
-      sheet.setColumnWidth(7, 20);  // H: Наименование сборки
-      sheet.setColumnWidth(8, 20);  // I: Наименование тарифа
-      sheet.setColumnWidth(9, 15);  // J: Стоимость тарифа
+      sheet.setColumnWidth(0, 20); // A: Трек номер
+      sheet.setColumnWidth(1, 15); // B: Статус
+      sheet.setColumnWidth(2, 25); // C: Наименование
+      sheet.setColumnWidth(3, 12); // D: Количество
+      sheet.setColumnWidth(4, 30); // E: Вопрос
+      sheet.setColumnWidth(5, 30); // F: Ответ
+      sheet.setColumnWidth(6, 25); // G: Комментарий
+      sheet.setColumnWidth(7, 20); // H: Наименование сборки
+      sheet.setColumnWidth(8, 20); // I: Наименование тарифа
+      sheet.setColumnWidth(9, 15); // J: Стоимость тарифа
       sheet.setColumnWidth(10, 25); // K: Тип упаковки
       sheet.setColumnWidth(11, 18); // L: Стоимость упаковки
 
@@ -1408,12 +1609,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // Сохраняем
       final bytes = excel.encode();
       if (bytes == null) {
-        if (mounted) _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        if (mounted) {
+          _showStyledSnackBar(context, 'Ошибка генерации файла', isError: true);
+        }
         return;
       }
 
       final uint8Bytes = Uint8List.fromList(bytes);
-      final fileName = 'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
+      final fileName =
+          'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
 
       if (!mounted) return;
 

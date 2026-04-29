@@ -67,7 +67,10 @@ class NotificationsBellButton extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: Colors.redAccent,
                 borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 2,
+                ),
               ),
             ),
           ),

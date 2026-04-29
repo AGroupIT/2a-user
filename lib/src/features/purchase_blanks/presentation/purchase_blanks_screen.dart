@@ -63,8 +63,7 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
     return Stack(
       children: [
         RefreshIndicator(
-          onRefresh: () =>
-              ref.read(purchaseBlanksProvider.notifier).reload(),
+          onRefresh: () => ref.read(purchaseBlanksProvider.notifier).reload(),
           color: context.brandPrimary,
           child: ListView.builder(
             controller: _scrollController,
@@ -87,7 +86,8 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
               final blank = blanks[i - 2];
               return Padding(
                 padding: EdgeInsets.only(
-                    bottom: i - 2 == blanks.length - 1 ? 0 : 12),
+                  bottom: i - 2 == blanks.length - 1 ? 0 : 12,
+                ),
                 child: _BlankCard(blank: blank),
               );
             },
@@ -125,8 +125,7 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
           GestureDetector(
             onTap: _createBlank,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 gradient: context.brandGradient,
                 borderRadius: BorderRadius.circular(12),
@@ -178,7 +177,7 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: allStatuses.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (context, i) {
             final status = allStatuses[i];
             final isSelected = _selectedStatus == status;
@@ -188,8 +187,10 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
               onTap: () => setState(() => _selectedStatus = status),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? color.withValues(alpha: 0.15)
@@ -216,8 +217,7 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
   }
 
   Future<void> _createBlank() async {
-    final blank =
-        await ref.read(purchaseBlanksProvider.notifier).createBlank();
+    final blank = await ref.read(purchaseBlanksProvider.notifier).createBlank();
     if (blank != null && mounted) {
       context.push('/purchase-blanks/${blank.id}');
     }
@@ -270,8 +270,7 @@ class _BlankCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color:
-                            context.brandPrimary.withValues(alpha: 0.1),
+                        color: context.brandPrimary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -333,8 +332,7 @@ class _BlankCard extends StatelessWidget {
                         _StatItem(
                           icon: Icons.currency_ruble_rounded,
                           label: 'Итого ₽',
-                          value:
-                              '₽${blank.totalAmountRub!.toStringAsFixed(0)}',
+                          value: '₽${blank.totalAmountRub!.toStringAsFixed(0)}',
                         ),
                       ],
                     ],
@@ -348,7 +346,9 @@ class _BlankCard extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                        vertical: 8, horizontal: 12),
+                      vertical: 8,
+                      horizontal: 12,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.blue.shade50,
                       borderRadius: BorderRadius.circular(8),
@@ -357,8 +357,11 @@ class _BlankCard extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.comment_rounded,
-                            size: 14, color: Colors.blue.shade700),
+                        Icon(
+                          Icons.comment_rounded,
+                          size: 14,
+                          color: Colors.blue.shade700,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(

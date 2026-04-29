@@ -100,8 +100,11 @@ class BlankItemCard extends StatelessWidget {
                 // Кнопки редактирования
                 if (isEditable)
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded,
-                        size: 20, color: Colors.grey),
+                    icon: const Icon(
+                      Icons.more_vert_rounded,
+                      size: 20,
+                      color: Colors.grey,
+                    ),
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -125,11 +128,16 @@ class BlankItemCard extends StatelessWidget {
                         value: 'delete',
                         child: Row(
                           children: [
-                            Icon(Icons.delete_rounded,
-                                size: 18, color: Colors.red),
+                            Icon(
+                              Icons.delete_rounded,
+                              size: 18,
+                              color: Colors.red,
+                            ),
                             SizedBox(width: 8),
-                            Text('Удалить',
-                                style: TextStyle(color: Colors.red)),
+                            Text(
+                              'Удалить',
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ],
                         ),
                       ),
@@ -148,7 +156,7 @@ class BlankItemCard extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 itemCount: item.photoUrls.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (context, i) {
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(10),
@@ -157,19 +165,25 @@ class BlankItemCard extends StatelessWidget {
                       width: 72,
                       height: 72,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         width: 72,
                         height: 72,
                         color: Colors.grey.shade100,
-                        child: const Icon(Icons.image_rounded,
-                            color: Colors.grey, size: 24),
+                        child: const Icon(
+                          Icons.image_rounded,
+                          color: Colors.grey,
+                          size: 24,
+                        ),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 72,
                         height: 72,
                         color: Colors.grey.shade100,
-                        child: const Icon(Icons.broken_image_rounded,
-                            color: Colors.grey, size: 24),
+                        child: const Icon(
+                          Icons.broken_image_rounded,
+                          color: Colors.grey,
+                          size: 24,
+                        ),
                       ),
                     ),
                   );
@@ -185,8 +199,10 @@ class BlankItemCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
               child: Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(8),
@@ -208,10 +224,7 @@ class BlankItemCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
             child: Row(
               children: [
-                _InfoChip(
-                  label: 'Кол-во',
-                  value: '${item.quantity} шт.',
-                ),
+                _InfoChip(label: 'Кол-во', value: '${item.quantity} шт.'),
                 const SizedBox(width: 8),
                 _InfoChip(
                   label: 'Цена',
@@ -238,8 +251,11 @@ class BlankItemCard extends StatelessWidget {
               child: Row(
                 children: [
                   if (item.trackNumber != null) ...[
-                    Icon(Icons.local_shipping_rounded,
-                        size: 14, color: Colors.grey.shade600),
+                    Icon(
+                      Icons.local_shipping_rounded,
+                      size: 14,
+                      color: Colors.grey.shade600,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       item.trackNumber!,
@@ -273,14 +289,16 @@ class BlankItemCard extends StatelessWidget {
                 ],
               ),
             ),
-          ]
-          else ...[
+          ] else ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: 13, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 13,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Трек и комиссия заполняются сотрудником',

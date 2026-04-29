@@ -199,15 +199,18 @@ class NotificationItem {
       type: type,
       title: title,
       message: body,
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
       isRead: json['isRead'] as bool? ?? false,
       route: route,
-      relatedId: data['trackNumber'] as String? ??
-                 data['assemblyNumber'] as String? ??
-                 data['invoiceNumber'] as String? ??
-                 data['trackId']?.toString() ??
-                 data['assemblyId']?.toString() ??
-                 data['invoiceId']?.toString(),
+      relatedId:
+          data['trackNumber'] as String? ??
+          data['assemblyNumber'] as String? ??
+          data['invoiceNumber'] as String? ??
+          data['trackId']?.toString() ??
+          data['assemblyId']?.toString() ??
+          data['invoiceId']?.toString(),
       oldStatus: data['oldStatus'] as String?,
       newStatus: data['newStatus'] as String? ?? data['status'] as String?,
     );
@@ -219,12 +222,16 @@ class NotificationItem {
     final type = typeStr.toLowerCase().trim();
 
     // Трек статусы (включая создание нового трека)
-    if (type.contains('track') && (type.contains('status') || type.contains('update') || type.contains('created'))) {
+    if (type.contains('track') &&
+        (type.contains('status') ||
+            type.contains('update') ||
+            type.contains('created'))) {
       return NotificationType.trackStatus;
     }
 
     // Сборка статусы
-    if (type.contains('assembly') && (type.contains('status') || type.contains('update'))) {
+    if (type.contains('assembly') &&
+        (type.contains('status') || type.contains('update'))) {
       return NotificationType.assemblyStatus;
     }
 
@@ -234,13 +241,19 @@ class NotificationItem {
     }
 
     // Вопрос/ответ
-    if (type.contains('question') || type.contains('answer') || type.contains('вопрос') || type.contains('ответ')) {
+    if (type.contains('question') ||
+        type.contains('answer') ||
+        type.contains('вопрос') ||
+        type.contains('ответ')) {
       return NotificationType.questionStatus;
     }
 
     // Чат / сообщение от поддержки
-    if (type.contains('chat') || type.contains('message') || type.contains('support') ||
-        type.contains('сообщение') || type.contains('поддержк')) {
+    if (type.contains('chat') ||
+        type.contains('message') ||
+        type.contains('support') ||
+        type.contains('сообщение') ||
+        type.contains('поддержк')) {
       // Различаем чат по оплате и обычный чат поддержки
       if (type.contains('payment') || type.contains('оплат')) {
         return NotificationType.paymentChatMessage;
@@ -254,12 +267,16 @@ class NotificationItem {
     }
 
     // Правила оказания услуг
-    if (type.contains('service') && type.contains('rule') || type.contains('правил')) {
+    if (type.contains('service') && type.contains('rule') ||
+        type.contains('правил')) {
       return NotificationType.serviceRules;
     }
 
     // Счета
-    if (type.contains('invoice') || type.contains('счет') || type.contains('счёт') || type.contains('payment')) {
+    if (type.contains('invoice') ||
+        type.contains('счет') ||
+        type.contains('счёт') ||
+        type.contains('payment')) {
       return NotificationType.invoice;
     }
 
@@ -356,8 +373,7 @@ class NotificationItem {
     }
 
     // Новость
-    if (combined.contains('новост') ||
-        combined.contains('news')) {
+    if (combined.contains('новост') || combined.contains('news')) {
       return NotificationType.news;
     }
 
@@ -373,7 +389,10 @@ class NotificationItem {
   }
 
   /// Получить маршрут для типа уведомления
-  static String? _getRouteForType(NotificationType type, Map<String, dynamic> data) {
+  static String? _getRouteForType(
+    NotificationType type,
+    Map<String, dynamic> data,
+  ) {
     // Nocode-дайджест → на страницу поиска с запросом NOCODE
     if (data['type'] == 'nocode_daily_digest') {
       return '/search?q=NOCODE';
@@ -385,7 +404,8 @@ class NotificationItem {
       case NotificationType.questionStatus:
         // PU-H1: NOCODE digest (сводка незарегистрированных треков) ведёт
         // на /search-nocode, если backend пометил тип в data.
-        final isNocodeDigest = data['kind'] == 'nocode_digest' ||
+        final isNocodeDigest =
+            data['kind'] == 'nocode_digest' ||
             data['notification_type'] == 'nocode_digest';
         if (isNocodeDigest) {
           return '/search-nocode';

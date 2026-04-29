@@ -153,7 +153,9 @@ class AuthNotifier extends Notifier<AuthState> {
           // и убивает авторизацию навсегда. Вместо этого просто показываем экран входа.
           // При следующем запуске попробуем снова — если Keychain восстановился, войдём
           // автоматически; если нет — пользователь введёт пароль и получит новый токен.
-          debugPrint('🔐 Token not found — showing login screen (not forcing logout)');
+          debugPrint(
+            '🔐 Token not found — showing login screen (not forcing logout)',
+          );
           if (!_initialLoadDone) {
             _initialLoadDone = true;
             state = const AuthState(isLoggedIn: false, isLoading: false);
@@ -176,7 +178,9 @@ class AuthNotifier extends Notifier<AuthState> {
       // Проверяем, что login() не успел взять управление пока мы читали хранилище.
       // Если _initialLoadDone уже true — login() или logout() уже обновили state, не перезаписываем.
       if (_initialLoadDone) {
-        debugPrint('⚠️ _loadAuthState: skipping state update — login/logout already took over');
+        debugPrint(
+          '⚠️ _loadAuthState: skipping state update — login/logout already took over',
+        );
         return;
       }
       _initialLoadDone = true;
@@ -191,7 +195,9 @@ class AuthNotifier extends Notifier<AuthState> {
         clientData: clientData,
       );
 
-      debugPrint('✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail');
+      debugPrint(
+        '✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail',
+      );
 
       // Обновляем clientData из /auth/me в фоне, чтобы коды клиента содержали актуальные id.
       // Это важно для корректной передачи clientCodeId при создании сборок.
@@ -231,27 +237,28 @@ class AuthNotifier extends Notifier<AuthState> {
     required String domain,
     required String password,
   }) async {
-    _initialLoadDone = true; // Предотвращаем перезапись state от _loadAuthState()
+    _initialLoadDone =
+        true; // Предотвращаем перезапись state от _loadAuthState()
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       final response = await _apiClient.post(
         '/login',
         data: {
           'email': email,
           'password': password,
-          'type': 'client',  // Важно! Для клиентов type = 'client'
+          'type': 'client', // Важно! Для клиентов type = 'client'
           // PU-C1: передаём domain, чтобы backend нашёл агента и не
           // подхватил клиента с тем же email из другого тенанта.
           'domain': domain,
         },
       );
-      
+
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
         final token = data['token'] as String?;
         final userData = data['user'] as Map<String, dynamic>?;
-        
+
         if (token == null || userData == null) {
           state = state.copyWith(
             isLoading: false,
@@ -259,18 +266,19 @@ class AuthNotifier extends Notifier<AuthState> {
           );
           return false;
         }
-        
+
         // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
         await _apiClient.setToken(token);
-        
+
         // Извлекаем данные клиента
         final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
-        final clientName = userData['fullName'] as String? ?? 
-                          userData['name'] as String? ?? 
-                          email;
+        final clientName =
+            userData['fullName'] as String? ??
+            userData['name'] as String? ??
+            email;
         final agentData = userData['agent'] as Map<String, dynamic>?;
         final clientDomain = agentData?['domain'] as String? ?? domain;
-        
+
         // Сохраняем в SharedPreferences (без токена - он в secure storage)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_kIsLoggedInKey, true);
@@ -281,11 +289,11 @@ class AuthNotifier extends Notifier<AuthState> {
         }
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
-        
+
         // Сбрасываем только обучение, не принятие правил.
         final showcaseService = ref.read(showcaseServiceProvider);
         await showcaseService.resetTutorials();
-        
+
         // Обновляем состояние ПЕРЕД invalidate чтобы избежать циклических зависимостей
         state = AuthState(
           isLoggedIn: true,
@@ -296,7 +304,7 @@ class AuthNotifier extends Notifier<AuthState> {
           clientName: clientName,
           clientData: userData,
         );
-        
+
         // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
         Future.microtask(() {
           _invalidateAllProviders();
@@ -307,10 +315,10 @@ class AuthNotifier extends Notifier<AuthState> {
             ref.invalidate(showcaseBlockProvider(block));
           }
         });
-        
+
         // Регистрируем устройство для push-уведомлений
         _registerForPush(clientDomain);
-        
+
         return true;
       } else {
         state = state.copyWith(
@@ -336,10 +344,7 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('Login error: $e');
       debugPrint('Error message shown to user: $errorMessage');
 
-      state = state.copyWith(
-        isLoading: false,
-        error: errorMessage,
-      );
+      state = state.copyWith(isLoading: false, error: errorMessage);
       return false;
     } catch (e, stackTrace) {
       debugPrint('Login error: $e');
@@ -357,35 +362,34 @@ class AuthNotifier extends Notifier<AuthState> {
         );
       }
 
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Произошла ошибка: $e',
-      );
+      state = state.copyWith(isLoading: false, error: 'Произошла ошибка: $e');
       return false;
     }
   }
-  
+
   /// Авторизация по данным от password-reset (после подтверждения по звонку)
   Future<bool> loginWithData({
     required String token,
     required Map<String, dynamic> userData,
   }) async {
-    _initialLoadDone = true; // Предотвращаем перезапись state от _loadAuthState()
+    _initialLoadDone =
+        true; // Предотвращаем перезапись state от _loadAuthState()
     state = state.copyWith(isLoading: true, clearError: true);
-    
+
     try {
       // Сохраняем токен в ApiClient (он сам выберет где хранить: localStorage на web, SecureStorage на мобильных)
       await _apiClient.setToken(token);
-      
+
       // Извлекаем данные клиента
       final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
       final email = userData['email'] as String? ?? '';
-      final clientName = userData['fullName'] as String? ?? 
-                        userData['name'] as String? ?? 
-                        email;
+      final clientName =
+          userData['fullName'] as String? ??
+          userData['name'] as String? ??
+          email;
       final agentData = userData['agent'] as Map<String, dynamic>?;
       final clientDomain = agentData?['domain'] as String? ?? '';
-      
+
       // Сохраняем в SharedPreferences (без токена - он в secure storage)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kIsLoggedInKey, true);
@@ -396,7 +400,7 @@ class AuthNotifier extends Notifier<AuthState> {
       }
       await prefs.setString(_kClientNameKey, clientName);
       await prefs.setString(_kClientDataKey, jsonEncode(userData));
-      
+
       // Сбрасываем только обучение, не принятие правил.
       final showcaseService = ref.read(showcaseServiceProvider);
       await showcaseService.resetTutorials();
@@ -423,33 +427,30 @@ class AuthNotifier extends Notifier<AuthState> {
           ref.invalidate(showcaseBlockProvider(block));
         }
       });
-      
+
       // Регистрируем устройство для push-уведомлений
       if (clientDomain.isNotEmpty) {
         _registerForPush(clientDomain);
       }
-      
+
       return true;
     } catch (e) {
       debugPrint('LoginWithData error: $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Ошибка авторизации: $e',
-      );
+      state = state.copyWith(isLoading: false, error: 'Ошибка авторизации: $e');
       return false;
     }
   }
-  
+
   /// Регистрация устройства для push-уведомлений
   Future<void> _registerForPush(String domain) async {
     try {
       final fcmToken = await PushNotificationService.getFCMToken();
       if (fcmToken != null) {
         debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
-        
+
         // Определяем платформу через хелпер
         final platform = getPlatformNameImpl();
-        
+
         // Отправляем токен на сервер
         try {
           await _apiClient.post(
@@ -465,7 +466,7 @@ class AuthNotifier extends Notifier<AuthState> {
           debugPrint('🔔 Error registering device: $e');
         }
       }
-      
+
       // Подписываемся на топики клиентов
       await PushNotificationService.subscribeToTopic('clients');
       await PushNotificationService.subscribeToTopic('domain_$domain');
@@ -473,7 +474,7 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('🔔 Error registering for push: $e');
     }
   }
-  
+
   /// Перерегистрация device token при обновлении FCM токена Firebase
   Future<void> _reRegisterDeviceToken(String newToken) async {
     try {
@@ -499,7 +500,8 @@ class AuthNotifier extends Notifier<AuthState> {
       String? deviceId = prefs.getString('device_id');
       if (deviceId == null) {
         // Генерируем уникальный ID
-        deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}_${UniqueKey().hashCode}';
+        deviceId =
+            'device_${DateTime.now().millisecondsSinceEpoch}_${UniqueKey().hashCode}';
         await prefs.setString('device_id', deviceId);
       }
       return deviceId;
@@ -550,7 +552,9 @@ class AuthNotifier extends Notifier<AuthState> {
 
         // Verify it was actually removed
         final stillLoggedIn = prefs.getBool(_kIsLoggedInKey);
-        debugPrint('🔍 After logout, isLoggedIn key = $stillLoggedIn (should be null)');
+        debugPrint(
+          '🔍 After logout, isLoggedIn key = $stillLoggedIn (should be null)',
+        );
       } catch (e) {
         debugPrint('⚠️ Error clearing SharedPreferences: $e');
       }
@@ -559,7 +563,8 @@ class AuthNotifier extends Notifier<AuthState> {
       if (!kIsWeb && !isDesktopImpl()) {
         try {
           // Очищаем все уведомления и badge
-          final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+          final flutterLocalNotificationsPlugin =
+              FlutterLocalNotificationsPlugin();
           await flutterLocalNotificationsPlugin.cancelAll();
           debugPrint('✅ Notifications cleared');
         } catch (e) {
@@ -578,10 +583,7 @@ class AuthNotifier extends Notifier<AuthState> {
       }
 
       // Сначала обновляем state — при перестройке провайдеры увидят isLoggedIn: false
-      state = const AuthState(
-        isLoggedIn: false,
-        isLoading: false,
-      );
+      state = const AuthState(isLoggedIn: false, isLoading: false);
 
       // Затем инвалидируем все провайдеры
       _invalidateAllProviders();
@@ -592,10 +594,7 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('Stack trace: $stackTrace');
 
       // Всё равно устанавливаем состояние "разлогинен" даже если была ошибка
-      state = const AuthState(
-        isLoggedIn: false,
-        isLoading: false,
-      );
+      state = const AuthState(isLoggedIn: false, isLoading: false);
 
       // Invalidate providers even on error
       _invalidateAllProviders();
@@ -612,7 +611,9 @@ class AuthNotifier extends Notifier<AuthState> {
     // остальные всё равно будут инвалидированы (иначе при смене аккаунта могут
     // остаться старые данные).
     void inv(dynamic provider) {
-      try { ref.invalidate(provider); } catch (_) {}
+      try {
+        ref.invalidate(provider);
+      } catch (_) {}
     }
 
     // Profile & Stats
@@ -668,30 +669,25 @@ class AuthNotifier extends Notifier<AuthState> {
 
     debugPrint('✅ All providers invalidated');
   }
-  
+
   /// Отписка от push-уведомлений
   Future<void> _unregisterFromPush() async {
     try {
       final domain = state.userDomain;
-      
+
       // Деактивируем устройство на сервере только если есть токен
       if (_apiClient.hasToken) {
         final fcmToken = await PushNotificationService.getFCMToken();
         if (fcmToken != null) {
           try {
-            await _apiClient.delete(
-              '/devices',
-              data: {
-                'token': fcmToken,
-              },
-            );
+            await _apiClient.delete('/devices', data: {'token': fcmToken});
             debugPrint('🔔 Device deactivated successfully');
           } catch (e) {
             debugPrint('🔔 Error deactivating device: $e');
           }
         }
       }
-      
+
       // Отписываемся от топиков
       await PushNotificationService.unsubscribeFromTopic('clients');
       if (domain != null) {
@@ -703,7 +699,9 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 }
 
-final authProvider = NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);
 
 // Helper provider to check if user is logged in (non-loading)
 final isLoggedInProvider = Provider<bool>((ref) {

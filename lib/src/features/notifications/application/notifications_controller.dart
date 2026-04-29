@@ -33,10 +33,11 @@ class NotificationsState {
 }
 
 /// Провайдер для уведомлений с поддержкой clientCode
-final notificationsControllerProvider = AsyncNotifierProvider.autoDispose<
-    NotificationsController, List<NotificationItem>>(
-  NotificationsController.new,
-);
+final notificationsControllerProvider =
+    AsyncNotifierProvider.autoDispose<
+      NotificationsController,
+      List<NotificationItem>
+    >(NotificationsController.new);
 
 /// Инициализатор push уведомлений для обновления списка
 void initializePushNotificationsHandler(WidgetRef ref) {

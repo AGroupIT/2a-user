@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -22,7 +20,8 @@ class BlankItemForm extends StatefulWidget {
     required double unitPrice,
     List<Uint8List>? newPhotos,
     List<String>? newPhotoNames,
-  }) onSave;
+  })
+  onSave;
 
   final VoidCallback? onCancel;
 
@@ -56,9 +55,11 @@ class _BlankItemFormState extends State<BlankItemForm> {
     _urlCtrl = TextEditingController(text: item?.productUrl ?? '');
     _charCtrl = TextEditingController(text: item?.characteristics ?? '');
     _qtyCtrl = TextEditingController(
-        text: item != null ? '${item.quantity}' : '1');
+      text: item != null ? '${item.quantity}' : '1',
+    );
     _priceCtrl = TextEditingController(
-        text: item != null ? item.unitPrice.toStringAsFixed(2) : '');
+      text: item != null ? item.unitPrice.toStringAsFixed(2) : '',
+    );
   }
 
   @override
@@ -83,10 +84,7 @@ class _BlankItemFormState extends State<BlankItemForm> {
     for (final xFile in images) {
       final bytes = await xFile.readAsBytes();
       setState(() {
-        _pickedPhotos.add(_PickedPhoto(
-          bytes: bytes,
-          name: xFile.name,
-        ));
+        _pickedPhotos.add(_PickedPhoto(bytes: bytes, name: xFile.name));
       });
     }
   }
@@ -105,14 +103,18 @@ class _BlankItemFormState extends State<BlankItemForm> {
       await widget.onSave(
         productName: _nameCtrl.text.trim(),
         productUrl: _urlCtrl.text.trim(),
-        characteristics:
-            _charCtrl.text.trim().isEmpty ? null : _charCtrl.text.trim(),
+        characteristics: _charCtrl.text.trim().isEmpty
+            ? null
+            : _charCtrl.text.trim(),
         quantity: int.tryParse(_qtyCtrl.text.trim()) ?? 1,
-        unitPrice: double.tryParse(_priceCtrl.text.trim().replaceAll(',', '.')) ?? 0,
-        newPhotos:
-            _pickedPhotos.isNotEmpty ? _pickedPhotos.map((p) => p.bytes).toList() : null,
-        newPhotoNames:
-            _pickedPhotos.isNotEmpty ? _pickedPhotos.map((p) => p.name).toList() : null,
+        unitPrice:
+            double.tryParse(_priceCtrl.text.trim().replaceAll(',', '.')) ?? 0,
+        newPhotos: _pickedPhotos.isNotEmpty
+            ? _pickedPhotos.map((p) => p.bytes).toList()
+            : null,
+        newPhotoNames: _pickedPhotos.isNotEmpty
+            ? _pickedPhotos.map((p) => p.name).toList()
+            : null,
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -223,11 +225,13 @@ class _BlankItemFormState extends State<BlankItemForm> {
                     controller: _priceCtrl,
                     label: 'Цена за шт. (¥)',
                     hint: '0.00',
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d+[.,]?\d{0,2}')),
+                        RegExp(r'^\d+[.,]?\d{0,2}'),
+                      ),
                     ],
                     validator: (v) {
                       final n = double.tryParse((v ?? '').replaceAll(',', '.'));
@@ -255,14 +259,16 @@ class _BlankItemFormState extends State<BlankItemForm> {
               children: [
                 // Существующие фото (если редактирование)
                 if (widget.existingItem != null)
-                  ...widget.existingItem!.photoUrls.map((url) => _PhotoThumb(
-                        imageUrl: url,
-                      )),
+                  ...widget.existingItem!.photoUrls.map(
+                    (url) => _PhotoThumb(imageUrl: url),
+                  ),
                 // Новые фото
-                ..._pickedPhotos.asMap().entries.map((e) => _PhotoThumb(
-                      bytes: e.value.bytes,
-                      onRemove: () => _removePhoto(e.key),
-                    )),
+                ..._pickedPhotos.asMap().entries.map(
+                  (e) => _PhotoThumb(
+                    bytes: e.value.bytes,
+                    onRemove: () => _removePhoto(e.key),
+                  ),
+                ),
                 // Кнопка добавления
                 GestureDetector(
                   onTap: _pickPhotos,
@@ -369,13 +375,12 @@ class _FormField extends StatelessWidget {
           style: const TextStyle(fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(
-              color: Colors.grey.shade400,
-              fontSize: 14,
-            ),
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
             filled: true,
             fillColor: Colors.grey.shade50,
             border: OutlineInputBorder(
@@ -388,8 +393,7 @@ class _FormField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  BorderSide(color: context.brandPrimary, width: 1.5),
+              borderSide: BorderSide(color: context.brandPrimary, width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
@@ -417,11 +421,7 @@ class _PhotoThumb extends StatelessWidget {
   final Uint8List? bytes;
   final VoidCallback? onRemove;
 
-  const _PhotoThumb({
-    this.imageUrl,
-    this.bytes,
-    this.onRemove,
-  });
+  const _PhotoThumb({this.imageUrl, this.bytes, this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -436,12 +436,7 @@ class _PhotoThumb extends StatelessWidget {
                   height: 64,
                   fit: BoxFit.cover,
                 )
-              : Image.memory(
-                  bytes!,
-                  width: 64,
-                  height: 64,
-                  fit: BoxFit.cover,
-                ),
+              : Image.memory(bytes!, width: 64, height: 64, fit: BoxFit.cover),
         ),
         if (onRemove != null)
           Positioned(

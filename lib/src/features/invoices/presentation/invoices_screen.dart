@@ -140,7 +140,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
             selectedStatusCode: _selectedStatusCode,
             statuses: dbStatuses,
             query: _query,
-            onStatusChanged: (code) => setState(() => _selectedStatusCode = code),
+            onStatusChanged: (code) =>
+                setState(() => _selectedStatusCode = code),
             onQueryChanged: (v) => setState(() => _query = v),
           ),
         );
@@ -151,78 +152,95 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
             TutorialStep(
               icon: Icons.receipt_long_rounded,
               title: 'Счета на оплату',
-              description: 'Счёт выставляется после взвешивания посылок на складе в России. Здесь указан точный итог к оплате.',
+              description:
+                  'Счёт выставляется после взвешивания посылок на складе в России. Здесь указан точный итог к оплате.',
               targetKey: _invoicesListKey,
             ),
             TutorialStep(
               icon: Icons.info_rounded,
               title: 'Статус счёта',
-              description: '«Требует оплаты» — необходимо оплатить, посылка ждёт. «Оплачен» — посылка уже передана в доставку.',
+              description:
+                  '«Требует оплаты» — необходимо оплатить, посылка ждёт. «Оплачен» — посылка уже передана в доставку.',
               targetKey: _firstInvoiceKey,
             ),
             TutorialStep(
               icon: Icons.filter_alt_rounded,
               title: 'Фильтр и поиск',
-              description: 'Фильтруйте счета по статусу или ищите по номеру. Актуально когда счетов накопилось много.',
+              description:
+                  'Фильтруйте счета по статусу или ищите по номеру. Актуально когда счетов накопилось много.',
               targetKey: _filtersKey,
             ),
             TutorialStep(
               icon: Icons.payment_rounded,
               title: 'Оплатить счёт',
-              description: 'Нажмите на счёт → откроется карточка с деталями. Кнопка «Оплатить» переводит на экран оплаты картой или USDT.',
+              description:
+                  'Нажмите на счёт → откроется карточка с деталями. Кнопка «Оплатить» переводит на экран оплаты картой или USDT.',
               targetKey: _firstInvoiceKey,
             ),
             TutorialStep(
               icon: Icons.redeem_rounded,
               title: 'Бонусные килограммы',
-              description: 'Если у вас есть бонусный вес из реферальной программы — нажмите «Применить бонус» перед оплатой. Он вычтется из суммы счёта.',
+              description:
+                  'Если у вас есть бонусный вес из реферальной программы — нажмите «Применить бонус» перед оплатой. Он вычтется из суммы счёта.',
               targetKey: _firstInvoiceKey,
             ),
           ],
           child: Stack(
-          children: [
-          RefreshIndicator(
-          onRefresh: onRefresh,
-          color: context.brandPrimary,
-          child: ListView(
-            controller: _scrollController,
-            key: _invoicesListKey,
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad + 16),
             children: [
-              Text(
-                'Счета',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
+              RefreshIndicator(
+                onRefresh: onRefresh,
+                color: context.brandPrimary,
+                child: ListView(
+                  controller: _scrollController,
+                  key: _invoicesListKey,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    topPad * 0.7 + 16,
+                    16,
+                    bottomPad + 16,
+                  ),
+                  children: [
+                    Text(
+                      'Счета',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 18),
+                    filtersContainer,
+                    const SizedBox(height: 18),
+                    if (filtered.isEmpty)
+                      const EmptyState(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Ничего не найдено',
+                        message:
+                            'Попробуйте изменить фильтры или строку поиска.',
+                      )
+                    else
+                      ...filtered.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final inv = entry.value;
+                        final invoiceTile = _InvoiceTile(
+                          item: inv,
+                          clientCode: clientCode,
+                        );
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: index == 0
+                              ? KeyedSubtree(
+                                  key: _firstInvoiceKey,
+                                  child: invoiceTile,
+                                )
+                              : invoiceTile,
+                        );
+                      }),
+                  ],
                 ),
               ),
-              const SizedBox(height: 18),
-              filtersContainer,
-              const SizedBox(height: 18),
-              if (filtered.isEmpty)
-                const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'Ничего не найдено',
-                  message: 'Попробуйте изменить фильтры или строку поиска.',
-                )
-              else
-                ...filtered.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final inv = entry.value;
-                  final invoiceTile = _InvoiceTile(item: inv, clientCode: clientCode);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: index == 0
-                        ? KeyedSubtree(key: _firstInvoiceKey, child: invoiceTile)
-                        : invoiceTile,
-                  );
-                }),
+              ScrollToTopButton(controller: _scrollController),
             ],
           ),
-        ),
-        ScrollToTopButton(controller: _scrollController),
-        ],
-        ));
+        );
       },
     );
   }
@@ -289,7 +307,10 @@ class _FiltersState extends State<_Filters> {
       ),
     ];
     final selectedLabel = statusItems
-        .firstWhere((i) => i.value == widget.selectedStatusCode, orElse: () => statusItems.first)
+        .firstWhere(
+          (i) => i.value == widget.selectedStatusCode,
+          orElse: () => statusItems.first,
+        )
         .label;
 
     return Row(
@@ -308,21 +329,33 @@ class _FiltersState extends State<_Filters> {
                 controller: _searchController,
                 style: const TextStyle(fontSize: 14),
                 decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded, color: context.brandPrimary, size: 18),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: context.brandPrimary,
+                    size: 18,
+                  ),
                   prefixIconConstraints: const BoxConstraints(minWidth: 36),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? GestureDetector(
                           onTap: () {
-                            _searchController.selection = const TextSelection.collapsed(offset: 0);
+                            _searchController.selection =
+                                const TextSelection.collapsed(offset: 0);
                             _searchController.clear();
                             widget.onQueryChanged('');
                           },
-                          child: const Icon(Icons.close_rounded, color: Color(0xFF999999), size: 18),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF999999),
+                            size: 18,
+                          ),
                         )
                       : null,
                   suffixIconConstraints: const BoxConstraints(minWidth: 36),
                   hintText: 'Поиск по счёту',
-                  hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF999999),
+                  ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   isDense: true,
@@ -351,7 +384,14 @@ class _FiltersState extends State<_Filters> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const SizedBox(height: 8),
-                    Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black12,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     for (final item in statusItems)
                       ListTile(
@@ -359,13 +399,21 @@ class _FiltersState extends State<_Filters> {
                         title: Text(
                           item.label,
                           style: TextStyle(
-                            fontWeight: item.value == widget.selectedStatusCode ? FontWeight.w700 : FontWeight.w500,
-                            color: item.value == widget.selectedStatusCode ? context.brandPrimary : Colors.black87,
+                            fontWeight: item.value == widget.selectedStatusCode
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: item.value == widget.selectedStatusCode
+                                ? context.brandPrimary
+                                : Colors.black87,
                             fontSize: 14,
                           ),
                         ),
                         trailing: item.value == widget.selectedStatusCode
-                            ? Icon(Icons.check_rounded, size: 18, color: context.brandPrimary)
+                            ? Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: context.brandPrimary,
+                              )
                             : null,
                         onTap: () {
                           Navigator.pop(ctx);
@@ -388,7 +436,14 @@ class _FiltersState extends State<_Filters> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(selectedLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+                Text(
+                  selectedLabel,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black54,
+                  ),
+                ),
                 const SizedBox(width: 2),
                 const Icon(Icons.expand_more, size: 16, color: Colors.black38),
               ],
@@ -498,8 +553,12 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                             : Colors.transparent,
                         // Добавляем borderRadius для первого/последнего элемента
                         borderRadius: BorderRadius.vertical(
-                          top: isFirst ? const Radius.circular(14) : Radius.zero,
-                          bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                          top: isFirst
+                              ? const Radius.circular(14)
+                              : Radius.zero,
+                          bottom: isLast
+                              ? const Radius.circular(14)
+                              : Radius.zero,
                         ),
                       ),
                       child: Text(
@@ -604,7 +663,6 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
   }
 }
 
-
 // ─── Карточка счёта в списке ──────────────────────────────────────────────────
 
 class _InvoiceTile extends ConsumerStatefulWidget {
@@ -624,7 +682,11 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
       widget.item.status.toLowerCase() == 'unpaid' ||
       widget.item.status.toLowerCase() == 'pending';
 
-  void _openDetail(BuildContext context, double bonusBalance, double maxBonusPct) {
+  void _openDetail(
+    BuildContext context,
+    double bonusBalance,
+    double maxBonusPct,
+  ) {
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -660,7 +722,9 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     final item = widget.item;
 
     // Ensure payment TG config is loaded before navigating
-    String? paymentTgUsername = ref.read(paymentTgUsernameProvider).whenOrNull(data: (v) => v);
+    String? paymentTgUsername = ref
+        .read(paymentTgUsernameProvider)
+        .whenOrNull(data: (v) => v);
     if (paymentTgUsername == null) {
       try {
         paymentTgUsername = await ref.read(paymentTgUsernameProvider.future);
@@ -674,17 +738,23 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
       final tgUrl = 'tg://resolve?domain=$paymentTgUsername&text=$text';
       final webUrl = 'https://t.me/$paymentTgUsername';
 
-      launchUrl(Uri.parse(tgUrl), mode: LaunchMode.externalApplication).then((_) {
-        if (mounted) setState(() => _isNavigatingToPayment = false);
-      }).catchError((_) {
-        launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication).whenComplete(() {
-          if (mounted) setState(() => _isNavigatingToPayment = false);
-        });
-      });
+      launchUrl(Uri.parse(tgUrl), mode: LaunchMode.externalApplication)
+          .then((_) {
+            if (mounted) setState(() => _isNavigatingToPayment = false);
+          })
+          .catchError((_) {
+            launchUrl(
+              Uri.parse(webUrl),
+              mode: LaunchMode.externalApplication,
+            ).whenComplete(() {
+              if (mounted) setState(() => _isNavigatingToPayment = false);
+            });
+          });
       return;
     }
 
     // Fallback: in-app payment chat
+    if (!context.mounted) return;
     _goToPaymentChat(context);
   }
 
@@ -701,40 +771,54 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     buffer.writeln('');
     buffer.writeln('💵 К оплате: \$${money.format(item.totalCostUsd.round())}');
     if (item.totalCostCny > 0) {
-      buffer.writeln('🇨🇳 К оплате: ¥${money.format(item.totalCostCny.round())}');
+      buffer.writeln(
+        '🇨🇳 К оплате: ¥${money.format(item.totalCostCny.round())}',
+      );
     }
     if (item.totalCostRub > 0) {
-      buffer.writeln('🇷🇺 К оплате: ${money.format(item.totalCostRub.round())} ₽');
+      buffer.writeln(
+        '🇷🇺 К оплате: ${money.format(item.totalCostRub.round())} ₽',
+      );
     }
     if (item.clientRubRate != null || item.clientYuanRate != null) {
       buffer.writeln('');
       if (item.clientRubRate != null) {
-        buffer.writeln('📈 Курс \$/₽: ${item.clientRubRate!.toStringAsFixed(2)}');
+        buffer.writeln(
+          '📈 Курс \$/₽: ${item.clientRubRate!.toStringAsFixed(2)}',
+        );
       }
       if (item.clientYuanRate != null) {
-        buffer.writeln('📈 Курс \$/¥: ${item.clientYuanRate!.toStringAsFixed(2)}');
+        buffer.writeln(
+          '📈 Курс \$/¥: ${item.clientYuanRate!.toStringAsFixed(2)}',
+        );
       }
     }
 
-    context.push('/payment-chat', extra: {
-      'message': buffer.toString(),
-      'invoiceId': item.id,
-      'invoiceNumber': item.invoiceNumber,
-      'amount': item.totalCostUsd,
-      if (item.totalCostCny > 0) 'totalCostCny': item.totalCostCny,
-      if (item.totalCostRub > 0) 'totalCostRub': item.totalCostRub,
-      if (item.clientRubRate != null) 'clientRubRate': item.clientRubRate,
-      if (item.clientYuanRate != null) 'clientYuanRate': item.clientYuanRate,
-    }).whenComplete(() {
-      if (mounted) {
-        setState(() => _isNavigatingToPayment = false);
-        // Обновляем список счетов после возврата из чата оплаты
-        final clientCode = ref.read(activeClientCodeProvider);
-        if (clientCode != null) {
-          ref.invalidate(invoicesListProvider(clientCode));
-        }
-      }
-    });
+    context
+        .push(
+          '/payment-chat',
+          extra: {
+            'message': buffer.toString(),
+            'invoiceId': item.id,
+            'invoiceNumber': item.invoiceNumber,
+            'amount': item.totalCostUsd,
+            if (item.totalCostCny > 0) 'totalCostCny': item.totalCostCny,
+            if (item.totalCostRub > 0) 'totalCostRub': item.totalCostRub,
+            if (item.clientRubRate != null) 'clientRubRate': item.clientRubRate,
+            if (item.clientYuanRate != null)
+              'clientYuanRate': item.clientYuanRate,
+          },
+        )
+        .whenComplete(() {
+          if (mounted) {
+            setState(() => _isNavigatingToPayment = false);
+            // Обновляем список счетов после возврата из чата оплаты
+            final clientCode = ref.read(activeClientCodeProvider);
+            if (clientCode != null) {
+              ref.invalidate(invoicesListProvider(clientCode));
+            }
+          }
+        });
   }
 
   @override
@@ -745,10 +829,14 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     final statusColor = _parseHexColor(item.statusColor);
     final referralAsync = ref.watch(referralProvider);
 
-    final double bonusBalance = referralAsync.whenOrNull(data: (r) => r.referralKgBalance) ?? 0;
-    final double maxBonusPct = referralAsync.whenOrNull(data: (r) => r.maxBonusPercent) ?? 0;
+    final double bonusBalance =
+        referralAsync.whenOrNull(data: (r) => r.referralKgBalance) ?? 0;
+    final double maxBonusPct =
+        referralAsync.whenOrNull(data: (r) => r.maxBonusPercent) ?? 0;
     final bool hasBonusForThisInvoice =
-        _isUnpaid && bonusBalance > 0 && (item.clientPricePerKg ?? item.tariffBaseCost ?? 0) > 0;
+        _isUnpaid &&
+        bonusBalance > 0 &&
+        (item.clientPricePerKg ?? item.tariffBaseCost ?? 0) > 0;
 
     return Container(
       decoration: BoxDecoration(
@@ -854,7 +942,11 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.redeem_rounded, color: Colors.green.shade700, size: 18),
+                  Icon(
+                    Icons.redeem_rounded,
+                    color: Colors.green.shade700,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -867,7 +959,8 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
+                    onTap: () =>
+                        _openDetail(context, bonusBalance, maxBonusPct),
                     child: Text(
                       'Применить →',
                       style: TextStyle(
@@ -889,7 +982,8 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _openDetail(context, bonusBalance, maxBonusPct),
+                    onPressed: () =>
+                        _openDetail(context, bonusBalance, maxBonusPct),
                     child: const Text('Открыть'),
                   ),
                 ),
@@ -925,7 +1019,11 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
               ),
               Text(
                 df.format(dt),
-                style: const TextStyle(fontSize: 12, color: Color(0xFF444444), fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF444444),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -983,8 +1081,10 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final kg = double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.'));
     if (kg == null || kg <= 0) return;
 
-    final maxKg = (item.weight * widget.maxBonusPercent / 100)
-        .clamp(0.0, widget.bonusBalance);
+    final maxKg = (item.weight * widget.maxBonusPercent / 100).clamp(
+      0.0,
+      widget.bonusBalance,
+    );
     if (kg > maxKg) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1038,11 +1138,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final pricePerKg = item.clientPricePerKg ?? item.tariffBaseCost ?? 0;
-    final maxKg = (item.weight * widget.maxBonusPercent / 100)
-        .clamp(0.0, widget.bonusBalance);
+    final maxKg = (item.weight * widget.maxBonusPercent / 100).clamp(
+      0.0,
+      widget.bonusBalance,
+    );
     final enteredKg =
         double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.')) ?? 0;
-    final bonusDiscount = (enteredKg * pricePerKg).clamp(0.0, item.totalCostUsd);
+    final bonusDiscount = (enteredKg * pricePerKg).clamp(
+      0.0,
+      item.totalCostUsd,
+    );
     final showBonusSection =
         _isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
 
@@ -1055,459 +1160,577 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         return GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-          ),
-          child: Column(
-            children: [
-              // Ручка
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-
-              // Заголовок
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  item.invoiceNumber,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () {
-                                  Clipboard.setData(
-                                    ClipboardData(text: item.invoiceNumber),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Номер скопирован'),
-                                    ),
-                                  );
-                                },
-                                child: const Icon(
-                                  Icons.copy,
-                                  size: 18,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          StatusPill(
-                            text: item.statusName ?? item.status,
-                            color: statusColor,
-                          ),
-                        ],
-                      ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+            ),
+            child: Column(
+              children: [
+                // Ручка
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              const Divider(height: 1),
-
-              // Контент
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.only(
-                    top: 20,
-                    left: 16,
-                    right: 16,
-                    bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
                   ),
-                  children: [
+                ),
 
-                    // ══ Основная информация ══════════════════════════════
-                    _buildSection('Основная информация', [
-                      if (item.createdAt != null)
-                        _buildInfoRow(context, 'Дата создания',
-                            df.format(item.createdAt!)),
-                      if (item.paidAt != null)
-                        _buildInfoRow(context, 'Дата оплаты',
-                            df.format(item.paidAt!)),
-                      if (item.arrivalMarket != null &&
-                          item.arrivalMarket!.isNotEmpty)
-                        _buildInfoRow(context, 'Рынок прибытия',
-                            _localizeMarket(item.arrivalMarket!)),
-                    ]),
-                    const SizedBox(height: 20),
-
-                    // ══ Информация по коробкам ═══════════════════════════
-                    _buildSection('Информация по коробкам', [
-                      if (item.placesCount > 0)
-                        _buildInfoRow(context, 'Количество мест',
-                            '${item.placesCount}'),
-                      if (item.weight > 0)
-                        _buildInfoRow(context, 'Вес',
-                            '${item.weight.toStringAsFixed(2)} кг'),
-                      if (item.volume > 0)
-                        _buildInfoRow(context, 'Объём',
-                            '${item.volume.toStringAsFixed(3)} м³'),
-                      if (item.weight > 0 && item.volume > 0)
-                        _buildInfoRow(context, 'Плотность',
-                            '${(item.weight / item.volume).toStringAsFixed(2)} кг/м³'),
-                      if (item.scalePhotoUrls.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 100,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: item.scalePhotoUrls.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              return ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  ApiConfig.getMediaUrl(
-                                      item.scalePhotoUrls[index]),
-                                  width: 100,
-                                  height: 100,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Container(
-                                    width: 100,
-                                    height: 100,
-                                    color: const Color(0xFFEEEEEE),
-                                    child: const Icon(Icons.broken_image,
-                                        color: Colors.grey),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ]),
-
-                    // ══ Накладная от ТК ═══════════════════════════════
-                    if (item.tkWaybillPhotoUrl != null) ...[
-                      const SizedBox(height: 20),
-                      _buildSection('Накладная от ТК', [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              height: 120,
-                              color: const Color(0xFFEEEEEE),
-                              child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 40)),
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ],
-                    const SizedBox(height: 20),
-
-                    // ══ Финансовая информация ════════════════════════════
-                    _buildSection('Финансовая информация', [
-
-                      // Коэффициент фотоотчёта
-                      if (item.photoReportCoefficient != null &&
-                          item.photoReportCoefficient! != 1.0) ...[
-                        _buildInfoRow(context, 'Коэф. фотоотчёта',
-                            'x${item.photoReportCoefficient!.toStringAsFixed(2)}'),
-                        if (item.totalTracks > 0)
-                          _buildInfoRow(
-                              context,
-                              'Треки с фото / без',
-                              '${item.tracksWithPhoto} / '
-                              '${item.totalTracks - item.tracksWithPhoto} '
-                              'из ${item.totalTracks}'),
-                      ],
-
-                      // Тариф: базовый
-                      if (item.clientPricePerKg != null && item.clientPricePerKg! > 0)
-                        _buildInfoRow(context, 'Тариф',
-                            '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг'),
-
-                      // Коэффициент за фото
-                      if (item.photoReportCoefficient != null && item.photoReportCoefficient! > 1.0)
-                        _buildInfoRow(context, 'Коэфф. фото',
-                            '×${item.photoReportCoefficient!.toStringAsFixed(2)}'),
-
-                      // Итоговый тариф с коэффициентом
-                      if (item.clientPricePerKgWithPhoto != null && item.clientPricePerKgWithPhoto! > 0 &&
-                          item.clientPricePerKgWithPhoto != item.clientPricePerKg)
-                        _buildInfoRow(context, 'Итого тариф',
-                            '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг'),
-
-                      // Стоимость по тарифу
-                      if (item.shippingCost != null && item.shippingCost! > 0)
-                        _buildInfoRow(context, 'Стоимость по тарифу',
-                            '\$${item.shippingCost!.toStringAsFixed(2)}'),
-
-                      const Divider(height: 20),
-
-                      // Разгрузка
-                      if (item.transshipmentCost != null && item.transshipmentCost! > 0)
-                        _buildInfoRow(context, 'Разгрузка',
-                            '\$${item.transshipmentCost!.toStringAsFixed(2)}'),
-
-                      // Упаковка — детализация по типам + итого
-                      if (item.packagings.isNotEmpty) ...[
-                        ...item.packagings.map(
-                          (p) => _buildInfoRow(context,
-                              'Упаковка: ${p.name}',
-                              '\$${p.cost.toStringAsFixed(2)}'),
-                        ),
-                        if (item.packagingCostTotal != null &&
-                            item.packagingCostTotal! > 0 &&
-                            item.placesCount > 1)
-                          _buildInfoRow(context,
-                              'Итого упаковка (×${item.placesCount})',
-                              '\$${item.packagingCostTotal!.toStringAsFixed(2)}'),
-                      ] else if (item.packagingCostTotal != null &&
-                          item.packagingCostTotal! > 0)
-                        _buildInfoRow(context, 'Упаковка',
-                            '\$${item.packagingCostTotal!.toStringAsFixed(2)}'),
-
-                      // Страховка — показываем только если есть стоимость
-                      if ((item.insuranceCostClient != null && item.insuranceCostClient! > 0) ||
-                          (item.insuranceCost != null && item.insuranceCost! > 0)) ...[
-                        if (item.insurancePercentClient != null && item.insurancePercentClient! > 0)
-                          _buildInfoRow(context, 'Страховка',
-                              '${item.insurancePercentClient!.toStringAsFixed(1)}%')
-                        else if (item.insurancePercent != null && item.insurancePercent! > 0)
-                          _buildInfoRow(context, 'Страховка',
-                              '${item.insurancePercent!.toStringAsFixed(1)}%'),
-                        if (item.insuranceCostClient != null && item.insuranceCostClient! > 0)
-                          _buildInfoRow(context, 'Страховка',
-                              '\$${item.insuranceCostClient!.toStringAsFixed(2)}')
-                        else if (item.insuranceCost != null && item.insuranceCost! > 0)
-                          _buildInfoRow(context, 'Страховка',
-                              '\$${item.insuranceCost!.toStringAsFixed(2)}'),
-                      ],
-
-                      // Скидка
-                      if (item.discountAmount != null && item.discountAmount! > 0)
-                        _buildInfoRow(context, 'Скидка',
-                            '−\$${item.discountAmount!.toStringAsFixed(2)}'),
-
-                      // Применённые бонусные кг
-                      if (item.bonusKgApplied > 0)
-                        _buildInfoRow(context, 'Оплата бонусами',
-                            '−${item.bonusKgApplied.toStringAsFixed(2)} кг'),
-
-                      const Divider(height: 20),
-
-                      // Стоимость доставки в $
-                      if (item.totalCostUsd > 0)
-                        _buildInfoRow(context, 'Стоимость доставки',
-                            '\$${item.totalCostUsd.toStringAsFixed(2)}',
-                            isTotal: true),
-
-                      // К оплате в ¥
-                      if (item.totalCostCny > 0) ...[
-                        const SizedBox(height: 4),
-                        _buildInfoRow(context, 'К оплате в юанях',
-                            '¥${money.format(item.totalCostCny.round())}',
-                            isTotal: true),
-                      ],
-
-                      // К оплате в ₽
-                      if (item.totalCostRub > 0) ...[
-                        const SizedBox(height: 4),
-                        _buildInfoRow(context, 'К оплате в рублях',
-                            '${money.format(item.totalCostRub.round())} ₽',
-                            isTotal: true),
-                      ],
-
-                      // Курс валют (только если есть)
-                      if (item.clientRubRate != null || item.clientYuanRate != null) ...[
-                        const Divider(height: 20),
-                        if (item.clientRubRate != null)
-                          _buildInfoRow(context, 'Курс \$/₽',
-                              item.clientRubRate!.toStringAsFixed(2)),
-                        if (item.clientYuanRate != null)
-                          _buildInfoRow(context, 'Курс \$/¥',
-                              item.clientYuanRate!.toStringAsFixed(4)),
-                      ],
-                    ]),
-                    const SizedBox(height: 24),
-
-                    // ══ Бонусные кг ══════════════════════════════════════
-                    if (showBonusSection) ...[
-                      const Text(
-                        'Бонусные кг',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF333333),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
+                // Заголовок
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.scale_rounded,
-                                    color: Colors.green.shade700, size: 18),
+                                Flexible(
+                                  child: Text(
+                                    item.invoiceNumber,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  'Доступно: ${widget.bonusBalance.toStringAsFixed(2)} кг',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.green.shade700,
+                                GestureDetector(
+                                  onTap: () {
+                                    Clipboard.setData(
+                                      ClipboardData(text: item.invoiceNumber),
+                                    );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Номер скопирован'),
+                                      ),
+                                    );
+                                  },
+                                  child: const Icon(
+                                    Icons.copy,
+                                    size: 18,
+                                    color: Colors.grey,
                                   ),
                                 ),
                               ],
                             ),
-                            if (item.bonusKgApplied > 0) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Уже применено: ${item.bonusKgApplied.toStringAsFixed(2)} кг',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.green.shade600,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _bonusKgCtrl,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                            decimal: true),
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.allow(
-                                          RegExp(r'^\d+[.,]?\d*')),
-                                    ],
-                                    decoration: InputDecoration(
-                                      hintText:
-                                          'Кол-во кг (макс ${maxKg.toStringAsFixed(2)})',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      isDense: true,
-                                      border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        borderSide: BorderSide(
-                                            color: Colors.green.shade300),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        borderSide: BorderSide(
-                                            color: Colors.green.shade600,
-                                            width: 2),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        borderSide: BorderSide(
-                                            color: Colors.green.shade300),
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 12),
-                                    ),
-                                    onChanged: (_) => setState(() {}),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                SizedBox(
-                                  height: 46,
-                                  child: ElevatedButton(
-                                    onPressed: _isApplyingBonus
-                                        ? null
-                                        : _applyBonusKg,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          Colors.green.shade600,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16),
-                                    ),
-                                    child: _isApplyingBonus
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Text('Применить'),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 4),
+                            StatusPill(
+                              text: item.statusName ?? item.status,
+                              color: statusColor,
                             ),
-                            if (enteredKg > 0 && pricePerKg > 0) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'Скидка: ~\$${bonusDiscount.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.green.shade700,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
                     ],
-
-                    // ══ Кнопка оплаты ════════════════════════════════════
-                    if (_isUnpaid)
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: widget.onPay,
-                          child: const Text('Перейти к оплате'),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+
+                // Контент
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.only(
+                      top: 20,
+                      left: 16,
+                      right: 16,
+                      bottom:
+                          MediaQuery.of(context).viewInsets.bottom +
+                          MediaQuery.of(context).padding.bottom +
+                          24,
+                    ),
+                    children: [
+                      // ══ Основная информация ══════════════════════════════
+                      _buildSection('Основная информация', [
+                        if (item.createdAt != null)
+                          _buildInfoRow(
+                            context,
+                            'Дата создания',
+                            df.format(item.createdAt!),
+                          ),
+                        if (item.paidAt != null)
+                          _buildInfoRow(
+                            context,
+                            'Дата оплаты',
+                            df.format(item.paidAt!),
+                          ),
+                        if (item.arrivalMarket != null &&
+                            item.arrivalMarket!.isNotEmpty)
+                          _buildInfoRow(
+                            context,
+                            'Рынок прибытия',
+                            _localizeMarket(item.arrivalMarket!),
+                          ),
+                      ]),
+                      const SizedBox(height: 20),
+
+                      // ══ Информация по коробкам ═══════════════════════════
+                      _buildSection('Информация по коробкам', [
+                        if (item.placesCount > 0)
+                          _buildInfoRow(
+                            context,
+                            'Количество мест',
+                            '${item.placesCount}',
+                          ),
+                        if (item.weight > 0)
+                          _buildInfoRow(
+                            context,
+                            'Вес',
+                            '${item.weight.toStringAsFixed(2)} кг',
+                          ),
+                        if (item.volume > 0)
+                          _buildInfoRow(
+                            context,
+                            'Объём',
+                            '${item.volume.toStringAsFixed(3)} м³',
+                          ),
+                        if (item.weight > 0 && item.volume > 0)
+                          _buildInfoRow(
+                            context,
+                            'Плотность',
+                            '${(item.weight / item.volume).toStringAsFixed(2)} кг/м³',
+                          ),
+                        if (item.scalePhotoUrls.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 100,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: item.scalePhotoUrls.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 8),
+                              itemBuilder: (context, index) {
+                                return ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    ApiConfig.getMediaUrl(
+                                      item.scalePhotoUrls[index],
+                                    ),
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => Container(
+                                      width: 100,
+                                      height: 100,
+                                      color: const Color(0xFFEEEEEE),
+                                      child: const Icon(
+                                        Icons.broken_image,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ]),
+
+                      // ══ Накладная от ТК ═══════════════════════════════
+                      if (item.tkWaybillPhotoUrl != null) ...[
+                        const SizedBox(height: 20),
+                        _buildSection('Накладная от ТК', [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                height: 120,
+                                color: const Color(0xFFEEEEEE),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey,
+                                    size: 40,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ],
+                      const SizedBox(height: 20),
+
+                      // ══ Финансовая информация ════════════════════════════
+                      _buildSection('Финансовая информация', [
+                        // Коэффициент фотоотчёта
+                        if (item.photoReportCoefficient != null &&
+                            item.photoReportCoefficient! != 1.0) ...[
+                          _buildInfoRow(
+                            context,
+                            'Коэф. фотоотчёта',
+                            'x${item.photoReportCoefficient!.toStringAsFixed(2)}',
+                          ),
+                          if (item.totalTracks > 0)
+                            _buildInfoRow(
+                              context,
+                              'Треки с фото / без',
+                              '${item.tracksWithPhoto} / '
+                                  '${item.totalTracks - item.tracksWithPhoto} '
+                                  'из ${item.totalTracks}',
+                            ),
+                        ],
+
+                        // Тариф: базовый
+                        if (item.clientPricePerKg != null &&
+                            item.clientPricePerKg! > 0)
+                          _buildInfoRow(
+                            context,
+                            'Тариф',
+                            '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг',
+                          ),
+
+                        // Коэффициент за фото
+                        if (item.photoReportCoefficient != null &&
+                            item.photoReportCoefficient! > 1.0)
+                          _buildInfoRow(
+                            context,
+                            'Коэфф. фото',
+                            '×${item.photoReportCoefficient!.toStringAsFixed(2)}',
+                          ),
+
+                        // Итоговый тариф с коэффициентом
+                        if (item.clientPricePerKgWithPhoto != null &&
+                            item.clientPricePerKgWithPhoto! > 0 &&
+                            item.clientPricePerKgWithPhoto !=
+                                item.clientPricePerKg)
+                          _buildInfoRow(
+                            context,
+                            'Итого тариф',
+                            '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг',
+                          ),
+
+                        // Стоимость по тарифу
+                        if (item.shippingCost != null && item.shippingCost! > 0)
+                          _buildInfoRow(
+                            context,
+                            'Стоимость по тарифу',
+                            '\$${item.shippingCost!.toStringAsFixed(2)}',
+                          ),
+
+                        const Divider(height: 20),
+
+                        // Разгрузка
+                        if (item.transshipmentCost != null &&
+                            item.transshipmentCost! > 0)
+                          _buildInfoRow(
+                            context,
+                            'Разгрузка',
+                            '\$${item.transshipmentCost!.toStringAsFixed(2)}',
+                          ),
+
+                        // Упаковка — детализация по типам + итого
+                        if (item.packagings.isNotEmpty) ...[
+                          ...item.packagings.map(
+                            (p) => _buildInfoRow(
+                              context,
+                              'Упаковка: ${p.name}',
+                              '\$${p.cost.toStringAsFixed(2)}',
+                            ),
+                          ),
+                          if (item.packagingCostTotal != null &&
+                              item.packagingCostTotal! > 0 &&
+                              item.placesCount > 1)
+                            _buildInfoRow(
+                              context,
+                              'Итого упаковка (×${item.placesCount})',
+                              '\$${item.packagingCostTotal!.toStringAsFixed(2)}',
+                            ),
+                        ] else if (item.packagingCostTotal != null &&
+                            item.packagingCostTotal! > 0)
+                          _buildInfoRow(
+                            context,
+                            'Упаковка',
+                            '\$${item.packagingCostTotal!.toStringAsFixed(2)}',
+                          ),
+
+                        // Страховка — показываем только если есть стоимость
+                        if ((item.insuranceCostClient != null &&
+                                item.insuranceCostClient! > 0) ||
+                            (item.insuranceCost != null &&
+                                item.insuranceCost! > 0)) ...[
+                          if (item.insurancePercentClient != null &&
+                              item.insurancePercentClient! > 0)
+                            _buildInfoRow(
+                              context,
+                              'Страховка',
+                              '${item.insurancePercentClient!.toStringAsFixed(1)}%',
+                            )
+                          else if (item.insurancePercent != null &&
+                              item.insurancePercent! > 0)
+                            _buildInfoRow(
+                              context,
+                              'Страховка',
+                              '${item.insurancePercent!.toStringAsFixed(1)}%',
+                            ),
+                          if (item.insuranceCostClient != null &&
+                              item.insuranceCostClient! > 0)
+                            _buildInfoRow(
+                              context,
+                              'Страховка',
+                              '\$${item.insuranceCostClient!.toStringAsFixed(2)}',
+                            )
+                          else if (item.insuranceCost != null &&
+                              item.insuranceCost! > 0)
+                            _buildInfoRow(
+                              context,
+                              'Страховка',
+                              '\$${item.insuranceCost!.toStringAsFixed(2)}',
+                            ),
+                        ],
+
+                        // Скидка
+                        if (item.discountAmount != null &&
+                            item.discountAmount! > 0)
+                          _buildInfoRow(
+                            context,
+                            'Скидка',
+                            '−\$${item.discountAmount!.toStringAsFixed(2)}',
+                          ),
+
+                        // Применённые бонусные кг
+                        if (item.bonusKgApplied > 0)
+                          _buildInfoRow(
+                            context,
+                            'Оплата бонусами',
+                            '−${item.bonusKgApplied.toStringAsFixed(2)} кг',
+                          ),
+
+                        const Divider(height: 20),
+
+                        // Стоимость доставки в $
+                        if (item.totalCostUsd > 0)
+                          _buildInfoRow(
+                            context,
+                            'Стоимость доставки',
+                            '\$${item.totalCostUsd.toStringAsFixed(2)}',
+                            isTotal: true,
+                          ),
+
+                        // К оплате в ¥
+                        if (item.totalCostCny > 0) ...[
+                          const SizedBox(height: 4),
+                          _buildInfoRow(
+                            context,
+                            'К оплате в юанях',
+                            '¥${money.format(item.totalCostCny.round())}',
+                            isTotal: true,
+                          ),
+                        ],
+
+                        // К оплате в ₽
+                        if (item.totalCostRub > 0) ...[
+                          const SizedBox(height: 4),
+                          _buildInfoRow(
+                            context,
+                            'К оплате в рублях',
+                            '${money.format(item.totalCostRub.round())} ₽',
+                            isTotal: true,
+                          ),
+                        ],
+
+                        // Курс валют (только если есть)
+                        if (item.clientRubRate != null ||
+                            item.clientYuanRate != null) ...[
+                          const Divider(height: 20),
+                          if (item.clientRubRate != null)
+                            _buildInfoRow(
+                              context,
+                              'Курс \$/₽',
+                              item.clientRubRate!.toStringAsFixed(2),
+                            ),
+                          if (item.clientYuanRate != null)
+                            _buildInfoRow(
+                              context,
+                              'Курс \$/¥',
+                              item.clientYuanRate!.toStringAsFixed(4),
+                            ),
+                        ],
+                      ]),
+                      const SizedBox(height: 24),
+
+                      // ══ Бонусные кг ══════════════════════════════════════
+                      if (showBonusSection) ...[
+                        const Text(
+                          'Бонусные кг',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF333333),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.green.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.scale_rounded,
+                                    color: Colors.green.shade700,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Доступно: ${widget.bonusBalance.toStringAsFixed(2)} кг',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (item.bonusKgApplied > 0) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Уже применено: ${item.bonusKgApplied.toStringAsFixed(2)} кг',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.green.shade600,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _bonusKgCtrl,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+[.,]?\d*'),
+                                        ),
+                                      ],
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Кол-во кг (макс ${maxKg.toStringAsFixed(2)})',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        isDense: true,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: Colors.green.shade300,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: Colors.green.shade600,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: Colors.green.shade300,
+                                          ),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 12,
+                                            ),
+                                      ),
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    height: 46,
+                                    child: ElevatedButton(
+                                      onPressed: _isApplyingBonus
+                                          ? null
+                                          : _applyBonusKg,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade600,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                      ),
+                                      child: _isApplyingBonus
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Text('Применить'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (enteredKg > 0 && pricePerKg > 0) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Скидка: ~\$${bonusDiscount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // ══ Кнопка оплаты ════════════════════════════════════
+                      if (_isUnpaid)
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: widget.onPay,
+                            child: const Text('Перейти к оплате'),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         );
       },
     );
