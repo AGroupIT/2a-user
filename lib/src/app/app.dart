@@ -59,7 +59,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       ref.read(chatPresenceServiceProvider).onAppPaused();
       _pausedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.hidden ||
-               state == AppLifecycleState.inactive) {
+        state == AppLifecycleState.inactive) {
       _pausedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
       // iOS-фикс: в background TCP-сокеты (HTTP keepalive и WebSocket)
@@ -73,7 +73,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       if (pausedAt == null) return;
       final pausedFor = DateTime.now().difference(pausedAt);
       if (pausedFor.inSeconds < 5) return;
-      debugPrint('[App] Resumed after ${pausedFor.inSeconds}s — force WS reconnect');
+      debugPrint(
+        '[App] Resumed after ${pausedFor.inSeconds}s — force WS reconnect',
+      );
       ref.read(webSocketServiceProvider).forceReconnect();
     }
   }
@@ -88,14 +90,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final brandColors = ref.watch(brandColorsProvider);
     final language = ref.watch(appLanguageProvider);
 
-    // Определяем эффективную локаль (explicit или системная).
-    // В 2a-user UI только русский — принудительного переключения на zh
-    // по timezone тут НЕТ (в отличие от 2a-admin, где есть).
-    // HK-прокси всё равно включается по расширенным критериям (системная
-    // локаль, timezone UTC+8) — см. _shouldUseHkProxy ниже.
-    final effectiveLocale = language.locale ??
-        WidgetsBinding.instance.platformDispatcher.locale;
-    ApiConfig.setChineseMode(_shouldUseHkProxy(effectiveLocale));
+    // 2a-user всегда работает напрямую с основным backend.
+    // HK-прокси используется только в 2a-admin для сотрудников из Китая.
+    ApiConfig.setChineseMode(false);
 
     return MaterialApp.router(
       title: 'Карго',
@@ -105,37 +102,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         GlobalCupertinoLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('ru'),
-        Locale('zh'),
-      ],
+      supportedLocales: const [Locale('ru'), Locale('zh')],
       locale: language.locale,
       theme: AppTheme.lightWithColors(brandColors),
       routerConfig: router,
       builder: (context, child) => Stack(
-        children: [
-          child ?? const SizedBox.shrink(),
-          const DemoModeBanner(),
-        ],
+        children: [child ?? const SizedBox.shrink(), const DemoModeBanner()],
       ),
     );
   }
-}
-
-/// Автодетект HK-прокси (не только по UI-локали).
-/// Критерии (OR): UI zh, системный язык zh, любая preferred-локаль zh,
-/// или timezone UTC+8 (Китай/HK/Шанхай/SG/Тайвань).
-bool _shouldUseHkProxy(Locale uiLocale) {
-  if (uiLocale.languageCode == 'zh') return true;
-  try {
-    final pd = WidgetsBinding.instance.platformDispatcher;
-    if (pd.locale.languageCode == 'zh') return true;
-    for (final l in pd.locales) {
-      if (l.languageCode == 'zh') return true;
-    }
-  } catch (_) {}
-  try {
-    if (DateTime.now().timeZoneOffset.inHours == 8) return true;
-  } catch (_) {}
-  return false;
 }

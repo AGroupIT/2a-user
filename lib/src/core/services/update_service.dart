@@ -26,7 +26,8 @@ class UpdateInfo {
   const UpdateInfo({
     required this.latestVersion,
     required this.minVersion,
-    required this.downloadUrl,    required this.rustoreUrl,
+    required this.downloadUrl,
+    required this.rustoreUrl,
     required this.size,
     required this.sha256,
     required this.changelog,
@@ -35,10 +36,12 @@ class UpdateInfo {
 }
 
 class UpdateService {
-  static final _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-  ));
+  static final _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  );
 
   static bool _isDialogShowing = false;
   static const _kDismissedVersionKey = 'update_dismissed_version';
@@ -53,9 +56,12 @@ class UpdateService {
       final currentStr = info.buildNumber.isNotEmpty
           ? '${info.version}+${info.buildNumber}'
           : info.version;
-      final current = _parseVersion(currentStr);      final platform = Platform.isIOS ? 'ios' : 'android';
+      final current = _parseVersion(currentStr);
+      final platform = Platform.isIOS ? 'ios' : 'android';
 
-      final response = await _dio.get('${ApiConfig.baseUrl}/app-version?app=user');
+      final response = await _dio.get(
+        '${ApiConfig.baseUrl}/app-version?app=user',
+      );
       final data = response.data as Map<String, dynamic>;
       final cfg = data[platform] as Map<String, dynamic>?;
       if (cfg == null) return null;
@@ -70,14 +76,7 @@ class UpdateService {
 
       if (!isForced && !hasUpdate) return null;
 
-      // Для китайских пользователей подменяем домен скачивания на HK-прокси
-      var downloadUrl = cfg['downloadUrl'] as String? ?? '';
-      if (ApiConfig.isUsingHkProxy && downloadUrl.isNotEmpty) {
-        downloadUrl = downloadUrl.replaceFirst(
-          'https://2alogistic.2a-marketing.ru',
-          'https://api.2a-logistic.com',
-        );
-      }
+      final downloadUrl = cfg['downloadUrl'] as String? ?? '';
       return UpdateInfo(
         latestVersion: latestVersionStr,
         minVersion: minVersionStr,
@@ -106,7 +105,8 @@ class UpdateService {
     if (!update.isForced) {
       final prefs = await SharedPreferences.getInstance();
       final dismissed = prefs.getString(_kDismissedVersionKey);
-      final dismissedAt = prefs.getInt(_kDismissedAtKey) ?? 0;      final now = DateTime.now().millisecondsSinceEpoch;
+      final dismissedAt = prefs.getInt(_kDismissedAtKey) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
       if (dismissed == update.latestVersion &&
           now - dismissedAt < 24 * 60 * 60 * 1000) {
         return;
@@ -129,8 +129,7 @@ class UpdateService {
   static Future<void> dismissVersion(String version) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDismissedVersionKey, version);
-    await prefs.setInt(
-        _kDismissedAtKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_kDismissedAtKey, DateTime.now().millisecondsSinceEpoch);
   }
 
   /// Download the update file with progress callback.
@@ -141,7 +140,8 @@ class UpdateService {
     CancelToken? cancelToken,
   }) async {
     final dir = Directory(
-        '${(await getApplicationCacheDirectory()).path}/updates');
+      '${(await getApplicationCacheDirectory()).path}/updates',
+    );
 
     if (!dir.existsSync()) dir.createSync(recursive: true);
 
@@ -163,19 +163,14 @@ class UpdateService {
     if (partFile.existsSync()) {
       existingBytes = partFile.lengthSync();
     }
-    // For Chinese users, route download through HK proxy
-    var downloadUrl = update.downloadUrl;
-    if (ApiConfig.isUsingHkProxy && downloadUrl.contains('2alogistic.2a-marketing.ru')) {
-      downloadUrl = downloadUrl.replaceFirst(
-        'https://2alogistic.2a-marketing.ru',
-        'https://api.2a-logistic.com',
-      );
-    }
+    final downloadUrl = update.downloadUrl;
 
-    final downloadDio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(minutes: 10),
-    ));
+    final downloadDio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 10),
+      ),
+    );
 
     await downloadDio.download(
       downloadUrl,
@@ -183,14 +178,12 @@ class UpdateService {
       cancelToken: cancelToken,
       deleteOnError: false,
       options: Options(
-        headers: existingBytes > 0
-            ? {'Range': 'bytes=$existingBytes-'}
-            : null,
+        headers: existingBytes > 0 ? {'Range': 'bytes=$existingBytes-'} : null,
       ),
       onReceiveProgress: (received, total) {
         final actualReceived = received + existingBytes;
-        final actualTotal =
-            total > 0 ? total + existingBytes : update.size;        onProgress(actualReceived, actualTotal);
+        final actualTotal = total > 0 ? total + existingBytes : update.size;
+        onProgress(actualReceived, actualTotal);
       },
     );
 
@@ -203,7 +196,9 @@ class UpdateService {
       final hash = sha256.convert(bytes).toString();
       if (hash != update.sha256) {
         finalFile.deleteSync();
-        throw Exception('SHA256 mismatch: expected ${update.sha256}, got $hash');
+        throw Exception(
+          'SHA256 mismatch: expected ${update.sha256}, got $hash',
+        );
       }
     }
 
@@ -229,9 +224,11 @@ class UpdateService {
       final canNow =
           await _channel.invokeMethod<bool>('canInstallPackages') ?? false;
       if (!canNow) {
-        throw Exception(ApiConfig.isUsingHkProxy
-            ? '请在设置中允许从此来源安装应用'
-            : 'Разрешите установку из этого источника в настройках');
+        throw Exception(
+          ApiConfig.isUsingHkProxy
+              ? '请在设置中允许从此来源安装应用'
+              : 'Разрешите установку из этого источника в настройках',
+        );
       }
     }
 
@@ -246,7 +243,8 @@ class UpdateService {
     final semver = parts[0]
         .split('.')
         .map((p) => int.tryParse(p.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0)
-        .toList();    if (parts.length > 1) {
+        .toList();
+    if (parts.length > 1) {
       semver.add(int.tryParse(parts[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0);
     }
     return semver;
@@ -274,6 +272,7 @@ class UpdateDialog extends StatefulWidget {
   @override
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
+
 class _UpdateDialogState extends State<UpdateDialog> {
   bool _downloading = false;
   double _progress = 0;
@@ -301,7 +300,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
         widget.update,
         onProgress: (received, total) {
           if (mounted) {
-            setState(() {              _receivedBytes = received;
+            setState(() {
+              _receivedBytes = received;
               _totalBytes = total;
               _progress = total > 0 ? received / total : 0;
             });
@@ -320,9 +320,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         final isZh = Localizations.localeOf(context).languageCode == 'zh';
         setState(() {
           _downloading = false;
-          _error = isZh
-              ? '下载失败：${e.message}'
-              : 'Ошибка загрузки: ${e.message}';
+          _error = isZh ? '下载失败：${e.message}' : 'Ошибка загрузки: ${e.message}';
         });
       }
     } catch (e) {
@@ -330,7 +328,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
         final isZh = Localizations.localeOf(context).languageCode == 'zh';
         setState(() {
           _downloading = false;
-          _error = isZh ? '错误：$e' : 'Ошибка: $e';        });
+          _error = isZh ? '错误：$e' : 'Ошибка: $e';
+        });
       }
     }
   }
@@ -348,17 +347,16 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final hasRustore = !Platform.isIOS &&
-        widget.update.rustoreUrl.isNotEmpty;
-    final hasDownload = !Platform.isIOS &&
-        widget.update.downloadUrl.isNotEmpty;
+    final hasRustore = !Platform.isIOS && widget.update.rustoreUrl.isNotEmpty;
+    final hasDownload = !Platform.isIOS && widget.update.downloadUrl.isNotEmpty;
 
     return PopScope(
       canPop: !widget.update.isForced,
       child: Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),          child: Column(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Icon
@@ -367,17 +365,17 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 height: 64,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      context.brandPrimary,
-                      context.brandSecondary,
-                    ],
+                    colors: [context.brandPrimary, context.brandSecondary],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.system_update_rounded,
-                    color: Colors.white, size: 34),
+                child: const Icon(
+                  Icons.system_update_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
               ),
               const SizedBox(height: 18),
 
@@ -385,8 +383,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
               Text(
                 widget.update.isForced
                     ? _t(context, 'Требуется обновление', '需要更新')
-                    : _t(context, 'Доступно обновление v${widget.update.latestVersion}',
-                        '有新版本 v${widget.update.latestVersion}'),                style: const TextStyle(
+                    : _t(
+                        context,
+                        'Доступно обновление v${widget.update.latestVersion}',
+                        '有新版本 v${widget.update.latestVersion}',
+                      ),
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -398,12 +400,16 @@ class _UpdateDialogState extends State<UpdateDialog> {
               // Subtitle
               Text(
                 widget.update.isForced
-                    ? _t(context,
+                    ? _t(
+                        context,
                         'Эта версия приложения устарела.\nПожалуйста, обновите, чтобы продолжить.',
-                        '当前版本已过期。\n请更新应用以继续使用。')
-                    : _t(context,
+                        '当前版本已过期。\n请更新应用以继续使用。',
+                      )
+                    : _t(
+                        context,
                         'Вышла новая версия с улучшениями.',
-                        '新版本已发布，包含改进和修复。'),
+                        '新版本已发布，包含改进和修复。',
+                      ),
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textPrimary.withValues(alpha: 0.65),
@@ -415,7 +421,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
               // Changelog
               if (widget.update.changelog.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Container(                  width: double.infinity,
+                Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.grey[100],
@@ -432,8 +439,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
               if (widget.update.size > 0 && !_downloading) ...[
                 const SizedBox(height: 8),
                 Text(
-                  _t(context, 'Размер: ${_formatBytes(widget.update.size)}',
-                      '大小：${_formatBytes(widget.update.size)}'),
+                  _t(
+                    context,
+                    'Размер: ${_formatBytes(widget.update.size)}',
+                    '大小：${_formatBytes(widget.update.size)}',
+                  ),
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
@@ -444,7 +454,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
               if (_downloading) ...[
                 LinearProgressIndicator(
                   value: _progress > 0 ? _progress : null,
-                  backgroundColor: Colors.grey[200],                  valueColor: AlwaysStoppedAnimation(context.brandPrimary),
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation(context.brandPrimary),
                   minHeight: 6,
                   borderRadius: BorderRadius.circular(3),
                 ),
@@ -467,18 +478,22 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
               // Error
               if (_error != null) ...[
-                Text(_error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 13)),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _startDownload,                    style: ElevatedButton.styleFrom(
+                    onPressed: _startDownload,
+                    style: ElevatedButton.styleFrom(
                       backgroundColor: context.brandPrimary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: Text(_t(context, 'Повторить', '重试')),
                   ),
@@ -502,7 +517,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       context,
                       _t(context, 'Обновить', '立即更新'),
                       filled: true,
-                      onPressed: _startDownload,                    ),
+                      onPressed: _startDownload,
+                    ),
                   // RuStore as secondary option
                   if (hasRustore) ...[
                     if (hasDownload) const SizedBox(height: 10),
@@ -530,15 +546,20 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     ),
                   ),
                 ],
-              ],            ],
+              ],
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildButton(BuildContext context, String text,
-      {required bool filled, required VoidCallback onPressed}) {
+  Widget _buildButton(
+    BuildContext context,
+    String text, {
+    required bool filled,
+    required VoidCallback onPressed,
+  }) {
     return SizedBox(
       width: double.infinity,
       child: filled
@@ -547,25 +568,36 @@ class _UpdateDialogState extends State<UpdateDialog> {
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 backgroundColor: context.brandPrimary,
                 foregroundColor: Colors.white,
               ),
-              child: Text(text,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600)),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             )
           : OutlinedButton(
               onPressed: onPressed,
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 side: BorderSide(color: context.brandPrimary),
                 foregroundColor: context.brandPrimary,
               ),
-              child: Text(text,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600)),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
     );
   }

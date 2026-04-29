@@ -3,21 +3,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 /// Конфигурация API
 class ApiConfig {
   static const _mainHost = 'https://2alogistic.2a-marketing.ru';
-  static const _hkHost = 'https://api.2a-logistic.com';
 
-  /// Флаг китайского режима.
-  /// Устанавливается при старте приложения и при смене языка на основе
-  /// выбранного языка в настройках приложения (zh → HK-прокси).
-  static bool _chineseMode = false;
+  /// 2a-user всегда ходит напрямую в основной backend.
+  /// Метод оставлен для совместимости с кодом инициализации приложения.
+  static void setChineseMode(bool _) {}
 
-  /// Вызывается из main.dart при старте и из AppLanguageNotifier при смене языка.
-  static void setChineseMode(bool isChinese) {
-    _chineseMode = isChinese;
-  }
-
-  static bool get _isChineseLocale => _chineseMode;
-
-  static String get _host => _isChineseLocale ? _hkHost : _mainHost;
+  static String get _host => _mainHost;
 
   /// Base URL для API
   static String get baseUrl {
@@ -25,7 +16,7 @@ class ApiConfig {
     if (envUrl.isNotEmpty) return envUrl;
     return '$_host/api';
   }
-  
+
   /// Base URL для статических файлов (uploads)
   static String get mediaBaseUrl {
     const envUrl = String.fromEnvironment('MEDIA_BASE_URL');
@@ -33,9 +24,9 @@ class ApiConfig {
     return _host;
   }
 
-  /// Флаг: используем ли сейчас HK-прокси в качестве основного хоста
-  static bool get isUsingHkProxy => _isChineseLocale;
-  
+  /// 2a-user не использует HK-прокси.
+  static bool get isUsingHkProxy => false;
+
   /// Формирует полный URL для медиа-файла
   /// Использует /api/uploads/ endpoint для надёжной работы на всех платформах
   static String getMediaUrl(String path) {
@@ -84,7 +75,7 @@ class ApiConfig {
 
   /// Заголовки по умолчанию
   static Map<String, String> get defaultHeaders => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
 }
