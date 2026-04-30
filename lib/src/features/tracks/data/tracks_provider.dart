@@ -332,7 +332,10 @@ class PaginatedTracksNotifier {
         take: _pageSize,
       );
 
-      final newTracks = [..._state.tracks, ...result.tracks];
+      final newTracks = _sortTracksByCreatedAtDesc([
+        ..._state.tracks,
+        ...result.tracks,
+      ]);
       _updateState(
         _state.copyWith(
           tracks: newTracks,
@@ -419,7 +422,10 @@ class PaginatedTracksNotifier {
 
       debugPrint('Fetched ${tracks.length} tracks, total: $total');
 
-      return _TracksResult(tracks: tracks, total: total);
+      return _TracksResult(
+        tracks: _sortTracksByCreatedAtDesc(tracks),
+        total: total,
+      );
     }
 
     throw Exception('Failed to load tracks');
@@ -520,9 +526,11 @@ final tracksListProvider =
           final data = response.data as Map<String, dynamic>;
           final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-          return tracksJson
+          final tracks = tracksJson
               .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
               .toList();
+
+          return _sortTracksByCreatedAtDesc(tracks);
         }
         return [];
       } on DioException catch (e) {
@@ -550,9 +558,11 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
         final data = response.data as Map<String, dynamic>;
         final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-        return tracksJson
+        final tracks = tracksJson
             .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
             .toList();
+
+        return _sortTracksByCreatedAtDesc(tracks);
       }
       return [];
     } on DioException catch (e) {
@@ -562,7 +572,7 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
   },
 );
 
-/// Провайдер для дайджеста - последние 10 треков отсортированные по дате изменения
+/// Провайдер для дайджеста - последние 10 треков отсортированные по дате создания
 final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
   ref,
   clientCode,
@@ -584,9 +594,11 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
       final data = response.data as Map<String, dynamic>;
       final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-      return tracksJson
+      final tracks = tracksJson
           .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
           .toList();
+
+      return _sortTracksByCreatedAtDesc(tracks);
     }
     return [];
   } on DioException catch (e) {
@@ -594,6 +606,14 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
     return [];
   }
 });
+
+List<TrackItem> _sortTracksByCreatedAtDesc(List<TrackItem> tracks) {
+  return [...tracks]..sort((a, b) {
+    final byCreatedAt = b.createdAt.compareTo(a.createdAt);
+    if (byCreatedAt != 0) return byCreatedAt;
+    return (b.id ?? 0).compareTo(a.id ?? 0);
+  });
+}
 
 /// Провайдер количества треков для карточки на главном экране.
 /// Считаются только треки в активной обработке: pending / in_warehouse / in_assembly.

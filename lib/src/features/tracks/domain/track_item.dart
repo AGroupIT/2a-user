@@ -60,65 +60,60 @@ class TrackItem {
 
   factory TrackItem.fromJson(Map<String, dynamic> json) {
     // Получаем код трека
-    final code = json['code'] as String? ?? 
-                 json['trackNumber'] as String? ?? 
-                 'TRK-${json['id']}';
-    
+    final code =
+        json['code'] as String? ??
+        json['trackNumber'] as String? ??
+        'TRK-${json['id']}';
+
     // Получаем статус - сначала statusName из API, потом fallback
-    final status = json['statusName'] as String? ?? json['status'] as String? ?? 'unknown';
+    final status =
+        json['statusName'] as String? ?? json['status'] as String? ?? 'unknown';
     final statusCode = json['status'] as String? ?? '';
     final statusColor = json['statusColor'] as String?;
-    
-    // Получаем дату обновления (для сортировки по изменениям) или дату создания
-    DateTime date;
-    if (json['updatedAt'] != null) {
-      date = DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now();
-    } else if (json['createdAt'] != null) {
-      date = DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now();
-    } else {
-      date = DateTime.now();
-    }
-    
-    final createdAt = json['createdAt'] != null 
+
+    final createdAt = json['createdAt'] != null
         ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
         : DateTime.now();
-    final updatedAt = json['updatedAt'] != null 
+    final updatedAt = json['updatedAt'] != null
         ? DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now()
         : DateTime.now();
-    
+    final date = createdAt;
+
     // Получаем фото из photos
     final photos = json['photos'] as List<dynamic>? ?? [];
     final photoUrls = photos
         .map((p) => (p as Map<String, dynamic>)['url'] as String?)
         .whereType<String>()
         .toList();
-    
+
     // Парсим сборку
     TrackAssembly? assembly;
     if (json['assembly'] != null) {
       final assemblyJson = json['assembly'] as Map<String, dynamic>;
       assembly = TrackAssembly.fromJson(assemblyJson);
     }
-    
+
     // Парсим информацию о товаре (productInfo - массив, берем первый)
     ProductInfo? productInfo;
     final productInfoList = json['productInfo'] as List<dynamic>?;
     if (productInfoList != null && productInfoList.isNotEmpty) {
-      productInfo = ProductInfo.fromJson(productInfoList.first as Map<String, dynamic>);
+      productInfo = ProductInfo.fromJson(
+        productInfoList.first as Map<String, dynamic>,
+      );
     }
-    
+
     // Парсим фото-запросы
     final photoRequestsList = json['photoRequests'] as List<dynamic>? ?? [];
     final photoRequests = photoRequestsList
         .map((pr) => PhotoRequest.fromJson(pr as Map<String, dynamic>))
         .toList();
-    
+
     // Парсим вопросы
     final questionsList = json['questions'] as List<dynamic>? ?? [];
     final questions = questionsList
         .map((q) => TrackQuestion.fromJson(q as Map<String, dynamic>))
         .toList();
-    
+
     // Код клиента
     final clientCodeData = json['clientCode'] as Map<String, dynamic>?;
     final clientCode = clientCodeData?['code'] as String?;
@@ -155,15 +150,15 @@ class TrackAssembly {
   final String? statusName;
   final String? statusColor;
   final String? comment;
-  
+
   // Тариф
   final String? tariffName;
   final double? tariffCost;
-  
+
   // Упаковка
   final List<String> packagingTypes;
   final double? packagingCost;
-  
+
   // Страховка
   final bool hasInsurance;
   final double? insuranceAmount;
@@ -216,7 +211,8 @@ class TrackAssembly {
       packagingTypes = (json['packagingTypes'] as List)
           .map((e) => e.toString())
           .toList();
-    } else if (json['packagingNames'] != null && json['packagingNames'] is List) {
+    } else if (json['packagingNames'] != null &&
+        json['packagingNames'] is List) {
       // Fallback для старого формата API
       packagingTypes = (json['packagingNames'] as List)
           .map((e) => e.toString())
@@ -224,7 +220,7 @@ class TrackAssembly {
     } else if (json['packagingTypeName'] != null) {
       packagingTypes = [json['packagingTypeName'].toString()];
     }
-    
+
     // Безопасный парсинг чисел (могут быть строками)
     double? parseDouble(dynamic value) {
       if (value == null) return null;
@@ -233,19 +229,23 @@ class TrackAssembly {
       return null;
     }
 
-    final scalePhotosList = (json['scalePhotos'] as List<dynamic>?)
+    final scalePhotosList =
+        (json['scalePhotos'] as List<dynamic>?)
             ?.map((e) => ScalePhoto.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [];
 
     // Парсим коробки
-    final boxesList = (json['boxes'] as List<dynamic>?)
+    final boxesList =
+        (json['boxes'] as List<dynamic>?)
             ?.map((e) => Box.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [];
 
     return TrackAssembly(
-      id: json['id'] is int ? json['id'] as int : int.parse(json['id'].toString()),
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.parse(json['id'].toString()),
       number: json['number']?.toString() ?? '',
       name: json['name']?.toString(),
       status: json['status']?.toString() ?? '',
@@ -256,7 +256,8 @@ class TrackAssembly {
       tariffCost: parseDouble(json['tariffCost']),
       packagingTypes: packagingTypes,
       packagingCost: parseDouble(json['packagingCost']),
-      hasInsurance: json['hasInsurance'] == true || json['hasInsurance'] == 'true',
+      hasInsurance:
+          json['hasInsurance'] == true || json['hasInsurance'] == 'true',
       insuranceAmount: parseDouble(json['insuranceAmount']),
       deliveryMethod: json['deliveryMethod']?.toString(),
       recipientName: json['recipientName']?.toString(),
@@ -294,7 +295,7 @@ class ProductInfo {
       name: json['name'] as String? ?? json['productName'] as String?,
       quantity: json['quantity'] as int? ?? 1,
       imageUrl: json['imageUrl'] as String?,
-      createdAt: json['createdAt'] != null 
+      createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString())
           : null,
     );
@@ -358,13 +359,15 @@ class PhotoRequest {
       warehouseComment: json['warehouseComment'] as String?,
       status: json['status'] as String? ?? 'new',
       mediaUrls: mediaUrls,
-      createdAt: json['createdAt'] != null 
+      createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      completedAt: json['completedAt'] != null 
+      completedAt: json['completedAt'] != null
           ? DateTime.tryParse(json['completedAt'].toString())
           : null,
-      completedByName: (json['completedBy'] as Map<String, dynamic>?)?['fullName'] as String?,
+      completedByName:
+          (json['completedBy'] as Map<String, dynamic>?)?['fullName']
+              as String?,
     );
   }
 }
@@ -417,13 +420,14 @@ class TrackQuestion {
       question: json['question'] as String? ?? '',
       answer: json['answer'] as String?,
       status: json['status'] as String? ?? 'new',
-      createdAt: json['createdAt'] != null 
+      createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      answeredAt: json['answeredAt'] != null 
+      answeredAt: json['answeredAt'] != null
           ? DateTime.tryParse(json['answeredAt'].toString())
           : null,
-      answeredByName: (json['answeredBy'] as Map<String, dynamic>?)?['fullName'] as String?,
+      answeredByName:
+          (json['answeredBy'] as Map<String, dynamic>?)?['fullName'] as String?,
     );
   }
 }
