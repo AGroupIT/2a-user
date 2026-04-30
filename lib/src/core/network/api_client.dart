@@ -21,7 +21,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 
 /// Клиент для работы с API
 class ApiClient {
-  late final Dio _dio;
+  late Dio _dio;
   // На мобильных платформах используем FlutterSecureStorage с правильными настройками
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(),
@@ -44,26 +44,117 @@ class ApiClient {
   }
 
   ApiClient() {
-    _dio = Dio(
+    _dio = _createDio();
+  }
+
+  Dio _createDio() {
+    final dio = Dio(
       BaseOptions(
         baseUrl: ApiConfig.baseUrl,
         connectTimeout: ApiConfig.connectTimeout,
         receiveTimeout: ApiConfig.receiveTimeout,
+        sendTimeout: ApiConfig.sendTimeout,
         headers: ApiConfig.defaultHeaders,
       ),
     );
 
+    // На Web BackgroundTransformer использует isolate-путь, который нестабилен
+    // в dart2js. Админка уже работает через SyncTransformer, переносим тот же
+    // подход в клиентское приложение.
+    if (kIsWeb) {
+      dio.transformer = SyncTransformer();
+    }
+
     // Добавляем интерсепторы
-    _dio.interceptors.add(_authInterceptor());
+    dio.interceptors.add(_authInterceptor());
 
     // Sentry interceptor для отслеживания HTTP ошибок
     if (SentryConfig.enabled) {
-      _dio.interceptors.add(_sentryInterceptor());
+      dio.interceptors.add(_sentryInterceptor());
     }
 
     if (kDebugMode) {
-      _dio.interceptors.add(_loggingInterceptor());
+      dio.interceptors.add(_loggingInterceptor());
     }
+
+    return dio;
+  }
+
+  /// Закрывает текущие HTTP-соединения и создаёт новый Dio.
+  ///
+  /// Используется после долгого background/sleep: мобильные сети и WebView
+  /// иногда оставляют keep-alive сокет в состоянии, где запрос уже не отвечает,
+  /// но Future ещё ждёт receive timeout.
+  void resetConnections() {
+    final oldDio = _dio;
+    _dio = _createDio();
+    oldDio.close(force: true);
+    debugPrint('[ApiClient] HTTP connections reset');
+  }
+
+  static bool _isTransientNetworkError(DioException e) {
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.connectionError;
+  }
+
+  static bool _isPreSendError(DioException e) {
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.sendTimeout;
+  }
+
+  Duration _effectiveOverallTimeout(Options? options) {
+    final base = ApiConfig.overallRequestTimeout;
+    final send = options?.sendTimeout ?? Duration.zero;
+    final receive = options?.receiveTimeout ?? Duration.zero;
+    if (send == Duration.zero && receive == Duration.zero) return base;
+
+    final custom = (send + receive) * 2 + const Duration(seconds: 10);
+    return custom > base ? custom : base;
+  }
+
+  Future<Response<T>> _withRetry<T>(
+    Future<Response<T>> Function() fn, {
+    required bool retryOnAllNetworkErrors,
+    int maxAttempts = ApiConfig.maxRetries,
+  }) async {
+    DioException? lastError;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } on DioException catch (e) {
+        final shouldRetry = retryOnAllNetworkErrors
+            ? _isTransientNetworkError(e)
+            : _isPreSendError(e);
+        if (!shouldRetry || attempt == maxAttempts) rethrow;
+
+        lastError = e;
+        debugPrint(
+          '[ApiClient] Network error (${e.type}), '
+          'retry $attempt/$maxAttempts in ${ApiConfig.retryDelay.inMilliseconds}ms',
+        );
+        await Future<void>.delayed(ApiConfig.retryDelay);
+      }
+    }
+
+    throw lastError ?? DioException(requestOptions: RequestOptions(path: ''));
+  }
+
+  Future<Response<T>> _request<T>(
+    Future<Response<T>> Function(Dio dio) requestFn, {
+    required bool idempotent,
+    Options? options,
+  }) async {
+    Future<Response<T>> run() {
+      return _withRetry(
+        () => requestFn(_dio),
+        retryOnAllNetworkErrors: idempotent,
+      );
+    }
+
+    return run().timeout(_effectiveOverallTimeout(options));
   }
 
   /// Интерсептор для добавления токена авторизации
@@ -369,9 +460,10 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _dio.get<T>(
-      path,
-      queryParameters: queryParameters,
+    return _request(
+      (dio) =>
+          dio.get<T>(path, queryParameters: queryParameters, options: options),
+      idempotent: true,
       options: options,
     );
   }
@@ -383,10 +475,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _dio.post<T>(
-      path,
-      data: data,
-      queryParameters: queryParameters,
+    return _request(
+      (dio) => dio.post<T>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      ),
+      idempotent: false,
       options: options,
     );
   }
@@ -398,10 +494,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _dio.put<T>(
-      path,
-      data: data,
-      queryParameters: queryParameters,
+    return _request(
+      (dio) => dio.put<T>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      ),
+      idempotent: false,
       options: options,
     );
   }
@@ -413,10 +513,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _dio.patch<T>(
-      path,
-      data: data,
-      queryParameters: queryParameters,
+    return _request(
+      (dio) => dio.patch<T>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      ),
+      idempotent: false,
       options: options,
     );
   }
@@ -428,10 +532,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _dio.delete<T>(
-      path,
-      data: data,
-      queryParameters: queryParameters,
+    return _request(
+      (dio) => dio.delete<T>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      ),
+      idempotent: false,
       options: options,
     );
   }
@@ -449,6 +557,20 @@ class ApiClient {
       fieldName: await MultipartFile.fromFile(filePath),
     });
 
-    return _dio.post<T>(path, data: formData, onSendProgress: onSendProgress);
+    final uploadOptions = Options(
+      sendTimeout: const Duration(minutes: 2),
+      receiveTimeout: const Duration(minutes: 2),
+    );
+
+    return _request(
+      (dio) => dio.post<T>(
+        path,
+        data: formData,
+        options: uploadOptions,
+        onSendProgress: onSendProgress,
+      ),
+      idempotent: false,
+      options: uploadOptions,
+    );
   }
 }

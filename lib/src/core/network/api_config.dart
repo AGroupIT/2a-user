@@ -69,9 +69,22 @@ class ApiConfig {
     return result;
   }
 
-  /// Таймаут для запросов
-  static const Duration connectTimeout = Duration(seconds: 30);
-  static const Duration receiveTimeout = Duration(seconds: 30);
+  /// Таймауты для запросов.
+  ///
+  /// 2a-user часто открывают после долгого background/sleep. На мобильных
+  /// сетях старое TCP-соединение может выглядеть живым для dart:io, но уже не
+  /// отвечать. Короткие Dio-timeout + общий wall-clock timeout в ApiClient не
+  /// дают UI висеть в бесконечной загрузке.
+  static const Duration connectTimeout = Duration(seconds: 10);
+  static const Duration receiveTimeout = Duration(seconds: 20);
+  static const Duration sendTimeout = Duration(seconds: 20);
+
+  /// Политика повторов при кратковременных сетевых ошибках.
+  static const int maxRetries = 2;
+  static const Duration retryDelay = Duration(milliseconds: 500);
+
+  /// Страховочный timeout всего запроса, включая retry.
+  static const Duration overallRequestTimeout = Duration(seconds: 30);
 
   /// Заголовки по умолчанию
   static Map<String, String> get defaultHeaders => {

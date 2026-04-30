@@ -6,9 +6,12 @@ import '../../features/invoices/data/invoices_provider.dart';
 import '../../features/news/data/news_provider.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/photos/data/photos_provider.dart';
+import '../../features/profile/data/profile_provider.dart';
 import '../../features/rules/data/rules_provider.dart';
 import '../../features/tariffs/data/tariffs_provider.dart';
-import '../../features/assemblies/data/assemblies_provider.dart' as user_assemblies;
+import '../../features/assemblies/data/assemblies_provider.dart'
+    as user_assemblies;
+import '../../features/clients/application/client_codes_controller.dart';
 import '../../features/sp_finance/data/sp_provider.dart';
 import '../../features/tracks/data/assemblies_provider.dart';
 import '../../features/tracks/data/tracks_provider.dart';
@@ -46,7 +49,9 @@ final deltaSyncProvider = Provider<void>((ref) {
 
   // Listen to delta_batch events (mass operations)
   final deltaBatchSub = wsService.deltaBatches.listen((batch) {
-    debugPrint('[DeltaSync] DeltaBatch: ${batch.type} ${batch.items.length} items');
+    debugPrint(
+      '[DeltaSync] DeltaBatch: ${batch.type} ${batch.items.length} items',
+    );
     scheduleFlush(batch.type);
   });
 
@@ -128,7 +133,18 @@ void _handleDeltaType(Ref ref, String type) {
   }
 }
 
-void _invalidateAll(Ref ref) {
+/// Принудительное обновление клиентских данных после восстановления сети.
+///
+/// Вызывается из App при возврате из background/sleep и из WS reconnect-flow.
+/// Держим это в одном месте, чтобы не расходились списки провайдеров.
+void invalidateClientDataProviders(WidgetRef ref) => _invalidateAllFor(ref);
+
+void _invalidateAll(Ref ref) => _invalidateAllFor(ref);
+
+void _invalidateAllFor(dynamic ref) {
+  ref.invalidate(clientProfileProvider);
+  ref.invalidate(clientStatsProvider);
+  ref.invalidate(clientCodesControllerProvider);
   ref.invalidate(tracksDigestProvider);
   ref.invalidate(tracksCountProvider);
   ref.invalidate(tracksWithoutAssemblyCountProvider);

@@ -76,7 +76,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       debugPrint(
         '[App] Resumed after ${pausedFor.inSeconds}s — force WS reconnect',
       );
+      ref.read(apiClientProvider).resetConnections();
       ref.read(webSocketServiceProvider).forceReconnect();
+      Future.microtask(() {
+        if (!mounted) return;
+        if (!ref.read(authProvider).isLoggedIn) return;
+        invalidateClientDataProviders(ref);
+      });
     }
   }
 
