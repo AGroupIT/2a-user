@@ -54,8 +54,7 @@ class WebSocketService {
 
   final _dataChangedController =
       StreamController<Map<String, dynamic>>.broadcast();
-  Stream<Map<String, dynamic>> get dataChanged =>
-      _dataChangedController.stream;
+  Stream<Map<String, dynamic>> get dataChanged => _dataChangedController.stream;
 
   final _taskPresenceController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -69,8 +68,7 @@ class WebSocketService {
 
   final _taskDeltaController =
       StreamController<Map<String, dynamic>>.broadcast();
-  Stream<Map<String, dynamic>> get taskDelta =>
-      _taskDeltaController.stream;
+  Stream<Map<String, dynamic>> get taskDelta => _taskDeltaController.stream;
 
   final _assemblyDeltaController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -108,6 +106,27 @@ class WebSocketService {
   SocketConnectionStatus get currentStatus => _currentStatus;
 
   WebSocketService({required String serverUrl}) : _serverUrl = serverUrl;
+
+  dynamic _normalizeSocketValue(dynamic value) {
+    if (value is Map) {
+      return value.map(
+        (key, nestedValue) =>
+            MapEntry(key.toString(), _normalizeSocketValue(nestedValue)),
+      );
+    }
+    if (value is List) {
+      return value.map(_normalizeSocketValue).toList();
+    }
+    return value;
+  }
+
+  Map<String, dynamic>? _normalizeSocketMap(dynamic data) {
+    final normalized = _normalizeSocketValue(data);
+    if (normalized is Map<String, dynamic>) {
+      return normalized;
+    }
+    return null;
+  }
 
   /// Подключиться к WebSocket серверу.
   /// [serverUrl] — если передан, переопределяет URL, указанный при создании сервиса.
@@ -166,12 +185,16 @@ class WebSocketService {
             : const Duration(seconds: 999);
         _disconnectedAt = null;
         if (disconnectDuration.inSeconds >= 5) {
-          print('WebSocket reconnected after ${disconnectDuration.inSeconds}s — triggering full refetch');
+          print(
+            'WebSocket reconnected after ${disconnectDuration.inSeconds}s — triggering full refetch',
+          );
           if (!_reconnectedController.isClosed) {
             _reconnectedController.add(null);
           }
         } else {
-          print('WebSocket reconnected after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)');
+          print(
+            'WebSocket reconnected after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)',
+          );
         }
       }
     });
@@ -191,12 +214,16 @@ class WebSocketService {
           : const Duration(seconds: 999);
       _disconnectedAt = null;
       if (disconnectDuration.inSeconds >= 5) {
-        print('WebSocket onReconnect after ${disconnectDuration.inSeconds}s — triggering full refetch');
+        print(
+          'WebSocket onReconnect after ${disconnectDuration.inSeconds}s — triggering full refetch',
+        );
         if (!_reconnectedController.isClosed) {
           _reconnectedController.add(null);
         }
       } else {
-        print('WebSocket onReconnect after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)');
+        print(
+          'WebSocket onReconnect after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)',
+        );
       }
     });
 
@@ -224,93 +251,107 @@ class WebSocketService {
 
     // Chat events
     _socket!.on('new_message', (data) {
-      if (data is Map<String, dynamic>) {
-        _messageController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _messageController.add(normalized);
       }
     });
 
     _socket!.on('conversation_updated', (data) {
-      if (data is Map<String, dynamic>) {
-        _conversationUpdateController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _conversationUpdateController.add(normalized);
       }
     });
 
     _socket!.on('user_typing', (data) {
-      if (data is Map<String, dynamic>) {
-        _typingController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _typingController.add(normalized);
       }
     });
 
     _socket!.on('user_presence', (data) {
-      if (data is Map<String, dynamic>) {
-        _presenceController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _presenceController.add(normalized);
       }
     });
 
     _socket!.on('messages_read', (data) {
-      if (data is Map<String, dynamic>) {
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
         if (!_messagesReadController.isClosed) {
-          _messagesReadController.add(data);
+          _messagesReadController.add(normalized);
         }
       }
     });
 
     _socket!.on('message_edited', (data) {
-      if (data is Map<String, dynamic>) {
-        _messageEditedController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _messageEditedController.add(normalized);
       }
     });
 
     _socket!.on('message_deleted', (data) {
-      if (data is Map<String, dynamic>) {
-        _messageDeletedController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _messageDeletedController.add(normalized);
       }
     });
 
     // Data change events (real-time sync)
     _socket!.on('data_changed', (data) {
-      if (data is Map<String, dynamic>) {
-        _dataChangedController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _dataChangedController.add(normalized);
       }
     });
 
     // Warehouse task presence events
     _socket!.on('task_presence', (data) {
-      if (data is Map<String, dynamic>) {
-        _taskPresenceController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _taskPresenceController.add(normalized);
       }
     });
 
     _socket!.on('task_presence_disconnect', (data) {
-      if (data is Map<String, dynamic>) {
-        _taskPresenceDisconnectController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _taskPresenceDisconnectController.add(normalized);
       }
     });
 
     // Delta events for warehouse workers (real-time task/assembly updates)
     _socket!.on('task_delta', (data) {
-      if (data is Map<String, dynamic>) {
-        _taskDeltaController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _taskDeltaController.add(normalized);
       }
     });
 
     _socket!.on('assembly_delta', (data) {
-      if (data is Map<String, dynamic>) {
-        _assemblyDeltaController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _assemblyDeltaController.add(normalized);
       }
     });
 
     _socket!.on('employee_chat_presence', (data) {
-      if (data is Map<String, dynamic>) {
-        _employeeChatPresenceController.add(data);
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
+        _employeeChatPresenceController.add(normalized);
       }
     });
 
     // === Delta Sync events (universal) ===
     _socket!.on('delta', (data) {
-      if (data is Map<String, dynamic>) {
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
         try {
-          final event = DeltaEvent.fromJson(data);
+          final event = DeltaEvent.fromJson(normalized);
           if (!_deltaController.isClosed) {
             _deltaController.add(event);
           }
@@ -321,9 +362,10 @@ class WebSocketService {
     });
 
     _socket!.on('delta_batch', (data) {
-      if (data is Map<String, dynamic>) {
+      final normalized = _normalizeSocketMap(data);
+      if (normalized != null) {
         try {
-          final batch = DeltaBatchEvent.fromJson(data);
+          final batch = DeltaBatchEvent.fromJson(normalized);
           if (!_deltaBatchController.isClosed) {
             _deltaBatchController.add(batch);
           }
@@ -347,7 +389,8 @@ class WebSocketService {
     final socketConnected = _socket?.connected ?? false;
 
     // Статус connected, но сокет на самом деле мёртв
-    if (!socketConnected && _currentStatus == SocketConnectionStatus.connected) {
+    if (!socketConnected &&
+        _currentStatus == SocketConnectionStatus.connected) {
       print('[WS Health] Socket dead — status was connected, correcting');
       _disconnectedAt ??= DateTime.now();
       _updateStatus(SocketConnectionStatus.disconnected);
@@ -355,7 +398,9 @@ class WebSocketService {
 
     // Статус disconnected, но сокет на самом деле жив (маловероятно, но защита)
     if (socketConnected && _currentStatus != SocketConnectionStatus.connected) {
-      print('[WS Health] Socket alive but status was ${_currentStatus.name}, correcting');
+      print(
+        '[WS Health] Socket alive but status was ${_currentStatus.name}, correcting',
+      );
       _updateStatus(SocketConnectionStatus.connected);
       return;
     }
@@ -364,7 +409,9 @@ class WebSocketService {
     if (!socketConnected && _disconnectedAt != null && _token != null) {
       final disconnectedFor = DateTime.now().difference(_disconnectedAt!);
       if (disconnectedFor >= _forceReconnectAfter) {
-        print('[WS Health] Disconnected for ${disconnectedFor.inSeconds}s — force reconnecting');
+        print(
+          '[WS Health] Disconnected for ${disconnectedFor.inSeconds}s — force reconnecting',
+        );
         _forceReconnect();
       }
     }
