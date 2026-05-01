@@ -19,6 +19,14 @@ WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
+ensure_android_java_home() {
+  local android_studio_jbr="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+  if [ -d "$android_studio_jbr" ]; then
+    export JAVA_HOME="$android_studio_jbr"
+    echo "☕ Using Android Studio JBR: $JAVA_HOME"
+  fi
+}
+
 # RuStore API
 RUSTORE_API="https://public-api.rustore.ru"
 RUSTORE_KEY_ID="2351027924"
@@ -212,10 +220,12 @@ fi
 # ── Build AAB for RuStore ──
 if $BUILD_AAB; then
   echo ""
-  echo "🤖 Building Android AAB..."
-  flutter build appbundle --release
+  echo "🤖 Building Android AAB for RuStore (without REQUEST_INSTALL_PACKAGES)..."
+  ensure_android_java_home
+  flutter build appbundle --release --flavor rustore \
+    --dart-define=APP_DISTRIBUTION=rustore
 
-  AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
+  AAB_PATH="build/app/outputs/bundle/rustoreRelease/app-rustore-release.aab"
 
   if [ ! -f "$AAB_PATH" ]; then
     echo "❌ AAB not found at $AAB_PATH"
@@ -369,10 +379,12 @@ fi
 # ── Build APK (direct install) ──
 if $BUILD_APK; then
   echo ""
-  echo "🤖 Building Android APK..."
-  flutter build apk --release
+  echo "🤖 Building Android APK for direct install (with REQUEST_INSTALL_PACKAGES)..."
+  ensure_android_java_home
+  flutter build apk --release --flavor direct \
+    --dart-define=APP_DISTRIBUTION=direct
 
-  APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+  APK_PATH="build/app/outputs/flutter-apk/app-direct-release.apk"
 
   if [ ! -f "$APK_PATH" ]; then
     echo "❌ APK not found at $APK_PATH"

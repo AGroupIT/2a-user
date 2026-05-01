@@ -46,11 +46,16 @@ class UpdateService {
   static bool _isDialogShowing = false;
   static const _kDismissedVersionKey = 'update_dismissed_version';
   static const _kDismissedAtKey = 'update_dismissed_at';
+  static const _distribution = String.fromEnvironment(
+    'APP_DISTRIBUTION',
+    defaultValue: 'direct',
+  );
 
   /// Check for update and return [UpdateInfo] if available.
   static Future<UpdateInfo?> checkForUpdate() async {
     try {
       if (!Platform.isAndroid && !Platform.isIOS) return null;
+      if (Platform.isAndroid && _distribution == 'rustore') return null;
 
       final info = await PackageInfo.fromPlatform();
       final currentStr = info.buildNumber.isNotEmpty

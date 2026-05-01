@@ -39,6 +39,16 @@ android {
         multiDexEnabled = true
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("direct") {
+            dimension = "distribution"
+        }
+        create("rustore") {
+            dimension = "distribution"
+        }
+    }
+
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {
