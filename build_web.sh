@@ -62,6 +62,9 @@ RUSTORE_API="https://public-api.rustore.ru"
 RUSTORE_KEY_ID="2351027924"
 RUSTORE_PRIVATE_KEY="$HOME/.rustore/private_key_user.pem"
 RUSTORE_PACKAGE="com.twoalogistic.user"
+RUSTORE_CONTACT_EMAIL="${RUSTORE_CONTACT_EMAIL:-info@2a-logistic.ru}"
+RUSTORE_CONTACT_WEBSITE="${RUSTORE_CONTACT_WEBSITE:-https://2a-logistic.ru}"
+RUSTORE_CONTACT_VK="${RUSTORE_CONTACT_VK:-}"
 
 # ── Extract version from pubspec.yaml ──
 FULL_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
@@ -265,11 +268,14 @@ fi
 if $BUILD_AAB; then
   echo ""
   echo "🤖 Building Android AAB for RuStore (without REQUEST_INSTALL_PACKAGES)..."
-  ensure_android_java_home
-  flutter build appbundle --release --flavor rustore \
-    --dart-define=APP_DISTRIBUTION=rustore
-
   AAB_PATH="build/app/outputs/bundle/rustoreRelease/app-rustore-release.aab"
+  if [[ "${RUSTORE_REUSE_AAB:-}" =~ ^(1|true|yes)$ ]] && [ -f "$AAB_PATH" ]; then
+    echo "♻️  Reusing existing AAB: $AAB_PATH"
+  else
+    ensure_android_java_home
+    flutter build appbundle --release --flavor rustore \
+      --dart-define=APP_DISTRIBUTION=rustore
+  fi
 
   if [ ! -f "$AAB_PATH" ]; then
     echo "❌ AAB not found at $AAB_PATH"
@@ -365,16 +371,37 @@ print(f\"DRAFT_IDS={' '.join(drafts)}\")
   # ── RuStore: Step 3 — Create draft as copy of published version ──
   echo "📝 RuStore: Создание черновика на основе опубликованной версии..."
 
-  WHATS_NEW_JSON=$(RUSTORE_WHATS_NEW="$RUSTORE_WHATS_NEW" python3 -c 'import json, os; print(json.dumps(os.environ["RUSTORE_WHATS_NEW"], ensure_ascii=False))')
+  DRAFT_PAYLOAD=$(RUSTORE_WHATS_NEW="$RUSTORE_WHATS_NEW" \
+    RUSTORE_CONTACT_EMAIL="$RUSTORE_CONTACT_EMAIL" \
+    RUSTORE_CONTACT_WEBSITE="$RUSTORE_CONTACT_WEBSITE" \
+    RUSTORE_CONTACT_VK="$RUSTORE_CONTACT_VK" \
+    python3 -c '
+import json
+import os
+
+contact = {"email": os.environ["RUSTORE_CONTACT_EMAIL"].strip()}
+website = os.environ.get("RUSTORE_CONTACT_WEBSITE", "").strip()
+vk = os.environ.get("RUSTORE_CONTACT_VK", "").strip()
+if website:
+    contact["website"] = website
+if vk:
+    contact["vkCommunity"] = vk
+
+payload = {
+    "whatsNew": os.environ["RUSTORE_WHATS_NEW"],
+    "publishType": "INSTANTLY",
+    "partialValue": 100,
+    "developerContacts": contact,
+}
+print(json.dumps(payload, ensure_ascii=False))
+')
+
+  echo "  Контакты разработчика: ${RUSTORE_CONTACT_EMAIL}, ${RUSTORE_CONTACT_WEBSITE}"
 
   DRAFT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version" \
     -H "Content-Type: application/json" \
     -H "Public-Token: ${JWE_TOKEN}" \
-    -d "{
-      \"whatsNew\": ${WHATS_NEW_JSON},
-      \"publishType\": \"INSTANTLY\",
-      \"partialValue\": 100
-    }")
+    -d "$DRAFT_PAYLOAD")
 
   DRAFT_CODE=$(echo "$DRAFT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
   if [ "$DRAFT_CODE" != "OK" ]; then
