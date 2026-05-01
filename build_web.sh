@@ -27,6 +27,36 @@ ensure_android_java_home() {
   fi
 }
 
+load_coolify_token() {
+  if [ -n "${COOLIFY_TOKEN:-}" ]; then
+    return 0
+  fi
+
+  if command -v security >/dev/null 2>&1; then
+    local keychain_account
+    for keychain_account in "${COOLIFY_KEYCHAIN_ACCOUNT:-}" "${USER:-}" "${SUDO_USER:-}" "$(stat -f %Su "$PWD" 2>/dev/null || true)"; do
+      if [ -z "$keychain_account" ]; then
+        continue
+      fi
+
+      local keychain_token
+      keychain_token=$(security find-generic-password -a "$keychain_account" -s 2a-logistic-coolify-token -w 2>/dev/null || true)
+      if [ -n "$keychain_token" ]; then
+        export COOLIFY_TOKEN="$keychain_token"
+        return 0
+      fi
+    done
+  fi
+
+  if command -v launchctl >/dev/null 2>&1; then
+    local launchctl_token
+    launchctl_token=$(launchctl getenv COOLIFY_TOKEN 2>/dev/null || true)
+    if [ -n "$launchctl_token" ]; then
+      export COOLIFY_TOKEN="$launchctl_token"
+    fi
+  fi
+}
+
 # RuStore API
 RUSTORE_API="https://public-api.rustore.ru"
 RUSTORE_KEY_ID="2351027924"
@@ -123,6 +153,8 @@ push_coolify_branch() {
 }
 
 trigger_coolify_deploy() {
+  load_coolify_token
+
   if [ -z "${COOLIFY_TOKEN:-}" ]; then
     echo "⚠️  COOLIFY_TOKEN не задан. Код запушен; запусти deploy в Coolify вручную:"
     echo "   ${WEB_URL} / app ${COOLIFY_APP_UUID}"
@@ -183,20 +215,32 @@ PYEOF"
 # ── Ask what to build ──
 echo ""
 echo "Что собрать?"
-echo "  1) Только Web"
-echo "  2) Только AAB (Android → RuStore)"
-echo "  3) Web + AAB"
-echo "  4) Только APK (прямая установка)"
-echo "  5) Web + APK"
-read -p "Выбор [3]: " BUILD_CHOICE
-BUILD_CHOICE=${BUILD_CHOICE:-3}
+echo "  1) WEB"
+echo "  2) RuStore (AAB)"
+echo "  3) APK"
+echo "  4) APK + WEB"
+echo "  5) AAB + WEB"
+echo "  6) APK + AAB"
+echo "  7) APK + WEB + AAB"
+read -p "Выбор [5]: " BUILD_CHOICE
+BUILD_CHOICE=${BUILD_CHOICE:-5}
 
 BUILD_WEB=false
 BUILD_AAB=false
 BUILD_APK=false
-[[ "$BUILD_CHOICE" == "1" || "$BUILD_CHOICE" == "3" || "$BUILD_CHOICE" == "5" ]] && BUILD_WEB=true
-[[ "$BUILD_CHOICE" == "2" || "$BUILD_CHOICE" == "3" ]] && BUILD_AAB=true
-[[ "$BUILD_CHOICE" == "4" || "$BUILD_CHOICE" == "5" ]] && BUILD_APK=true
+case "$BUILD_CHOICE" in
+  1) BUILD_WEB=true ;;
+  2) BUILD_AAB=true ;;
+  3) BUILD_APK=true ;;
+  4) BUILD_APK=true; BUILD_WEB=true ;;
+  5) BUILD_AAB=true; BUILD_WEB=true ;;
+  6) BUILD_APK=true; BUILD_AAB=true ;;
+  7) BUILD_APK=true; BUILD_WEB=true; BUILD_AAB=true ;;
+  *)
+    echo "❌ Неверный выбор: $BUILD_CHOICE"
+    exit 1
+    ;;
+esac
 
 # ── Build Web ──
 if $BUILD_WEB; then
