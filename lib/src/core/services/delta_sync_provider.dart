@@ -87,6 +87,7 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(tracksDigestProvider);
       ref.invalidate(tracksCountProvider);
       ref.invalidate(tracksWithoutAssemblyCountProvider);
+      return;
 
     case 'assemblies':
     case 'warehouse_assemblies':
@@ -97,6 +98,7 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(user_assemblies.assembliesCountProvider);
       // SP finance assemblies (NotifierProvider — reload instead of invalidate)
       ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
+      return;
 
     case 'invoices':
       ref.invalidate(invoicesListProvider);
@@ -105,15 +107,19 @@ void _handleDeltaType(Ref ref, String type) {
       // Инвалидируем детальные провайдеры (family) — нужно для мгновенного
       // обновления открытого инвойса, например, на экране оплаты.
       ref.invalidate(invoiceByIdProvider);
+      return;
 
     case 'news':
       ref.invalidate(newsListProvider);
+      return;
 
     case 'tariffs':
       ref.invalidate(userTariffsProvider);
+      return;
 
     case 'service_rules':
       ref.invalidate(rulesListProvider);
+      return;
 
     case 'photo_requests':
       ref.invalidate(photosTotalCountProvider);
@@ -123,13 +129,16 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(photosSearchProvider);
       // Фотозапросы вложены в треки — обновляем digest
       ref.invalidate(tracksDigestProvider);
+      return;
 
     case 'questions':
       // Вопросы вложены в треки — обновляем digest
       ref.invalidate(tracksDigestProvider);
+      return;
 
     case 'notifications':
       ref.read(notificationsControllerProvider.notifier).refresh();
+      return;
   }
 }
 

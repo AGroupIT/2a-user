@@ -146,8 +146,10 @@ class ApiClient {
     Future<Response<T>> Function(Dio dio) requestFn, {
     required bool idempotent,
     Options? options,
+    bool allowRetry = true,
   }) async {
     Future<Response<T>> run() {
+      if (!allowRetry) return requestFn(_dio);
       return _withRetry(
         () => requestFn(_dio),
         retryOnAllNetworkErrors: idempotent,
@@ -161,6 +163,14 @@ class ApiClient {
   Interceptor _authInterceptor() {
     return InterceptorsWrapper(
       onRequest: (options, handler) async {
+        if (options.data is FormData) {
+          options.headers.remove(Headers.contentTypeHeader);
+          options.headers.remove('Content-Type');
+          options.headers.remove('content-type');
+          // Dio appends the multipart boundary when it finalizes FormData.
+          options.contentType = null;
+        }
+
         final token = await getToken();
         if (token != null && token.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $token';
@@ -475,6 +485,20 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    if (data is FormData) {
+      return _request(
+        (dio) => dio.post<T>(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        ),
+        idempotent: false,
+        options: options,
+        allowRetry: false,
+      );
+    }
+
     return _request(
       (dio) => dio.post<T>(
         path,

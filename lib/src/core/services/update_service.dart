@@ -81,7 +81,9 @@ class UpdateService {
 
       if (!isForced && !hasUpdate) return null;
 
-      final downloadUrl = cfg['downloadUrl'] as String? ?? '';
+      final downloadUrl = ApiConfig.rewriteToCurrentHost(
+        cfg['downloadUrl'] as String? ?? '',
+      );
       return UpdateInfo(
         latestVersion: latestVersionStr,
         minVersion: minVersionStr,

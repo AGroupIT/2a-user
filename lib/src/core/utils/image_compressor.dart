@@ -11,15 +11,14 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 /// Возвращает исходные байты, если сжатие упало или дало НЕ меньше
 /// оригинала (это возможно на очень маленьких уже сжатых файлах).
 class ImageCompressor {
-  /// Default параметры. Профиль "Вариант B" из обсуждения 2026-04-24:
-  /// максимальное качество, БЕЗ ресайза — экономим канал на более
-  /// эффективном формате (WebP Q92 vs JPEG), но сохраняем все пиксели
-  /// и все детали. iPhone 4032x3024 → тот же 4032x3024 в WebP Q92.
-  /// Обычно даёт 2x-3x экономию размера при визуально неотличимом
-  /// качестве. Критично для фотоотчётов, где важны мелкие детали
-  /// (текст на накладной, повреждения груза и т.п.).
-  static const int _defaultMaxSide = 8000; // фактически «не ресайзить»
-  static const int _defaultQuality = 92;
+  /// Default параметры для нестабильных сетей и Next.js multipart limit.
+  ///
+  /// Старый режим почти не ресайзил фото (`8000px`, Q92), из-за чего
+  /// iPhone/modern camera images могли уходить больше 10MB. Next.js App Router
+  /// в production режет такие multipart тела на 10MB до route handler'а, и
+  /// `request.formData()` получает битый multipart без финальной boundary.
+  static const int _defaultMaxSide = 2400;
+  static const int _defaultQuality = 82;
 
   /// Сжимает произвольную картинку в WebP. Если WebP не доступен на
   /// платформе (iOS Simulator без libwebp) — fallback: возвращаем оригинал
@@ -27,13 +26,12 @@ class ImageCompressor {
   ///
   /// [sourceBytes] — оригинальные байты (то, что пришло из image_picker).
   /// [sourceName] — исходное имя файла (для fallback mime-type определения).
-  /// [maxSide] — ограничение по длинной стороне в пикселях. По умолчанию
-  ///   8000 — практически не ресайзим (важные детали сохраняются).
-  /// [quality] — 0-100, WebP/JPEG quality. По умолчанию 92 — визуально
-  ///   неотличимо от оригинала.
+  /// [maxSide] — ограничение по длинной стороне в пикселях.
+  /// [quality] — 0-100, WebP/JPEG quality.
   ///
   /// Возвращает record: (bytes, mimeType, extension).
-  static Future<({Uint8List bytes, String mimeType, String extension})> compressForUpload(
+  static Future<({Uint8List bytes, String mimeType, String extension})>
+  compressForUpload(
     Uint8List sourceBytes, {
     String? sourceName,
     int maxSide = _defaultMaxSide,
@@ -41,7 +39,11 @@ class ImageCompressor {
     CompressFormat preferredFormat = CompressFormat.webp,
   }) async {
     if (sourceBytes.isEmpty) {
-      return (bytes: sourceBytes, mimeType: 'application/octet-stream', extension: 'bin');
+      return (
+        bytes: sourceBytes,
+        mimeType: 'application/octet-stream',
+        extension: 'bin',
+      );
     }
 
     // Маленькие картинки (<500KB) не трогаем — экономия сомнительна,
@@ -51,46 +53,74 @@ class ImageCompressor {
       return _pickFallbackTypeFromName(sourceBytes, sourceName);
     }
 
+    final preferred = await _tryCompress(
+      sourceBytes,
+      format: preferredFormat,
+      maxSide: maxSide,
+      quality: quality,
+    );
+    if (preferred != null) return preferred;
+
+    // На некоторых платформах WebP недоступен. В этом случае всё равно
+    // пробуем JPEG-resize, а не отправляем оригинальный iPhone JPEG.
+    if (preferredFormat != CompressFormat.jpeg) {
+      final jpegFallback = await _tryCompress(
+        sourceBytes,
+        format: CompressFormat.jpeg,
+        maxSide: maxSide,
+        quality: quality,
+      );
+      if (jpegFallback != null) return jpegFallback;
+    }
+
+    return _pickFallbackTypeFromName(sourceBytes, sourceName);
+  }
+
+  static Future<({Uint8List bytes, String mimeType, String extension})?>
+  _tryCompress(
+    Uint8List sourceBytes, {
+    required CompressFormat format,
+    required int maxSide,
+    required int quality,
+  }) async {
     try {
       final compressed = await FlutterImageCompress.compressWithList(
         sourceBytes,
         minWidth: maxSide,
         minHeight: maxSide,
         quality: quality,
-        format: preferredFormat,
+        format: format,
         keepExif: false,
       );
 
-      if (compressed.isEmpty || compressed.length >= sourceBytes.length) {
-        // Сжатие не дало выигрыша — возвращаем оригинал.
-        return _pickFallbackTypeFromName(sourceBytes, sourceName);
+      if (compressed.isEmpty ||
+          compressed.length >= sourceBytes.lengthInBytes) {
+        return null;
       }
 
-      final (mimeType, ext) = _mimeForFormat(preferredFormat);
+      final (mimeType, ext) = _mimeForFormat(format);
       if (kDebugMode) {
         debugPrint(
-          '[ImageCompressor] ${sourceBytes.lengthInBytes} B → ${compressed.length} B '
+          '[ImageCompressor] ${sourceBytes.lengthInBytes} B -> ${compressed.length} B '
           '(${(100 * compressed.length / sourceBytes.lengthInBytes).toStringAsFixed(0)}%) $mimeType',
         );
       }
       return (bytes: compressed, mimeType: mimeType, extension: ext);
     } catch (e) {
-      debugPrint('[ImageCompressor] compress failed: $e — sending original');
-      return _pickFallbackTypeFromName(sourceBytes, sourceName);
+      debugPrint('[ImageCompressor] $format compress failed: $e');
+      return null;
     }
   }
 
   static (String, String) _mimeForFormat(CompressFormat f) => switch (f) {
-        CompressFormat.webp => ('image/webp', 'webp'),
-        CompressFormat.jpeg => ('image/jpeg', 'jpg'),
-        CompressFormat.png => ('image/png', 'png'),
-        CompressFormat.heic => ('image/heic', 'heic'),
-      };
+    CompressFormat.webp => ('image/webp', 'webp'),
+    CompressFormat.jpeg => ('image/jpeg', 'jpg'),
+    CompressFormat.png => ('image/png', 'png'),
+    CompressFormat.heic => ('image/heic', 'heic'),
+  };
 
-  static ({Uint8List bytes, String mimeType, String extension}) _pickFallbackTypeFromName(
-    Uint8List bytes,
-    String? name,
-  ) {
+  static ({Uint8List bytes, String mimeType, String extension})
+  _pickFallbackTypeFromName(Uint8List bytes, String? name) {
     final lowerName = (name ?? '').toLowerCase();
     if (lowerName.endsWith('.png')) {
       return (bytes: bytes, mimeType: 'image/png', extension: 'png');

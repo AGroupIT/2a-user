@@ -18,6 +18,7 @@ import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/utils/error_utils.dart';
+import '../../../core/utils/image_compressor.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../auth/data/auth_provider.dart';
@@ -45,6 +46,17 @@ Color? parseHexColor(String? hexString) {
   } catch (_) {
     return null;
   }
+}
+
+String _fileNameWithExtension(String fileName, String extension) {
+  final cleanExtension = extension.startsWith('.')
+      ? extension.substring(1)
+      : extension;
+  if (cleanExtension.isEmpty) return fileName;
+
+  final dotIndex = fileName.lastIndexOf('.');
+  final baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+  return '$baseName.$cleanExtension';
 }
 
 void _showStyledSnackBar(
@@ -348,12 +360,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.amber.shade700, size: 18),
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.amber.shade700,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Фотоотчёт может быть платным. Ознакомьтесь с тарифами.',
-                            style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.amber.shade800,
+                            ),
                           ),
                         ),
                       ],
@@ -533,12 +552,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.amber.shade700, size: 18),
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.amber.shade700,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Ответ на вопрос может быть только текстовым',
-                            style: TextStyle(fontSize: 12, color: Colors.amber.shade800),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.amber.shade800,
+                            ),
                           ),
                         ),
                       ],
@@ -817,7 +843,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         _refreshTracks();
         _showStyledSnackBar(context, 'Пожелание обновлено');
       } else {
-        _showStyledSnackBar(context, 'Ошибка обновления пожелания', isError: true);
+        _showStyledSnackBar(
+          context,
+          'Ошибка обновления пожелания',
+          isError: true,
+        );
       }
     }
   }
@@ -885,7 +915,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       // Оптимистично убираем из UI сразу, не ждём перезагрузки
       final clientCode = ref.read(activeClientCodeProvider);
       if (clientCode != null) {
-        ref.read(paginatedTracksProvider(clientCode)).removeTrackOptimistically(trackId);
+        ref
+            .read(paginatedTracksProvider(clientCode))
+            .removeTrackOptimistically(trackId);
       }
       _refreshTracks();
       _showStyledSnackBar(context, 'Трек ${track.code} удалён');
@@ -928,20 +960,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   const SizedBox(height: 6),
                   // Time info banner
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFF3E0),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFFFCC80), width: 1),
+                      border: Border.all(
+                        color: const Color(0xFFFFCC80),
+                        width: 1,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.schedule_rounded, size: 18, color: Color(0xFFE65100)),
+                        const Icon(
+                          Icons.schedule_rounded,
+                          size: 18,
+                          color: Color(0xFFE65100),
+                        ),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
                             'Выберите время возврата с 13:00 до 15:00 по Китаю',
-                            style: TextStyle(fontSize: 13, color: Color(0xFFE65100), fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFFE65100),
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -1037,7 +1083,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
     if (success) {
       _refreshTracks();
-      _showStyledSnackBar(context, 'Возврат оформлен. Склад получит уведомление.');
+      _showStyledSnackBar(
+        context,
+        'Возврат оформлен. Склад получит уведомление.',
+      );
     } else {
       setState(() => _returnRequestedTracks.remove(track.code));
       _showStyledSnackBar(context, 'Ошибка оформления возврата', isError: true);
@@ -1392,9 +1441,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   ) async {
     // Текущий метод доставки
     String? selectedMethod = assembly.deliveryMethod;
-    final nameController = TextEditingController(text: assembly.recipientName ?? '');
-    final cityController = TextEditingController(text: assembly.recipientCity ?? '');
-    final transportCompanyController = TextEditingController(text: assembly.transportCompanyName ?? '');
+    final nameController = TextEditingController(
+      text: assembly.recipientName ?? '',
+    );
+    final cityController = TextEditingController(
+      text: assembly.recipientCity ?? '',
+    );
+    final transportCompanyController = TextEditingController(
+      text: assembly.transportCompanyName ?? '',
+    );
 
     // Маска для телефона: +7 (999) 123-45-67
     final phoneMask = MaskTextInputFormatter(
@@ -1405,7 +1460,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
     // Если уже есть сохраненный телефон, форматируем его
     final phoneController = TextEditingController();
-    if (assembly.recipientPhone != null && assembly.recipientPhone!.isNotEmpty) {
+    if (assembly.recipientPhone != null &&
+        assembly.recipientPhone!.isNotEmpty) {
       // Убираем все нецифровые символы и форматируем через маску
       final digits = assembly.recipientPhone!.replaceAll(RegExp(r'[^\d]'), '');
       phoneMask.formatEditUpdate(
@@ -1460,7 +1516,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             icon: Icons.store_outlined,
                             isSelected: selectedMethod == 'self_pickup',
                             onTap: () {
-                              setSheetState(() => selectedMethod = 'self_pickup');
+                              setSheetState(
+                                () => selectedMethod = 'self_pickup',
+                              );
                             },
                           ),
                           if (selectedMethod == 'self_pickup') ...[
@@ -1470,7 +1528,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFF3CD),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFFFE69C)),
+                                border: Border.all(
+                                  color: const Color(0xFFFFE69C),
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -1501,7 +1561,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             icon: Icons.local_shipping_outlined,
                             isSelected: selectedMethod == 'transport_company',
                             onTap: () {
-                              setSheetState(() => selectedMethod = 'transport_company');
+                              setSheetState(
+                                () => selectedMethod = 'transport_company',
+                              );
                             },
                           ),
                           if (selectedMethod == 'transport_company') ...[
@@ -1569,7 +1631,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                     return;
                                   }
                                   // Проверяем что введено минимум 11 цифр
-                                  final phoneDigits = phoneMask.getUnmaskedText();
+                                  final phoneDigits = phoneMask
+                                      .getUnmaskedText();
                                   if (phoneDigits.length < 11) {
                                     _showStyledSnackBar(
                                       sheetContext,
@@ -1592,7 +1655,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                   'recipientName': nameController.text.trim(),
                                   'recipientPhone': phoneMask.getMaskedText(),
                                   'recipientCity': cityController.text.trim(),
-                                  'transportCompanyName': transportCompanyController.text.trim(),
+                                  'transportCompanyName':
+                                      transportCompanyController.text.trim(),
                                 });
                               },
                         child: const Text('Сохранить'),
@@ -1745,13 +1809,17 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           GestureDetector(
                             onTap: () async {
                               if (packagingTypes.isEmpty) return;
-                              final tempSelected = Set<int>.from(selectedPackingIds);
+                              final tempSelected = Set<int>.from(
+                                selectedPackingIds,
+                              );
                               await showModalBottomSheet<void>(
                                 context: sheetContext,
                                 useRootNavigator: true,
                                 backgroundColor: Colors.white,
                                 shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                                  borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(16),
+                                  ),
                                 ),
                                 builder: (ctx) => StatefulBuilder(
                                   builder: (ctx, setModalState) => SafeArea(
@@ -1759,23 +1827,49 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const SizedBox(height: 8),
-                                        Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                                        Container(
+                                          width: 36,
+                                          height: 4,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black12,
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
+                                          ),
+                                        ),
                                         const SizedBox(height: 12),
-                                        const Text('Тип упаковки', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                                        const Text(
+                                          'Тип упаковки',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                         const SizedBox(height: 8),
                                         Flexible(
                                           child: ListView(
                                             shrinkWrap: true,
                                             children: packagingTypes.map((p) {
-                                              final checked = tempSelected.contains(p.id);
+                                              final checked = tempSelected
+                                                  .contains(p.id);
                                               return CheckboxListTile(
                                                 dense: true,
                                                 value: checked,
-                                                activeColor: context.brandPrimary,
-                                                title: Text(p.nameRu ?? p.name, style: const TextStyle(fontSize: 14)),
+                                                activeColor:
+                                                    context.brandPrimary,
+                                                title: Text(
+                                                  p.nameRu ?? p.name,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
                                                 onChanged: (v) {
                                                   setModalState(() {
-                                                    if (v == true) { tempSelected.add(p.id); } else { tempSelected.remove(p.id); }
+                                                    if (v == true) {
+                                                      tempSelected.add(p.id);
+                                                    } else {
+                                                      tempSelected.remove(p.id);
+                                                    }
                                                   });
                                                 },
                                               );
@@ -1783,7 +1877,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                           ),
                                         ),
                                         Padding(
-                                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            8,
+                                            16,
+                                            12,
+                                          ),
                                           child: SizedBox(
                                             width: double.infinity,
                                             child: FilledButton(
@@ -1791,7 +1890,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                                 Navigator.pop(ctx);
                                                 setSheetState(() {
                                                   selectedPackingIds.clear();
-                                                  selectedPackingIds.addAll(tempSelected);
+                                                  selectedPackingIds.addAll(
+                                                    tempSelected,
+                                                  );
                                                 });
                                               },
                                               child: const Text('Готово'),
@@ -1805,38 +1906,70 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               );
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0x0A000000),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.inventory_2_outlined, size: 18, color: context.brandPrimary),
+                                  Icon(
+                                    Icons.inventory_2_outlined,
+                                    size: 18,
+                                    color: context.brandPrimary,
+                                  ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: selectedPackingIds.isEmpty
-                                        ? const Text('Выбрать упаковку', style: TextStyle(color: Colors.black38, fontSize: 14))
+                                        ? const Text(
+                                            'Выбрать упаковку',
+                                            style: TextStyle(
+                                              color: Colors.black38,
+                                              fontSize: 14,
+                                            ),
+                                          )
                                         : Wrap(
                                             spacing: 4,
                                             runSpacing: 4,
-                                            children: selectedPackingIds.map((id) {
-                                              final p = packagingTypes.firstWhere((t) => t.id == id);
+                                            children: selectedPackingIds.map((
+                                              id,
+                                            ) {
+                                              final p = packagingTypes
+                                                  .firstWhere(
+                                                    (t) => t.id == id,
+                                                  );
                                               return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
                                                 decoration: BoxDecoration(
-                                                  color: context.brandPrimary.withOpacity(0.1),
-                                                  borderRadius: BorderRadius.circular(8),
+                                                  color: context.brandPrimary
+                                                      .withOpacity(0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
                                                   p.nameRu ?? p.name,
-                                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.brandPrimary),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: context.brandPrimary,
+                                                  ),
                                                 ),
                                               );
                                             }).toList(),
                                           ),
                                   ),
-                                  const Icon(Icons.expand_more, size: 18, color: Colors.black38),
+                                  const Icon(
+                                    Icons.expand_more,
+                                    size: 18,
+                                    color: Colors.black38,
+                                  ),
                                 ],
                               ),
                             ),
@@ -1845,14 +1978,27 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           // ── Страховка ──
                           Row(
                             children: [
-                              Icon(Icons.shield_outlined, size: 18, color: context.brandPrimary),
+                              Icon(
+                                Icons.shield_outlined,
+                                size: 18,
+                                color: context.brandPrimary,
+                              ),
                               const SizedBox(width: 10),
-                              const Text('Страховка', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+                              const Text(
+                                'Страховка',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
                               const Spacer(),
                               Switch.adaptive(
                                 value: selectedInsurance == 'yes',
                                 activeColor: context.brandPrimary,
-                                onChanged: (v) => setSheetState(() => selectedInsurance = v ? 'yes' : 'no'),
+                                onChanged: (v) => setSheetState(
+                                  () => selectedInsurance = v ? 'yes' : 'no',
+                                ),
                               ),
                             ],
                           ),
@@ -1877,29 +2023,48 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             height: 48,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                gradient: selectedPackingIds.isNotEmpty &&
+                                gradient:
+                                    selectedPackingIds.isNotEmpty &&
                                         selectedTariff != null &&
-                                        (selectedInsurance == 'no' || (insuranceAmount?.isNotEmpty == true))
-                                    ? LinearGradient(colors: [context.brandPrimary, context.brandSecondary])
+                                        (selectedInsurance == 'no' ||
+                                            (insuranceAmount?.isNotEmpty ==
+                                                true))
+                                    ? LinearGradient(
+                                        colors: [
+                                          context.brandPrimary,
+                                          context.brandSecondary,
+                                        ],
+                                      )
                                     : null,
-                                color: selectedPackingIds.isEmpty ? Colors.black12 : null,
+                                color: selectedPackingIds.isEmpty
+                                    ? Colors.black12
+                                    : null,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: FilledButton(
                                 style: FilledButton.styleFrom(
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
                                 ),
                                 onPressed:
                                     selectedPackingIds.isNotEmpty &&
                                         selectedTariff != null &&
                                         (selectedInsurance == 'no' ||
                                             (selectedInsurance == 'yes' &&
-                                                insuranceAmount?.isNotEmpty == true))
+                                                insuranceAmount?.isNotEmpty ==
+                                                    true))
                                     ? () => Navigator.of(sheetContext).pop(true)
                                     : null,
-                                child: const Text('Отправить на сборку', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                                child: const Text(
+                                  'Отправить на сборку',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1953,13 +2118,17 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         }
         var iterations = 0;
         const maxIterations = 100; // Предохранитель от бесконечного цикла
-        while (notifier.state.hasMore && !notifier.state.isLoading && iterations < maxIterations) {
+        while (notifier.state.hasMore &&
+            !notifier.state.isLoading &&
+            iterations < maxIterations) {
           await notifier.loadMore();
           iterations++;
           if (!context.mounted) return;
           if (notifier.state.error != null) break;
         }
-        if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // Убираем индикатор
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop(); // Убираем индикатор
+        }
       }
       if (!context.mounted) return;
       final tracks = notifier.state.tracks;
@@ -2056,7 +2225,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       if (selectedTariff?.requiresProductInfo == true) {
         final tracksWithoutProductInfo = selectedTracks.where((t) {
           final info = t.productInfo;
-          return info == null || (info.name == null || info.name!.trim().isEmpty);
+          return info == null ||
+              (info.name == null || info.name!.trim().isEmpty);
         }).toList();
 
         if (tracksWithoutProductInfo.isNotEmpty) {
@@ -2081,13 +2251,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Icon(Icons.assignment_outlined, color: Colors.orange.shade700, size: 22),
+                          Icon(
+                            Icons.assignment_outlined,
+                            color: Colors.orange.shade700,
+                            size: 22,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Требуется информация о товаре',
-                            style: Theme.of(sheetCtx).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                            style: Theme.of(sheetCtx).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                         ],
                       ),
@@ -2116,7 +2289,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               child: Row(
                                 children: [
-                                  Icon(Icons.local_shipping_outlined, size: 16, color: Colors.orange.shade600),
+                                  Icon(
+                                    Icons.local_shipping_outlined,
+                                    size: 16,
+                                    color: Colors.orange.shade600,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
@@ -2129,7 +2306,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                   ),
                                   Text(
                                     'нет данных о товаре',
-                                    style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange.shade700,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -2140,7 +2320,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                       const SizedBox(height: 16),
                       FilledButton(
                         onPressed: () => Navigator.of(sheetCtx).pop(),
-                        style: FilledButton.styleFrom(backgroundColor: Colors.orange.shade700),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.orange.shade700,
+                        ),
                         child: const Text('Понятно, заполню информацию'),
                       ),
                     ],
@@ -2157,7 +2339,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final apiService = ref.read(assembliesApiServiceProvider);
       // Берём clientCodeId из выбранных треков, а не из dropdown (чтобы не привязать к NOCODE)
       final trackClientCodeId = selectedTracks.firstOrNull?.clientCodeId;
-      final clientCodeId = trackClientCodeId ?? ref.read(activeClientCodeIdProvider);
+      final clientCodeId =
+          trackClientCodeId ?? ref.read(activeClientCodeIdProvider);
       final assembly = await apiService.createAssembly(
         clientId: clientId,
         clientCodeId: clientCodeId,
@@ -2193,14 +2376,20 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     TrackItem track,
   ) async {
     final existing = _productInfos[track.code];
-    final nameController = TextEditingController(text: existing?.name ?? track.productInfo?.name ?? '');
+    final nameController = TextEditingController(
+      text: existing?.name ?? track.productInfo?.name ?? '',
+    );
     final qtyController = TextEditingController(
-      text: existing?.quantity?.toString() ?? track.productInfo?.quantity.toString() ?? '',
+      text:
+          existing?.quantity?.toString() ??
+          track.productInfo?.quantity.toString() ??
+          '',
     );
 
     // Список путей/URL для отображения
     final images = List<String>.from(existing?.images ?? const []);
-    if (track.productInfo?.imageUrl != null && track.productInfo!.imageUrl!.isNotEmpty) {
+    if (track.productInfo?.imageUrl != null &&
+        track.productInfo!.imageUrl!.isNotEmpty) {
       if (!images.contains(track.productInfo!.imageUrl)) {
         images.insert(0, track.productInfo!.imageUrl!);
       }
@@ -2275,136 +2464,189 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                       ),
                       const SizedBox(height: 12),
                       // Одно изображение товара — можно заменить
-                      Builder(builder: (_) {
-                        // Определяем текущее изображение: новое > существующее
-                        final hasNew = newFiles.isNotEmpty;
-                        final hasExisting = images.isNotEmpty;
-                        final hasImage = hasNew || hasExisting;
+                      Builder(
+                        builder: (_) {
+                          // Определяем текущее изображение: новое > существующее
+                          final hasNew = newFiles.isNotEmpty;
+                          final hasExisting = images.isNotEmpty;
+                          final hasImage = hasNew || hasExisting;
 
-                        Future<void> pickImage() async {
-                          try {
-                            final picker = ImagePicker();
-                            final picked = await picker.pickImage(
-                              source: ImageSource.gallery,
-                              imageQuality: 85,
-                            );
-                            if (picked != null) {
-                              setSheetState(() {
-                                newFiles.clear();
-                                newFiles.add(picked);
-                              });
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              _showStyledSnackBar(context, 'Не удалось открыть галерею: $e', isError: true);
+                          Future<void> pickImage() async {
+                            try {
+                              final picker = ImagePicker();
+                              final picked = await picker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 85,
+                              );
+                              if (picked != null) {
+                                setSheetState(() {
+                                  newFiles.clear();
+                                  newFiles.add(picked);
+                                });
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                _showStyledSnackBar(
+                                  context,
+                                  'Не удалось открыть галерею: $e',
+                                  isError: true,
+                                );
+                              }
                             }
                           }
-                        }
 
-                        if (!hasImage) {
-                          return SizedBox(
-                            width: double.infinity,
-                            child: _ActionChipButton(
-                              icon: Icons.add_photo_alternate_rounded,
-                              label: 'Добавить фото товара',
-                              onPressed: pickImage,
-                            ),
-                          );
-                        }
-
-                        Widget imageWidget;
-                        if (hasNew) {
-                          final file = newFiles.first;
-                          imageWidget = kIsWeb
-                              ? FutureBuilder<Uint8List>(
-                                  future: file.readAsBytes(),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.hasData) {
-                                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                                    }
-                                    return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                                  },
-                                )
-                              : Image.file(File(file.path), fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black12));
-                        } else {
-                          final path = images.first;
-                          final isUrl = path.startsWith('http') || path.startsWith('/');
-                          imageWidget = isUrl
-                              ? CachedNetworkImage(
-                                  imageUrl: ApiConfig.getMediaUrl(path),
-                                  memCacheWidth: 400,
-                                  imageBuilder: (_, imageProvider) => DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
-                                    ),
-                                  ),
-                                  placeholder: (_, _) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                  errorWidget: (_, _, _) => const ColoredBox(color: Colors.black12),
-                                )
-                              : (!kIsWeb
-                                  ? Image.file(File(path), fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black12))
-                                  : const ColoredBox(color: Colors.black12));
-                        }
-
-                        return Stack(
-                          children: [
-                            GestureDetector(
-                              onTap: pickImage,
-                              child: Container(
-                                width: double.infinity,
-                                height: 160,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: const [
-                                    BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, 4)),
-                                  ],
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: imageWidget,
+                          if (!hasImage) {
+                            return SizedBox(
+                              width: double.infinity,
+                              child: _ActionChipButton(
+                                icon: Icons.add_photo_alternate_rounded,
+                                label: 'Добавить фото товара',
+                                onPressed: pickImage,
                               ),
-                            ),
-                            Positioned(
-                              right: 6,
-                              bottom: 6,
-                              child: GestureDetector(
+                            );
+                          }
+
+                          Widget imageWidget;
+                          if (hasNew) {
+                            final file = newFiles.first;
+                            imageWidget = kIsWeb
+                                ? FutureBuilder<Uint8List>(
+                                    future: file.readAsBytes(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData) {
+                                        return Image.memory(
+                                          snapshot.data!,
+                                          fit: BoxFit.cover,
+                                        );
+                                      }
+                                      return const Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : Image.file(
+                                    File(file.path),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) =>
+                                        const ColoredBox(color: Colors.black12),
+                                  );
+                          } else {
+                            final path = images.first;
+                            final isUrl =
+                                path.startsWith('http') || path.startsWith('/');
+                            imageWidget = isUrl
+                                ? CachedNetworkImage(
+                                    imageUrl: ApiConfig.getMediaUrl(path),
+                                    memCacheWidth: 400,
+                                    imageBuilder: (_, imageProvider) =>
+                                        DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            image: DecorationImage(
+                                              image: imageProvider,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                    placeholder: (_, _) => const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    errorWidget: (_, _, _) =>
+                                        const ColoredBox(color: Colors.black12),
+                                  )
+                                : (!kIsWeb
+                                      ? Image.file(
+                                          File(path),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) =>
+                                              const ColoredBox(
+                                                color: Colors.black12,
+                                              ),
+                                        )
+                                      : const ColoredBox(
+                                          color: Colors.black12,
+                                        ));
+                          }
+
+                          return Stack(
+                            children: [
+                              GestureDetector(
                                 onTap: pickImage,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  width: double.infinity,
+                                  height: 160,
                                   decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.swap_horiz, size: 16, color: Colors.white),
-                                      SizedBox(width: 4),
-                                      Text('Заменить', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        blurRadius: 10,
+                                        offset: Offset(0, 4),
+                                      ),
                                     ],
                                   ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: imageWidget,
                                 ),
                               ),
-                            ),
-                            Positioned(
-                              right: 6,
-                              top: 6,
-                              child: GestureDetector(
-                                onTap: () => setSheetState(() {
-                                  images.clear();
-                                  newFiles.clear();
-                                }),
-                                child: const CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: Colors.white,
-                                  child: Icon(Icons.close_rounded, size: 18),
+                              Positioned(
+                                right: 6,
+                                bottom: 6,
+                                child: GestureDetector(
+                                  onTap: pickImage,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.swap_horiz,
+                                          size: 16,
+                                          color: Colors.white,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Заменить',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        );
-                      }),
+                              Positioned(
+                                right: 6,
+                                top: 6,
+                                child: GestureDetector(
+                                  onTap: () => setSheetState(() {
+                                    images.clear();
+                                    newFiles.clear();
+                                  }),
+                                  child: const CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: Colors.white,
+                                    child: Icon(Icons.close_rounded, size: 18),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: 14),
                       FilledButton(
                         onPressed: () => Navigator.of(sheetContext).pop(true),
@@ -2427,33 +2669,65 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       if (track.id != null) {
         final apiService = ref.read(tracksApiServiceProvider);
 
-        File? imageFile;
         String? uploadedImageUrl;
+        var imageUploadFailed = false;
 
         // Загружаем первое новое изображение
         if (newFiles.isNotEmpty) {
           try {
-            if (kIsWeb) {
-              final bytes = await newFiles.first.readAsBytes();
-              uploadedImageUrl = await apiService.uploadImageFromBytes(
-                bytes,
-                newFiles.first.name,
-                'product-info',
+            final sourceFile = newFiles.first;
+            final sourceBytes = await sourceFile.readAsBytes();
+            const maxMultipartSafeBytes = 9 * 1024 * 1024;
+            var compressed = await ImageCompressor.compressForUpload(
+              sourceBytes,
+              sourceName: sourceFile.name,
+            );
+            if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
+              compressed = await ImageCompressor.compressForUpload(
+                sourceBytes,
+                sourceName: sourceFile.name,
+                maxSide: 1600,
+                quality: 75,
               );
-            } else {
-              imageFile = File(newFiles.first.path);
+            }
+            if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
+              throw Exception('фото не удалось сжать до 10 MB');
+            }
+            final uploadFileName = _fileNameWithExtension(
+              sourceFile.name,
+              compressed.extension,
+            );
+            uploadedImageUrl = await apiService.uploadProductInfoImageFromBytes(
+              track.id!,
+              compressed.bytes,
+              uploadFileName,
+              mimeType: compressed.mimeType,
+            );
+            if (uploadedImageUrl == null) {
+              throw Exception('сервер не вернул URL изображения');
             }
           } catch (e) {
+            imageUploadFailed = true;
             debugPrint('Failed to upload image ${newFiles.first.name}: $e');
           }
+        }
+
+        if (imageUploadFailed) {
+          if (!context.mounted) return;
+          _showStyledSnackBar(
+            context,
+            'Не удалось загрузить фото товара',
+            isError: true,
+          );
+          return;
         }
 
         final success = await apiService.updateProductInfo(
           trackId: track.id!,
           productName: productName,
           quantity: quantity,
-          imageFile: imageFile,
-          imageUrl: uploadedImageUrl,
+          imageUrl:
+              uploadedImageUrl ?? (images.isNotEmpty ? images.first : null),
         );
 
         if (success) {
@@ -2472,7 +2746,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             );
           });
           if (!context.mounted) return;
-          _showStyledSnackBar(context, 'Ошибка сохранения на сервере', isError: true);
+          _showStyledSnackBar(
+            context,
+            'Ошибка сохранения на сервере',
+            isError: true,
+          );
         }
       } else {
         setState(() {
@@ -2554,9 +2832,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     final groups = tracksState.tracks.isNotEmpty
         ? _groupTracks(tracksState.tracks)
         : <_GroupBucket>[];
-    final bottomScrollPad = bottomPad +
-        16 +
-        (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8);
+    final bottomScrollPad =
+        bottomPad + 16 + (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8);
 
     return TutorialScreenWrapper(
       screenKey: 'tracks',
@@ -2564,225 +2841,242 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         TutorialStep(
           icon: Icons.local_shipping_rounded,
           title: 'Список треков',
-          description: 'Каждая строка — одна посылка. Цветной статус показывает этап: склад в Китае, в пути, склад в России или получено клиентом.',
+          description:
+              'Каждая строка — одна посылка. Цветной статус показывает этап: склад в Китае, в пути, склад в России или получено клиентом.',
           targetKey: _tracksListKey,
         ),
         TutorialStep(
           icon: Icons.add_circle_rounded,
           title: 'Добавить трек',
-          description: 'Нажмите кнопку «+» в правом нижнем углу, чтобы добавить трек-номер новой посылки. Мы начнём её отслеживать.',
+          description:
+              'Нажмите кнопку «+» в правом нижнем углу, чтобы добавить трек-номер новой посылки. Мы начнём её отслеживать.',
           targetKey: _fabKey,
         ),
         TutorialStep(
           icon: Icons.filter_list_rounded,
           title: 'Фильтр по статусу',
-          description: 'Нажмите на статус в верхней панели, чтобы показать только посылки на этом этапе. Удобно при большом количестве треков.',
+          description:
+              'Нажмите на статус в верхней панели, чтобы показать только посылки на этом этапе. Удобно при большом количестве треков.',
           targetKey: _filtersKey,
         ),
         TutorialStep(
           icon: Icons.touch_app_rounded,
           title: 'Детали посылки',
-          description: 'Нажмите на трек, чтобы развернуть карточку с подробностями: вес, тариф, история статусов и кнопки действий.',
+          description:
+              'Нажмите на трек, чтобы развернуть карточку с подробностями: вес, тариф, история статусов и кнопки действий.',
           targetKey: _trackDetailKey,
         ),
         TutorialStep(
           icon: Icons.photo_camera_rounded,
           title: 'Запросить фотоотчёт',
-          description: 'Кнопка «Запросить фотоотчёт» внутри карточки отправляет запрос на склад. Мы сфотографируем посылку и пришлём снимки. Услуга может быть платной.',
+          description:
+              'Кнопка «Запросить фотоотчёт» внутри карточки отправляет запрос на склад. Мы сфотографируем посылку и пришлём снимки. Услуга может быть платной.',
           targetKey: _actionsRowKey,
         ),
         TutorialStep(
           icon: Icons.help_outline_rounded,
           title: 'Задать вопрос',
-          description: 'Кнопка «Задать вопрос» открывает форму для обращения к менеджеру по конкретному треку. Ответ придёт в этой же карточке.',
+          description:
+              'Кнопка «Задать вопрос» открывает форму для обращения к менеджеру по конкретному треку. Ответ придёт в этой же карточке.',
           targetKey: _actionsRowKey,
         ),
         TutorialStep(
           icon: Icons.sticky_note_2_rounded,
           title: 'Комментарий к треку',
-          description: 'В карточке трека есть поле для заметки. Введите текст и нажмите «Сохранить заметку» — заметка видна только вам.',
+          description:
+              'В карточке трека есть поле для заметки. Введите текст и нажмите «Сохранить заметку» — заметка видна только вам.',
           targetKey: _actionsRowKey,
         ),
         TutorialStep(
           icon: Icons.assignment_return_rounded,
           title: 'Оформить возврат',
-          description: '«Оформить возврат» — открывает форму возврата товара. Укажите причину и код — заявка уйдёт на склад в Китае.',
+          description:
+              '«Оформить возврат» — открывает форму возврата товара. Укажите причину и код — заявка уйдёт на склад в Китае.',
           targetKey: _actionsRowKey,
         ),
         TutorialStep(
           icon: Icons.inventory_2_rounded,
           title: 'Сборка и доставка по РФ',
-          description: 'Блок сборки показывает транспортную компанию, коробки с весами, тариф и упаковку. Нажмите «Выбрать ТК» для настройки доставки.',
+          description:
+              'Блок сборки показывает транспортную компанию, коробки с весами, тариф и упаковку. Нажмите «Выбрать ТК» для настройки доставки.',
           targetKey: _assemblyKey,
         ),
       ],
       child: Stack(
-            children: [
-              RefreshIndicator(
-                onRefresh: () async {
-                  if (_isRefreshing) return;
-                  _isRefreshing = true;
-                  try {
-                    // Обновляем с актуальными фильтрами из UI
-                    final filterParams = _getFilterParams(clientCode);
-                    await ref
-                        .read(paginatedTracksProvider(clientCode))
-                        .updateFilters(filterParams);
-                    ref.invalidate(assembliesListProvider(clientCode));
-                    // Очищаем оптимистичные Map-записи для треков у которых
-                    // сервер уже подтвердил данные (вопросы, фото-запросы)
-                    _syncMapsWithServerData(
-                      ref.read(paginatedTracksProvider(clientCode)).state.tracks,
-                    );
-                  } finally {
-                    _isRefreshing = false;
+        children: [
+          RefreshIndicator(
+            onRefresh: () async {
+              if (_isRefreshing) return;
+              _isRefreshing = true;
+              try {
+                // Обновляем с актуальными фильтрами из UI
+                final filterParams = _getFilterParams(clientCode);
+                await ref
+                    .read(paginatedTracksProvider(clientCode))
+                    .updateFilters(filterParams);
+                ref.invalidate(assembliesListProvider(clientCode));
+                // Очищаем оптимистичные Map-записи для треков у которых
+                // сервер уже подтвердил данные (вопросы, фото-запросы)
+                _syncMapsWithServerData(
+                  ref.read(paginatedTracksProvider(clientCode)).state.tracks,
+                );
+              } finally {
+                _isRefreshing = false;
+              }
+            },
+            color: context.brandPrimary,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                // Проверяем нужна ли подгрузка при скролле
+                if (notification is ScrollUpdateNotification) {
+                  final metrics = notification.metrics;
+                  final maxScroll = metrics.maxScrollExtent;
+                  final currentScroll = metrics.pixels;
+                  // Загружаем ещё когда до конца осталось ~10% списка.
+                  // Throttle: не чаще 1 раза в 300мс, не пробуем если уже грузим или нет страниц.
+                  final now = DateTime.now();
+                  final canLoad =
+                      _lastLoadMoreTime == null ||
+                      now.difference(_lastLoadMoreTime!).inMilliseconds > 300;
+                  if (maxScroll > 0 &&
+                      currentScroll >= maxScroll * 0.9 &&
+                      !tracksState.isLoading &&
+                      tracksState.hasMore &&
+                      tracksState.error == null &&
+                      canLoad) {
+                    _lastLoadMoreTime = now;
+                    ref.read(paginatedTracksProvider(clientCode)).loadMore();
                   }
-                },
-                color: context.brandPrimary,
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    // Проверяем нужна ли подгрузка при скролле
-                    if (notification is ScrollUpdateNotification) {
-                      final metrics = notification.metrics;
-                      final maxScroll = metrics.maxScrollExtent;
-                      final currentScroll = metrics.pixels;
-                      // Загружаем ещё когда до конца осталось ~10% списка.
-                      // Throttle: не чаще 1 раза в 300мс, не пробуем если уже грузим или нет страниц.
-                      final now = DateTime.now();
-                      final canLoad = _lastLoadMoreTime == null ||
-                          now.difference(_lastLoadMoreTime!).inMilliseconds > 300;
-                      if (maxScroll > 0 &&
-                          currentScroll >= maxScroll * 0.9 &&
-                          !tracksState.isLoading &&
-                          tracksState.hasMore &&
-                          tracksState.error == null &&
-                          canLoad) {
-                        _lastLoadMoreTime = now;
-                        ref
-                            .read(paginatedTracksProvider(clientCode))
-                            .loadMore();
-                      }
-                    }
-                    return false;
-                  },
-                  child: CustomScrollView(
-                    controller: _scrollController,
-                    key: _tracksListKey,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      // Заголовок + фильтры
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
-                        sliver: SliverToBoxAdapter(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Треки',
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(fontWeight: FontWeight.w900),
-                              ),
-                              const SizedBox(height: 18),
-                              Container(
-                                key: _filtersKey,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x14000000),
-                                      blurRadius: 24,
-                                      offset: Offset(0, 10),
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                child: _FiltersNew(
-                                  statusCode: _statusCode,
-                                  tracks: tracksState.tracks,
-                                  viewMode: _viewMode,
-                                  query: _query,
-                                  onStatusChanged: (v) =>
-                                      _onStatusChanged(v, clientCode),
-                                  onViewModeChanged: (v) =>
-                                      _onViewModeChanged(v, clientCode),
-                                  onQueryChanged: (v) =>
-                                      _onSearchChanged(v, clientCode),
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              if (tracksState.total > 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: Text(
-                                    'Показано ${tracksState.tracks.length} из ${tracksState.total}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                }
+                return false;
+              },
+              child: CustomScrollView(
+                controller: _scrollController,
+                key: _tracksListKey,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  // Заголовок + фильтры
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Треки',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w900),
                           ),
-                        ),
-                      ),
-                      // Список треков или состояние (загрузка/ошибка/пусто)
-                      ..._buildTracksList(tracksState, clientCode, groups, bottomScrollPad),
-                    ],
-                  ),
-                ),
-              ),
-              // Нижние кнопки: "Отправка на сборку" (если выбраны треки) + FAB "Добавить треки"
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: AppLayout.bottomBarHeight +
-                    AppLayout.bottomBarBottomMargin +
-                    35, // Минимальный отступ от нижнего меню
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end, // FAB справа по умолчанию
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Кнопки выбора и действия (показываются только когда выбраны треки)
-                    if (_selectedTracks.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: OutlinedButton(
-                          onPressed: () { _selectAll(); },
-                          child: const Text('Все'),
-                        ),
-                      ),
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: FilledButton(
-                            onPressed: _selectedStatus == null
-                                ? null
-                                : () => _bulkAction(context),
-                            child: Text(
-                              _actionLabel(),
-                              overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 18),
+                          Container(
+                            key: _filtersKey,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x14000000),
+                                  blurRadius: 24,
+                                  offset: Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.all(16),
+                            child: _FiltersNew(
+                              statusCode: _statusCode,
+                              tracks: tracksState.tracks,
+                              viewMode: _viewMode,
+                              query: _query,
+                              onStatusChanged: (v) =>
+                                  _onStatusChanged(v, clientCode),
+                              onViewModeChanged: (v) =>
+                                  _onViewModeChanged(v, clientCode),
+                              onQueryChanged: (v) =>
+                                  _onSearchChanged(v, clientCode),
                             ),
                           ),
+                          const SizedBox(height: 18),
+                          if (tracksState.total > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Text(
+                                'Показано ${tracksState.tracks.length} из ${tracksState.total}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Список треков или состояние (загрузка/ошибка/пусто)
+                  ..._buildTracksList(
+                    tracksState,
+                    clientCode,
+                    groups,
+                    bottomScrollPad,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Нижние кнопки: "Отправка на сборку" (если выбраны треки) + FAB "Добавить треки"
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom:
+                AppLayout.bottomBarHeight +
+                AppLayout.bottomBarBottomMargin +
+                35, // Минимальный отступ от нижнего меню
+            child: Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.end, // FAB справа по умолчанию
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Кнопки выбора и действия (показываются только когда выбраны треки)
+                if (_selectedTracks.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: OutlinedButton(
+                      onPressed: () {
+                        _selectAll();
+                      },
+                      child: const Text('Все'),
+                    ),
+                  ),
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: FilledButton(
+                        onPressed: _selectedStatus == null
+                            ? null
+                            : () => _bulkAction(context),
+                        child: Text(
+                          _actionLabel(),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ],
-                    // FAB кнопка для добавления треков (всегда справа)
-                    FloatingActionButton(
-                      key: _fabKey,
-                      onPressed: () => showAddTracksDialog(context, ref),
-                      backgroundColor: context.brandPrimary,
-                      foregroundColor: Colors.white,
-                      elevation: 8,
-                      child: const Icon(Icons.add_box_rounded, size: 28),
                     ),
-                  ],
+                  ),
+                ],
+                // FAB кнопка для добавления треков (всегда справа)
+                FloatingActionButton(
+                  key: _fabKey,
+                  onPressed: () => showAddTracksDialog(context, ref),
+                  backgroundColor: context.brandPrimary,
+                  foregroundColor: Colors.white,
+                  elevation: 8,
+                  child: const Icon(Icons.add_box_rounded, size: 28),
                 ),
-              ),
-              ScrollToTopButton(controller: _scrollController),
-            ],
+              ],
+            ),
           ),
+          ScrollToTopButton(controller: _scrollController),
+        ],
+      ),
     );
   }
 
@@ -2871,7 +3165,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             }
 
             final g = groups[index];
-            final isFirstAssembly = g.assembly != null &&
+            final isFirstAssembly =
+                g.assembly != null &&
                 groups.sublist(0, index).every((gr) => gr.assembly == null);
             final trackCard = _TrackGroupCard(
               assembly: g.assembly,
@@ -2882,7 +3177,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               requestedPhotoReports: _requestedPhotoReports,
               onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
               onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
-              onEditPhotoWish: (track) => _showEditPhotoWishSheet(context, track),
+              onEditPhotoWish: (track) =>
+                  _showEditPhotoWishSheet(context, track),
               photoRequestCreatedAt: _photoRequestCreatedAt,
               photoRequestUpdatedAt: _photoRequestUpdatedAt,
               photoRequestNotes: _photoRequestNotes,
@@ -2977,7 +3273,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       );
       var iterations = 0;
       const maxIterations = 100;
-      while (notifier.state.hasMore && !notifier.state.isLoading && iterations < maxIterations) {
+      while (notifier.state.hasMore &&
+          !notifier.state.isLoading &&
+          iterations < maxIterations) {
         await notifier.loadMore();
         iterations++;
         if (!mounted) return;
@@ -3116,7 +3414,8 @@ class _FiltersState extends State<_Filters> {
                           size: 20,
                         ),
                         onPressed: () {
-                          _searchController.selection = const TextSelection.collapsed(offset: 0);
+                          _searchController.selection =
+                              const TextSelection.collapsed(offset: 0);
                           _searchController.clear();
                           widget.onQueryChanged('');
                         },
@@ -3256,41 +3555,49 @@ class _FiltersNewState extends State<_FiltersNew> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: context.brandPrimary,
-                  size: 18,
+              borderRadius: BorderRadius.circular(12),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: context.brandPrimary,
+                    size: 18,
+                  ),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            _searchController.selection =
+                                const TextSelection.collapsed(offset: 0);
+                            _searchController.clear();
+                            widget.onQueryChanged('');
+                          },
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF999999),
+                            size: 18,
+                          ),
+                        )
+                      : null,
+                  suffixIconConstraints: const BoxConstraints(minWidth: 36),
+                  hintText: 'Поиск по треку',
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF999999),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  isDense: true,
                 ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? GestureDetector(
-                        onTap: () {
-                          _searchController.selection = const TextSelection.collapsed(offset: 0);
-                          _searchController.clear();
-                          widget.onQueryChanged('');
-                        },
-                        child: const Icon(Icons.close_rounded, color: Color(0xFF999999), size: 18),
-                      )
-                    : null,
-                suffixIconConstraints: const BoxConstraints(minWidth: 36),
-                hintText: 'Поиск по треку',
-                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                isDense: true,
+                onChanged: (value) {
+                  setState(() {});
+                  widget.onQueryChanged(value);
+                },
               ),
-              onChanged: (value) {
-                setState(() {});
-                widget.onQueryChanged(value);
-              },
             ),
           ),
-        ),
         ),
         const SizedBox(width: 6),
         // Вид
@@ -3404,7 +3711,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final df = DateFormat('dd MMM yyyy', 'ru');
     // Используем комментарий из локального кэша или из данных сборки
     final groupComment = widget.assembly != null
-        ? (widget.groupComments[widget.assembly!.id.toString()] ?? widget.assembly!.comment ?? '')
+        ? (widget.groupComments[widget.assembly!.id.toString()] ??
+              widget.assembly!.comment ??
+              '')
         : '';
     final groupQuestion = widget.assembly != null
         ? (widget.groupQuestions[widget.assembly!.id.toString()] ?? '')
@@ -3446,13 +3755,16 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         ),
                       ),
                       StatusPill(
-                        text: widget.assembly!.statusName ?? widget.assembly!.status,
+                        text:
+                            widget.assembly!.statusName ??
+                            widget.assembly!.status,
                         color: parseHexColor(widget.assembly!.statusColor),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  if (widget.assembly!.name != null && widget.assembly!.name!.isNotEmpty)
+                  if (widget.assembly!.name != null &&
+                      widget.assembly!.name!.isNotEmpty)
                     Text(
                       widget.assembly!.name!,
                       style: const TextStyle(color: Colors.black54),
@@ -3475,7 +3787,11 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.settings_outlined, size: 16, color: Colors.black54),
+                              const Icon(
+                                Icons.settings_outlined,
+                                size: 16,
+                                color: Colors.black54,
+                              ),
                               const SizedBox(width: 6),
                               const Text(
                                 'Детали сборки',
@@ -3486,7 +3802,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                               ),
                               const Spacer(),
                               Icon(
-                                _showAssemblyDetails ? Icons.expand_less : Icons.expand_more,
+                                _showAssemblyDetails
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
                                 size: 20,
                                 color: Colors.black54,
                               ),
@@ -3496,173 +3814,224 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeInOut,
                             alignment: Alignment.topCenter,
-                            child: _showAssemblyDetails ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                              const SizedBox(height: 8),
-                              if (widget.assembly!.tariffName != null) ...[
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.local_shipping_outlined,
-                                      size: 16,
-                                      color: Colors.black54,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'Тариф: ',
-                                      style: TextStyle(
-                                        color: Colors.black54,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    Flexible(
-                                      child: Text(
-                                        widget.assembly!.tariffName!,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              if (widget.assembly!.packagingTypes.isNotEmpty) ...[
-                                if (widget.assembly!.tariffName != null)
-                                  const SizedBox(height: 8),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Icon(
-                                      Icons.inventory_2_outlined,
-                                      size: 16,
-                                      color: Colors.black54,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'Упаковка: ',
-                                      style: TextStyle(
-                                        color: Colors.black54,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text.rich(
-                                        TextSpan(
+                            child: _showAssemblyDetails
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      if (widget.assembly!.tariffName !=
+                                          null) ...[
+                                        Row(
                                           children: [
-                                            TextSpan(
-                                              text: widget.assembly!.packagingTypes.join(', '),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
+                                            const Icon(
+                                              Icons.local_shipping_outlined,
+                                              size: 16,
+                                              color: Colors.black54,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Тариф: ',
+                                              style: TextStyle(
+                                                color: Colors.black54,
                                                 fontSize: 13,
                                               ),
                                             ),
+                                            Flexible(
+                                              child: Text(
+                                                widget.assembly!.tariffName!,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
                                           ],
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              if (widget.assembly!.hasInsurance) ...[
-                                if (widget.assembly!.tariffName != null ||
-                                    widget.assembly!.packagingTypes.isNotEmpty)
-                                  const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.verified_user_outlined,
-                                      size: 16,
-                                      color: Colors.blue,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'Страховка: ',
-                                      style: TextStyle(
-                                        color: Colors.black54,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    Text(
-                                      widget.assembly!.insuranceAmount != null
-                                          ? 'от ${_formatDecimal(widget.assembly!.insuranceAmount!)} ¥'
-                                          : 'Да',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                        color: Colors.blue,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              // Доставка
-                              if (widget.assembly!.deliveryMethod != null) ...[
-                                const SizedBox(height: 8),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                      widget.assembly!.deliveryMethod == 'self_pickup'
-                                          ? Icons.store_outlined
-                                          : Icons.local_shipping_outlined,
-                                      size: 16,
-                                      color: Colors.orange,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            widget.assembly!.deliveryMethod == 'self_pickup'
-                                                ? 'Самовывоз'
-                                                : widget.assembly!.transportCompanyName != null && widget.assembly!.transportCompanyName!.isNotEmpty
-                                                    ? 'ТК: ${widget.assembly!.transportCompanyName}'
-                                                    : 'Транспортная компания',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 13,
+                                      ],
+                                      if (widget
+                                          .assembly!
+                                          .packagingTypes
+                                          .isNotEmpty) ...[
+                                        if (widget.assembly!.tariffName != null)
+                                          const SizedBox(height: 8),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            const Icon(
+                                              Icons.inventory_2_outlined,
+                                              size: 16,
+                                              color: Colors.black54,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Упаковка: ',
+                                              style: TextStyle(
+                                                color: Colors.black54,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Text.rich(
+                                                TextSpan(
+                                                  children: [
+                                                    TextSpan(
+                                                      text: widget
+                                                          .assembly!
+                                                          .packagingTypes
+                                                          .join(', '),
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                      if (widget.assembly!.hasInsurance) ...[
+                                        if (widget.assembly!.tariffName !=
+                                                null ||
+                                            widget
+                                                .assembly!
+                                                .packagingTypes
+                                                .isNotEmpty)
+                                          const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.verified_user_outlined,
+                                              size: 16,
+                                              color: Colors.blue,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Страховка: ',
+                                              style: TextStyle(
+                                                color: Colors.black54,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            Text(
+                                              widget
+                                                          .assembly!
+                                                          .insuranceAmount !=
+                                                      null
+                                                  ? 'от ${_formatDecimal(widget.assembly!.insuranceAmount!)} ¥'
+                                                  : 'Да',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                                color: Colors.blue,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                      // Доставка
+                                      if (widget.assembly!.deliveryMethod !=
+                                          null) ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              widget.assembly!.deliveryMethod ==
+                                                      'self_pickup'
+                                                  ? Icons.store_outlined
+                                                  : Icons
+                                                        .local_shipping_outlined,
+                                              size: 16,
                                               color: Colors.orange,
                                             ),
-                                          ),
-                                          if (widget.assembly!.deliveryMethod == 'transport_company' &&
-                                              widget.assembly!.recipientName != null) ...[
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              '${widget.assembly!.recipientName}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.black87,
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    widget
+                                                                .assembly!
+                                                                .deliveryMethod ==
+                                                            'self_pickup'
+                                                        ? 'Самовывоз'
+                                                        : widget
+                                                                      .assembly!
+                                                                      .transportCompanyName !=
+                                                                  null &&
+                                                              widget
+                                                                  .assembly!
+                                                                  .transportCompanyName!
+                                                                  .isNotEmpty
+                                                        ? 'ТК: ${widget.assembly!.transportCompanyName}'
+                                                        : 'Транспортная компания',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 13,
+                                                      color: Colors.orange,
+                                                    ),
+                                                  ),
+                                                  if (widget
+                                                              .assembly!
+                                                              .deliveryMethod ==
+                                                          'transport_company' &&
+                                                      widget
+                                                              .assembly!
+                                                              .recipientName !=
+                                                          null) ...[
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      '${widget.assembly!.recipientName}',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.black87,
+                                                      ),
+                                                    ),
+                                                    if (widget
+                                                            .assembly!
+                                                            .recipientPhone !=
+                                                        null)
+                                                      Text(
+                                                        widget
+                                                            .assembly!
+                                                            .recipientPhone!,
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                    if (widget
+                                                            .assembly!
+                                                            .recipientCity !=
+                                                        null)
+                                                      Text(
+                                                        widget
+                                                            .assembly!
+                                                            .recipientCity!,
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ],
                                               ),
                                             ),
-                                            if (widget.assembly!.recipientPhone != null)
-                                              Text(
-                                                widget.assembly!.recipientPhone!,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.black54,
-                                                ),
-                                              ),
-                                            if (widget.assembly!.recipientCity != null)
-                                              Text(
-                                                widget.assembly!.recipientCity!,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.black54,
-                                                ),
-                                              ),
                                           ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                        ) : const SizedBox.shrink(),
+                                        ),
+                                      ],
+                                    ],
+                                  )
+                                : const SizedBox.shrink(),
                           ),
                         ],
                       ),
@@ -3745,10 +4114,18 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
                               children: [
-                                const Icon(Icons.inventory_2_outlined, size: 16, color: Colors.black54),
+                                const Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 16,
+                                  color: Colors.black54,
+                                ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  tr(context, ru: 'Коробки (${widget.assembly!.boxes.length})', zh: '箱子 (${widget.assembly!.boxes.length})'),
+                                  tr(
+                                    context,
+                                    ru: 'Коробки (${widget.assembly!.boxes.length})',
+                                    zh: '箱子 (${widget.assembly!.boxes.length})',
+                                  ),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
@@ -3756,7 +4133,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                 ),
                                 const Spacer(),
                                 Icon(
-                                  _showBoxes ? Icons.expand_less : Icons.expand_more,
+                                  _showBoxes
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
                                   size: 20,
                                   color: Colors.black54,
                                 ),
@@ -3765,7 +4144,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                           ),
                           // Отображаем каждую коробку
                           if (_showBoxes)
-                            ...widget.assembly!.boxes.map((box) => _buildBoxCard(context, box)),
+                            ...widget.assembly!.boxes.map(
+                              (box) => _buildBoxCard(context, box),
+                            ),
                         ],
                       ),
                     ),
@@ -3777,12 +4158,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                     children: [
                       _ActionChipButton(
                         label: 'Добавить заметку',
-                        onPressed: () => widget.onEditGroupComment(widget.assembly!),
+                        onPressed: () =>
+                            widget.onEditGroupComment(widget.assembly!),
                       ),
                       _ActionChipButton(
                         icon: Icons.local_shipping_outlined,
                         label: 'Доставка',
-                        onPressed: () => widget.onSelectDelivery(widget.assembly!),
+                        onPressed: () =>
+                            widget.onSelectDelivery(widget.assembly!),
                       ),
                     ],
                   ),
@@ -3798,13 +4181,20 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                 child: Row(
                   children: [
-                    const Icon(Icons.local_shipping_outlined, size: 16, color: Colors.black54),
+                    const Icon(
+                      Icons.local_shipping_outlined,
+                      size: 16,
+                      color: Colors.black54,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       // Используем реальное количество треков в сборке с бэка
                       // (не зависит от пагинации и загруженной страницы).
                       'Треки (${widget.assembly?.trackCount ?? widget.tracks.length})',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                     const Spacer(),
                     Icon(
@@ -3818,302 +4208,326 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             ),
           ],
           if (_showTracks || widget.assembly == null)
-          ...widget.tracks.asMap().entries.map((entry) {
-            final index = entry.key;
-            final track = entry.value;
-            final canSelect = track.status == 'На складе';
-            final allowedByStatus =
-                widget.selectedStatus == null || widget.selectedStatus == track.status;
-            final isSelected = widget.selectedTrackCodes.contains(track.code);
+            ...widget.tracks.asMap().entries.map((entry) {
+              final index = entry.key;
+              final track = entry.value;
+              final canSelect = track.status == 'На складе';
+              final allowedByStatus =
+                  widget.selectedStatus == null ||
+                  widget.selectedStatus == track.status;
+              final isSelected = widget.selectedTrackCodes.contains(track.code);
 
-            final canAskQuestion = track.status == 'В ожидании' || track.status == 'На складе';
-            final canRequestReturn = track.status == 'На складе' &&
-                track.statusCode == 'in_warehouse' &&
-                !widget.returnRequestedTracks.contains(track.code);
-            final availableFillInfo =
-                track.status == 'В ожидании' ||
-                track.status == 'На складе' ||
-                track.status == 'На сборке' ||
-                track.status == 'Отправлен';
-            final activePhoto = track.activePhotoRequest;
-            final visibleQuestions = track.questions
-                .where((q) => q.status != 'cancelled')
-                .toList();
-            final isPhotoRequested =
-                activePhoto != null ||
-                widget.requestedPhotoReports.contains(track.code);
-            // Запросить можно только если трек в статусе «В ожидании» и ещё не запрошен
-            final canRequestPhoto =
-                track.status == 'В ожидании' && !isPhotoRequested;
-            // Отменить можно только если статус запроса «new»
-            final canCancelPhoto = activePhoto?.status == 'new';
-            final commentText = widget.overrideComments[track.code] ?? track.comment;
-            final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '').trim();
-            final hasQuestion =
-                visibleQuestions.isNotEmpty || pendingLocalQuestion.isNotEmpty;
-            final photoCreated =
-                activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
-            final photoUpdated =
-                activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
-            // Используем productInfo из API или локальной карты
-            final apiProductInfo = track.productInfo;
-            final localProductInfo = widget.productInfos[track.code];
-            // Объединяем данные: приоритет у API, затем локальные данные
-            final productInfoName =
-                apiProductInfo?.name ?? localProductInfo?.name ?? '';
-            final productInfoQuantity =
-                apiProductInfo?.quantity ?? localProductInfo?.quantity;
-            // Локальные изображения (после загрузки, до обновления страницы)
-            // После обновления страницы — используем imageUrl из API как fallback
-            final productInfoImages = (localProductInfo?.images.isNotEmpty == true)
-                ? localProductInfo!.images
-                : (apiProductInfo?.imageUrl?.isNotEmpty == true
-                    ? [apiProductInfo!.imageUrl!]
-                    : <String>[]);
-            final hasProductInfo =
-                productInfoName.isNotEmpty ||
-                productInfoQuantity != null ||
-                productInfoImages.isNotEmpty;
+              final canAskQuestion =
+                  track.status == 'В ожидании' || track.status == 'На складе';
+              final canRequestReturn =
+                  track.status == 'На складе' &&
+                  track.statusCode == 'in_warehouse' &&
+                  !widget.returnRequestedTracks.contains(track.code);
+              final availableFillInfo =
+                  track.status == 'В ожидании' ||
+                  track.status == 'На складе' ||
+                  track.status == 'На сборке' ||
+                  track.status == 'Отправлен';
+              final activePhoto = track.activePhotoRequest;
+              final visibleQuestions = track.questions
+                  .where((q) => q.status != 'cancelled')
+                  .toList();
+              final isPhotoRequested =
+                  activePhoto != null ||
+                  widget.requestedPhotoReports.contains(track.code);
+              // Запросить можно только если трек в статусе «В ожидании» и ещё не запрошен
+              final canRequestPhoto =
+                  track.status == 'В ожидании' && !isPhotoRequested;
+              // Отменить можно только если статус запроса «new»
+              final canCancelPhoto = activePhoto?.status == 'new';
+              final commentText =
+                  widget.overrideComments[track.code] ?? track.comment;
+              final pendingLocalQuestion =
+                  (widget.askedQuestions[track.code] ?? '').trim();
+              final hasQuestion =
+                  visibleQuestions.isNotEmpty ||
+                  pendingLocalQuestion.isNotEmpty;
+              final photoCreated =
+                  activePhoto?.createdAt ??
+                  widget.photoRequestCreatedAt[track.code];
+              final photoUpdated =
+                  activePhoto?.completedAt ??
+                  widget.photoRequestUpdatedAt[track.code];
+              // Используем productInfo из API или локальной карты
+              final apiProductInfo = track.productInfo;
+              final localProductInfo = widget.productInfos[track.code];
+              // Объединяем данные: приоритет у API, затем локальные данные
+              final productInfoName =
+                  apiProductInfo?.name ?? localProductInfo?.name ?? '';
+              final productInfoQuantity =
+                  apiProductInfo?.quantity ?? localProductInfo?.quantity;
+              // Локальные изображения (после загрузки, до обновления страницы)
+              // После обновления страницы — используем imageUrl из API как fallback
+              final productInfoImages =
+                  (localProductInfo?.images.isNotEmpty == true)
+                  ? localProductInfo!.images
+                  : (apiProductInfo?.imageUrl?.isNotEmpty == true
+                        ? [apiProductInfo!.imageUrl!]
+                        : <String>[]);
+              final hasProductInfo =
+                  productInfoName.isNotEmpty ||
+                  productInfoQuantity != null ||
+                  productInfoImages.isNotEmpty;
 
-            final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
+              final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
 
-            final List<Widget> infoSections = [];
-            final commentValue = (commentText ?? '').trim();
-            if (commentValue.isNotEmpty) {
-              infoSections.add(
-                _CollapsibleNote(
-                  text: commentValue,
-                  onEdit: () => widget.onEditComment(track),
-                ),
-              );
-            }
-
-            if (activePhoto != null || isPhotoRequested) {
-              final photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
-                  ? activePhoto!.wishes!
-                  : widget.photoRequestNotes[track.code] ?? '';
-
-              // Собираем все фото/видео из разных источников (без дублей)
-              final allMediaUrls = <String>[];
-              final seenUrls = <String>{};
-              if (activePhoto?.mediaUrls != null && activePhoto!.mediaUrls.isNotEmpty) {
-                for (final url in activePhoto.mediaUrls) {
-                  if (seenUrls.add(url)) allMediaUrls.add(url);
-                }
-              }
-              if (track.photoReportUrls.isNotEmpty) {
-                for (final url in track.photoReportUrls) {
-                  if (seenUrls.add(url)) allMediaUrls.add(url);
-                }
-              }
-
-              infoSections.add(
-                _CollapsiblePhotoReport(
-                  statusLabel: photoStatusLabel,
-                  photoNote: photoNote,
-                  canCancel: canCancelPhoto,
-                  warehouseComment: activePhoto?.warehouseComment,
-                  createdAt: photoCreated != null ? df.format(photoCreated) : null,
-                  updatedAt: photoUpdated != null ? df.format(photoUpdated) : null,
-                  mediaUrls: allMediaUrls,
-                  trackCode: track.code,
-                  photoCreatedDate: photoCreated,
-                  onEditWish: () => widget.onEditPhotoWish(track),
-                  onCancel: () => widget.onCancelPhotoRequest(track),
-                ),
-              );
-            }
-
-            if (hasQuestion) {
-              // Показываем все видимые вопросы (из API)
-              for (var i = 0; i < visibleQuestions.length; i++) {
-                final q = visibleQuestions[i];
-                final statusColor = q.hasAnswer
-                    ? Colors.green
-                    : q.status == 'cancelled'
-                        ? Colors.red
-                        : Colors.orange;
+              final List<Widget> infoSections = [];
+              final commentValue = (commentText ?? '').trim();
+              if (commentValue.isNotEmpty) {
                 infoSections.add(
-                  _CollapsibleQuestion(
-                    title: visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
-                    statusLabel: q.statusLabel,
-                    statusColor: statusColor,
-                    question: q.question,
-                    answer: q.hasAnswer ? q.answer : null,
-                    createdAt: df.format(q.createdAt),
-                    answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
-                    canCancel: q.isActive,
-                    onCancel: () => widget.onCancelQuestion(track),
+                  _CollapsibleNote(
+                    text: commentValue,
+                    onEdit: () => widget.onEditComment(track),
                   ),
                 );
               }
-              // Показываем локально добавленный вопрос (ещё не сохранён в API)
-              if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty) {
+
+              if (activePhoto != null || isPhotoRequested) {
+                final photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
+                    ? activePhoto!.wishes!
+                    : widget.photoRequestNotes[track.code] ?? '';
+
+                // Собираем все фото/видео из разных источников (без дублей)
+                final allMediaUrls = <String>[];
+                final seenUrls = <String>{};
+                if (activePhoto?.mediaUrls != null &&
+                    activePhoto!.mediaUrls.isNotEmpty) {
+                  for (final url in activePhoto.mediaUrls) {
+                    if (seenUrls.add(url)) allMediaUrls.add(url);
+                  }
+                }
+                if (track.photoReportUrls.isNotEmpty) {
+                  for (final url in track.photoReportUrls) {
+                    if (seenUrls.add(url)) allMediaUrls.add(url);
+                  }
+                }
+
                 infoSections.add(
-                  _CollapsibleQuestion(
-                    title: 'Вопрос',
-                    statusLabel: widget.questionStatus[track.code] ?? 'Новый',
-                    statusColor: Colors.orange,
-                    question: pendingLocalQuestion,
-                    answer: null,
-                    createdAt: df.format(DateTime.now()),
-                    answeredAt: null,
-                    canCancel: true,
-                    onCancel: () => widget.onCancelQuestion(track),
+                  _CollapsiblePhotoReport(
+                    statusLabel: photoStatusLabel,
+                    photoNote: photoNote,
+                    canCancel: canCancelPhoto,
+                    warehouseComment: activePhoto?.warehouseComment,
+                    createdAt: photoCreated != null
+                        ? df.format(photoCreated)
+                        : null,
+                    updatedAt: photoUpdated != null
+                        ? df.format(photoUpdated)
+                        : null,
+                    mediaUrls: allMediaUrls,
+                    trackCode: track.code,
+                    photoCreatedDate: photoCreated,
+                    onEditWish: () => widget.onEditPhotoWish(track),
+                    onCancel: () => widget.onCancelPhotoRequest(track),
                   ),
                 );
               }
-            }
 
+              if (hasQuestion) {
+                // Показываем все видимые вопросы (из API)
+                for (var i = 0; i < visibleQuestions.length; i++) {
+                  final q = visibleQuestions[i];
+                  final statusColor = q.hasAnswer
+                      ? Colors.green
+                      : q.status == 'cancelled'
+                      ? Colors.red
+                      : Colors.orange;
+                  infoSections.add(
+                    _CollapsibleQuestion(
+                      title: visibleQuestions.length > 1
+                          ? 'Вопрос ${i + 1}'
+                          : 'Вопрос',
+                      statusLabel: q.statusLabel,
+                      statusColor: statusColor,
+                      question: q.question,
+                      answer: q.hasAnswer ? q.answer : null,
+                      createdAt: df.format(q.createdAt),
+                      answeredAt: q.answeredAt != null
+                          ? df.format(q.answeredAt!)
+                          : null,
+                      canCancel: q.isActive,
+                      onCancel: () => widget.onCancelQuestion(track),
+                    ),
+                  );
+                }
+                // Показываем локально добавленный вопрос (ещё не сохранён в API)
+                if (pendingLocalQuestion.isNotEmpty &&
+                    visibleQuestions.isEmpty) {
+                  infoSections.add(
+                    _CollapsibleQuestion(
+                      title: 'Вопрос',
+                      statusLabel: widget.questionStatus[track.code] ?? 'Новый',
+                      statusColor: Colors.orange,
+                      question: pendingLocalQuestion,
+                      answer: null,
+                      createdAt: df.format(DateTime.now()),
+                      answeredAt: null,
+                      canCancel: true,
+                      onCancel: () => widget.onCancelQuestion(track),
+                    ),
+                  );
+                }
+              }
 
-            return Column(
-              children: [
-                if (index > 0)
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: Color(0x11000000),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          if (canSelect && allowedByStatus) ...[
-                            Transform.translate(
-                              offset: const Offset(-5, 0),
-                              child: Checkbox(
-                                value: isSelected,
-                                onChanged: (_) => widget.onToggle(track),
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                visualDensity: VisualDensity.compact,
+              return Column(
+                children: [
+                  if (index > 0)
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Color(0x11000000),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (canSelect && allowedByStatus) ...[
+                              Transform.translate(
+                                offset: const Offset(-5, 0),
+                                child: Checkbox(
+                                  value: isSelected,
+                                  onChanged: (_) => widget.onToggle(track),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 2),
-                          ],
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Clipboard.setData(ClipboardData(text: track.code));
-                                HapticFeedback.lightImpact();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Трек скопирован'),
-                                    duration: Duration(seconds: 1),
-                                    behavior: SnackBarBehavior.floating,
+                              const SizedBox(width: 2),
+                            ],
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(text: track.code),
+                                  );
+                                  HapticFeedback.lightImpact();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Трек скопирован'),
+                                      duration: Duration(seconds: 1),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Text(
+                                    track.code,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: Text(
-                                  track.code,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
                                 ),
                               ),
                             ),
-                          ),
-                          if (track.status != 'На сборке')
-                            StatusPill(
-                              text: track.status,
-                              color: parseHexColor(track.statusColor),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        df.format(track.date),
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                      if (hasProductInfo) ...[
-                        const SizedBox(height: 8),
-                        _ProductInfoInline(
-                          name: productInfoName,
-                          quantity: productInfoQuantity,
-                          imageUrls: productInfoImages,
-                          trackCode: track.code,
-                          onEdit: () => widget.onEditProduct(track),
+                            if (track.status != 'На сборке')
+                              StatusPill(
+                                text: track.status,
+                                color: parseHexColor(track.statusColor),
+                              ),
+                          ],
                         ),
-                      ],
-                      if (infoSections.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: const Color(0x0F000000),
-                            borderRadius: BorderRadius.circular(14),
+                        const SizedBox(height: 2),
+                        Text(
+                          df.format(track.date),
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                        if (hasProductInfo) ...[
+                          const SizedBox(height: 8),
+                          _ProductInfoInline(
+                            name: productInfoName,
+                            quantity: productInfoQuantity,
+                            imageUrls: productInfoImages,
+                            trackCode: track.code,
+                            onEdit: () => widget.onEditProduct(track),
                           ),
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (int i = 0; i < infoSections.length; i++) ...[
-                                if (i > 0) const SizedBox(height: 10),
-                                infoSections[i],
+                        ],
+                        if (infoSections.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0x0F000000),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (
+                                  int i = 0;
+                                  i < infoSections.length;
+                                  i++
+                                ) ...[
+                                  if (i > 0) const SizedBox(height: 10),
+                                  infoSections[i],
+                                ],
                               ],
-                            ],
+                            ),
                           ),
+                        ],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          key: index == 0 ? widget.tutorialActionsKey : null,
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            if (canRequestPhoto)
+                              _ActionChipButton(
+                                label: 'Фотоотчёт',
+                                icon: Icons.photo_camera_outlined,
+                                onPressed: () => widget.onPhotoRequest(track),
+                              ),
+                            if (canAskQuestion && !hasQuestion)
+                              _ActionChipButton(
+                                label: 'Вопрос',
+                                icon: Icons.help_outline_rounded,
+                                onPressed: () => widget.onAskQuestion(track),
+                              ),
+                            if (commentValue.isEmpty)
+                              _ActionChipButton(
+                                label: 'Заметка',
+                                icon: Icons.edit_note_rounded,
+                                onPressed: () => widget.onEditComment(track),
+                              ),
+                            if (availableFillInfo && !hasProductInfo)
+                              _ActionChipButton(
+                                label: 'О товаре',
+                                icon: Icons.inventory_2_outlined,
+                                onPressed: () => widget.onEditProduct(track),
+                              ),
+                            if (canRequestReturn)
+                              _ActionChipButton(
+                                label: 'Возврат',
+                                icon: Icons.assignment_return_outlined,
+                                onPressed: () => widget.onReturnRequest(track),
+                              ),
+                            if (track.status == 'В ожидании')
+                              _ActionChipButton(
+                                label: 'Удалить',
+                                icon: Icons.delete_outline_rounded,
+                                isDestructive: true,
+                                onPressed: () => widget.onDeleteTrack(track),
+                              ),
+                          ],
                         ),
                       ],
-                      const SizedBox(height: 10),
-                      Wrap(
-                        key: index == 0 ? widget.tutorialActionsKey : null,
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          if (canRequestPhoto)
-                            _ActionChipButton(
-                              label: 'Фотоотчёт',
-                              icon: Icons.photo_camera_outlined,
-                              onPressed: () => widget.onPhotoRequest(track),
-                            ),
-                          if (canAskQuestion && !hasQuestion)
-                            _ActionChipButton(
-                              label: 'Вопрос',
-                              icon: Icons.help_outline_rounded,
-                              onPressed: () => widget.onAskQuestion(track),
-                            ),
-                          if (commentValue.isEmpty)
-                            _ActionChipButton(
-                              label: 'Заметка',
-                              icon: Icons.edit_note_rounded,
-                              onPressed: () => widget.onEditComment(track),
-                            ),
-                          if (availableFillInfo && !hasProductInfo)
-                            _ActionChipButton(
-                              label: 'О товаре',
-                              icon: Icons.inventory_2_outlined,
-                              onPressed: () => widget.onEditProduct(track),
-                            ),
-                          if (canRequestReturn)
-                            _ActionChipButton(
-                              label: 'Возврат',
-                              icon: Icons.assignment_return_outlined,
-                              onPressed: () => widget.onReturnRequest(track),
-                            ),
-                          if (track.status == 'В ожидании')
-                            _ActionChipButton(
-                              label: 'Удалить',
-                              icon: Icons.delete_outline_rounded,
-                              isDestructive: true,
-                              onPressed: () => widget.onDeleteTrack(track),
-                            ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            );
-          }),
+                ],
+              );
+            }),
         ],
       ),
     );
@@ -4165,37 +4579,75 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           const SizedBox(height: 12),
 
           // Параметры коробки
-          _buildBoxParam(context, icon: Icons.straighten, label: tr(context, ru: 'Габариты', zh: '尺寸'), value: box.dimensionsDisplay),
+          _buildBoxParam(
+            context,
+            icon: Icons.straighten,
+            label: tr(context, ru: 'Габариты', zh: '尺寸'),
+            value: box.dimensionsDisplay,
+          ),
           const SizedBox(height: 6),
-          _buildBoxParam(context, icon: Icons.scale, label: tr(context, ru: 'Вес', zh: '重量'), value: box.weightDisplay),
+          _buildBoxParam(
+            context,
+            icon: Icons.scale,
+            label: tr(context, ru: 'Вес', zh: '重量'),
+            value: box.weightDisplay,
+          ),
           const SizedBox(height: 6),
-          _buildBoxParam(context, icon: Icons.inventory_2_outlined, label: tr(context, ru: 'Объём', zh: '体积'), value: box.volumeDisplay),
+          _buildBoxParam(
+            context,
+            icon: Icons.inventory_2_outlined,
+            label: tr(context, ru: 'Объём', zh: '体积'),
+            value: box.volumeDisplay,
+          ),
           const SizedBox(height: 6),
-          _buildBoxParam(context, icon: Icons.compress, label: tr(context, ru: 'Плотность', zh: '密度'), value: box.densityDisplay),
+          _buildBoxParam(
+            context,
+            icon: Icons.compress,
+            label: tr(context, ru: 'Плотность', zh: '密度'),
+            value: box.densityDisplay,
+          ),
 
           // Тариф и упаковка коробки (если отличаются от сборки)
-          if (box.tariffName != null || box.packagingTypes.isNotEmpty || box.orderNumber != null) ...[
+          if (box.tariffName != null ||
+              box.packagingTypes.isNotEmpty ||
+              box.orderNumber != null) ...[
             const SizedBox(height: 8),
             if (box.orderNumber != null && box.orderNumber!.isNotEmpty)
-              _buildBoxParam(context, icon: Icons.tag, label: tr(context, ru: 'Заказ', zh: '单号'), value: box.orderNumber!),
-            if (box.orderNumber != null && box.orderNumber!.isNotEmpty && (box.tariffName != null || box.packagingTypes.isNotEmpty))
+              _buildBoxParam(
+                context,
+                icon: Icons.tag,
+                label: tr(context, ru: 'Заказ', zh: '单号'),
+                value: box.orderNumber!,
+              ),
+            if (box.orderNumber != null &&
+                box.orderNumber!.isNotEmpty &&
+                (box.tariffName != null || box.packagingTypes.isNotEmpty))
               const SizedBox(height: 6),
             if (box.tariffName != null)
-              _buildBoxParam(context, icon: Icons.local_shipping_outlined, label: tr(context, ru: 'Тариф', zh: '费率'), value: box.tariffName!),
+              _buildBoxParam(
+                context,
+                icon: Icons.local_shipping_outlined,
+                label: tr(context, ru: 'Тариф', zh: '费率'),
+                value: box.tariffName!,
+              ),
             if (box.tariffName != null && box.packagingTypes.isNotEmpty)
               const SizedBox(height: 6),
             if (box.packagingTypes.isNotEmpty)
-              _buildBoxParam(context, icon: Icons.inventory_2_outlined, label: tr(context, ru: 'Упаковка', zh: '包装'), value: box.packagingTypes.join(', ')),
+              _buildBoxParam(
+                context,
+                icon: Icons.inventory_2_outlined,
+                label: tr(context, ru: 'Упаковка', zh: '包装'),
+                value: box.packagingTypes.join(', '),
+              ),
           ],
           // Фото на весах — одно большое
           if (box.photos.isNotEmpty) ...[
             const SizedBox(height: 10),
             GestureDetector(
               onTap: () {
-                final allPhotos = box.photos.map((p) => PhotoItem(
-                  url: p.url,
-                  date: DateTime.now(),
-                )).toList();
+                final allPhotos = box.photos
+                    .map((p) => PhotoItem(url: p.url, date: DateTime.now()))
+                    .toList();
                 Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(
                     fullscreenDialog: true,
@@ -4220,7 +4672,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   memCacheWidth: 400,
                   imageBuilder: (_, imageProvider) => DecoratedBox(
                     decoration: BoxDecoration(
-                      image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                      image: DecorationImage(
+                        image: imageProvider,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   placeholder: (_, _) => const Center(
@@ -4238,7 +4693,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
-  Widget _buildBoxParam(BuildContext context, {
+  Widget _buildBoxParam(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required String value,
@@ -4258,19 +4714,18 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         const SizedBox(width: 6),
         Flexible(
           child: Text(
-          value,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
-          overflow: TextOverflow.ellipsis,
-        ),
         ),
       ],
     );
   }
-
 }
 
 class _DropdownItem<T> {
@@ -4312,7 +4767,14 @@ class _MiniDropdown<T> extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 8),
-                Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 for (final item in items)
                   ListTile(
@@ -4320,13 +4782,21 @@ class _MiniDropdown<T> extends StatelessWidget {
                     title: Text(
                       item.label,
                       style: TextStyle(
-                        fontWeight: item.value == value ? FontWeight.w700 : FontWeight.w500,
-                        color: item.value == value ? context.brandPrimary : Colors.black87,
+                        fontWeight: item.value == value
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: item.value == value
+                            ? context.brandPrimary
+                            : Colors.black87,
                         fontSize: 14,
                       ),
                     ),
                     trailing: item.value == value
-                        ? Icon(Icons.check_rounded, size: 18, color: context.brandPrimary)
+                        ? Icon(
+                            Icons.check_rounded,
+                            size: 18,
+                            color: context.brandPrimary,
+                          )
                         : null,
                     onTap: () {
                       Navigator.pop(ctx);
@@ -4351,7 +4821,11 @@ class _MiniDropdown<T> extends StatelessWidget {
           children: [
             Text(
               selected.label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(width: 2),
             const Icon(Icons.expand_more, size: 16, color: Colors.black38),
@@ -4426,67 +4900,75 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                       child: Container(
                         width: menuWidth,
                         constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.4, // 40% of screen height
+                          maxHeight:
+                              MediaQuery.of(context).size.height *
+                              0.4, // 40% of screen height
                         ),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                        ),
+                        decoration: const BoxDecoration(color: Colors.white),
                         child: ListView(
                           padding: EdgeInsets.zero,
                           shrinkWrap: true,
                           physics: const ClampingScrollPhysics(),
                           children: widget.items.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final item = entry.value;
-                          final isFirst = index == 0;
-                          final isLast = index == widget.items.length - 1;
+                            final index = entry.key;
+                            final item = entry.value;
+                            final isFirst = index == 0;
+                            final isLast = index == widget.items.length - 1;
 
-                          return InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedValue = item.value;
-                              });
-                              widget.onChanged(item.value);
-                              _overlayEntry?.remove();
-                              _overlayEntry = null;
-                            },
-                            // Добавляем borderRadius для InkWell эффекта
-                            borderRadius: BorderRadius.vertical(
-                              top: isFirst ? const Radius.circular(14) : Radius.zero,
-                              bottom: isLast ? const Radius.circular(14) : Radius.zero,
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
+                            return InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedValue = item.value;
+                                });
+                                widget.onChanged(item.value);
+                                _overlayEntry?.remove();
+                                _overlayEntry = null;
+                              },
+                              // Добавляем borderRadius для InkWell эффекта
+                              borderRadius: BorderRadius.vertical(
+                                top: isFirst
+                                    ? const Radius.circular(14)
+                                    : Radius.zero,
+                                bottom: isLast
+                                    ? const Radius.circular(14)
+                                    : Radius.zero,
                               ),
-                              decoration: BoxDecoration(
-                                color: _selectedValue == item.value
-                                    ? context.brandPrimary.withValues(
-                                        alpha: 0.1,
-                                      )
-                                    : Colors.transparent,
-                                // Добавляем borderRadius для первого/последнего элемента
-                                borderRadius: BorderRadius.vertical(
-                                  top: isFirst ? const Radius.circular(14) : Radius.zero,
-                                  bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
                                 ),
-                              ),
-                              child: Text(
-                                item.label,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: _selectedValue == item.value
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
+                                decoration: BoxDecoration(
                                   color: _selectedValue == item.value
-                                      ? context.brandPrimary
-                                      : Colors.black87,
+                                      ? context.brandPrimary.withValues(
+                                          alpha: 0.1,
+                                        )
+                                      : Colors.transparent,
+                                  // Добавляем borderRadius для первого/последнего элемента
+                                  borderRadius: BorderRadius.vertical(
+                                    top: isFirst
+                                        ? const Radius.circular(14)
+                                        : Radius.zero,
+                                    bottom: isLast
+                                        ? const Radius.circular(14)
+                                        : Radius.zero,
+                                  ),
+                                ),
+                                child: Text(
+                                  item.label,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: _selectedValue == item.value
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: _selectedValue == item.value
+                                        ? context.brandPrimary
+                                        : Colors.black87,
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        }).toList(),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ),
@@ -4605,7 +5087,9 @@ class _ActionChipButton extends StatelessWidget {
       colors: [Color(0xFFFF5252), Color(0xFFD32F2F)],
     );
     final activeGradient = isDestructive ? destructiveGradient : gradient;
-    final activeColor = isDestructive ? const Color(0xFFD32F2F) : context.brandPrimary;
+    final activeColor = isDestructive
+        ? const Color(0xFFD32F2F)
+        : context.brandPrimary;
     final isDisabled = onPressed == null;
 
     // Icon-only button (circular) — fallback if no label
@@ -4613,7 +5097,10 @@ class _ActionChipButton extends StatelessWidget {
       return Opacity(
         opacity: isDisabled ? 0.45 : 1,
         child: Container(
-          decoration: BoxDecoration(gradient: activeGradient, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            gradient: activeGradient,
+            shape: BoxShape.circle,
+          ),
           padding: const EdgeInsets.all(1.5),
           child: Material(
             color: Colors.white,
@@ -4768,7 +5255,9 @@ class _DeliveryOptionCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? context.brandPrimary.withValues(alpha: 0.1) : Colors.white,
+          color: isSelected
+              ? context.brandPrimary.withValues(alpha: 0.1)
+              : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? context.brandPrimary : const Color(0xFFE0E0E0),
@@ -4807,20 +5296,13 @@ class _DeliveryOptionCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black54,
-                    ),
+                    style: const TextStyle(fontSize: 13, color: Colors.black54),
                   ),
                 ],
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: context.brandPrimary,
-                size: 24,
-              ),
+              Icon(Icons.check_circle, color: context.brandPrimary, size: 24),
           ],
         ),
       ),
@@ -4879,7 +5361,11 @@ class _CollapsibleNoteState extends State<_CollapsibleNote> {
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: widget.onEdit,
-                  child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
+                  child: const Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: Colors.black45,
+                  ),
                 ),
               ],
               if (!_expanded) ...[
@@ -4889,10 +5375,7 @@ class _CollapsibleNoteState extends State<_CollapsibleNote> {
                     widget.text,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black38,
-                    ),
+                    style: const TextStyle(fontSize: 12, color: Colors.black38),
                   ),
                 ),
               ],
@@ -4908,10 +5391,7 @@ class _CollapsibleNoteState extends State<_CollapsibleNote> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     widget.text,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black54,
-                    ),
+                    style: const TextStyle(fontSize: 13, color: Colors.black54),
                   ),
                 )
               : const SizedBox.shrink(),
@@ -4982,8 +5462,11 @@ class _ProductInfoInline extends StatelessWidget {
               const SizedBox(width: 6),
               GestureDetector(
                 onTap: onEdit,
-                child: const Icon(Icons.edit_outlined,
-                    size: 16, color: Colors.black45),
+                child: const Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                  color: Colors.black45,
+                ),
               ),
             ],
           ],
@@ -5021,7 +5504,10 @@ class _ProductInfoInline extends StatelessWidget {
                 memCacheWidth: 400,
                 imageBuilder: (_, imageProvider) => DecoratedBox(
                   decoration: BoxDecoration(
-                    image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                    image: DecorationImage(
+                      image: imageProvider,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 placeholder: (_, _) => const Center(
@@ -5068,7 +5554,8 @@ class _CollapsiblePhotoReport extends StatefulWidget {
   });
 
   @override
-  State<_CollapsiblePhotoReport> createState() => _CollapsiblePhotoReportState();
+  State<_CollapsiblePhotoReport> createState() =>
+      _CollapsiblePhotoReportState();
 }
 
 class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
@@ -5079,8 +5566,8 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
     final statusColor = widget.statusLabel == 'Выполнен'
         ? Colors.green
         : widget.statusLabel == 'Отменён'
-            ? Colors.red
-            : Colors.orange;
+        ? Colors.red
+        : Colors.orange;
     final hasPhotos = widget.mediaUrls.isNotEmpty;
 
     return Column(
@@ -5116,18 +5603,30 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                     color: Colors.black45,
                   ),
                 ),
-                const Icon(Icons.photo_outlined, size: 14, color: Colors.black45),
+                const Icon(
+                  Icons.photo_outlined,
+                  size: 14,
+                  color: Colors.black45,
+                ),
               ],
               if (widget.canCancel) ...[
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: widget.onEditWish,
-                  child: const Icon(Icons.edit_outlined, size: 16, color: Colors.black45),
+                  child: const Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: Colors.black45,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 GestureDetector(
                   onTap: widget.onCancel,
-                  child: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: Colors.redAccent,
+                  ),
                 ),
               ],
               const Spacer(),
@@ -5184,8 +5683,11 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                             if (widget.canCancel)
                               GestureDetector(
                                 onTap: widget.onEditWish,
-                                child: const Icon(Icons.edit_outlined,
-                                    size: 16, color: Colors.black45),
+                                child: const Icon(
+                                  Icons.edit_outlined,
+                                  size: 16,
+                                  color: Colors.black45,
+                                ),
                               ),
                           ],
                         ),
@@ -5196,12 +5698,16 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF8E1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: const Color(0xFFFFE082), width: 1),
+                              color: const Color(0xFFFFE082),
+                              width: 1,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -5218,7 +5724,9 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                               Text(
                                 widget.warehouseComment!,
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.black87),
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ],
                           ),
@@ -5231,24 +5739,31 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                           shrinkWrap: true,
                           padding: EdgeInsets.zero,
                           physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 4,
-                            mainAxisSpacing: 4,
-                            childAspectRatio: 1,
-                          ),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 4,
+                                mainAxisSpacing: 4,
+                                childAspectRatio: 1,
+                              ),
                           itemCount: widget.mediaUrls.length,
                           itemBuilder: (context, i) {
-                            final fullUrl = ApiConfig.getMediaUrl(widget.mediaUrls[i]);
+                            final fullUrl = ApiConfig.getMediaUrl(
+                              widget.mediaUrls[i],
+                            );
                             final isVideo = _isVideoUrl(fullUrl);
                             return GestureDetector(
                               onTap: () {
                                 final allPhotos = widget.mediaUrls
-                                    .map((url) => PhotoItem(
-                                          url: url,
-                                          date: widget.photoCreatedDate ?? DateTime.now(),
-                                          trackingNumber: widget.trackCode,
-                                        ))
+                                    .map(
+                                      (url) => PhotoItem(
+                                        url: url,
+                                        date:
+                                            widget.photoCreatedDate ??
+                                            DateTime.now(),
+                                        trackingNumber: widget.trackCode,
+                                      ),
+                                    )
                                     .toList();
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute<void>(
@@ -5274,19 +5789,25 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                                       imageUrl: fullUrl,
                                       memCacheWidth: 200,
                                       memCacheHeight: 200,
-                                      imageBuilder: (context, imageProvider) => DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          image: DecorationImage(
-                                            image: imageProvider,
-                                            fit: BoxFit.cover,
+                                      imageBuilder: (context, imageProvider) =>
+                                          DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              image: DecorationImage(
+                                                image: imageProvider,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
                                           ),
+                                      placeholder: (_, _) => const Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
                                         ),
                                       ),
-                                      placeholder: (_, _) => const Center(
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
                                       errorWidget: (_, _, _) => const Center(
-                                        child: Icon(Icons.broken_image_outlined, size: 20),
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                          size: 20,
+                                        ),
                                       ),
                                     ),
                                     if (isVideo)
@@ -5294,7 +5815,9 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                                         child: Container(
                                           padding: const EdgeInsets.all(6),
                                           decoration: BoxDecoration(
-                                            color: Colors.black.withValues(alpha: 0.6),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.6,
+                                            ),
                                             shape: BoxShape.circle,
                                           ),
                                           child: const Icon(
@@ -5319,14 +5842,18 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                             Text(
                               widget.createdAt!,
                               style: const TextStyle(
-                                  fontSize: 11, color: Colors.black38),
+                                fontSize: 11,
+                                color: Colors.black38,
+                              ),
                             ),
                           if (widget.updatedAt != null) ...[
                             const Spacer(),
                             Text(
                               widget.updatedAt!,
                               style: const TextStyle(
-                                  fontSize: 11, color: Colors.black38),
+                                fontSize: 11,
+                                color: Colors.black38,
+                              ),
                             ),
                           ],
                         ],
@@ -5402,7 +5929,11 @@ class _CollapsibleQuestionState extends State<_CollapsibleQuestion>
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: widget.onCancel,
-                  child: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: Colors.redAccent,
+                  ),
                 ),
               ],
               const Spacer(),

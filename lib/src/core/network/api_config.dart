@@ -2,13 +2,23 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 
 /// Конфигурация API
 class ApiConfig {
-  static const _mainHost = 'https://2alogistic.2a-marketing.ru';
+  // The user app is used in Russia and does not need the China proxy. Mobile
+  // builds should use the same public API domain as the stable web cabinet.
+  static const _mainHost = 'https://prod-api.cp.2a-logistic.com';
+  static const _legacyHost = 'https://2alogistic.2a-marketing.ru';
 
   /// 2a-user всегда ходит напрямую в основной backend.
   /// Метод оставлен для совместимости с кодом инициализации приложения.
   static void setChineseMode(bool _) {}
 
   static String get _host => _mainHost;
+
+  /// Rewrites old absolute backend URLs to the active public host.
+  static String rewriteToCurrentHost(String url) {
+    var result = url.replaceFirst(_legacyHost, _host);
+    result = result.replaceFirst(_mainHost, _host);
+    return result;
+  }
 
   /// Base URL для API
   static String get baseUrl {
@@ -37,8 +47,8 @@ class ApiConfig {
     }
 
     if (path.startsWith('http://') || path.startsWith('https://')) {
-      // Заменяем домен основного сервера на актуальный хост (HK или основной)
-      var result = path.replaceFirst(_mainHost, _host);
+      // Заменяем старый backend-домен на актуальный публичный хост.
+      var result = rewriteToCurrentHost(path);
 
       // Преобразуем /uploads/ → /api/uploads/ для надёжной работы на всех платформах
       if (result.contains('/uploads/') && !result.contains('/api/uploads/')) {

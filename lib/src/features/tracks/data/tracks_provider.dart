@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
@@ -615,6 +616,28 @@ List<TrackItem> _sortTracksByCreatedAtDesc(List<TrackItem> tracks) {
   });
 }
 
+MediaType _mediaTypeForFileName(String fileName) {
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    return MediaType('image', 'jpeg');
+  }
+  if (lower.endsWith('.png')) return MediaType('image', 'png');
+  if (lower.endsWith('.gif')) return MediaType('image', 'gif');
+  if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+  if (lower.endsWith('.heic')) return MediaType('image', 'heic');
+  if (lower.endsWith('.heif')) return MediaType('image', 'heif');
+  return MediaType('image', 'jpeg');
+}
+
+MediaType? _mediaTypeForMimeType(String? mimeType) {
+  if (mimeType == null || mimeType.isEmpty || !mimeType.contains('/')) {
+    return null;
+  }
+  final parts = mimeType.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1].isEmpty) return null;
+  return MediaType(parts[0], parts[1]);
+}
+
 /// Провайдер количества треков для карточки на главном экране.
 /// Считаются только треки в активной обработке: pending / in_warehouse / in_assembly.
 final tracksCountProvider = FutureProvider.family<int, String>((
@@ -836,7 +859,10 @@ class TracksApiService {
       // Сначала загружаем изображение если есть файл
       String? uploadedImageUrl = imageUrl;
       if (imageFile != null) {
-        final uploadResponse = await _uploadImage(imageFile, 'product-info');
+        final uploadResponse = await _uploadProductInfoImage(
+          trackId,
+          imageFile,
+        );
         uploadedImageUrl = uploadResponse;
       }
 
@@ -861,21 +887,23 @@ class TracksApiService {
     }
   }
 
-  /// Загрузить изображение
-  /// [type] - тип загружаемого изображения: 'product-info', 'general', etc.
-  Future<String?> _uploadImage(File file, [String type = 'general']) async {
+  /// Загрузить изображение товара и привязать его к треку.
+  Future<String?> _uploadProductInfoImage(int trackId, File file) async {
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
           file.path,
           filename: file.path.split(Platform.pathSeparator).last,
+          contentType: _mediaTypeForFileName(file.path),
         ),
-        'type': type,
       });
 
-      final response = await _apiClient.post('/photos/upload', data: formData);
+      final response = await _apiClient.post(
+        '/tracks/$trackId/product-info-image',
+        data: formData,
+      );
 
-      debugPrint('Upload image response: ${response.statusCode}');
+      debugPrint('Upload product info image response: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
@@ -883,28 +911,36 @@ class TracksApiService {
       }
       return null;
     } on DioException catch (e) {
-      debugPrint('Error uploading image: $e');
+      debugPrint('Error uploading product info image: $e');
       debugPrint('Response data: ${e.response?.data}');
       return null;
     }
   }
 
-  /// Загрузить изображение из байтов (для Web платформы)
-  /// [type] - тип загружаемого изображения: 'product-info', 'general', etc.
-  Future<String?> uploadImageFromBytes(
+  /// Загрузить изображение товара из байтов (для Web платформы).
+  Future<String?> uploadProductInfoImageFromBytes(
+    int trackId,
     Uint8List bytes,
-    String fileName, [
-    String type = 'general',
-  ]) async {
+    String fileName, {
+    String? mimeType,
+  }) async {
     try {
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(bytes, filename: fileName),
-        'type': type,
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+          contentType:
+              _mediaTypeForMimeType(mimeType) ??
+              _mediaTypeForFileName(fileName),
+        ),
       });
 
-      final response = await _apiClient.post('/photos/upload', data: formData);
+      final response = await _apiClient.post(
+        '/tracks/$trackId/product-info-image',
+        data: formData,
+      );
 
-      debugPrint('Upload image response: ${response.statusCode}');
+      debugPrint('Upload product info image response: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
@@ -912,7 +948,7 @@ class TracksApiService {
       }
       return null;
     } on DioException catch (e) {
-      debugPrint('Error uploading image: $e');
+      debugPrint('Error uploading product info image: $e');
       debugPrint('Response data: ${e.response?.data}');
       return null;
     }

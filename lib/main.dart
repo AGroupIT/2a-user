@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' if (dart.library.html) 'src/core/platform/platform_stub.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -33,8 +34,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Ограничиваем кэш декодированных изображений в памяти
-  PaintingBinding.instance.imageCache.maximumSize = 300; // до 300 изображений (для списков с 100+ треками)
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 100 * 1024 * 1024; // 100 МБ
+  PaintingBinding.instance.imageCache.maximumSize =
+      300; // до 300 изображений (для списков с 100+ треками)
+  PaintingBinding.instance.imageCache.maximumSizeBytes =
+      100 * 1024 * 1024; // 100 МБ
 
   // Firebase инициализируется в фоне — НЕ блокирует запуск приложения.
   // Это критично для пользователей в РФ, где провайдеры могут замедлять
@@ -46,8 +49,19 @@ void main() async {
   // Запрос разрешения на отслеживание (ATT) - ОБЯЗАТЕЛЬНО до AppMetrica
   await _requestTrackingPermission();
 
-  // Инициализация AppMetrica для аналитики
-  await AnalyticsService.initialize();
+  // Инициализация AppMetrica не должна блокировать первый экран приложения.
+  unawaited(
+    AnalyticsService.initialize()
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('AppMetrica init timed out (non-blocking)');
+          },
+        )
+        .catchError((e) {
+          debugPrint('AppMetrica init failed (non-blocking): $e');
+        }),
+  );
 
   // Инициализация SharedPreferences для showcase
   final sharedPreferences = await SharedPreferences.getInstance();
@@ -101,10 +115,7 @@ void main() async {
 
         // Ошибки файловой системы — stale пути, удалённые кеш-файлы и т.п.
         // Обычно приходят из FileImage._loadAsync для превью фото из кеша.
-        const fileErrors = {
-          'PathNotFoundException',
-          'FileSystemException',
-        };
+        const fileErrors = {'PathNotFoundException', 'FileSystemException'};
         if (fileErrors.contains(exType)) return null;
 
         // Flutter error reporter оборачивает реальный exception в DiagnosticsProperty,
@@ -131,7 +142,10 @@ void main() async {
         final frames = event.exceptions?.firstOrNull?.stackTrace?.frames;
         if (frames != null && frames.isNotEmpty) {
           final joined = frames
-              .map((f) => '${f.package ?? ''}:${f.fileName ?? ''}:${f.function ?? ''}')
+              .map(
+                (f) =>
+                    '${f.package ?? ''}:${f.fileName ?? ''}:${f.function ?? ''}',
+              )
               .join('\n');
           const noisyStackMarkers = [
             '_HttpParser',

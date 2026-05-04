@@ -8,7 +8,7 @@ set -e  # Exit on error
 # ── Configuration ──
 PRODUCTION_SSH="root@5.188.158.33"
 RELEASES_DIR="/var/lib/docker/volumes/zc9s2du0h9jtyxlnaq552rkd-releases/_data"
-DOWNLOAD_BASE="https://2alogistic.2a-marketing.ru/releases"
+DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://prod-api.cp.2a-logistic.com/releases}"
 
 COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
 COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
@@ -16,6 +16,8 @@ COOLIFY_WEB_BRANCH="coolify-web-production"
 WEB_URL="https://cabinet.2a-logistic.ru"
 WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
+MOBILE_API_BASE_URL="${MOBILE_API_BASE_URL:-$WEB_API_BASE_URL}"
+MOBILE_MEDIA_BASE_URL="${MOBILE_MEDIA_BASE_URL:-$WEB_MEDIA_BASE_URL}"
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
@@ -274,7 +276,9 @@ if $BUILD_AAB; then
   else
     ensure_android_java_home
     flutter build appbundle --release --flavor rustore \
-      --dart-define=APP_DISTRIBUTION=rustore
+      --dart-define=APP_DISTRIBUTION=rustore \
+      --dart-define=API_BASE_URL="$MOBILE_API_BASE_URL" \
+      --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL"
   fi
 
   if [ ! -f "$AAB_PATH" ]; then
@@ -453,7 +457,9 @@ if $BUILD_APK; then
   echo "🤖 Building Android APK for direct install (with REQUEST_INSTALL_PACKAGES)..."
   ensure_android_java_home
   flutter build apk --release --flavor direct \
-    --dart-define=APP_DISTRIBUTION=direct
+    --dart-define=APP_DISTRIBUTION=direct \
+    --dart-define=API_BASE_URL="$MOBILE_API_BASE_URL" \
+    --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL"
 
   APK_PATH="build/app/outputs/flutter-apk/app-direct-release.apk"
 
