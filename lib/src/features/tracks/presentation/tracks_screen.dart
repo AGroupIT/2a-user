@@ -8,10 +8,11 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/phone_input_field.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -139,6 +140,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   // Фильтры - теперь используем код статуса из БД
   String? _statusCode; // null = Все
   ViewMode _viewMode = ViewMode.all;
+  ProductInfoMode _productInfoMode = ProductInfoMode.all;
   String _query = '';
   Timer? _searchDebounce;
 
@@ -1451,25 +1453,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       text: assembly.transportCompanyName ?? '',
     );
 
-    // Маска для телефона: +7 (999) 123-45-67
-    final phoneMask = MaskTextInputFormatter(
-      mask: '+# (###) ###-##-##',
-      filter: {'#': RegExp(r'[0-9]')},
-      type: MaskAutoCompletionType.lazy,
+    final phoneController = PhoneController(
+      initialValue:
+          PhoneInputField.parse(assembly.recipientPhone) ??
+          const PhoneNumber(isoCode: IsoCode.RU, nsn: ''),
     );
-
-    // Если уже есть сохраненный телефон, форматируем его
-    final phoneController = TextEditingController();
-    if (assembly.recipientPhone != null &&
-        assembly.recipientPhone!.isNotEmpty) {
-      // Убираем все нецифровые символы и форматируем через маску
-      final digits = assembly.recipientPhone!.replaceAll(RegExp(r'[^\d]'), '');
-      phoneMask.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        TextEditingValue(text: digits),
-      );
-      phoneController.text = phoneMask.getMaskedText();
-    }
 
     final result = await showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
@@ -1596,12 +1584,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               hint: 'ФИО получателя',
                             ),
                             const SizedBox(height: 10),
-                            _outlinedInput(
-                              context,
-                              phoneController,
-                              hint: '+7 (999) 123-45-67',
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [phoneMask],
+                            PhoneInputField(
+                              controller: phoneController,
+                              isRequired: true,
+                              hintText: 'Телефон получателя',
+                              textInputAction: TextInputAction.next,
                             ),
                             const SizedBox(height: 10),
                             _outlinedInput(
@@ -1630,13 +1617,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                     );
                                     return;
                                   }
-                                  // Проверяем что введено минимум 11 цифр
-                                  final phoneDigits = phoneMask
-                                      .getUnmaskedText();
-                                  if (phoneDigits.length < 11) {
+                                  final phone = phoneController.value;
+                                  if (phone.nsn.trim().isEmpty) {
                                     _showStyledSnackBar(
                                       sheetContext,
-                                      'Введите полный номер телефона',
+                                      'Укажите телефон получателя',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+                                  if (!phone.isValid()) {
+                                    _showStyledSnackBar(
+                                      sheetContext,
+                                      'Введите корректный номер телефона',
                                       isError: true,
                                     );
                                     return;
@@ -1653,7 +1646,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                 Navigator.of(sheetContext).pop({
                                   'method': selectedMethod,
                                   'recipientName': nameController.text.trim(),
-                                  'recipientPhone': phoneMask.getMaskedText(),
+                                  'recipientPhone':
+                                      phoneController.value.international,
                                   'recipientCity': cityController.text.trim(),
                                   'transportCompanyName':
                                       transportCompanyController.text.trim(),
@@ -1670,6 +1664,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         },
       ),
     );
+
+    nameController.dispose();
+    cityController.dispose();
+    transportCompanyController.dispose();
+    phoneController.dispose();
 
     if (result != null && context.mounted) {
       final apiService = ref.read(assembliesApiServiceProvider);
@@ -2777,6 +2776,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           : _viewMode == ViewMode.groups
           ? 'groups'
           : 'singles',
+      productInfo: switch (_productInfoMode) {
+        ProductInfoMode.all => null,
+        ProductInfoMode.filled => 'filled',
+        ProductInfoMode.empty => 'empty',
+      },
     );
   }
 
@@ -2802,6 +2806,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   /// Обработчик изменения режима просмотра
   void _onViewModeChanged(ViewMode mode, String clientCode) {
     setState(() => _viewMode = mode);
+
+    final params = _getFilterParams(clientCode);
+    ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
+  }
+
+  void _onProductInfoModeChanged(ProductInfoMode mode, String clientCode) {
+    setState(() => _productInfoMode = mode);
 
     final params = _getFilterParams(clientCode);
     ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
@@ -2986,11 +2997,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               statusCode: _statusCode,
                               tracks: tracksState.tracks,
                               viewMode: _viewMode,
+                              productInfoMode: _productInfoMode,
                               query: _query,
                               onStatusChanged: (v) =>
                                   _onStatusChanged(v, clientCode),
                               onViewModeChanged: (v) =>
                                   _onViewModeChanged(v, clientCode),
+                              onProductInfoModeChanged: (v) =>
+                                  _onProductInfoModeChanged(v, clientCode),
                               onQueryChanged: (v) =>
                                   _onSearchChanged(v, clientCode),
                             ),
@@ -3331,6 +3345,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
 enum ViewMode { all, groups, singles }
 
+enum ProductInfoMode { all, filled, empty }
+
 class _Filters extends StatefulWidget {
   final String status;
   final List<String> statuses;
@@ -3483,17 +3499,21 @@ class _FiltersNew extends StatefulWidget {
   final String? statusCode; // null = Все
   final List<TrackItem> tracks; // Извлекаем статусы из треков
   final ViewMode viewMode;
+  final ProductInfoMode productInfoMode;
   final String query;
   final ValueChanged<String?> onStatusChanged;
   final ValueChanged<ViewMode> onViewModeChanged;
+  final ValueChanged<ProductInfoMode> onProductInfoModeChanged;
   final ValueChanged<String> onQueryChanged;
   const _FiltersNew({
     required this.statusCode,
     required this.tracks,
     required this.viewMode,
+    required this.productInfoMode,
     required this.query,
     required this.onStatusChanged,
     required this.onViewModeChanged,
+    required this.onProductInfoModeChanged,
     required this.onQueryChanged,
   });
 
@@ -3544,78 +3564,105 @@ class _FiltersNewState extends State<_FiltersNew> {
       ),
     ];
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Поиск — занимает оставшееся место
-        Expanded(
-          child: Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0x0F000000),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(fontSize: 14),
-                decoration: InputDecoration(
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: context.brandPrimary,
-                    size: 18,
-                  ),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? GestureDetector(
-                          onTap: () {
-                            _searchController.selection =
-                                const TextSelection.collapsed(offset: 0);
-                            _searchController.clear();
-                            widget.onQueryChanged('');
-                          },
-                          child: const Icon(
-                            Icons.close_rounded,
-                            color: Color(0xFF999999),
-                            size: 18,
-                          ),
-                        )
-                      : null,
-                  suffixIconConstraints: const BoxConstraints(minWidth: 36),
-                  hintText: 'Поиск по треку',
-                  hintStyle: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF999999),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  isDense: true,
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0x0F000000),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: context.brandPrimary,
+                  size: 18,
                 ),
-                onChanged: (value) {
-                  setState(() {});
-                  widget.onQueryChanged(value);
-                },
+                prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          _searchController.selection =
+                              const TextSelection.collapsed(offset: 0);
+                          _searchController.clear();
+                          widget.onQueryChanged('');
+                        },
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF999999),
+                          size: 18,
+                        ),
+                      )
+                    : null,
+                suffixIconConstraints: const BoxConstraints(minWidth: 36),
+                hintText: 'Поиск по треку',
+                hintStyle: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF999999),
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                isDense: true,
               ),
+              onChanged: (value) {
+                setState(() {});
+                widget.onQueryChanged(value);
+              },
             ),
           ),
         ),
-        const SizedBox(width: 6),
-        // Вид
-        _MiniDropdown<ViewMode>(
-          value: widget.viewMode,
-          items: const [
-            _DropdownItem(value: ViewMode.all, label: 'Все'),
-            _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
-            _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
-          ],
-          onChanged: (v) => v != null ? widget.onViewModeChanged(v) : null,
-        ),
-        const SizedBox(width: 6),
-        // Статус
-        _MiniDropdown<String?>(
-          value: widget.statusCode,
-          items: statusItems,
-          onChanged: (v) => widget.onStatusChanged(v),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              // Вид
+              _MiniDropdown<ViewMode>(
+                value: widget.viewMode,
+                items: const [
+                  _DropdownItem(value: ViewMode.all, label: 'Все'),
+                  _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+                  _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
+                ],
+                onChanged: (v) =>
+                    v != null ? widget.onViewModeChanged(v) : null,
+              ),
+              const SizedBox(width: 6),
+              // Статус
+              _MiniDropdown<String?>(
+                value: widget.statusCode,
+                items: statusItems,
+                onChanged: (v) => widget.onStatusChanged(v),
+              ),
+              const SizedBox(width: 6),
+              _MiniDropdown<ProductInfoMode>(
+                value: widget.productInfoMode,
+                items: const [
+                  _DropdownItem(
+                    value: ProductInfoMode.all,
+                    label: 'О товаре: все',
+                  ),
+                  _DropdownItem(
+                    value: ProductInfoMode.filled,
+                    label: 'О товаре: заполнено',
+                  ),
+                  _DropdownItem(
+                    value: ProductInfoMode.empty,
+                    label: 'О товаре: пусто',
+                  ),
+                ],
+                onChanged: (v) =>
+                    v != null ? widget.onProductInfoModeChanged(v) : null,
+              ),
+            ],
+          ),
         ),
       ],
     );

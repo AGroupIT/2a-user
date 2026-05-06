@@ -93,12 +93,14 @@ class TracksFilterParams {
   final String? statusCode; // код статуса из БД
   final String? search;
   final String? viewMode; // 'all', 'groups', 'singles'
+  final String? productInfo; // 'filled', 'empty'
 
   const TracksFilterParams({
     required this.clientCode,
     this.statusCode,
     this.search,
     this.viewMode,
+    this.productInfo,
   });
 
   @override
@@ -109,28 +111,33 @@ class TracksFilterParams {
           clientCode == other.clientCode &&
           statusCode == other.statusCode &&
           search == other.search &&
-          viewMode == other.viewMode;
+          viewMode == other.viewMode &&
+          productInfo == other.productInfo;
 
   @override
   int get hashCode =>
       clientCode.hashCode ^
       statusCode.hashCode ^
       search.hashCode ^
-      viewMode.hashCode;
+      viewMode.hashCode ^
+      productInfo.hashCode;
 
   TracksFilterParams copyWith({
     String? clientCode,
     String? statusCode,
     String? search,
     String? viewMode,
+    String? productInfo,
     bool clearStatus = false,
     bool clearSearch = false,
+    bool clearProductInfo = false,
   }) {
     return TracksFilterParams(
       clientCode: clientCode ?? this.clientCode,
       statusCode: clearStatus ? null : (statusCode ?? this.statusCode),
       search: clearSearch ? null : (search ?? this.search),
       viewMode: viewMode ?? this.viewMode,
+      productInfo: clearProductInfo ? null : (productInfo ?? this.productInfo),
     );
   }
 }
@@ -403,6 +410,11 @@ class PaginatedTracksNotifier {
     } else if (_state.filters.viewMode == 'singles') {
       // Одиночные треки - без сборки
       queryParams['assemblyId'] = 'null';
+    }
+
+    if (_state.filters.productInfo != null &&
+        _state.filters.productInfo!.isNotEmpty) {
+      queryParams['productInfo'] = _state.filters.productInfo;
     }
 
     debugPrint('Fetching tracks: $queryParams');
