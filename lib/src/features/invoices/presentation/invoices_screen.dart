@@ -1432,29 +1432,13 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                             '\$${item.transshipmentCost!.toStringAsFixed(2)}',
                           ),
 
-                        // Упаковка — детализация по типам + итого
-                        if (item.packagings.isNotEmpty) ...[
-                          ...item.packagings.map(
-                            (p) => _buildInfoRow(
-                              context,
-                              'Упаковка: ${p.name}',
-                              '\$${p.cost.toStringAsFixed(2)}',
-                            ),
-                          ),
-                          if (item.packagingCostTotal != null &&
-                              item.packagingCostTotal! > 0 &&
-                              item.placesCount > 1)
-                            _buildInfoRow(
-                              context,
-                              'Итого упаковка (×${item.placesCount})',
-                              '\$${item.packagingCostTotal!.toStringAsFixed(2)}',
-                            ),
-                        ] else if (item.packagingCostTotal != null &&
-                            item.packagingCostTotal! > 0)
+                        // Упаковка считается за все места, а не за одну коробку.
+                        if (item.resolvedPackagingCostTotal != null &&
+                            item.resolvedPackagingCostTotal! > 0)
                           _buildInfoRow(
                             context,
-                            'Упаковка',
-                            '\$${item.packagingCostTotal!.toStringAsFixed(2)}',
+                            _packagingLabel(item),
+                            '\$${item.resolvedPackagingCostTotal!.toStringAsFixed(2)}',
                           ),
 
                         // Страховка — показываем только если есть стоимость
@@ -1801,5 +1785,14 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         ],
       ),
     );
+  }
+
+  String _packagingLabel(InvoiceItem item) {
+    final name = item.packagingNames;
+    final base = name.isEmpty ? 'Упаковка' : 'Упаковка: $name';
+    if (item.billablePlacesCount > 1 && item.packagingUnitCost > 0) {
+      return '$base ×${item.billablePlacesCount}';
+    }
+    return base;
   }
 }

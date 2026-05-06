@@ -76,29 +76,29 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   final GlobalKey _messagesAreaKey = GlobalKey();
   final GlobalKey _inputAreaKey = GlobalKey();
 
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
-    
+
     // Загружаем чат и запускаем polling
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(isPaymentChatScreenOpenProvider.notifier).set(true);
       await ref.read(paymentChatControllerProvider.notifier).loadConversation();
-      
+
       // Если есть начальное сообщение об оплате счёта - отправляем его сразу
       if (widget.invoiceId != null && widget.initialMessage != null) {
         await _sendInitialInvoiceMessage();
-      } else if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+      } else if (widget.initialMessage != null &&
+          widget.initialMessage!.isNotEmpty) {
         // Просто устанавливаем текст в поле (старое поведение)
         _textController.text = widget.initialMessage!;
       }
-      
+
       // Запускаем polling для новых сообщений
       _startPolling();
-      
+
       // Уведомляем сервер что чат открыт (для блокировки push-уведомлений)
       _notifyServerChatOpened();
     });
@@ -111,10 +111,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   Future<void> _notifyServerChatOpened() async {
     final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    await ref.read(chatPresenceServiceProvider).openChat(
-      ChatType.payment,
-      conversationId: conversationId,
-    );
+    await ref
+        .read(chatPresenceServiceProvider)
+        .openChat(ChatType.payment, conversationId: conversationId);
   }
 
   void _startPolling() {
@@ -125,7 +124,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       }
     });
   }
-  
+
   void _pollMessages() {
     ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
   }
@@ -183,7 +182,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   // Флаг чтобы отправить начальное сообщение только один раз
   bool _initialMessageSent = false;
 
-  Future<void> _handleMessageSend(String text, {Map<String, dynamic>? metadata}) async {
+  Future<void> _handleMessageSend(
+    String text, {
+    Map<String, dynamic>? metadata,
+  }) async {
     if (_isSendingLocally) return;
 
     final chatState = ref.read(paymentChatControllerProvider);
@@ -199,17 +201,23 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       _textController.clear();
 
       // Собираем ID вложений
-      final attachmentIds = pendingAttachments.map((a) => a['id'] as int).toList();
+      final attachmentIds = pendingAttachments
+          .map((a) => a['id'] as int)
+          .toList();
 
-      final success = await ref.read(paymentChatControllerProvider.notifier).sendMessage(
-        text.isEmpty ? tr(context, ru: 'Файл', zh: '文件') : text,
-        metadata: metadata,
-        attachmentIds: attachmentIds,
-      );
+      final success = await ref
+          .read(paymentChatControllerProvider.notifier)
+          .sendMessage(
+            text.isEmpty ? tr(context, ru: 'Файл', zh: '文件') : text,
+            metadata: metadata,
+            attachmentIds: attachmentIds,
+          );
 
       if (success) {
         // Очищаем pending attachments
-        ref.read(paymentChatControllerProvider.notifier).clearPendingAttachments();
+        ref
+            .read(paymentChatControllerProvider.notifier)
+            .clearPendingAttachments();
         // Прокрутка вниз после отправки
         _scrollToBottom();
       }
@@ -217,7 +225,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       _isSendingLocally = false;
     }
   }
-  
+
   /// Показать диалог выбора типа вложения
   void _showAttachmentPicker() {
     HapticFeedback.mediumImpact();
@@ -261,8 +269,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                 ),
                 child: const Icon(Icons.camera_alt, color: Colors.blue),
               ),
-              title: Text(tr(context, ru: 'Камера', zh: '相机'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'Сделать фото', zh: '拍照'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Камера', zh: '相机'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(context, ru: 'Сделать фото', zh: '拍照'),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromCamera();
@@ -277,8 +291,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                 ),
                 child: const Icon(Icons.photo_library, color: Colors.green),
               ),
-              title: Text(tr(context, ru: 'Галерея', zh: '图库'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'Выбрать изображение', zh: '选择图片'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Галерея', zh: '图库'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(context, ru: 'Выбрать изображение', zh: '选择图片'),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromGallery();
@@ -291,10 +311,23 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.insert_drive_file, color: Colors.orange),
+                child: const Icon(
+                  Icons.insert_drive_file,
+                  color: Colors.orange,
+                ),
               ),
-              title: Text(tr(context, ru: 'Документ', zh: '文档'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'PDF, Word, Excel и другие', zh: 'PDF、Word、Excel等'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Документ', zh: '文档'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(
+                  context,
+                  ru: 'PDF, Word, Excel и другие',
+                  zh: 'PDF、Word、Excel等',
+                ),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickDocumentFile();
@@ -306,7 +339,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ),
     );
   }
-  
+
   /// Выбрать изображение с камеры
   Future<void> _pickImageFromCamera() async {
     try {
@@ -321,16 +354,20 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       if (image != null) {
         // Читаем bytes напрямую из XFile для избежания проблем с iOS sandbox
         final bytes = await image.readAsBytes();
-        final fileName = image.name.isNotEmpty ? image.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final fileName = image.name.isNotEmpty
+            ? image.name
+            : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
         await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('${tr(context, ru: 'Ошибка при съёмке', zh: '拍照时出错')}: $e');
+        _showErrorSnackbar(
+          '${tr(context, ru: 'Ошибка при съёмке', zh: '拍照时出错')}: $e',
+        );
       }
     }
   }
-  
+
   /// Выбрать изображение из галереи (используем file_picker для обхода iOS HDR проблемы)
   Future<void> _pickImageFromGallery() async {
     debugPrint('📷 [Gallery] Starting file picker for images...');
@@ -339,9 +376,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         type: FileType.image,
         allowMultiple: false,
       );
-      
-      debugPrint('📷 [Gallery] FilePicker returned: ${result != null ? "${result.files.length} files" : "null/cancelled"}');
-      
+
+      debugPrint(
+        '📷 [Gallery] FilePicker returned: ${result != null ? "${result.files.length} files" : "null/cancelled"}',
+      );
+
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         debugPrint('📷 [Gallery] File: ${file.name}, size: ${file.size}');
@@ -354,7 +393,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         if (bytes == null || bytes.isEmpty) {
           debugPrint('📷 [Gallery] ERROR: could not read file bytes');
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+            _showErrorSnackbar(
+              tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
+            );
           }
           return;
         }
@@ -365,7 +406,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             ? file.name
             : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-        debugPrint('📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...');
+        debugPrint(
+          '📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...',
+        );
         await _uploadFileFromBytes(bytes, fileName);
         debugPrint('📷 [Gallery] Upload completed');
       }
@@ -373,19 +416,32 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       debugPrint('📷 [Gallery] ERROR: $e');
       debugPrint('📷 [Gallery] Stack: $stack');
       if (mounted) {
-        _showErrorSnackbar('${tr(context, ru: 'Ошибка при выборе изображения', zh: '选择图片时出错')}: $e');
+        _showErrorSnackbar(
+          '${tr(context, ru: 'Ошибка при выборе изображения', zh: '选择图片时出错')}: $e',
+        );
       }
     }
   }
-  
+
   /// Выбрать документ (PDF, Word, Excel и др.)
   Future<void> _pickDocumentFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: [
-          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv',
-          'ppt', 'pptx', 'txt', 'rtf', 'zip', 'rar', '7z',
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'csv',
+          'ppt',
+          'pptx',
+          'txt',
+          'rtf',
+          'zip',
+          'rar',
+          '7z',
         ],
       );
       if (result != null && result.files.isNotEmpty) {
@@ -398,7 +454,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
         if (bytes == null || bytes.isEmpty) {
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+            _showErrorSnackbar(
+              tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
+            );
           }
           return;
         }
@@ -406,7 +464,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         // Проверка размера (10MB)
         if (bytes.length > 10 * 1024 * 1024) {
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大10 MB'));
+            _showErrorSnackbar(
+              tr(
+                context,
+                ru: 'Файл слишком большой. Максимум 10 МБ',
+                zh: '文件太大。最大10 MB',
+              ),
+            );
           }
           return;
         }
@@ -419,7 +483,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar('${tr(context, ru: 'Ошибка при выборе файла', zh: '选择文件时出错')}: $e');
+        _showErrorSnackbar(
+          '${tr(context, ru: 'Ошибка при выборе файла', zh: '选择文件时出错')}: $e',
+        );
       }
     }
   }
@@ -431,7 +497,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
     if (conversationId == null) {
       if (mounted) {
-        _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+        _showErrorSnackbar(
+          tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'),
+        );
       }
       return;
     }
@@ -443,13 +511,17 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       return;
     }
 
-    final result = await ref.read(paymentChatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName, conversationId);
+    final result = await ref
+        .read(paymentChatControllerProvider.notifier)
+        .uploadFileFromBytes(bytes, fileName, conversationId);
 
     if (result == null && mounted) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '文件上传失败'));
+      _showErrorSnackbar(
+        tr(context, ru: 'Ошибка при загрузке файла', zh: '文件上传失败'),
+      );
     }
   }
-  
+
   void _showErrorSnackbar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -465,9 +537,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   Future<void> _sendInitialInvoiceMessage() async {
     if (_initialMessageSent) return;
     if (widget.initialMessage == null || widget.initialMessage!.isEmpty) return;
-    
+
     _initialMessageSent = true;
-    
+
     Map<String, dynamic>? metadata;
     if (widget.invoiceId != null) {
       metadata = {
@@ -478,7 +550,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         if (widget.totalCostCny != null) 'totalCostCny': widget.totalCostCny,
         if (widget.totalCostRub != null) 'totalCostRub': widget.totalCostRub,
         if (widget.clientRubRate != null) 'clientRubRate': widget.clientRubRate,
-        if (widget.clientYuanRate != null) 'clientYuanRate': widget.clientYuanRate,
+        if (widget.clientYuanRate != null)
+          'clientYuanRate': widget.clientYuanRate,
       };
     }
 
@@ -529,7 +602,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       if (track.assembly != null) {
         buffer.writeln('');
         buffer.writeln('📁 **组装:** ${track.assembly!.number}');
-        buffer.writeln('   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}');
+        buffer.writeln(
+          '   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}',
+        );
       }
 
       if (track.photoReportUrls.isNotEmpty) {
@@ -555,7 +630,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       if (track.assembly != null) {
         buffer.writeln('');
         buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
-        buffer.writeln('   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}');
+        buffer.writeln(
+          '   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}',
+        );
       }
 
       if (track.photoReportUrls.isNotEmpty) {
@@ -589,9 +666,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('   • 件数: ${invoice.placesCount}');
       buffer.writeln('   • 重量: ${invoice.weight.toStringAsFixed(1)} 公斤');
       buffer.writeln('   • 体积: ${invoice.volume.toStringAsFixed(2)} 立方米');
-      buffer.writeln(
-        '   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米',
-      );
+      buffer.writeln('   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米');
 
       if (invoice.tariffName != null) {
         buffer.writeln('   • 费率: ${invoice.tariffName}');
@@ -600,18 +675,18 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('');
       buffer.writeln('💰 **费用:**');
       if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln('   • 费率: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤');
+        buffer.writeln(
+          '   • 费率: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤',
+        );
       }
       if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
         buffer.writeln(
           '   • 保险: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
         );
       }
-      if (invoice.packagings.isNotEmpty) {
-        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
-        buffer.writeln(
-          '   • 包装: \$${packagingTotal.toStringAsFixed(2)}',
-        );
+      final packagingTotal = invoice.resolvedPackagingCostTotal;
+      if (packagingTotal != null && packagingTotal > 0) {
+        buffer.writeln('   • 包装: \$${packagingTotal.toStringAsFixed(2)}');
       }
       buffer.writeln(
         '   • **合计:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
@@ -627,7 +702,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
       buffer.writeln('📊 Статус: ${invoice.status}');
       if (invoice.sendDate != null) {
-        buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}');
+        buffer.writeln(
+          '📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}',
+        );
       }
       buffer.writeln('');
       buffer.writeln('📦 **Параметры груза:**');
@@ -645,18 +722,18 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       buffer.writeln('');
       buffer.writeln('💰 **Стоимость:**');
       if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln('   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг');
+        buffer.writeln(
+          '   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг',
+        );
       }
       if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
         buffer.writeln(
           '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
         );
       }
-      if (invoice.packagings.isNotEmpty) {
-        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
-        buffer.writeln(
-          '   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}',
-        );
+      final packagingTotal = invoice.resolvedPackagingCostTotal;
+      if (packagingTotal != null && packagingTotal > 0) {
+        buffer.writeln('   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}');
       }
       buffer.writeln(
         '   • **Итого:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
@@ -682,58 +759,59 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         TutorialStep(
           icon: Icons.payments_rounded,
           title: 'Чат по оплате',
-          description: 'Здесь обсуждается оплата счетов. Напишите, если есть вопросы по сумме или реквизитам.',
+          description:
+              'Здесь обсуждается оплата счетов. Напишите, если есть вопросы по сумме или реквизитам.',
           targetKey: _messagesAreaKey,
         ),
         TutorialStep(
           icon: Icons.receipt_rounded,
           title: 'Прикрепить чек',
-          description: 'После оплаты нажмите значок скрепки и прикрепите скриншот или чек — это ускорит подтверждение платежа.',
+          description:
+              'После оплаты нажмите значок скрепки и прикрепите скриншот или чек — это ускорит подтверждение платежа.',
           targetKey: _inputAreaKey,
         ),
         TutorialStep(
           icon: Icons.info_outline_rounded,
           title: 'Баннер с инструкцией',
-          description: 'Вверху чата — кнопка с инструкцией по оплате. Откройте её, чтобы узнать доступные способы.',
+          description:
+              'Вверху чата — кнопка с инструкцией по оплате. Откройте её, чтобы узнать доступные способы.',
           targetKey: _infoBannerKey,
         ),
       ],
       child: Stack(
-      children: [
-        // Градиентный фон как на других страницах
-        const Positioned.fill(child: AppBackground()),
+        children: [
+          // Градиентный фон как на других страницах
+          const Positioned.fill(child: AppBackground()),
 
-        SafeArea(
-          top: false, // Контент скроллится под топ-меню
-          bottom: false,
-          child: Column(
-            children: [
-              // Отступ от верха экрана
-              const SizedBox(height: 65),
-              // Информационный блок о назначении чата
-              _buildInfoBanner(),
+          SafeArea(
+            top: false, // Контент скроллится под топ-меню
+            bottom: false,
+            child: Column(
+              children: [
+                // Отступ от верха экрана
+                const SizedBox(height: 65),
+                // Информационный блок о назначении чата
+                _buildInfoBanner(),
 
-              // Список сообщений
-              Expanded(
-                key: _messagesAreaKey,
-                child: _buildMessagesList(),
-              ),
+                // Список сообщений
+                Expanded(key: _messagesAreaKey, child: _buildMessagesList()),
 
-              // Панель быстрых действий
-              if (_showQuickActions) _buildQuickActionsBar(),
+                // Панель быстрых действий
+                if (_showQuickActions) _buildQuickActionsBar(),
 
-              // Поле ввода
-              _buildInputField(bottomInset),
-            ],
+                // Поле ввода
+                _buildInputField(bottomInset),
+              ],
+            ),
           ),
-        ),
-      ],
-    ));
+        ],
+      ),
+    );
   }
 
   Widget _buildMessagesList() {
     final chatState = ref.watch(paymentChatControllerProvider);
-    
+
     if (chatState.isLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -741,7 +819,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         ),
       );
     }
-    
+
     if (chatState.error != null) {
       return Center(
         child: Column(
@@ -757,12 +835,17 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                ref.read(paymentChatControllerProvider.notifier).loadConversation();
+                ref
+                    .read(paymentChatControllerProvider.notifier)
+                    .loadConversation();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: context.brandPrimary,
               ),
-              child: Text(tr(context, ru: 'Повторить', zh: '重试'), style: const TextStyle(color: Colors.white)),
+              child: Text(
+                tr(context, ru: 'Повторить', zh: '重试'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -788,12 +871,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       },
     );
   }
-  
+
   /// Информационный баннер о назначении чата
   Widget _buildInfoBanner() {
     return GestureDetector(
       key: _infoBannerKey,
-      onTap: () => setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
+      onTap: () =>
+          setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -809,11 +893,19 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           children: [
             Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 16),
+                Icon(
+                  Icons.info_outline,
+                  color: Colors.orange.shade700,
+                  size: 16,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    tr(context, ru: 'Чат только для оплаты счетов', zh: '此聊天仅用于支付发票'),
+                    tr(
+                      context,
+                      ru: 'Чат только для оплаты счетов',
+                      zh: '此聊天仅用于支付发票',
+                    ),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Colors.orange.shade800,
@@ -837,13 +929,17 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               secondChild: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  tr(context, 
-                    ru: '• Специалист не сможет ответить на вопросы, не касающиеся приёма оплаты\n'
+                  tr(
+                    context,
+                    ru:
+                        '• Специалист не сможет ответить на вопросы, не касающиеся приёма оплаты\n'
                         '• Отправьте скриншот платежа для подтверждения\n'
                         '• Статус счёта обновится после проверки',
-                    zh: '• 专员无法回答与付款无关的问题\n'
+                    zh:
+                        '• 专员无法回答与付款无关的问题\n'
                         '• 请发送付款截图以确认\n'
-                        '• 发票状态将在审核后更新'),
+                        '• 发票状态将在审核后更新',
+                  ),
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.orange.shade800,
@@ -851,8 +947,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   ),
                 ),
               ),
-              crossFadeState: _isInfoBannerExpanded 
-                  ? CrossFadeState.showSecond 
+              crossFadeState: _isInfoBannerExpanded
+                  ? CrossFadeState.showSecond
                   : CrossFadeState.showFirst,
               duration: const Duration(milliseconds: 200),
             ),
@@ -942,7 +1038,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   decoration: BoxDecoration(
                     gradient: isMe
                         ? LinearGradient(
-                            colors: [context.brandPrimary, context.brandSecondary],
+                            colors: [
+                              context.brandPrimary,
+                              context.brandSecondary,
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
@@ -968,9 +1067,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                       // Отображаем вложения
                       if (message.attachments.isNotEmpty)
                         _buildMessageAttachments(message.attachments, isMe),
-                      
+
                       // Текст сообщения (если это не просто "Файл")
-                      if (message.content.isNotEmpty && message.content != 'Файл' && message.content != '文件')
+                      if (message.content.isNotEmpty &&
+                          message.content != 'Файл' &&
+                          message.content != '文件')
                         MarkdownBody(
                           data: message.content.replaceAll('\n', '  \n'),
                           selectable: true,
@@ -1012,11 +1113,16 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                           ),
                           onTapLink: (text, href, title) {
                             if (href != null) {
-                              launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+                              launchUrl(
+                                Uri.parse(href),
+                                mode: LaunchMode.externalApplication,
+                              );
                             }
                           },
                         ),
-                      if (message.content.isNotEmpty && message.content != 'Файл' && message.content != '文件')
+                      if (message.content.isNotEmpty &&
+                          message.content != 'Файл' &&
+                          message.content != '文件')
                         const SizedBox(height: 4),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1075,7 +1181,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ),
     );
   }
-  
+
   /// Отображение вложений в сообщении
   Widget _buildMessageAttachments(List<ChatAttachment> attachments, bool isMe) {
     return Column(
@@ -1083,7 +1189,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
-        
+
         if (isImage) {
           return GestureDetector(
             onTap: () => _showFullImage(fullUrl, attachment.fileName),
@@ -1098,7 +1204,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   placeholder: (context, url) => Container(
                     width: 150,
                     height: 150,
-                    color: isMe ? Colors.white.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.grey.withValues(alpha: 0.2),
                     child: const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
@@ -1106,7 +1214,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   errorWidget: (context, url, error) => Container(
                     width: 150,
                     height: 100,
-                    color: isMe ? Colors.white.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.grey.withValues(alpha: 0.2),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1139,7 +1249,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isMe ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFF5F5F5),
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -1149,7 +1261,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withValues(alpha: 0.2) : docColor.withValues(alpha: 0.1),
+                      color: isMe
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : docColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -1254,13 +1368,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         return context.brandPrimary;
     }
   }
-  
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-  
+
   /// Показать изображение на весь экран
   void _showFullImage(String url, String fileName) {
     Navigator.of(context).push(
@@ -1273,7 +1387,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ),
     );
   }
-  
+
   /// Скачать файл
   Future<void> _downloadFile(String url, String fileName) async {
     try {
@@ -1285,7 +1399,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(width: 12),
               Text(tr(context, ru: 'Загрузка файла...', zh: '正在下载文件...')),
@@ -1295,20 +1412,20 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           behavior: SnackBarBehavior.floating,
         ),
       );
-      
+
       // Получаем директорию для сохранения
       final directory = await getApplicationDocumentsDirectory();
       final filePath = '${directory.path}/$fileName';
-      
+
       // Скачиваем файл
       final dio = Dio();
       await dio.download(url, filePath);
-      
+
       if (!mounted) return;
-      
+
       final savedText = tr(context, ru: 'Файл сохранён', zh: '文件已保存');
       final openText = tr(context, ru: 'Открыть', zh: '打开');
-      
+
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1330,7 +1447,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${tr(context, ru: 'Ошибка загрузки', zh: '下载错误')}: $e'),
+          content: Text(
+            '${tr(context, ru: 'Ошибка загрузки', zh: '下载错误')}: $e',
+          ),
           backgroundColor: Colors.red.shade700,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1373,7 +1492,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              tr(context, ru: 'Напишите нам по любым вопросам оплаты счетов и доставки', zh: '如有任何发票支付和配送问题，请联系我们'),
+              tr(
+                context,
+                ru: 'Напишите нам по любым вопросам оплаты счетов и доставки',
+                zh: '如有任何发票支付和配送问题，请联系我们',
+              ),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14, color: Colors.black54),
             ),
@@ -1443,7 +1566,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             // Preview прикреплённых файлов
             if (pendingAttachments.isNotEmpty || isUploading)
               _buildPendingAttachments(pendingAttachments, isUploading),
-            
+
             Row(
               children: [
                 // Кнопка прикрепления файла
@@ -1484,15 +1607,25 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                       maxLines: 5,
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
-                        hintText: tr(context, ru: 'Введите ваше сообщение...', zh: '输入您的消息...'),
-                        hintStyle: const TextStyle(color: Colors.black38, fontSize: 15),
+                        hintText: tr(
+                          context,
+                          ru: 'Введите ваше сообщение...',
+                          zh: '输入您的消息...',
+                        ),
+                        hintStyle: const TextStyle(
+                          color: Colors.black38,
+                          fontSize: 15,
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
                       ),
-                      style: const TextStyle(fontSize: 15, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black87,
+                      ),
                       textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
@@ -1502,9 +1635,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                 // Кнопка отправки с индикатором загрузки
                 Builder(
                   builder: (context) {
-                    final isSending = ref.watch(paymentChatControllerProvider.select((s) => s.isSending));
+                    final isSending = ref.watch(
+                      paymentChatControllerProvider.select((s) => s.isSending),
+                    );
                     return GestureDetector(
-                      onTap: (isSending || isUploading) ? null : () => _handleMessageSend(_textController.text),
+                      onTap: (isSending || isUploading)
+                          ? null
+                          : () => _handleMessageSend(_textController.text),
                       child: Container(
                         width: 44,
                         height: 44,
@@ -1512,7 +1649,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                           gradient: LinearGradient(
                             colors: (isSending || isUploading)
                                 ? [Colors.grey, Colors.grey.shade400]
-                                : [context.brandPrimary, context.brandSecondary],
+                                : [
+                                    context.brandPrimary,
+                                    context.brandSecondary,
+                                  ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -1524,7 +1664,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
                                 ),
                               )
                             : const Icon(
@@ -1543,9 +1685,12 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       ),
     );
   }
-  
+
   /// Виджет для отображения прикреплённых файлов перед отправкой
-  Widget _buildPendingAttachments(List<Map<String, dynamic>> attachments, bool isUploading) {
+  Widget _buildPendingAttachments(
+    List<Map<String, dynamic>> attachments,
+    bool isUploading,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: SingleChildScrollView(
@@ -1568,19 +1713,21 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF4CAF50),
+                      ),
                     ),
                   ),
                 ),
               ),
-            
+
             // Показываем уже загруженные файлы
             ...attachments.map((attachment) {
               final fileType = attachment['fileType'] as String? ?? '';
               final fileName = attachment['fileName'] as String? ?? 'file';
               final url = attachment['url'] as String? ?? '';
               final isImage = fileType.startsWith('image/');
-              
+
               return Container(
                 width: 80,
                 height: 80,
@@ -1592,8 +1739,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                       borderRadius: BorderRadius.circular(12),
                       child: isImage
                           ? CachedNetworkImage(
-                              imageUrl: url.startsWith('http') 
-                                  ? url 
+                              imageUrl: url.startsWith('http')
+                                  ? url
                                   : '${ApiConfig.mediaBaseUrl}$url',
                               width: 80,
                               height: 80,
@@ -1601,7 +1748,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               placeholder: (context, url) => Container(
                                 color: const Color(0xFFF0F0F0),
                                 child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                               errorWidget: (context, url, error) => Container(
@@ -1613,7 +1762,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                color: _getDocumentColor(fileName).withValues(alpha: 0.1),
+                                color: _getDocumentColor(
+                                  fileName,
+                                ).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -1626,7 +1777,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                                   ),
                                   const SizedBox(height: 4),
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
                                     child: Text(
                                       fileName,
                                       style: const TextStyle(
@@ -1642,7 +1795,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               ),
                             ),
                     ),
-                    
+
                     // Кнопка удаления
                     Positioned(
                       top: 4,
@@ -1651,7 +1804,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                         onTap: () {
                           final id = attachment['id']?.toString();
                           if (id != null) {
-                            ref.read(paymentChatControllerProvider.notifier).removePendingAttachment(id);
+                            ref
+                                .read(paymentChatControllerProvider.notifier)
+                                .removePendingAttachment(id);
                           }
                         },
                         child: Container(
@@ -1787,11 +1942,18 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
               children: [
                 Text(
                   tr(context, ru: 'Быстрая отправка', zh: '快速发送'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  tr(context, ru: 'Выберите трек или счёт для отправки в чат', zh: '选择运单或发票发送到聊天'),
+                  tr(
+                    context,
+                    ru: 'Выберите трек или счёт для отправки в чат',
+                    zh: '选择运单或发票发送到聊天',
+                  ),
                   style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                 ),
               ],
@@ -1810,7 +1972,11 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
                 controller: _searchController,
                 onChanged: (value) => setState(() => _searchQuery = value),
                 decoration: InputDecoration(
-                  hintText: tr(context, ru: 'Поиск по номеру...', zh: '按编号搜索...'),
+                  hintText: tr(
+                    context,
+                    ru: 'Поиск по номеру...',
+                    zh: '按编号搜索...',
+                  ),
                   hintStyle: TextStyle(color: Colors.grey[500]),
                   prefixIcon: const Icon(
                     Icons.search_rounded,
@@ -1854,8 +2020,12 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
               dividerColor: Colors.transparent,
               padding: const EdgeInsets.all(4),
               tabs: [
-                Tab(text: tr(context, ru: 'Треки', zh: '运单')),
-                Tab(text: tr(context, ru: 'Счета', zh: '发票')),
+                Tab(
+                  text: tr(context, ru: 'Треки', zh: '运单'),
+                ),
+                Tab(
+                  text: tr(context, ru: 'Счета', zh: '发票'),
+                ),
               ],
             ),
           ),
@@ -1884,7 +2054,9 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
       loading: () => const Center(
         child: CircularProgressIndicator(color: Color(0xFF4CAF50)),
       ),
-      error: (e, _) => Center(child: Text('${tr(context, ru: 'Ошибка', zh: '错误')}: $e')),
+      error: (e, _) => Center(
+        child: Text('${tr(context, ru: 'Ошибка', zh: '错误')}: $e'),
+      ),
       data: (tracks) {
         final filtered = tracks
             .where(
@@ -1928,7 +2100,9 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
       loading: () => const Center(
         child: CircularProgressIndicator(color: Color(0xFF4CAF50)),
       ),
-      error: (e, _) => Center(child: Text('${tr(context, ru: 'Ошибка', zh: '错误')}: $e')),
+      error: (e, _) => Center(
+        child: Text('${tr(context, ru: 'Ошибка', zh: '错误')}: $e'),
+      ),
       data: (invoices) {
         final filtered = invoices
             .where(
@@ -2139,10 +2313,7 @@ class _PaymentFullScreenImageView extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(
-          fileName,
-          style: const TextStyle(fontSize: 16),
-        ),
+        title: Text(fileName, style: const TextStyle(fontSize: 16)),
         actions: [
           IconButton(
             icon: const Icon(Icons.download_rounded),
@@ -2158,9 +2329,7 @@ class _PaymentFullScreenImageView extends StatelessWidget {
             imageUrl: imageUrl,
             fit: BoxFit.contain,
             placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(
-                color: Colors.white,
-              ),
+              child: CircularProgressIndicator(color: Colors.white),
             ),
             errorWidget: (context, url, error) => Center(
               child: Column(
@@ -2173,7 +2342,11 @@ class _PaymentFullScreenImageView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    tr(context, ru: 'Не удалось загрузить изображение', zh: '无法加载图片'),
+                    tr(
+                      context,
+                      ru: 'Не удалось загрузить изображение',
+                      zh: '无法加载图片',
+                    ),
                     style: const TextStyle(color: Colors.white54),
                   ),
                 ],
@@ -2191,10 +2364,7 @@ class _InvoicePaymentBubble extends ConsumerWidget {
   final ChatMessage message;
   final String invoiceId;
 
-  const _InvoicePaymentBubble({
-    required this.message,
-    required this.invoiceId,
-  });
+  const _InvoicePaymentBubble({required this.message, required this.invoiceId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2206,7 +2376,9 @@ class _InvoicePaymentBubble extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Padding(
             padding: EdgeInsets.only(
@@ -2224,7 +2396,9 @@ class _InvoicePaymentBubble extends ConsumerWidget {
             ),
           ),
           Row(
-            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isMe
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe) ...[
@@ -2256,7 +2430,10 @@ class _InvoicePaymentBubble extends ConsumerWidget {
                   decoration: BoxDecoration(
                     gradient: isMe
                         ? LinearGradient(
-                            colors: [context.brandPrimary, context.brandSecondary],
+                            colors: [
+                              context.brandPrimary,
+                              context.brandSecondary,
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
@@ -2359,13 +2536,23 @@ class _InvoicePaymentContent extends StatelessWidget {
     final meta = message.metadata!;
 
     // Актуальные данные из invoice, fallback на metadata
-    final invoiceNumber = invoice?.invoiceNumber ?? meta['invoiceNumber']?.toString() ?? '—';
+    final invoiceNumber =
+        invoice?.invoiceNumber ?? meta['invoiceNumber']?.toString() ?? '—';
     final statusName = invoice?.statusName ?? invoice?.status ?? '—';
-    final totalUsd = invoice?.totalCostUsd ?? (meta['amount'] as num?)?.toDouble() ?? 0.0;
-    final totalCny = invoice?.totalCostCny ?? (meta['totalCostCny'] as num?)?.toDouble() ?? 0.0;
-    final totalRub = invoice?.totalCostRub ?? (meta['totalCostRub'] as num?)?.toDouble() ?? 0.0;
-    final rubRate = invoice?.clientRubRate ?? (meta['clientRubRate'] as num?)?.toDouble();
-    final yuanRate = invoice?.clientYuanRate ?? (meta['clientYuanRate'] as num?)?.toDouble();
+    final totalUsd =
+        invoice?.totalCostUsd ?? (meta['amount'] as num?)?.toDouble() ?? 0.0;
+    final totalCny =
+        invoice?.totalCostCny ??
+        (meta['totalCostCny'] as num?)?.toDouble() ??
+        0.0;
+    final totalRub =
+        invoice?.totalCostRub ??
+        (meta['totalCostRub'] as num?)?.toDouble() ??
+        0.0;
+    final rubRate =
+        invoice?.clientRubRate ?? (meta['clientRubRate'] as num?)?.toDouble();
+    final yuanRate =
+        invoice?.clientYuanRate ?? (meta['clientYuanRate'] as num?)?.toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2402,26 +2589,49 @@ class _InvoicePaymentContent extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           '№ $invoiceNumber',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+          ),
         ),
-        Text(
-          statusName,
-          style: TextStyle(fontSize: 12, color: subColor),
-        ),
+        Text(statusName, style: TextStyle(fontSize: 12, color: subColor)),
         const SizedBox(height: 10),
-        _AmountRow(label: 'К оплате \$', value: '\$${moneyFmt.format(totalUsd.round())}', isMe: isMe),
+        _AmountRow(
+          label: 'К оплате \$',
+          value: '\$${moneyFmt.format(totalUsd.round())}',
+          isMe: isMe,
+        ),
         if (totalCny > 0)
-          _AmountRow(label: 'К оплате ¥', value: '¥${moneyFmt.format(totalCny.round())}', isMe: isMe),
+          _AmountRow(
+            label: 'К оплате ¥',
+            value: '¥${moneyFmt.format(totalCny.round())}',
+            isMe: isMe,
+          ),
         if (totalRub > 0)
-          _AmountRow(label: 'К оплате ₽', value: '${moneyFmt.format(totalRub.round())} ₽', isMe: isMe),
+          _AmountRow(
+            label: 'К оплате ₽',
+            value: '${moneyFmt.format(totalRub.round())} ₽',
+            isMe: isMe,
+          ),
         if (rubRate != null || yuanRate != null) ...[
           const SizedBox(height: 6),
           Divider(height: 1, color: isMe ? Colors.white24 : Colors.black12),
           const SizedBox(height: 6),
           if (rubRate != null)
-            _AmountRow(label: 'Курс \$/₽', value: rubRate.toStringAsFixed(2), isMe: isMe, small: true),
+            _AmountRow(
+              label: 'Курс \$/₽',
+              value: rubRate.toStringAsFixed(2),
+              isMe: isMe,
+              small: true,
+            ),
           if (yuanRate != null)
-            _AmountRow(label: 'Курс \$/¥', value: yuanRate.toStringAsFixed(2), isMe: isMe, small: true),
+            _AmountRow(
+              label: 'Курс \$/¥',
+              value: yuanRate.toStringAsFixed(2),
+              isMe: isMe,
+              small: true,
+            ),
         ],
         const SizedBox(height: 8),
         Align(

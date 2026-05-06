@@ -1219,7 +1219,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           xls.DoubleCellValue(invoice.transshipmentCost ?? 0),
           xls.DoubleCellValue(invoice.insuranceCost ?? 0),
           xls.DoubleCellValue(invoice.discountAmount ?? 0),
-          xls.DoubleCellValue(invoice.packagingCostTotal ?? 0),
+          xls.DoubleCellValue(invoice.resolvedPackagingCostTotal ?? 0),
           xls.DoubleCellValue(invoice.totalCostUsd),
           invoice.clientRubRate != null
               ? xls.DoubleCellValue(invoice.clientRubRate!)

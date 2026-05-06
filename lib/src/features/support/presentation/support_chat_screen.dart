@@ -31,7 +31,7 @@ import '../../../core/utils/locale_text.dart';
 
 class SupportChatScreen extends ConsumerStatefulWidget {
   final String? initialMessage;
-  
+
   const SupportChatScreen({super.key, this.initialMessage});
 
   @override
@@ -60,20 +60,20 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
-    
+
     // Загружаем чат и запускаем polling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isChatScreenOpenProvider.notifier).set(true);
       ref.read(chatControllerProvider.notifier).loadConversation();
-      
+
       // Если есть начальное сообщение - устанавливаем его в текстовое поле
       if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
         _textController.text = widget.initialMessage!;
       }
-      
+
       // Запускаем polling для новых сообщений
       _startPolling();
-      
+
       // Уведомляем сервер что чат открыт (для блокировки push-уведомлений)
       _notifyServerChatOpened();
     });
@@ -86,10 +86,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   Future<void> _notifyServerChatOpened() async {
     final chatState = ref.read(chatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    await ref.read(chatPresenceServiceProvider).openChat(
-      ChatType.support,
-      conversationId: conversationId,
-    );
+    await ref
+        .read(chatPresenceServiceProvider)
+        .openChat(ChatType.support, conversationId: conversationId);
   }
 
   void _startPolling() {
@@ -100,7 +99,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       }
     });
   }
-  
+
   void _pollMessages() {
     ref.read(chatControllerProvider.notifier).pollNewMessages();
   }
@@ -119,10 +118,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   void dispose() {
     _isDisposed = true;
     _pollingTimer?.cancel();
-    
+
     // Не используем ref в dispose() - это небезопасно
     // ref.read() выполняется асинхронно при деактивации виджета
-    
+
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _focusNode.dispose();
@@ -171,10 +170,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       // Собираем ID вложений
       final attachmentIds = pendingAttachments.map((a) => a.id).toList();
 
-      final success = await ref.read(chatControllerProvider.notifier).sendMessage(
-        text.isEmpty ? 'Файл' : text,
-        attachmentIds: attachmentIds,
-      );
+      final success = await ref
+          .read(chatControllerProvider.notifier)
+          .sendMessage(
+            text.isEmpty ? 'Файл' : text,
+            attachmentIds: attachmentIds,
+          );
 
       if (success) {
         // Очищаем pending attachments
@@ -186,7 +187,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       _isSendingLocally = false;
     }
   }
-  
+
   /// Показать диалог выбора типа вложения
   void _showAttachmentPicker() {
     HapticFeedback.mediumImpact();
@@ -230,8 +231,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
                 child: const Icon(Icons.camera_alt, color: Colors.blue),
               ),
-              title: Text(tr(context, ru: 'Камера', zh: '相机'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'Сделать фото', zh: '拍照'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Камера', zh: '相机'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(context, ru: 'Сделать фото', zh: '拍照'),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromCamera();
@@ -246,8 +253,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
                 child: const Icon(Icons.photo_library, color: Colors.green),
               ),
-              title: Text(tr(context, ru: 'Галерея', zh: '相册'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'Выбрать изображение', zh: '选择图片'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Галерея', zh: '相册'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(context, ru: 'Выбрать изображение', zh: '选择图片'),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImageFromGallery();
@@ -260,10 +273,23 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.insert_drive_file, color: Colors.orange),
+                child: const Icon(
+                  Icons.insert_drive_file,
+                  color: Colors.orange,
+                ),
               ),
-              title: Text(tr(context, ru: 'Документ', zh: '文档'), style: const TextStyle(color: Colors.white)),
-              subtitle: Text(tr(context, ru: 'PDF, Word, Excel и другие', zh: 'PDF、Word、Excel等'), style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+              title: Text(
+                tr(context, ru: 'Документ', zh: '文档'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                tr(
+                  context,
+                  ru: 'PDF, Word, Excel и другие',
+                  zh: 'PDF、Word、Excel等',
+                ),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickDocumentFile();
@@ -275,7 +301,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ),
     );
   }
-  
+
   /// Выбрать изображение с камеры
   Future<void> _pickImageFromCamera() async {
     try {
@@ -290,16 +316,20 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       if (image != null) {
         // Читаем bytes напрямую из XFile для избежания проблем с iOS sandbox
         final bytes = await image.readAsBytes();
-        final fileName = image.name.isNotEmpty ? image.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final fileName = image.name.isNotEmpty
+            ? image.name
+            : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
         await _uploadFileFromBytes(bytes, fileName);
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar(tr(context, ru: 'Ошибка при съёмке: $e', zh: '拍照错误：$e'));
+        _showErrorSnackbar(
+          tr(context, ru: 'Ошибка при съёмке: $e', zh: '拍照错误：$e'),
+        );
       }
     }
   }
-  
+
   /// Выбрать изображение из галереи
   Future<void> _pickImageFromGallery() async {
     debugPrint('📷 [Gallery] Starting image picker via file_picker...');
@@ -309,9 +339,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         type: FileType.image,
         allowMultiple: false,
       );
-      
-      debugPrint('📷 [Gallery] file_picker returned: ${result != null ? "file selected" : "null/cancelled"}');
-      
+
+      debugPrint(
+        '📷 [Gallery] file_picker returned: ${result != null ? "file selected" : "null/cancelled"}',
+      );
+
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         debugPrint('📷 [Gallery] File name: ${file.name}');
@@ -325,7 +357,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         if (bytes == null || bytes.isEmpty) {
           debugPrint('📷 [Gallery] ERROR: could not read file bytes');
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+            _showErrorSnackbar(
+              tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
+            );
           }
           return;
         }
@@ -337,7 +371,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         if (fileName.isEmpty) {
           fileName = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
         }
-        
+
         debugPrint('📷 [Gallery] Uploading ${bytes.length} bytes as $fileName');
         await _uploadFileFromBytes(bytes, fileName);
         debugPrint('📷 [Gallery] Upload completed');
@@ -346,7 +380,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       debugPrint('📷 [Gallery] ERROR: $e');
       debugPrint('📷 [Gallery] Stack: $stack');
       if (mounted) {
-        _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе изображения: $e', zh: '选择图片错误：$e'));
+        _showErrorSnackbar(
+          tr(context, ru: 'Ошибка при выборе изображения: $e', zh: '选择图片错误：$e'),
+        );
       }
     }
   }
@@ -357,19 +393,34 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: [
-          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv',
-          'ppt', 'pptx', 'txt', 'rtf', 'zip', 'rar', '7z',
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'csv',
+          'ppt',
+          'pptx',
+          'txt',
+          'rtf',
+          'zip',
+          'rar',
+          '7z',
         ],
       );
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
 
         // Для веб-версии используем bytes, для мобильных - path
-        final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+        final bytes =
+            file.bytes ??
+            (file.path != null ? await File(file.path!).readAsBytes() : null);
 
         if (bytes == null || bytes.isEmpty) {
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'));
+            _showErrorSnackbar(
+              tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
+            );
           }
           return;
         }
@@ -377,7 +428,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         // Проверка размера (10MB)
         if (bytes.length > 10 * 1024 * 1024) {
           if (mounted) {
-            _showErrorSnackbar(tr(context, ru: 'Файл слишком большой. Максимум 10 МБ', zh: '文件太大。最大 10 MB'));
+            _showErrorSnackbar(
+              tr(
+                context,
+                ru: 'Файл слишком большой. Максимум 10 МБ',
+                zh: '文件太大。最大 10 MB',
+              ),
+            );
           }
           return;
         }
@@ -390,24 +447,30 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackbar(tr(context, ru: 'Ошибка при выборе файла: $e', zh: '选择文件错误：$e'));
+        _showErrorSnackbar(
+          tr(context, ru: 'Ошибка при выборе файла: $e', zh: '选择文件错误：$e'),
+        );
       }
     }
   }
 
   /// Загрузить файл из bytes на сервер (для iOS)
   Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
-    debugPrint('📤 [Upload] _uploadFileFromBytes called with ${bytes.length} bytes, fileName: $fileName');
-    
+    debugPrint(
+      '📤 [Upload] _uploadFileFromBytes called with ${bytes.length} bytes, fileName: $fileName',
+    );
+
     final chatState = ref.read(chatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    
+
     debugPrint('📤 [Upload] conversationId: $conversationId');
-    
+
     if (conversationId == null) {
       debugPrint('📤 [Upload] ERROR: conversationId is null!');
       if (mounted) {
-        _showErrorSnackbar(tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'));
+        _showErrorSnackbar(
+          tr(context, ru: 'Чат не инициализирован', zh: '聊天未初始化'),
+        );
       }
       return;
     }
@@ -421,14 +484,20 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     }
 
     debugPrint('📤 [Upload] Calling controller.uploadFileFromBytes...');
-    final result = await ref.read(chatControllerProvider.notifier).uploadFileFromBytes(bytes, fileName);
+    final result = await ref
+        .read(chatControllerProvider.notifier)
+        .uploadFileFromBytes(bytes, fileName);
 
-    debugPrint('📤 [Upload] Result: ${result != null ? "success" : "null/error"}');
+    debugPrint(
+      '📤 [Upload] Result: ${result != null ? "success" : "null/error"}',
+    );
     if (result == null && mounted) {
-      _showErrorSnackbar(tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'));
+      _showErrorSnackbar(
+        tr(context, ru: 'Ошибка при загрузке файла', zh: '上传文件错误'),
+      );
     }
   }
-  
+
   void _showErrorSnackbar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -482,7 +551,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       if (track.assembly != null) {
         buffer.writeln('');
         buffer.writeln('📁 **集包:** ${track.assembly!.number}');
-        buffer.writeln('   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}');
+        buffer.writeln(
+          '   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}',
+        );
       }
       if (track.photoReportUrls.isNotEmpty) {
         buffer.writeln('');
@@ -504,7 +575,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       if (track.assembly != null) {
         buffer.writeln('');
         buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
-        buffer.writeln('   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}');
+        buffer.writeln(
+          '   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}',
+        );
       }
       if (track.photoReportUrls.isNotEmpty) {
         buffer.writeln('');
@@ -536,27 +609,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('   • 件数: ${invoice.placesCount}');
       buffer.writeln('   • 重量: ${invoice.weight.toStringAsFixed(1)} 公斤');
       buffer.writeln('   • 体积: ${invoice.volume.toStringAsFixed(2)} 立方米');
-      buffer.writeln(
-        '   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米',
-      );
+      buffer.writeln('   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米');
       if (invoice.tariffName != null) {
         buffer.writeln('   • 资费: ${invoice.tariffName}');
       }
       buffer.writeln('');
       buffer.writeln('💰 **费用:**');
       if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln('   • 资费: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤');
+        buffer.writeln(
+          '   • 资费: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤',
+        );
       }
       if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
         buffer.writeln(
           '   • 保险: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
         );
       }
-      if (invoice.packagings.isNotEmpty) {
-        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
-        buffer.writeln(
-          '   • 包装: \$${packagingTotal.toStringAsFixed(2)}',
-        );
+      final packagingTotal = invoice.resolvedPackagingCostTotal;
+      if (packagingTotal != null && packagingTotal > 0) {
+        buffer.writeln('   • 包装: \$${packagingTotal.toStringAsFixed(2)}');
       }
       buffer.writeln(
         '   • **总计:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
@@ -571,7 +642,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
       buffer.writeln('📊 Статус: ${invoice.status}');
       if (invoice.sendDate != null) {
-        buffer.writeln('📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}');
+        buffer.writeln(
+          '📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}',
+        );
       }
       buffer.writeln('');
       buffer.writeln('📦 **Параметры груза:**');
@@ -587,18 +660,18 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       buffer.writeln('');
       buffer.writeln('💰 **Стоимость:**');
       if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln('   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг');
+        buffer.writeln(
+          '   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг',
+        );
       }
       if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
         buffer.writeln(
           '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
         );
       }
-      if (invoice.packagings.isNotEmpty) {
-        final packagingTotal = invoice.packagings.fold<double>(0, (sum, p) => sum + p.cost);
-        buffer.writeln(
-          '   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}',
-        );
+      final packagingTotal = invoice.resolvedPackagingCostTotal;
+      if (packagingTotal != null && packagingTotal > 0) {
+        buffer.writeln('   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}');
       }
       buffer.writeln(
         '   • **Итого:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
@@ -625,54 +698,54 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         TutorialStep(
           icon: Icons.support_agent_rounded,
           title: 'Чат поддержки',
-          description: 'Напишите нам любой вопрос. Менеджер ответит в рабочее время. История сообщений сохраняется.',
+          description:
+              'Напишите нам любой вопрос. Менеджер ответит в рабочее время. История сообщений сохраняется.',
           targetKey: _messagesAreaKey,
         ),
         TutorialStep(
           icon: Icons.attach_file_rounded,
           title: 'Вложения',
-          description: 'Прикрепите фото или файл к сообщению — это поможет быстрее разобраться с вопросом.',
+          description:
+              'Прикрепите фото или файл к сообщению — это поможет быстрее разобраться с вопросом.',
           targetKey: _inputAreaKey,
         ),
         TutorialStep(
           icon: Icons.send_rounded,
           title: 'Отправка',
-          description: 'Введите текст и нажмите кнопку отправки. Можно также отправить голосовое сообщение.',
+          description:
+              'Введите текст и нажмите кнопку отправки. Можно также отправить голосовое сообщение.',
           targetKey: _inputAreaKey,
         ),
       ],
       child: Stack(
-      children: [
-        // Градиентный фон как на других страницах
-        const Positioned.fill(child: AppBackground()),
+        children: [
+          // Градиентный фон как на других страницах
+          const Positioned.fill(child: AppBackground()),
 
-        SafeArea(
-          top: false, // Контент скроллится под топ-меню
-          bottom: false,
-          child: Column(
-            children: [
-              // Список сообщений
-              Expanded(
-                key: _messagesAreaKey,
-                child: _buildMessagesList(),
-              ),
+          SafeArea(
+            top: false, // Контент скроллится под топ-меню
+            bottom: false,
+            child: Column(
+              children: [
+                // Список сообщений
+                Expanded(key: _messagesAreaKey, child: _buildMessagesList()),
 
-              // Панель быстрых действий
-              if (_showQuickActions)
-                _buildQuickActionsBar(),
+                // Панель быстрых действий
+                if (_showQuickActions) _buildQuickActionsBar(),
 
-              // Поле ввода
-              _buildInputField(bottomInset),
-            ],
+                // Поле ввода
+                _buildInputField(bottomInset),
+              ],
+            ),
           ),
-        ),
-      ],
-    ));
+        ],
+      ),
+    );
   }
 
   Widget _buildMessagesList() {
     final chatState = ref.watch(chatControllerProvider);
-    
+
     if (chatState.isLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -680,7 +753,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         ),
       );
     }
-    
+
     if (chatState.error != null) {
       return Center(
         child: Column(
@@ -701,7 +774,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: context.brandPrimary,
               ),
-              child: Text(tr(context, ru: 'Повторить', zh: '重试'), style: const TextStyle(color: Colors.white)),
+              child: Text(
+                tr(context, ru: 'Повторить', zh: '重试'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -799,7 +875,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   decoration: BoxDecoration(
                     gradient: isMe
                         ? LinearGradient(
-                            colors: [context.brandPrimary, context.brandSecondary],
+                            colors: [
+                              context.brandPrimary,
+                              context.brandSecondary,
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
@@ -825,16 +904,18 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       // Цитата (reply)
                       if (message.replyToMessageId != null)
                         GestureDetector(
-                          onTap: () => _scrollToMessage(message.replyToMessageId!),
+                          onTap: () =>
+                              _scrollToMessage(message.replyToMessageId!),
                           child: _buildReplyQuote(message, isMe),
                         ),
 
                       // Отображаем вложения
                       if (message.attachments.isNotEmpty)
                         _buildMessageAttachments(message.attachments, isMe),
-                      
+
                       // Текст сообщения (если это не просто "Файл")
-                      if (message.content.isNotEmpty && message.content != 'Файл')
+                      if (message.content.isNotEmpty &&
+                          message.content != 'Файл')
                         MarkdownBody(
                           data: message.content.replaceAll('\n', '  \n'),
                           selectable: true,
@@ -876,11 +957,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                           ),
                           onTapLink: (text, href, title) {
                             if (href != null) {
-                              launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+                              launchUrl(
+                                Uri.parse(href),
+                                mode: LaunchMode.externalApplication,
+                              );
                             }
                           },
                         ),
-                      if (message.content.isNotEmpty && message.content != 'Файл')
+                      if (message.content.isNotEmpty &&
+                          message.content != 'Файл')
                         const SizedBox(height: 4),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -939,7 +1024,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ),
     );
   }
-  
+
   /// Отображение вложений в сообщении
   void _scrollToMessage(int messageId) {
     final messages = ref.read(chatControllerProvider).messages;
@@ -955,7 +1040,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   Widget _buildReplyQuote(ChatMessage message, bool isMe) {
     final chatState = ref.read(chatControllerProvider);
-    final replyMsg = chatState.messages.where((m) => m.id == message.replyToMessageId).firstOrNull;
+    final replyMsg = chatState.messages
+        .where((m) => m.id == message.replyToMessageId)
+        .firstOrNull;
     if (replyMsg == null) return const SizedBox.shrink();
 
     final senderLabel = replyMsg.isFromClient ? 'Вы' : replyMsg.senderName;
@@ -969,7 +1056,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       decoration: BoxDecoration(
         border: Border(
           left: BorderSide(
-            color: isMe ? Colors.white.withValues(alpha: 0.6) : context.brandPrimary,
+            color: isMe
+                ? Colors.white.withValues(alpha: 0.6)
+                : context.brandPrimary,
             width: 2.5,
           ),
         ),
@@ -989,7 +1078,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isMe ? Colors.white.withValues(alpha: 0.8) : context.brandPrimary,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.8)
+                  : context.brandPrimary,
             ),
           ),
           Text(
@@ -998,7 +1089,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 13,
-              color: isMe ? Colors.white.withValues(alpha: 0.6) : Colors.black54,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.6)
+                  : Colors.black54,
             ),
           ),
         ],
@@ -1012,7 +1105,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
-        
+
         if (isImage) {
           return GestureDetector(
             onTap: () => _showFullImage(fullUrl, attachment.fileName),
@@ -1027,7 +1120,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   placeholder: (context, url) => Container(
                     width: 150,
                     height: 150,
-                    color: isMe ? Colors.white.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.grey.withValues(alpha: 0.2),
                     child: const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
@@ -1035,7 +1130,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                   errorWidget: (context, url, error) => Container(
                     width: 150,
                     height: 100,
-                    color: isMe ? Colors.white.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.grey.withValues(alpha: 0.2),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1068,7 +1165,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isMe ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFF5F5F5),
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -1078,7 +1177,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withValues(alpha: 0.2) : docColor.withValues(alpha: 0.1),
+                      color: isMe
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : docColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -1183,13 +1284,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         return context.brandPrimary;
     }
   }
-  
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-  
+
   /// Показать изображение на весь экран
   void _showFullImage(String url, String fileName) {
     Navigator.of(context).push(
@@ -1202,7 +1303,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ),
     );
   }
-  
+
   /// Скачать файл
   Future<void> _downloadFile(String url, String fileName) async {
     try {
@@ -1215,7 +1316,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(tr(context, ru: 'Загрузка файла...', zh: '正在下载文件...')),
@@ -1230,17 +1334,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       // Получаем директорию для сохранения
       final directory = await getApplicationDocumentsDirectory();
       final filePath = '${directory.path}/$fileName';
-      
+
       // Скачиваем файл
       final dio = Dio();
       await dio.download(url, filePath);
-      
+
       if (!mounted) return;
-      
+
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(tr(context, ru: 'Файл сохранён: $fileName', zh: '文件已保存：$fileName')),
+          content: Text(
+            tr(context, ru: 'Файл сохранён: $fileName', zh: '文件已保存：$fileName'),
+          ),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
@@ -1301,7 +1407,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              tr(context, ru: 'Напишите нам и мы поможем решить любой вопрос', zh: '给我们写信，我们会帮您解决任何问题'),
+              tr(
+                context,
+                ru: 'Напишите нам и мы поможем решить любой вопрос',
+                zh: '给我们写信，我们会帮您解决任何问题',
+              ),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14, color: Colors.black54),
             ),
@@ -1369,8 +1479,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           children: [
             // Preview прикреплённых файлов
             if (pendingAttachments.isNotEmpty || isUploading)
-              _buildPendingAttachments(context, pendingAttachments, isUploading),
-            
+              _buildPendingAttachments(
+                context,
+                pendingAttachments,
+                isUploading,
+              ),
+
             Row(
               children: [
                 // Кнопка прикрепления файла
@@ -1411,15 +1525,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       maxLines: 5,
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
-                        hintText: tr(context, ru: 'Введите ваше сообщение...', zh: '输入您的消息...'),
-                        hintStyle: const TextStyle(color: Colors.black38, fontSize: 15),
+                        hintText: tr(
+                          context,
+                          ru: 'Введите ваше сообщение...',
+                          zh: '输入您的消息...',
+                        ),
+                        hintStyle: const TextStyle(
+                          color: Colors.black38,
+                          fontSize: 15,
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
                       ),
-                      style: const TextStyle(fontSize: 15, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black87,
+                      ),
                       textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
@@ -1429,9 +1553,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 // Кнопка отправки с индикатором загрузки
                 Builder(
                   builder: (context) {
-                    final isSending = ref.watch(chatControllerProvider.select((s) => s.isSending));
+                    final isSending = ref.watch(
+                      chatControllerProvider.select((s) => s.isSending),
+                    );
                     return GestureDetector(
-                      onTap: (isSending || isUploading) ? null : () => _handleMessageSend(_textController.text),
+                      onTap: (isSending || isUploading)
+                          ? null
+                          : () => _handleMessageSend(_textController.text),
                       child: Container(
                         width: 44,
                         height: 44,
@@ -1439,7 +1567,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                           gradient: LinearGradient(
                             colors: (isSending || isUploading)
                                 ? [Colors.grey, Colors.grey.shade400]
-                                : [context.brandPrimary, context.brandSecondary],
+                                : [
+                                    context.brandPrimary,
+                                    context.brandSecondary,
+                                  ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -1451,7 +1582,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
                                 ),
                               )
                             : const Icon(
@@ -1470,9 +1603,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ),
     );
   }
-  
+
   /// Виджет для отображения прикреплённых файлов перед отправкой
-  Widget _buildPendingAttachments(BuildContext context, List<ChatAttachment> attachments, bool isUploading) {
+  Widget _buildPendingAttachments(
+    BuildContext context,
+    List<ChatAttachment> attachments,
+    bool isUploading,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: SingleChildScrollView(
@@ -1495,19 +1632,21 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(context.brandPrimary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        context.brandPrimary,
+                      ),
                     ),
                   ),
                 ),
               ),
-            
+
             // Показываем уже загруженные файлы
             ...attachments.map((attachment) {
               final fileType = attachment.fileType;
               final fileName = attachment.fileName;
               final url = attachment.url;
               final isImage = fileType.startsWith('image/');
-              
+
               return Container(
                 width: 80,
                 height: 80,
@@ -1519,8 +1658,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       borderRadius: BorderRadius.circular(12),
                       child: isImage
                           ? CachedNetworkImage(
-                              imageUrl: url.startsWith('http') 
-                                  ? url 
+                              imageUrl: url.startsWith('http')
+                                  ? url
                                   : '${ApiConfig.mediaBaseUrl}$url',
                               width: 80,
                               height: 80,
@@ -1528,7 +1667,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                               placeholder: (context, url) => Container(
                                 color: const Color(0xFFF0F0F0),
                                 child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                               errorWidget: (context, url, error) => Container(
@@ -1540,7 +1681,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                color: _getDocumentColor(fileName).withValues(alpha: 0.1),
+                                color: _getDocumentColor(
+                                  fileName,
+                                ).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -1553,7 +1696,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                                   ),
                                   const SizedBox(height: 4),
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
                                     child: Text(
                                       fileName,
                                       style: const TextStyle(
@@ -1569,14 +1714,16 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                               ),
                             ),
                     ),
-                    
+
                     // Кнопка удаления
                     Positioned(
                       top: 4,
                       right: 4,
                       child: GestureDetector(
                         onTap: () {
-                          ref.read(chatControllerProvider.notifier).removePendingAttachment(attachment.id);
+                          ref
+                              .read(chatControllerProvider.notifier)
+                              .removePendingAttachment(attachment.id);
                         },
                         child: Container(
                           width: 20,
@@ -1711,11 +1858,18 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
               children: [
                 Text(
                   tr(context, ru: 'Быстрая отправка', zh: '快速发送'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  tr(context, ru: 'Выберите трек или счёт для отправки в чат', zh: '选择运单或发票发送到聊天'),
+                  tr(
+                    context,
+                    ru: 'Выберите трек или счёт для отправки в чат',
+                    zh: '选择运单或发票发送到聊天',
+                  ),
                   style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                 ),
               ],
@@ -1734,7 +1888,11 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
                 controller: _searchController,
                 onChanged: (value) => setState(() => _searchQuery = value),
                 decoration: InputDecoration(
-                  hintText: tr(context, ru: 'Поиск по номеру...', zh: '按单号搜索...'),
+                  hintText: tr(
+                    context,
+                    ru: 'Поиск по номеру...',
+                    zh: '按单号搜索...',
+                  ),
                   hintStyle: TextStyle(color: Colors.grey[500]),
                   prefixIcon: const Icon(
                     Icons.search_rounded,
@@ -1778,8 +1936,12 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
               dividerColor: Colors.transparent,
               padding: const EdgeInsets.all(4),
               tabs: [
-                Tab(text: tr(context, ru: 'Треки', zh: '运单')),
-                Tab(text: tr(context, ru: 'Счета', zh: '发票')),
+                Tab(
+                  text: tr(context, ru: 'Треки', zh: '运单'),
+                ),
+                Tab(
+                  text: tr(context, ru: 'Счета', zh: '发票'),
+                ),
               ],
             ),
           ),
@@ -1805,10 +1967,11 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
     final tracksAsync = ref.watch(tracksSimpleListProvider(clientCode));
 
     return tracksAsync.when(
-      loading: () => Center(
-        child: CircularProgressIndicator(color: context.brandPrimary),
+      loading: () =>
+          Center(child: CircularProgressIndicator(color: context.brandPrimary)),
+      error: (e, _) => Center(
+        child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e')),
       ),
-      error: (e, _) => Center(child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e'))),
       data: (tracks) {
         final filtered = tracks
             .where(
@@ -1849,10 +2012,11 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
     final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
 
     return invoicesAsync.when(
-      loading: () => Center(
-        child: CircularProgressIndicator(color: context.brandPrimary),
+      loading: () =>
+          Center(child: CircularProgressIndicator(color: context.brandPrimary)),
+      error: (e, _) => Center(
+        child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e')),
       ),
-      error: (e, _) => Center(child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e'))),
       data: (invoices) {
         final filtered = invoices
             .where(
@@ -2063,10 +2227,7 @@ class _FullScreenImageView extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(
-          fileName,
-          style: const TextStyle(fontSize: 16),
-        ),
+        title: Text(fileName, style: const TextStyle(fontSize: 16)),
         actions: [
           IconButton(
             icon: const Icon(Icons.download_rounded),
@@ -2082,19 +2243,13 @@ class _FullScreenImageView extends StatelessWidget {
             imageUrl: imageUrl,
             fit: BoxFit.contain,
             placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(
-                color: Colors.white,
-              ),
+              child: CircularProgressIndicator(color: Colors.white),
             ),
             errorWidget: (context, url, error) => const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.broken_image,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
+                  Icon(Icons.broken_image, color: Colors.white54, size: 64),
                   SizedBox(height: 16),
                   Text(
                     'Не удалось загрузить изображение',

@@ -85,6 +85,27 @@ class InvoiceItem {
     this.tkWaybillPhotoUrl,
   });
 
+  int get billablePlacesCount => placesCount > 0 ? placesCount : 1;
+
+  double get packagingUnitCost =>
+      packagings.fold(0, (sum, packaging) => sum + packaging.cost);
+
+  double? get resolvedPackagingCostTotal {
+    if (packagingCostTotal != null && packagingCostTotal! > 0) {
+      return packagingCostTotal;
+    }
+
+    final unitCost = packagingUnitCost;
+    if (unitCost <= 0) return null;
+
+    return unitCost * billablePlacesCount;
+  }
+
+  String get packagingNames => packagings
+      .map((packaging) => packaging.name.trim())
+      .where((name) => name.isNotEmpty)
+      .join(', ');
+
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
     final status = json['status'] as String? ?? 'unknown';
     final statusName = json['statusName'] as String?;
@@ -160,22 +181,60 @@ class InvoiceItem {
 
     int totalTracks = 0;
     int tracksWithPhoto = 0;
-    final List<String> photoUrls = [];
+    final invoiceBoxIds = <int>{};
+    void addInvoiceBoxId(dynamic value) {
+      final id = int.tryParse(value?.toString() ?? '');
+      if (id != null) invoiceBoxIds.add(id);
+    }
+
+    addInvoiceBoxId(json['boxId']);
+    final rawBoxIds = json['boxIds'];
+    if (rawBoxIds is List) {
+      for (final id in rawBoxIds) {
+        addInvoiceBoxId(id);
+      }
+    }
+
+    final List<String> scalePhotoUrls = [];
+    final seenScalePhotoUrls = <String>{};
+
+    void addScalePhoto(dynamic rawPhoto) {
+      if (rawPhoto is! Map) return;
+      final url = rawPhoto['url']?.toString();
+      if (url == null || url.isEmpty || !seenScalePhotoUrls.add(url)) return;
+      scalePhotoUrls.add(url);
+    }
+
+    void addScalePhotos(dynamic rawPhotos) {
+      if (rawPhotos is! List) return;
+      for (final photo in rawPhotos) {
+        addScalePhoto(photo);
+      }
+    }
+
+    addScalePhotos(json['scalePhotos']);
+
     final assembly = json['assembly'] as Map<String, dynamic>?;
     if (assembly != null) {
+      addScalePhotos(assembly['scalePhotos']);
+
+      final boxes = assembly['boxes'] as List? ?? [];
+      for (final rawBox in boxes) {
+        if (rawBox is! Map) continue;
+        final boxId = int.tryParse(rawBox['id']?.toString() ?? '');
+        if (invoiceBoxIds.isNotEmpty &&
+            (boxId == null || !invoiceBoxIds.contains(boxId))) {
+          continue;
+        }
+        addScalePhotos(rawBox['scalePhotos']);
+      }
+
       final tracks = assembly['tracks'] as List? ?? [];
       totalTracks = tracks.length;
       for (final t in tracks) {
         final tm = t as Map<String, dynamic>;
         final pr = tm['photoRequests'] as List?;
         if (pr != null && pr.isNotEmpty) tracksWithPhoto++;
-        final photos = tm['photos'] as List?;
-        if (photos != null) {
-          for (final photo in photos) {
-            final url = (photo as Map<String, dynamic>)['url'] as String?;
-            if (url != null && url.isNotEmpty) photoUrls.add(url);
-          }
-        }
       }
     }
 
@@ -201,35 +260,59 @@ class InvoiceItem {
       weight: _parseDouble(json['weight']),
       volume: _parseDouble(json['volume']),
       calculationMethod: json['calculationMethod'] as String?,
-      transshipmentCost: _parseDouble(json['transshipmentCost']).let((v) => v > 0 ? v : null),
-      insuranceCost: _parseDouble(json['insuranceCost']).let((v) => v > 0 ? v : null),
-      insurancePercent: json['insurancePercent'] != null ? _parseDouble(json['insurancePercent']).let((v) => v > 0 ? v : null) : null,
-      discountAmount: json['discount'] != null ? _parseDouble(json['discount']).let((v) => v > 0 ? v : null) : null,
-      shippingCost: json['shippingCost'] != null ? _parseDouble(json['shippingCost']).let((v) => v > 0 ? v : null) : null,
+      transshipmentCost: _parseDouble(
+        json['transshipmentCost'],
+      ).let((v) => v > 0 ? v : null),
+      insuranceCost: _parseDouble(
+        json['insuranceCost'],
+      ).let((v) => v > 0 ? v : null),
+      insurancePercent: json['insurancePercent'] != null
+          ? _parseDouble(json['insurancePercent']).let((v) => v > 0 ? v : null)
+          : null,
+      discountAmount: json['discount'] != null
+          ? _parseDouble(json['discount']).let((v) => v > 0 ? v : null)
+          : null,
+      shippingCost: json['shippingCost'] != null
+          ? _parseDouble(json['shippingCost']).let((v) => v > 0 ? v : null)
+          : null,
       packagings: packagings,
-      packagingCostTotal: _parseDouble(json['packagingCost']).let((v) => v > 0 ? v : null),
+      packagingCostTotal: _parseDouble(
+        json['packagingCost'],
+      ).let((v) => v > 0 ? v : null),
       totalCostUsd: _parseDouble(json['totalCostUSD']),
       totalCostCny: _parseDouble(json['totalCostCNY']),
       totalCostRub: _parseDouble(json['totalCostRUB']),
-      clientRubRate: json['clientRubRate'] != null ? _parseDouble(json['clientRubRate']).let((v) => v > 0 ? v : null) : null,
-      clientYuanRate: json['clientYuanRate'] != null ? _parseDouble(json['clientYuanRate']).let((v) => v > 0 ? v : null) : null,
-      photoReportCoefficient: _parseDouble(json['photoReportCoefficient']).let((v) => v > 0 ? v : null),
+      clientRubRate: json['clientRubRate'] != null
+          ? _parseDouble(json['clientRubRate']).let((v) => v > 0 ? v : null)
+          : null,
+      clientYuanRate: json['clientYuanRate'] != null
+          ? _parseDouble(json['clientYuanRate']).let((v) => v > 0 ? v : null)
+          : null,
+      photoReportCoefficient: _parseDouble(
+        json['photoReportCoefficient'],
+      ).let((v) => v > 0 ? v : null),
       totalTracks: totalTracks,
       tracksWithPhoto: tracksWithPhoto,
-      scalePhotoUrls: photoUrls,
+      scalePhotoUrls: scalePhotoUrls,
       clientCode: clientCode,
       bonusKgApplied: _parseDouble(json['bonusKgApplied']),
       clientPricePerKg: json['clientPricePerKg'] != null
           ? _parseDouble(json['clientPricePerKg']).let((v) => v > 0 ? v : null)
           : null,
       clientPricePerKgWithPhoto: json['clientPricePerKgWithPhoto'] != null
-          ? _parseDouble(json['clientPricePerKgWithPhoto']).let((v) => v > 0 ? v : null)
+          ? _parseDouble(
+              json['clientPricePerKgWithPhoto'],
+            ).let((v) => v > 0 ? v : null)
           : null,
       insurancePercentClient: json['insurancePercentClient'] != null
-          ? _parseDouble(json['insurancePercentClient']).let((v) => v > 0 ? v : null)
+          ? _parseDouble(
+              json['insurancePercentClient'],
+            ).let((v) => v > 0 ? v : null)
           : null,
       insuranceCostClient: json['insuranceCostClient'] != null
-          ? _parseDouble(json['insuranceCostClient']).let((v) => v > 0 ? v : null)
+          ? _parseDouble(
+              json['insuranceCostClient'],
+            ).let((v) => v > 0 ? v : null)
           : null,
       tkWaybillPhotoUrl: json['tkWaybillPhotoUrl'] as String?,
     );
