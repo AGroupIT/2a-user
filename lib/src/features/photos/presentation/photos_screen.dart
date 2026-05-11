@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/services/client_diagnostics_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -693,14 +695,18 @@ class _CalendarGrid extends StatelessWidget {
   }
 }
 
-class _PhotoThumbnail extends StatelessWidget {
+class _PhotoThumbnail extends ConsumerWidget {
+  static final Set<String> _diagnosticEvents = <String>{};
+
   final PhotoItem item;
   final VoidCallback onOpen;
 
   const _PhotoThumbnail({required this.item, required this.onOpen});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final imageUrl = ApiConfig.getMediaUrl(item.url);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Material(
@@ -732,29 +738,49 @@ class _PhotoThumbnail extends StatelessWidget {
                     )
                   else
                     CachedNetworkImage(
-                      imageUrl: ApiConfig.getMediaUrl(item.url),
-                      memCacheWidth: 300,
-                      memCacheHeight: 300,
-                      imageBuilder: (_, imageProvider) => DecoratedBox(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: imageProvider,
-                            fit: BoxFit.cover,
+                      imageUrl: imageUrl,
+                      memCacheWidth: 260,
+                      memCacheHeight: 260,
+                      maxWidthDiskCache: 520,
+                      maxHeightDiskCache: 520,
+                      imageBuilder: (_, imageProvider) {
+                        _logThumbDiagnostic(
+                          ref,
+                          'photos_thumb_success',
+                          imageUrl,
+                        );
+                        return DecoratedBox(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: imageProvider,
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                        ),
-                      ),
-                      placeholder: (_, _) => Container(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                      errorWidget: (_, _, _) => Container(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        child: const Center(
-                          child: Icon(Icons.broken_image_outlined),
-                        ),
-                      ),
+                        );
+                      },
+                      placeholder: (_, _) {
+                        _logThumbDiagnostic(ref, 'photos_thumb_wait', imageUrl);
+                        return Container(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      },
+                      errorWidget: (_, _, error) {
+                        _logThumbDiagnostic(
+                          ref,
+                          'photos_thumb_error',
+                          imageUrl,
+                          error: error,
+                        );
+                        return Container(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          child: const Center(
+                            child: Icon(Icons.broken_image_outlined),
+                          ),
+                        );
+                      },
                     ),
                   if (item.isVideo)
                     const Center(
@@ -772,6 +798,45 @@ class _PhotoThumbnail extends StatelessWidget {
       ),
     );
   }
+
+  void _logThumbDiagnostic(
+    WidgetRef ref,
+    String event,
+    String imageUrl, {
+    Object? error,
+  }) {
+    final photoKey = item.id?.toString() ?? imageUrl;
+    final key = '$event:$photoKey';
+    if (_diagnosticEvents.length > 180 && !_diagnosticEvents.contains(key)) {
+      return;
+    }
+    if (!_diagnosticEvents.add(key)) return;
+
+    ClientDiagnosticsService.log(
+      ref.read(apiClientProvider),
+      app: '2a-user',
+      event: event,
+      route: '/photos/thumb',
+      meta: <String, Object?>{
+        if (item.id != null) 'photoId': item.id,
+        'ext': _mediaExtension(imageUrl),
+        'isVideo': item.isVideo,
+        if (error != null)
+          'error': ClientDiagnosticsService.errorSummary(error),
+      },
+      throttleKey: '2a-user-photo-thumb-$key',
+      throttle: const Duration(minutes: 10),
+    );
+  }
+}
+
+String _mediaExtension(String url) {
+  final uri = Uri.tryParse(url);
+  final path = uri?.path ?? url;
+  final name = path.split('/').last.toLowerCase();
+  final dotIndex = name.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex == name.length - 1) return '';
+  return name.substring(dotIndex + 1);
 }
 
 class _DropdownItem<T> {

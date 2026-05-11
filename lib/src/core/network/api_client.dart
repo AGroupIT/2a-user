@@ -135,6 +135,7 @@ class ApiClient {
           '[ApiClient] Network error (${e.type}), '
           'retry $attempt/$maxAttempts in ${ApiConfig.retryDelay.inMilliseconds}ms',
         );
+        resetConnections();
         await Future<void>.delayed(ApiConfig.retryDelay);
       }
     }
@@ -156,7 +157,12 @@ class ApiClient {
       );
     }
 
-    return run().timeout(_effectiveOverallTimeout(options));
+    try {
+      return await run().timeout(_effectiveOverallTimeout(options));
+    } on TimeoutException {
+      resetConnections();
+      rethrow;
+    }
   }
 
   /// Интерсептор для добавления токена авторизации

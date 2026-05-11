@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/client_diagnostics_service.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/websocket_provider.dart';
 import '../domain/photo_item.dart';
@@ -58,8 +59,17 @@ final photosTotalCountProvider = FutureProvider.autoDispose.family<int, String>(
   (ref, clientCode) async {
     if (ref.watch(demoModeProvider)) return DemoData.photosCount;
     final apiClient = ref.read(apiClientProvider);
+    final startedAt = DateTime.now();
 
     try {
+      ClientDiagnosticsService.log(
+        apiClient,
+        app: '2a-user',
+        event: 'photos_count_start',
+        route: '/photos',
+        meta: const <String, Object?>{'take': 1},
+        throttleKey: '2a-user-photos-count-start',
+      );
       final response = await apiClient.get(
         '/photos',
         queryParameters: {
@@ -71,11 +81,45 @@ final photosTotalCountProvider = FutureProvider.autoDispose.family<int, String>(
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        return data['total'] as int? ?? 0;
+        final total = data['total'] as int? ?? 0;
+        ClientDiagnosticsService.log(
+          apiClient,
+          app: '2a-user',
+          event: 'photos_count_success',
+          route: '/photos',
+          meta: <String, Object?>{
+            'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+            'total': total,
+          },
+          throttleKey: '2a-user-photos-count-success',
+        );
+        return total;
       }
+      ClientDiagnosticsService.log(
+        apiClient,
+        app: '2a-user',
+        event: 'photos_count_bad_status',
+        route: '/photos',
+        meta: <String, Object?>{
+          'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+          'statusCode': response.statusCode,
+        },
+        throttleKey: '2a-user-photos-count-bad-status',
+      );
       return 0;
-    } on DioException catch (e) {
+    } catch (e) {
       debugPrint('Error loading photos count: $e');
+      ClientDiagnosticsService.log(
+        apiClient,
+        app: '2a-user',
+        event: 'photos_count_error',
+        route: '/photos',
+        meta: <String, Object?>{
+          'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+          'error': ClientDiagnosticsService.errorSummary(e),
+        },
+        throttleKey: '2a-user-photos-count-error',
+      );
       return 0;
     }
   },
@@ -134,8 +178,18 @@ final photosDaysProvider = FutureProvider.autoDispose
             .toList();
       }
       final apiClient = ref.read(apiClientProvider);
+      final startedAt = DateTime.now();
 
       try {
+        ClientDiagnosticsService.log(
+          apiClient,
+          app: '2a-user',
+          event: 'photos_days_start',
+          route: '/photos/days',
+          meta: <String, Object?>{'month': params.month, 'year': params.year},
+          throttleKey:
+              '2a-user-photos-days-start-${params.year}-${params.month}',
+        );
         final response = await apiClient.get(
           '/photos/days',
           queryParameters: {
@@ -149,11 +203,51 @@ final photosDaysProvider = FutureProvider.autoDispose
         if (response.statusCode == 200 && response.data != null) {
           final data = response.data as Map<String, dynamic>;
           final days = data['days'] as List<dynamic>? ?? [];
+          ClientDiagnosticsService.log(
+            apiClient,
+            app: '2a-user',
+            event: 'photos_days_success',
+            route: '/photos/days',
+            meta: <String, Object?>{
+              'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+              'month': params.month,
+              'year': params.year,
+              'daysCount': days.length,
+            },
+            throttleKey:
+                '2a-user-photos-days-success-${params.year}-${params.month}',
+          );
           return days.map((d) => d.toString()).toList();
         }
+        ClientDiagnosticsService.log(
+          apiClient,
+          app: '2a-user',
+          event: 'photos_days_bad_status',
+          route: '/photos/days',
+          meta: <String, Object?>{
+            'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+            'statusCode': response.statusCode,
+          },
+          throttleKey:
+              '2a-user-photos-days-bad-status-${params.year}-${params.month}',
+        );
         return [];
-      } on DioException catch (e) {
+      } catch (e) {
         debugPrint('Error loading photo days: $e');
+        ClientDiagnosticsService.log(
+          apiClient,
+          app: '2a-user',
+          event: 'photos_days_error',
+          route: '/photos/days',
+          meta: <String, Object?>{
+            'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+            'month': params.month,
+            'year': params.year,
+            'error': ClientDiagnosticsService.errorSummary(e),
+          },
+          throttleKey:
+              '2a-user-photos-days-error-${params.year}-${params.month}',
+        );
         return [];
       }
     });
@@ -246,7 +340,7 @@ class PaginatedPhotosState {
 }
 
 class PaginatedPhotosNotifier {
-  static const int _pageSize = 30;
+  static const int _pageSize = 18;
   static const _photoTypes = {'photo_requests'};
 
   final Ref _ref;
@@ -406,27 +500,87 @@ class PaginatedPhotosNotifier {
   Future<({List<PhotoItem> photos, int total})> _fetch({
     required int skip,
   }) async {
-    final response = await _apiClient.get(
-      '/photos',
-      queryParameters: {
-        'clientCode': _state.clientCode,
-        'source': 'photoRequest',
+    final startedAt = DateTime.now();
+    final apiClient = _apiClient;
+    ClientDiagnosticsService.log(
+      apiClient,
+      app: '2a-user',
+      event: 'photos_fetch_start',
+      route: '/photos',
+      meta: <String, Object?>{
         'date': _state.date,
         'take': _pageSize,
         'skip': skip,
       },
+      throttleKey: '2a-user-photos-fetch-start-${_state.date}-$skip',
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final json = data['data'] as List<dynamic>? ?? [];
-      final total = data['total'] as int? ?? 0;
-      final photos = json
-          .map((j) => PhotoItem.fromJson(j as Map<String, dynamic>))
-          .toList();
-      return (photos: photos, total: total);
+    try {
+      final response = await apiClient.get(
+        '/photos',
+        queryParameters: {
+          'clientCode': _state.clientCode,
+          'source': 'photoRequest',
+          'date': _state.date,
+          'take': _pageSize,
+          'skip': skip,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final json = data['data'] as List<dynamic>? ?? [];
+        final total = data['total'] as int? ?? 0;
+        final photos = json
+            .map((j) => PhotoItem.fromJson(j as Map<String, dynamic>))
+            .toList();
+        ClientDiagnosticsService.log(
+          apiClient,
+          app: '2a-user',
+          event: 'photos_fetch_success',
+          route: '/photos',
+          meta: <String, Object?>{
+            'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+            'date': _state.date,
+            'skip': skip,
+            'count': photos.length,
+            'total': total,
+            'hasMore': photos.length >= _pageSize,
+          },
+          throttleKey: '2a-user-photos-fetch-success-${_state.date}-$skip',
+        );
+        return (photos: photos, total: total);
+      }
+      ClientDiagnosticsService.log(
+        apiClient,
+        app: '2a-user',
+        event: 'photos_fetch_bad_status',
+        route: '/photos',
+        meta: <String, Object?>{
+          'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+          'date': _state.date,
+          'skip': skip,
+          'statusCode': response.statusCode,
+        },
+        throttleKey: '2a-user-photos-fetch-bad-status-${_state.date}-$skip',
+      );
+      throw Exception('Failed to load photos');
+    } catch (e) {
+      ClientDiagnosticsService.log(
+        apiClient,
+        app: '2a-user',
+        event: 'photos_fetch_error',
+        route: '/photos',
+        meta: <String, Object?>{
+          'durationMs': ClientDiagnosticsService.elapsedMs(startedAt),
+          'date': _state.date,
+          'skip': skip,
+          'error': ClientDiagnosticsService.errorSummary(e),
+        },
+        throttleKey: '2a-user-photos-fetch-error-${_state.date}-$skip',
+      );
+      rethrow;
     }
-    throw Exception('Failed to load photos');
   }
 }
 
