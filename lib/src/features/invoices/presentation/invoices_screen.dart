@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/status_pill.dart';
+import '../../../core/ui/status_timeline_sheet.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
@@ -34,6 +36,21 @@ String _localizeMarket(String market) {
   }
 }
 
+List<StatusTimelineStatus> _invoiceTimelineStatuses(
+  List<InvoiceStatus> statuses,
+) {
+  return statuses
+      .map(
+        (status) => StatusTimelineStatus(
+          code: status.code,
+          name: status.nameRu.isNotEmpty ? status.nameRu : status.code,
+          color: _parseHexColor(status.color),
+          sortOrder: status.sortOrder,
+        ),
+      )
+      .toList(growable: false);
+}
+
 /// Парсит HEX цвет из строки
 Color? _parseHexColor(String? hexString) {
   if (hexString == null || hexString.isEmpty) return null;
@@ -45,6 +62,44 @@ Color? _parseHexColor(String? hexString) {
     return Color(int.parse(hex, radix: 16));
   } catch (_) {
     return null;
+  }
+}
+
+Future<bool> _requestInvoicePaymentStatus(
+  BuildContext context,
+  WidgetRef ref,
+  InvoiceItem item,
+) async {
+  try {
+    await requestInvoicePayment(ref.read(apiClientProvider), item.id);
+    final activeCode = ref.read(activeClientCodeProvider);
+    if (activeCode != null) {
+      ref.invalidate(invoicesListProvider(activeCode));
+      ref.invalidate(invoicesDigestProvider(activeCode));
+      ref.invalidate(invoicesCountProvider(activeCode));
+    }
+    ref.invalidate(invoiceByIdProvider(item.id));
+    return true;
+  } catch (_) {
+    final activeCode = ref.read(activeClientCodeProvider);
+    if (activeCode != null) {
+      ref.invalidate(invoicesListProvider(activeCode));
+      ref.invalidate(invoicesDigestProvider(activeCode));
+      ref.invalidate(invoicesCountProvider(activeCode));
+    }
+    ref.invalidate(invoiceByIdProvider(item.id));
+
+    if (context.mounted) {
+      AppToast.showFromSnackBar(
+        context,
+        SnackBar(
+          content: const Text('Не удалось отправить счёт в обработку'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.fixed,
+        ),
+      );
+    }
+    return false;
   }
 }
 
@@ -151,15 +206,22 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     );
   }
 
-  void _goToPaymentChatFromDigest(InvoiceItem item) {
+  Future<void> _goToPaymentChatFromDigest(InvoiceItem item) async {
     if (!mounted) return;
+    final paymentRequested = await _requestInvoicePaymentStatus(
+      context,
+      ref,
+      item,
+    );
+    if (!paymentRequested || !mounted) return;
+
     final money = NumberFormat.decimalPattern('ru');
     final buffer = StringBuffer();
     buffer.writeln('💳 **Запрос на оплату счёта**');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('🆔 ID: ${item.id}');
     buffer.writeln('🔢 Номер: ${item.invoiceNumber}');
-    buffer.writeln('📊 Статус: ${item.statusName ?? item.status}');
+    buffer.writeln('📊 Статус: В обработке');
     buffer.writeln('');
     buffer.writeln('💵 К оплате: \$${money.format(item.totalCostUsd.round())}');
     if (item.totalCostCny > 0) {
@@ -710,6 +772,22 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
       widget.item.status.toLowerCase() == 'unpaid' ||
       widget.item.status.toLowerCase() == 'pending';
 
+  void _showInvoiceStatusTimeline(
+    BuildContext context,
+    List<InvoiceStatus> statuses,
+  ) {
+    final item = widget.item;
+    showStatusTimelineSheet(
+      context: context,
+      title: 'Статус счёта',
+      currentStatusCode: item.status,
+      currentStatusName: item.statusName ?? item.status,
+      currentStatusColor: _parseHexColor(item.statusColor),
+      history: item.statusHistory,
+      statuses: _invoiceTimelineStatuses(statuses),
+    );
+  }
+
   void _openDetail(
     BuildContext context,
     double bonusBalance,
@@ -748,6 +826,16 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     _isNavigatingToPayment = true;
 
     final item = widget.item;
+    final paymentRequested = await _requestInvoicePaymentStatus(
+      context,
+      ref,
+      item,
+    );
+    if (!paymentRequested) {
+      if (mounted) setState(() => _isNavigatingToPayment = false);
+      return;
+    }
+    if (!mounted) return;
 
     // Ensure payment TG config is loaded before navigating
     String? paymentTgUsername = ref
@@ -795,7 +883,7 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('🆔 ID: ${item.id}');
     buffer.writeln('🔢 Номер: ${item.invoiceNumber}');
-    buffer.writeln('📊 Статус: ${item.statusName ?? item.status}');
+    buffer.writeln('📊 Статус: В обработке');
     buffer.writeln('');
     buffer.writeln('💵 К оплате: \$${money.format(item.totalCostUsd.round())}');
     if (item.totalCostCny > 0) {
@@ -855,6 +943,9 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final referralAsync = ref.watch(referralProvider);
+    final invoiceStatuses =
+        ref.watch(invoiceStatusesProvider).asData?.value ??
+        const <InvoiceStatus>[];
 
     final double bonusBalance =
         referralAsync.whenOrNull(data: (r) => r.referralKgBalance) ?? 0;
@@ -899,57 +990,59 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              height: 38,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.invoiceNumber,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy',
-                            fontSize: 16,
-                            height: 19 / 16,
-                            fontWeight: FontWeight.w400,
-                            color: Color(0xFF2F2F2F),
-                            letterSpacing: 0,
-                          ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.invoiceNumber,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 16,
+                          height: 19 / 16,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF2F2F2F),
+                          letterSpacing: 0,
                         ),
-                        const SizedBox(height: 5),
-                        Opacity(
-                          opacity: 0.5,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _InvoiceCardDate(
-                                icon: Icons.add_circle_outline_rounded,
-                                text: createdText,
-                              ),
-                              const SizedBox(width: 10),
-                              _InvoiceCardDate(
-                                icon: Icons.update_rounded,
-                                text: updatedText,
-                              ),
-                            ],
-                          ),
+                      ),
+                      const SizedBox(height: 5),
+                      Opacity(
+                        opacity: 0.5,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 2,
+                          children: [
+                            _InvoiceCardDate(
+                              icon: CupertinoIcons.plus_circle,
+                              text: createdText,
+                            ),
+                            _InvoiceCardDate(
+                              icon: CupertinoIcons.arrow_2_circlepath_circle,
+                              text: updatedText,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  _InvoiceCardStatusPill(
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      _showInvoiceStatusTimeline(context, invoiceStatuses),
+                  child: _InvoiceCardStatusPill(
                     text: item.statusName ?? item.status,
                     color: statusColor,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             SizedBox(
@@ -1003,8 +1096,9 @@ class _InvoiceCardDate extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 12, color: const Color(0xFF2F2F2F)),
+        Icon(icon, size: 24, color: const Color(0xFF2F2F2F)),
         const SizedBox(width: 5),
         Text(
           text,
@@ -1012,8 +1106,8 @@ class _InvoiceCardDate extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: 'Gilroy',
-            fontSize: 12,
-            height: 14 / 12,
+            fontSize: 16,
+            height: 24 / 16,
             fontWeight: FontWeight.w400,
             color: Color(0xFF2F2F2F),
             letterSpacing: 0,
@@ -1163,6 +1257,19 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     );
   }
 
+  void _showInvoiceStatusTimeline(List<InvoiceStatus> statuses) {
+    final item = widget.item;
+    showStatusTimelineSheet(
+      context: context,
+      title: 'Статус счёта',
+      currentStatusCode: item.status,
+      currentStatusName: item.statusName ?? item.status,
+      currentStatusColor: _parseHexColor(item.statusColor),
+      history: item.statusHistory,
+      statuses: _invoiceTimelineStatuses(statuses),
+    );
+  }
+
   Future<void> _applyBonusKg() async {
     final item = widget.item;
     final kg = double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.'));
@@ -1227,6 +1334,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
+    final invoiceStatuses =
+        ref.watch(invoiceStatusesProvider).asData?.value ??
+        const <InvoiceStatus>[];
     final pricePerKg = item.clientPricePerKg ?? item.tariffBaseCost ?? 0;
     final maxKg = (item.weight * widget.maxBonusPercent / 100).clamp(
       0.0,
@@ -1312,9 +1422,14 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                               ],
                             ),
                             const SizedBox(height: 4),
-                            StatusPill(
-                              text: item.statusName ?? item.status,
-                              color: statusColor,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  _showInvoiceStatusTimeline(invoiceStatuses),
+                              child: StatusPill(
+                                text: item.statusName ?? item.status,
+                                color: statusColor,
+                              ),
                             ),
                           ],
                         ),

@@ -133,6 +133,8 @@ class AgentInfo {
   final String? companyTelegramChannelUrl;
   final String? companyWhatsappUrl;
   final String? companyVkUrl;
+  final String? warehouseAddress;
+  final String? warehousePhone;
 
   const AgentInfo({
     required this.id,
@@ -153,6 +155,8 @@ class AgentInfo {
     this.companyTelegramChannelUrl,
     this.companyWhatsappUrl,
     this.companyVkUrl,
+    this.warehouseAddress,
+    this.warehousePhone,
   });
 
   factory AgentInfo.fromJson(Map<String, dynamic> json) {
@@ -175,6 +179,8 @@ class AgentInfo {
       companyTelegramChannelUrl: json['companyTelegramChannelUrl'] as String?,
       companyWhatsappUrl: json['companyWhatsappUrl'] as String?,
       companyVkUrl: json['companyVkUrl'] as String?,
+      warehouseAddress: json['warehouseAddress'] as String?,
+      warehousePhone: json['warehousePhone'] as String?,
     );
   }
 
@@ -192,6 +198,9 @@ class AgentInfo {
       _hasText(companyTelegramChannelUrl) ||
       _hasText(companyWhatsappUrl) ||
       _hasText(companyVkUrl);
+
+  bool get hasWarehouseContacts =>
+      _hasText(warehouseAddress) || _hasText(warehousePhone);
 
   static bool _hasText(String? value) => value?.trim().isNotEmpty == true;
 }

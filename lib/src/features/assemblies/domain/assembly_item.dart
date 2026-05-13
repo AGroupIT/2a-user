@@ -1,4 +1,5 @@
 import 'box.dart';
+import '../../../core/models/status_timeline_entry.dart';
 
 /// Модель сборки для клиентского приложения
 class AssemblyItem {
@@ -14,6 +15,7 @@ class AssemblyItem {
   final String? tariffName;
   final String? packagingName;
   final List<Box> boxes;
+  final List<StatusTimelineEntry> statusHistory;
 
   const AssemblyItem({
     required this.id,
@@ -28,6 +30,7 @@ class AssemblyItem {
     this.tariffName,
     this.packagingName,
     this.boxes = const [],
+    this.statusHistory = const [],
   });
 
   factory AssemblyItem.fromJson(Map<String, dynamic> json) {
@@ -66,6 +69,13 @@ class AssemblyItem {
             .toList() ??
         [];
 
+    final eventsList = json['events'] as List<dynamic>? ?? [];
+    final statusHistory = eventsList
+        .whereType<Map<String, dynamic>>()
+        .where((event) => event['eventType']?.toString() == 'status_changed')
+        .map(StatusTimelineEntry.fromEventJson)
+        .toList();
+
     return AssemblyItem(
       id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       number: json['number'] as String? ?? 'ASM-${json['id']}',
@@ -79,6 +89,7 @@ class AssemblyItem {
       tariffName: tariff?['name'] as String?,
       packagingName: packaging?['nameRu'] as String?,
       boxes: boxes,
+      statusHistory: statusHistory,
     );
   }
 

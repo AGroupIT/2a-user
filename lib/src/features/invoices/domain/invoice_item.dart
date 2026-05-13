@@ -1,3 +1,5 @@
+import '../../../core/models/status_timeline_entry.dart';
+
 class InvoiceItem {
   final String id;
   final String invoiceNumber;
@@ -41,6 +43,7 @@ class InvoiceItem {
   final double? insurancePercentClient;
   final double? insuranceCostClient;
   final String? tkWaybillPhotoUrl;
+  final List<StatusTimelineEntry> statusHistory;
 
   const InvoiceItem({
     required this.id,
@@ -85,6 +88,7 @@ class InvoiceItem {
     this.insurancePercentClient,
     this.insuranceCostClient,
     this.tkWaybillPhotoUrl,
+    this.statusHistory = const [],
   });
 
   int get billablePlacesCount => placesCount > 0 ? placesCount : 1;
@@ -245,6 +249,13 @@ class InvoiceItem {
       }
     }
 
+    final eventsList = json['events'] as List<dynamic>? ?? [];
+    final statusHistory = eventsList
+        .whereType<Map<String, dynamic>>()
+        .where((event) => event['eventType']?.toString() == 'status_changed')
+        .map(StatusTimelineEntry.fromEventJson)
+        .toList();
+
     return InvoiceItem(
       id: json['id'].toString(),
       invoiceNumber:
@@ -323,6 +334,7 @@ class InvoiceItem {
             ).let((v) => v > 0 ? v : null)
           : null,
       tkWaybillPhotoUrl: json['tkWaybillPhotoUrl'] as String?,
+      statusHistory: statusHistory,
     );
   }
 

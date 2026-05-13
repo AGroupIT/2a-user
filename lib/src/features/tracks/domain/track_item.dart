@@ -1,5 +1,6 @@
 import '../../assemblies/domain/box.dart';
 import '../../sp_finance/data/sp_models.dart';
+import '../../../core/models/status_timeline_entry.dart';
 
 class TrackItem {
   final int? id;
@@ -19,6 +20,7 @@ class TrackItem {
   final List<TrackQuestion> questions;
   final String? clientCode;
   final int? clientCodeId;
+  final List<StatusTimelineEntry> statusHistory;
 
   const TrackItem({
     this.id,
@@ -38,6 +40,7 @@ class TrackItem {
     this.questions = const [],
     this.clientCode,
     this.clientCodeId,
+    this.statusHistory = const [],
   });
 
   // Последний активный фотозапрос (не отмененный)
@@ -114,6 +117,12 @@ class TrackItem {
         .map((q) => TrackQuestion.fromJson(q as Map<String, dynamic>))
         .toList();
 
+    final statusHistoryList = json['statusHistory'] as List<dynamic>? ?? [];
+    final statusHistory = statusHistoryList
+        .whereType<Map<String, dynamic>>()
+        .map(StatusTimelineEntry.fromStatusHistoryJson)
+        .toList();
+
     // Код клиента
     final clientCodeData = json['clientCode'] as Map<String, dynamic>?;
     final clientCode = clientCodeData?['code'] as String?;
@@ -137,6 +146,7 @@ class TrackItem {
       questions: questions,
       clientCode: clientCode,
       clientCodeId: clientCodeId,
+      statusHistory: statusHistory,
     );
   }
 }
@@ -175,6 +185,7 @@ class TrackAssembly {
 
   // Фото на весах (старые, для обратной совместимости)
   final List<ScalePhoto> scalePhotos;
+  final List<StatusTimelineEntry> statusHistory;
 
   // Количество треков в сборке (с бэка через _count, не зависит от
   // пагинации клиента). Null если бэк не вернул поле.
@@ -201,6 +212,7 @@ class TrackAssembly {
     this.transportCompanyName,
     this.boxes = const [],
     this.scalePhotos = const [],
+    this.statusHistory = const [],
     this.trackCount,
   });
 
@@ -242,6 +254,13 @@ class TrackAssembly {
             .toList() ??
         [];
 
+    final eventsList = json['events'] as List<dynamic>? ?? [];
+    final statusHistory = eventsList
+        .whereType<Map<String, dynamic>>()
+        .where((event) => event['eventType']?.toString() == 'status_changed')
+        .map(StatusTimelineEntry.fromEventJson)
+        .toList();
+
     return TrackAssembly(
       id: json['id'] is int
           ? json['id'] as int
@@ -266,6 +285,7 @@ class TrackAssembly {
       transportCompanyName: json['transportCompanyName']?.toString(),
       boxes: boxesList,
       scalePhotos: scalePhotosList,
+      statusHistory: statusHistory,
       trackCount: json['trackCount'] is int
           ? json['trackCount'] as int
           : int.tryParse(json['trackCount']?.toString() ?? ''),

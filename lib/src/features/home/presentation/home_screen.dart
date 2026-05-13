@@ -261,8 +261,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             const SizedBox(height: 15),
-            _WarehouseDataBlock(clientCode: clientCode),
-            const SizedBox(height: 15),
+            if (agent?.hasWarehouseContacts == true) ...[
+              _WarehouseDataBlock(clientCode: clientCode, agent: agent!),
+              const SizedBox(height: 15),
+            ],
             KeyedSubtree(
               key: _digestKey,
               child: _DigestBlock(
@@ -889,16 +891,16 @@ class _StatCard extends StatelessWidget {
 
 class _WarehouseDataBlock extends StatelessWidget {
   final String clientCode;
+  final AgentInfo agent;
 
-  const _WarehouseDataBlock({required this.clientCode});
+  const _WarehouseDataBlock({required this.clientCode, required this.agent});
 
   static const _textColor = Color(0xFF2F2F2F);
-  static const _phone = '18142825560';
 
   @override
   Widget build(BuildContext context) {
-    // TODO(redesign): Replace this hardcoded warehouse data with DB-backed content.
-    final address = '广东省广州市白云区均禾街罗岗环岗一路7号108仓(不要隐藏代码 $clientCode)';
+    final address = _warehouseAddressForClient(agent.warehouseAddress);
+    final phone = agent.warehousePhone?.trim() ?? '';
 
     return Container(
       width: double.infinity,
@@ -929,12 +931,23 @@ class _WarehouseDataBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          _WarehouseCopyLine(label: 'Адрес:', value: address),
-          const SizedBox(height: 5),
-          const _WarehouseCopyLine(label: 'Телефон:', value: _phone),
+          if (address.isNotEmpty) ...[
+            _WarehouseCopyLine(label: 'Адрес:', value: address),
+            if (phone.isNotEmpty) const SizedBox(height: 5),
+          ],
+          if (phone.isNotEmpty)
+            _WarehouseCopyLine(label: 'Телефон:', value: phone),
         ],
       ),
     );
+  }
+
+  String _warehouseAddressForClient(String? rawAddress) {
+    final base = (rawAddress ?? '')
+        .replaceFirst(RegExp(r'\s*\(不要隐藏代码\s*[^)]*\)\s*$'), '')
+        .trim();
+    if (base.isEmpty) return '';
+    return '$base(不要隐藏代码 $clientCode)';
   }
 }
 
@@ -1413,14 +1426,14 @@ class _DigestItemCard extends StatelessWidget {
                           fontFamily: 'Gilroy',
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          height: 19 / 16,
+                          height: 24 / 16,
                         ),
                       ),
                       const SizedBox(height: 7),
                       Opacity(
                         opacity: 0.5,
                         child: Wrap(
-                          spacing: 10,
+                          spacing: 8,
                           runSpacing: 2,
                           children: [
                             _DigestDateLabel(
@@ -1474,17 +1487,18 @@ class _DigestDateLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 14, color: const Color(0xFF2F2F2F)),
+        Icon(icon, size: 24, color: const Color(0xFF2F2F2F)),
         const SizedBox(width: 5),
         Text(
           value,
           style: const TextStyle(
             color: Color(0xFF2F2F2F),
             fontFamily: 'Gilroy',
-            fontSize: 14,
+            fontSize: 16,
             fontWeight: FontWeight.w400,
-            height: 16 / 14,
+            height: 24 / 16,
           ),
         ),
       ],

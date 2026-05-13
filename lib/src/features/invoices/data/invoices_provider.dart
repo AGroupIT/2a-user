@@ -13,12 +13,14 @@ class InvoiceStatus {
   final String code;
   final String nameRu;
   final String? color;
+  final int sortOrder;
 
   const InvoiceStatus({
     required this.id,
     required this.code,
     required this.nameRu,
     this.color,
+    this.sortOrder = 0,
   });
 
   factory InvoiceStatus.fromJson(Map<String, dynamic> json) {
@@ -27,6 +29,7 @@ class InvoiceStatus {
       code: json['code'] as String? ?? '',
       nameRu: json['nameRu'] as String? ?? json['code'] as String? ?? '',
       color: json['color'] as String?,
+      sortOrder: json['sortOrder'] as int? ?? 0,
     );
   }
 }
@@ -64,6 +67,17 @@ final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((
     return [];
   }
 });
+
+/// Фиксирует нажатие клиентом кнопки "Оплатить".
+///
+/// Backend переводит счёт из `unpaid`/`pending` в `processing`, чтобы кнопка
+/// оплаты сразу исчезала и бухгалтер видел следующий ожидаемый статус.
+Future<void> requestInvoicePayment(
+  ApiClient apiClient,
+  String invoiceId,
+) async {
+  await apiClient.post('/client/invoices/$invoiceId/request-payment');
+}
 
 /// Провайдер для получения списка счетов
 final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((
