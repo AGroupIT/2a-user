@@ -12,7 +12,7 @@ DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://prod-api.cp.2a-logistic.com/releases}"
 
 COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
 COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
-COOLIFY_WEB_BRANCH="coolify-web-production"
+COOLIFY_WEB_BRANCH="Раздел-магазин"
 WEB_URL="https://cabinet.2a-logistic.ru"
 WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
