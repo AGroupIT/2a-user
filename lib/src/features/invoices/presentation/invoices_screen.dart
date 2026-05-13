@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,11 +10,15 @@ import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../photos/domain/photo_item.dart';
+import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../referral/data/referral_provider.dart';
 import '../data/invoices_provider.dart';
 import '../domain/invoice_item.dart';
@@ -44,7 +49,9 @@ Color? _parseHexColor(String? hexString) {
 }
 
 class InvoicesScreen extends ConsumerStatefulWidget {
-  const InvoicesScreen({super.key});
+  final String? initialInvoiceId;
+
+  const InvoicesScreen({super.key, this.initialInvoiceId});
 
   @override
   ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
@@ -54,14 +61,24 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   final ScrollController _scrollController = ScrollController();
   String? _selectedStatusCode; // null = "Все"
   String _query = '';
+  bool _isSearchVisible = false;
 
   final GlobalKey _invoicesListKey = GlobalKey();
   final GlobalKey _filtersKey = GlobalKey();
   final GlobalKey _firstInvoiceKey = GlobalKey();
+  String? _handledInitialInvoiceId;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant InvoicesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialInvoiceId != widget.initialInvoiceId) {
+      _handledInitialInvoiceId = null;
+    }
   }
 
   List<InvoiceItem> _applyFilters(List<InvoiceItem> items) {
@@ -76,6 +93,118 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                 inv.tariffName?.toLowerCase().contains(q) == true;
       return statusOk && queryOk;
     }).toList();
+  }
+
+  void _maybeOpenInitialInvoice(List<InvoiceItem> items, String clientCode) {
+    final invoiceId = widget.initialInvoiceId;
+    if (invoiceId == null || invoiceId.isEmpty) return;
+    if (_handledInitialInvoiceId == invoiceId) return;
+
+    InvoiceItem? invoice;
+    for (final item in items) {
+      if (item.id == invoiceId || item.invoiceNumber == invoiceId) {
+        invoice = item;
+        break;
+      }
+    }
+    if (invoice == null) return;
+
+    _handledInitialInvoiceId = invoiceId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openInvoiceDetail(invoice!, clientCode);
+    });
+  }
+
+  void _openInvoiceDetail(InvoiceItem item, String clientCode) {
+    final referral = ref
+        .read(referralProvider)
+        .whenOrNull(data: (value) => value);
+    final bonusBalance = referral?.referralKgBalance ?? 0;
+    final maxBonusPct = referral?.maxBonusPercent ?? 0;
+
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _InvoiceDetailSheet(
+        item: item,
+        clientCode: clientCode,
+        bonusBalance: bonusBalance,
+        maxBonusPercent: maxBonusPct,
+        onPay: () {
+          Navigator.pop(sheetContext);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _goToPaymentChatFromDigest(item);
+          });
+        },
+        onBonusApplied: () {
+          final activeCode = ref.read(activeClientCodeProvider);
+          if (activeCode != null) {
+            ref.invalidate(invoicesListProvider(activeCode));
+          }
+          ref.invalidate(referralProvider);
+        },
+      ),
+    );
+  }
+
+  void _goToPaymentChatFromDigest(InvoiceItem item) {
+    if (!mounted) return;
+    final money = NumberFormat.decimalPattern('ru');
+    final buffer = StringBuffer();
+    buffer.writeln('💳 **Запрос на оплату счёта**');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('🆔 ID: ${item.id}');
+    buffer.writeln('🔢 Номер: ${item.invoiceNumber}');
+    buffer.writeln('📊 Статус: ${item.statusName ?? item.status}');
+    buffer.writeln('');
+    buffer.writeln('💵 К оплате: \$${money.format(item.totalCostUsd.round())}');
+    if (item.totalCostCny > 0) {
+      buffer.writeln(
+        '🇨🇳 К оплате: ¥${money.format(item.totalCostCny.round())}',
+      );
+    }
+    if (item.totalCostRub > 0) {
+      buffer.writeln(
+        '🇷🇺 К оплате: ${money.format(item.totalCostRub.round())} ₽',
+      );
+    }
+
+    context.push(
+      '/payment-chat',
+      extra: {
+        'message': buffer.toString(),
+        'invoiceId': item.id,
+        'invoiceNumber': item.invoiceNumber,
+        'amount': item.totalCostUsd,
+        if (item.totalCostCny > 0) 'totalCostCny': item.totalCostCny,
+        if (item.totalCostRub > 0) 'totalCostRub': item.totalCostRub,
+        if (item.clientRubRate != null) 'clientRubRate': item.clientRubRate,
+        if (item.clientYuanRate != null) 'clientYuanRate': item.clientYuanRate,
+      },
+    );
+  }
+
+  Future<void> _showInvoiceFiltersSheet(List<InvoiceStatus> statuses) async {
+    final result = await showModalBottomSheet<_InvoiceFiltersResult>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => _InvoiceFiltersSheet(
+        selectedStatusCode: _selectedStatusCode,
+        statuses: statuses,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    setState(() => _selectedStatusCode = result.statusCode);
   }
 
   @override
@@ -120,31 +249,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         );
       },
       data: (items) {
+        _maybeOpenInitialInvoice(items, clientCode);
         final filtered = _applyFilters(items);
-
-        final filtersContainer = Container(
-          key: _filtersKey,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x14000000),
-                blurRadius: 24,
-                offset: Offset(0, 10),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(16),
-          child: _Filters(
-            selectedStatusCode: _selectedStatusCode,
-            statuses: dbStatuses,
-            query: _query,
-            onStatusChanged: (code) =>
-                setState(() => _selectedStatusCode = code),
-            onQueryChanged: (v) => setState(() => _query = v),
-          ),
-        );
 
         return TutorialScreenWrapper(
           screenKey: 'invoices',
@@ -190,7 +296,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
               RefreshIndicator(
                 onRefresh: onRefresh,
                 color: context.brandPrimary,
-                child: ListView(
+                child: ListView.builder(
                   controller: _scrollController,
                   key: _invoicesListKey,
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -200,41 +306,69 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                     16,
                     bottomPad + 16,
                   ),
-                  children: [
-                    Text(
-                      'Счета',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 18),
-                    filtersContainer,
-                    const SizedBox(height: 18),
-                    if (filtered.isEmpty)
-                      const EmptyState(
+                  addAutomaticKeepAlives: false,
+                  addSemanticIndexes: false,
+                  itemCount: filtered.isEmpty ? 4 : filtered.length + 3,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return _InvoiceHeaderSection(
+                        filtersKey: _filtersKey,
+                        isFilterActive: _selectedStatusCode != null,
+                        isSearchActive: _isSearchVisible || _query.isNotEmpty,
+                        onFilterTap: () => _showInvoiceFiltersSheet(dbStatuses),
+                        onSearchTap: () {
+                          setState(() => _isSearchVisible = !_isSearchVisible);
+                        },
+                      );
+                    }
+                    if (index == 1) {
+                      return AnimatedSize(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: (_isSearchVisible || _query.isNotEmpty)
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: _InvoiceSearchField(
+                                  query: _query,
+                                  onChanged: (value) =>
+                                      setState(() => _query = value),
+                                  onClear: () => setState(() {
+                                    _query = '';
+                                    _isSearchVisible = false;
+                                  }),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      );
+                    }
+                    if (index == 2) {
+                      return const SizedBox(height: 15);
+                    }
+                    if (filtered.isEmpty) {
+                      return const EmptyState(
                         icon: Icons.receipt_long_outlined,
                         title: 'Ничего не найдено',
                         message:
                             'Попробуйте изменить фильтры или строку поиска.',
-                      )
-                    else
-                      ...filtered.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final inv = entry.value;
-                        final invoiceTile = _InvoiceTile(
-                          item: inv,
-                          clientCode: clientCode,
-                        );
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: index == 0
-                              ? KeyedSubtree(
-                                  key: _firstInvoiceKey,
-                                  child: invoiceTile,
-                                )
-                              : invoiceTile,
-                        );
-                      }),
-                  ],
+                      );
+                    }
+
+                    final invoiceIndex = index - 3;
+                    final invoiceTile = _InvoiceTile(
+                      item: filtered[invoiceIndex],
+                      clientCode: clientCode,
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: invoiceIndex == 0
+                          ? KeyedSubtree(
+                              key: _firstInvoiceKey,
+                              child: invoiceTile,
+                            )
+                          : invoiceTile,
+                    );
+                  },
                 ),
               ),
               ScrollToTopButton(controller: _scrollController),
@@ -252,409 +386,303 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   }
 }
 
-class _Filters extends StatefulWidget {
+class _InvoiceHeaderSection extends StatelessWidget {
+  final GlobalKey filtersKey;
+  final bool isFilterActive;
+  final bool isSearchActive;
+  final VoidCallback onFilterTap;
+  final VoidCallback onSearchTap;
+
+  const _InvoiceHeaderSection({
+    required this.filtersKey,
+    required this.isFilterActive,
+    required this.isSearchActive,
+    required this.onFilterTap,
+    required this.onSearchTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Expanded(
+            child: Text(
+              'Счета',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 24,
+                height: 29 / 24,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2F2F2F),
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          _InvoiceHeaderIconButton(
+            key: filtersKey,
+            icon: Icons.filter_alt_rounded,
+            tooltip: 'Фильтр',
+            isActive: isFilterActive,
+            onTap: onFilterTap,
+          ),
+          const SizedBox(width: 10),
+          _InvoiceHeaderIconButton(
+            icon: Icons.search_rounded,
+            tooltip: 'Поиск',
+            isActive: isSearchActive,
+            onTap: onSearchTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InvoiceHeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _InvoiceHeaderIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isActive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? context.brandPrimary : const Color(0xFF2F2F2F);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Center(child: Icon(icon, size: 23, color: color)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceSearchField extends StatefulWidget {
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _InvoiceSearchField({
+    required this.query,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  State<_InvoiceSearchField> createState() => _InvoiceSearchFieldState();
+}
+
+class _InvoiceSearchFieldState extends State<_InvoiceSearchField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.query);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InvoiceSearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query && _controller.text != widget.query) {
+      _controller.text = widget.query;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 25,
+            offset: Offset(3, 4),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _controller,
+        style: const TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF2F2F2F),
+          letterSpacing: 0,
+        ),
+        decoration: InputDecoration(
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: context.brandPrimary,
+            size: 22,
+          ),
+          suffixIcon: _controller.text.isNotEmpty
+              ? IconButton(
+                  onPressed: () {
+                    _controller.clear();
+                    widget.onClear();
+                  },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF8A8A8A),
+                    size: 20,
+                  ),
+                )
+              : null,
+          hintText: 'Поиск по счёту',
+          hintStyle: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Color(0x99000000),
+            letterSpacing: 0,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          isDense: true,
+        ),
+        onChanged: (value) {
+          setState(() {});
+          widget.onChanged(value);
+        },
+      ),
+    );
+  }
+}
+
+class _InvoiceFiltersResult {
+  final String? statusCode;
+
+  const _InvoiceFiltersResult(this.statusCode);
+}
+
+class _InvoiceStatusOption {
+  final String? code;
+  final String label;
+
+  const _InvoiceStatusOption({required this.code, required this.label});
+}
+
+class _InvoiceFiltersSheet extends StatelessWidget {
   final String? selectedStatusCode;
   final List<InvoiceStatus> statuses;
-  final String query;
-  final ValueChanged<String?> onStatusChanged;
-  final ValueChanged<String> onQueryChanged;
 
-  const _Filters({
+  const _InvoiceFiltersSheet({
     required this.selectedStatusCode,
     required this.statuses,
-    required this.query,
-    required this.onStatusChanged,
-    required this.onQueryChanged,
   });
 
   @override
-  State<_Filters> createState() => _FiltersState();
-}
-
-class _FiltersState extends State<_Filters> {
-  late final TextEditingController _searchController;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController = TextEditingController(text: widget.query);
-  }
-
-  @override
-  void didUpdateWidget(covariant _Filters oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.query != widget.query &&
-        _searchController.text != widget.query) {
-      _searchController.value = TextEditingValue(
-        text: widget.query,
-        selection: TextSelection.collapsed(offset: widget.query.length),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final statusItems = <_DropdownItem<String?>>[
-      const _DropdownItem<String?>(value: null, label: 'Все'),
-      ...widget.statuses.map(
-        (s) => _DropdownItem<String?>(value: s.code, label: s.nameRu),
+    final options = <_InvoiceStatusOption>[
+      const _InvoiceStatusOption(code: null, label: 'Все'),
+      ...statuses.map(
+        (status) =>
+            _InvoiceStatusOption(code: status.code, label: status.nameRu),
       ),
     ];
-    final selectedLabel = statusItems
-        .firstWhere(
-          (i) => i.value == widget.selectedStatusCode,
-          orElse: () => statusItems.first,
-        )
-        .label;
 
-    return Row(
-      children: [
-        // Поиск
-        Expanded(
-          child: Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0x0F000000),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(fontSize: 14),
-                decoration: InputDecoration(
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: context.brandPrimary,
-                    size: 18,
-                  ),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? GestureDetector(
-                          onTap: () {
-                            _searchController.selection =
-                                const TextSelection.collapsed(offset: 0);
-                            _searchController.clear();
-                            widget.onQueryChanged('');
-                          },
-                          child: const Icon(
-                            Icons.close_rounded,
-                            color: Color(0xFF999999),
-                            size: 18,
-                          ),
-                        )
-                      : null,
-                  suffixIconConstraints: const BoxConstraints(minWidth: 36),
-                  hintText: 'Поиск по счёту',
-                  hintStyle: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF999999),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  isDense: true,
-                ),
-                onChanged: (value) {
-                  setState(() {});
-                  widget.onQueryChanged(value);
-                },
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHandle(),
+            const SizedBox(height: 12),
+            const Text(
+              'Фильтр',
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2F2F2F),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        // Статус
-        GestureDetector(
-          onTap: () {
-            showModalBottomSheet<String?>(
-              context: context,
-              useRootNavigator: true,
-              backgroundColor: Colors.white,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            const SizedBox(height: 12),
+            for (final option in options)
+              _InvoiceFilterOptionTile(
+                title: option.label,
+                selected: option.code == selectedStatusCode,
+                onTap: () =>
+                    Navigator.pop(context, _InvoiceFiltersResult(option.code)),
               ),
-              builder: (ctx) => SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.black12,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    for (final item in statusItems)
-                      ListTile(
-                        dense: true,
-                        title: Text(
-                          item.label,
-                          style: TextStyle(
-                            fontWeight: item.value == widget.selectedStatusCode
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: item.value == widget.selectedStatusCode
-                                ? context.brandPrimary
-                                : Colors.black87,
-                            fontSize: 14,
-                          ),
-                        ),
-                        trailing: item.value == widget.selectedStatusCode
-                            ? Icon(
-                                Icons.check_rounded,
-                                size: 18,
-                                color: context.brandPrimary,
-                              )
-                            : null,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          widget.onStatusChanged(item.value);
-                        },
-                      ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            );
-          },
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: const Color(0x0A000000),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  selectedLabel,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                const Icon(Icons.expand_more, size: 16, color: Colors.black38),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DropdownItem<T> {
-  final T value;
-  final String label;
-  const _DropdownItem({required this.value, required this.label});
-}
-
-class _CustomDropdown<T> extends StatefulWidget {
-  final T value;
-  final String label;
-  final List<_DropdownItem<T>> items;
-  final ValueChanged<T?> onChanged;
-
-  const _CustomDropdown({
-    required this.value,
-    required this.label,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  State<_CustomDropdown<T>> createState() => _CustomDropdownState<T>();
-}
-
-class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
-  late T _selectedValue;
-  OverlayEntry? _overlayEntry;
-  final LayerLink _layerLink = LayerLink();
-  final GlobalKey _targetKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedValue = widget.value;
-  }
-
-  @override
-  void didUpdateWidget(_CustomDropdown<T> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _selectedValue = widget.value;
-    }
-  }
-
-  void _showMenu() {
-    final renderBox =
-        _targetKey.currentContext?.findRenderObject() as RenderBox?;
-    final double menuWidth = renderBox?.size.width ?? 200;
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        top: 0,
-        left: 0,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 50),
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              width: menuWidth,
-              constraints: const BoxConstraints(maxHeight: 280),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: widget.items.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final item = entry.value;
-                  final isFirst = index == 0;
-                  final isLast = index == widget.items.length - 1;
-
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedValue = item.value;
-                      });
-                      widget.onChanged(item.value);
-                      _overlayEntry?.remove();
-                      _overlayEntry = null;
-                    },
-                    // Добавляем borderRadius для InkWell эффекта
-                    borderRadius: BorderRadius.vertical(
-                      top: isFirst ? const Radius.circular(14) : Radius.zero,
-                      bottom: isLast ? const Radius.circular(14) : Radius.zero,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _selectedValue == item.value
-                            ? context.brandPrimary.withValues(alpha: 0.1)
-                            : Colors.transparent,
-                        // Добавляем borderRadius для первого/последнего элемента
-                        borderRadius: BorderRadius.vertical(
-                          top: isFirst
-                              ? const Radius.circular(14)
-                              : Radius.zero,
-                          bottom: isLast
-                              ? const Radius.circular(14)
-                              : Radius.zero,
-                        ),
-                      ),
-                      child: Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: _selectedValue == item.value
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: _selectedValue == item.value
-                              ? context.brandPrimary
-                              : Colors.black87,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
+          ],
         ),
       ),
     );
-    Overlay.of(context).insert(_overlayEntry!);
   }
+}
 
-  void _hideMenu() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
+class _InvoiceFilterOptionTile extends StatelessWidget {
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
 
-  @override
-  void dispose() {
-    _hideMenu();
-    super.dispose();
-  }
+  const _InvoiceFilterOptionTile({
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final selectedItem = widget.items.cast<_DropdownItem<T>?>().firstWhere(
-      (item) => item?.value == _selectedValue,
-      orElse: () => null,
-    );
-    final selectedLabel = selectedItem?.label ?? 'Все';
-
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: GestureDetector(
-        onTap: () {
-          if (_overlayEntry == null) {
-            _showMenu();
-          } else {
-            _hideMenu();
-          }
-        },
-        child: Container(
-          key: _targetKey,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade300, width: 1),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF999999),
-                      fontWeight: FontWeight.w500,
-                    ),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 16,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected
+                        ? context.brandPrimary
+                        : const Color(0xFF2F2F2F),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedLabel,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              Icon(
-                _overlayEntry != null
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: context.brandPrimary,
-                size: 20,
-              ),
+              if (selected)
+                Icon(Icons.check_rounded, color: context.brandPrimary),
             ],
           ),
         ),
@@ -824,7 +852,6 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final referralAsync = ref.watch(referralProvider);
@@ -833,208 +860,245 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
         referralAsync.whenOrNull(data: (r) => r.referralKgBalance) ?? 0;
     final double maxBonusPct =
         referralAsync.whenOrNull(data: (r) => r.maxBonusPercent) ?? 0;
-    final bool hasBonusForThisInvoice =
-        _isUnpaid &&
-        bonusBalance > 0 &&
-        (item.clientPricePerKg ?? item.tariffBaseCost ?? 0) > 0;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Основная информация ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Номер + статус
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        item.invoiceNumber,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    StatusPill(
-                      text: item.statusName ?? item.status,
-                      color: statusColor,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+    final amountText = item.totalCostUsd > 0
+        ? '\$${money.format(item.totalCostUsd.round())}'
+        : item.totalCostRub > 0
+        ? '${money.format(item.totalCostRub.round())} ₽'
+        : item.totalCostCny > 0
+        ? '¥${money.format(item.totalCostCny.round())}'
+        : '\$0';
+    final createdText = _formatListDate(item.createdAt);
+    final updatedAt =
+        item.updatedAt ??
+        item.paidAt ??
+        item.sendDate ??
+        item.arrivalDate ??
+        item.createdAt;
+    final updatedText = _formatListDate(updatedAt);
+    final actionText = _isUnpaid ? 'Оплатить' : 'Открыть';
 
-                // Даты (только непустые)
-                ..._buildDateRows(item, df),
-                const SizedBox(height: 8),
-
-                // Суммы
-                Row(
-                  children: [
-                    if (item.totalCostUsd > 0) ...[
-                      Text(
-                        '\$${money.format(item.totalCostUsd.round())}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                          color: context.brandPrimary,
-                        ),
-                      ),
-                    ],
-                    if (item.totalCostCny > 0) ...[
-                      if (item.totalCostUsd > 0) const SizedBox(width: 10),
-                      Text(
-                        '¥${money.format(item.totalCostCny.round())}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: Color(0xFF555555),
-                        ),
-                      ),
-                    ],
-                    if (item.totalCostRub > 0) ...[
-                      if (item.totalCostUsd > 0 || item.totalCostCny > 0)
-                        const SizedBox(width: 10),
-                      Text(
-                        '${money.format(item.totalCostRub.round())} ₽',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: Color(0xFF333333),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 92),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A000000),
+              blurRadius: 26,
+              offset: Offset(3, 4),
             ),
-          ),
-
-          // ── Баннер бонусных кг ──
-          if (hasBonusForThisInvoice) ...[
-            const SizedBox(height: 10),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.shade200),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 38,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.invoiceNumber,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontSize: 16,
+                            height: 19 / 16,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF2F2F2F),
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Opacity(
+                          opacity: 0.5,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _InvoiceCardDate(
+                                icon: Icons.add_circle_outline_rounded,
+                                text: createdText,
+                              ),
+                              const SizedBox(width: 10),
+                              _InvoiceCardDate(
+                                icon: Icons.update_rounded,
+                                text: updatedText,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _InvoiceCardStatusPill(
+                    text: item.statusName ?? item.status,
+                    color: statusColor,
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 24,
               child: Row(
                 children: [
-                  Icon(
-                    Icons.redeem_rounded,
-                    color: Colors.green.shade700,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'У вас ${bonusBalance.toStringAsFixed(2)} бонусных кг',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green.shade800,
+                      amountText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Gilroy',
+                        fontSize: 16,
+                        height: 19 / 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF000000),
+                        letterSpacing: 0,
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () =>
-                        _openDetail(context, bonusBalance, maxBonusPct),
-                    child: Text(
-                      'Применить →',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.green.shade700,
-                      ),
-                    ),
+                  const SizedBox(width: 12),
+                  _InvoiceCardActionButton(
+                    label: _isNavigatingToPayment ? '...' : actionText,
+                    onTap: _isUnpaid
+                        ? () => _goToPayment(context)
+                        : () => _openDetail(context, bonusBalance, maxBonusPct),
                   ),
                 ],
               ),
             ),
           ],
-
-          // ── Кнопки ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () =>
-                        _openDetail(context, bonusBalance, maxBonusPct),
-                    child: const Text('Открыть'),
-                  ),
-                ),
-                if (_isUnpaid) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _goToPayment(context),
-                      child: const Text('Оплатить'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  List<Widget> _buildDateRows(InvoiceItem item, DateFormat df) {
-    final rows = <Widget>[];
+  String _formatListDate(DateTime? date) {
+    if (date == null) return '--.--.--';
+    return DateFormat('dd.MM.yy', 'ru').format(date);
+  }
+}
 
-    void addRow(String label, DateTime dt) {
-      rows.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Row(
-            children: [
-              Text(
-                '$label: ',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
-              ),
-              Text(
-                df.format(dt),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF444444),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+class _InvoiceCardDate extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InvoiceCardDate({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: const Color(0xFF2F2F2F)),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 12,
+            height: 14 / 12,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF2F2F2F),
+            letterSpacing: 0,
           ),
         ),
-      );
-    }
+      ],
+    );
+  }
+}
 
-    if (item.createdAt != null) addRow('Создан', item.createdAt!);
-    if (item.paidAt != null) addRow('Оплачен', item.paidAt!);
+class _InvoiceCardStatusPill extends StatelessWidget {
+  final String text;
+  final Color? color;
 
-    return rows;
+  const _InvoiceCardStatusPill({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final background = color ?? context.brandPrimary.withValues(alpha: 0.18);
+    return Container(
+      height: 34,
+      constraints: const BoxConstraints(minWidth: 72, maxWidth: 128),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 14,
+          height: 16 / 14,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF000000),
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceCardActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _InvoiceCardActionButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 24,
+          width: 190,
+          constraints: const BoxConstraints(maxWidth: 190),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: context.brandPrimary, width: 0.5),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Gilroy',
+              fontSize: 12,
+              height: 14 / 12,
+              fontWeight: FontWeight.w400,
+              color: Color(0xFF2F2F2F),
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1076,6 +1140,29 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       widget.item.status.toLowerCase() == 'unpaid' ||
       widget.item.status.toLowerCase() == 'pending';
 
+  List<PhotoItem> _scalePhotoItems(InvoiceItem item) {
+    final date = item.updatedAt ?? item.createdAt ?? DateTime.now();
+    return item.scalePhotoUrls
+        .map((url) => PhotoItem(url: ApiConfig.getMediaUrl(url), date: date))
+        .toList(growable: false);
+  }
+
+  void _openScalePhoto(InvoiceItem item, int index) {
+    final photos = _scalePhotoItems(item);
+    if (index < 0 || index >= photos.length) return;
+
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(
+          item: photos[index],
+          allPhotos: photos,
+          initialIndex: index,
+        ),
+      ),
+    );
+  }
+
   Future<void> _applyBonusKg() async {
     final item = widget.item;
     final kg = double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.'));
@@ -1086,7 +1173,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       widget.bonusBalance,
     );
     if (kg > maxKg) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Text('Максимум: ${maxKg.toStringAsFixed(2)} кг'),
           backgroundColor: Colors.red.shade600,
@@ -1107,7 +1195,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       _bonusKgCtrl.clear();
       widget.onBonusApplied();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(
             content: Text('Применено ${kg.toStringAsFixed(2)} бонусных кг'),
             backgroundColor: Colors.green.shade600,
@@ -1118,7 +1207,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           const SnackBar(
             content: Text('Ошибка применения бонуса'),
             backgroundColor: Colors.red,
@@ -1206,7 +1296,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                                     Clipboard.setData(
                                       ClipboardData(text: item.invoiceNumber),
                                     );
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    AppToast.showFromSnackBar(
+                                      context,
                                       const SnackBar(
                                         content: Text('Номер скопирован'),
                                       ),
@@ -1308,25 +1399,34 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: item.scalePhotoUrls.length,
+                              addAutomaticKeepAlives: false,
+                              addSemanticIndexes: false,
                               separatorBuilder: (_, _) =>
                                   const SizedBox(width: 8),
                               itemBuilder: (context, index) {
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    ApiConfig.getMediaUrl(
-                                      item.scalePhotoUrls[index],
-                                    ),
-                                    width: 100,
-                                    height: 100,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Container(
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => _openScalePhoto(item, index),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      ApiConfig.getMediaUrl(
+                                        item.scalePhotoUrls[index],
+                                      ),
                                       width: 100,
                                       height: 100,
-                                      color: const Color(0xFFEEEEEE),
-                                      child: const Icon(
-                                        Icons.broken_image,
-                                        color: Colors.grey,
+                                      cacheWidth: 240,
+                                      cacheHeight: 240,
+                                      fit: BoxFit.cover,
+                                      filterQuality: FilterQuality.low,
+                                      errorBuilder: (_, _, _) => Container(
+                                        width: 100,
+                                        height: 100,
+                                        color: const Color(0xFFEEEEEE),
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          color: Colors.grey,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1346,7 +1446,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                             child: Image.network(
                               ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
                               width: double.infinity,
+                              cacheWidth: 1200,
                               fit: BoxFit.cover,
+                              filterQuality: FilterQuality.low,
                               errorBuilder: (_, _, _) => Container(
                                 height: 120,
                                 color: const Color(0xFFEEEEEE),
@@ -1609,37 +1711,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                                           RegExp(r'^\d+[.,]?\d*'),
                                         ),
                                       ],
-                                      decoration: InputDecoration(
+                                      decoration: appInputDecoration(
+                                        context,
                                         hintText:
                                             'Кол-во кг (макс ${maxKg.toStringAsFixed(2)})',
-                                        filled: true,
                                         fillColor: Colors.white,
                                         isDense: true,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.green.shade300,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.green.shade600,
-                                            width: 2,
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.green.shade300,
-                                          ),
-                                        ),
+                                        borderColor: Colors.green.shade300,
+                                        focusedBorderColor:
+                                            Colors.green.shade600,
+                                        focusedWidth: 2,
                                         contentPadding:
                                             const EdgeInsets.symmetric(
                                               horizontal: 12,

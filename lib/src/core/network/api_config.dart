@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
-
 /// Конфигурация API
 class ApiConfig {
   // The user app is used in Russia and does not need the China proxy. Mobile
@@ -42,10 +40,6 @@ class ApiConfig {
   static String getMediaUrl(String path) {
     if (path.isEmpty) return '';
 
-    if (kDebugMode) {
-      print('📸 getMediaUrl input: "$path"');
-    }
-
     if (path.startsWith('http://') || path.startsWith('https://')) {
       // Заменяем старый backend-домен на актуальный публичный хост.
       var result = rewriteToCurrentHost(path);
@@ -53,9 +47,6 @@ class ApiConfig {
       // Преобразуем /uploads/ → /api/uploads/ для надёжной работы на всех платформах
       if (result.contains('/uploads/') && !result.contains('/api/uploads/')) {
         result = result.replaceFirst('/uploads/', '/api/uploads/');
-      }
-      if (kDebugMode) {
-        print('📸 getMediaUrl output (absolute): "$result"');
       }
       return result;
     }
@@ -65,18 +56,10 @@ class ApiConfig {
 
     // Используем API endpoint для всех платформ (включая iOS)
     if (cleanPath.startsWith('uploads/')) {
-      final result = '$mediaBaseUrl/api/$cleanPath';
-      if (kDebugMode) {
-        print('📸 getMediaUrl output (uploads path): "$result"');
-      }
-      return result;
+      return '$mediaBaseUrl/api/$cleanPath';
     }
 
-    final result = '$mediaBaseUrl/$cleanPath';
-    if (kDebugMode) {
-      print('📸 getMediaUrl output (other path): "$result"');
-    }
-    return result;
+    return '$mediaBaseUrl/$cleanPath';
   }
 
   /// Таймауты для запросов.

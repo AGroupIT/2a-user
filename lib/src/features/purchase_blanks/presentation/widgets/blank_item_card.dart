@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/network/api_config.dart';
 import '../../../../core/ui/app_colors.dart';
 import '../../data/purchase_blank_model.dart';
+import '../purchase_blank_ui.dart';
 
 /// Карточка товара в бланке
 class BlankItemCard extends StatelessWidget {
@@ -23,20 +24,8 @@ class BlankItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: PurchaseBlankUi.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -58,7 +47,9 @@ class BlankItemCard extends StatelessWidget {
                   child: Text(
                     '${item.orderNumber}',
                     style: TextStyle(
+                      fontFamily: 'Gilroy',
                       fontSize: 13,
+                      height: 15 / 13,
                       fontWeight: FontWeight.w700,
                       color: context.brandPrimary,
                     ),
@@ -72,7 +63,11 @@ class BlankItemCard extends StatelessWidget {
                     children: [
                       Text(
                         item.productName,
-                        style: theme.textTheme.titleSmall?.copyWith(
+                        style: const TextStyle(
+                          color: PurchaseBlankUi.textColor,
+                          fontFamily: 'Gilroy',
+                          fontSize: 15,
+                          height: 18 / 15,
                           fontWeight: FontWeight.w700,
                         ),
                         maxLines: 2,
@@ -85,7 +80,9 @@ class BlankItemCard extends StatelessWidget {
                           child: Text(
                             item.productUrl,
                             style: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 12,
+                              height: 14 / 12,
                               color: Colors.blue.shade600,
                               decoration: TextDecoration.underline,
                             ),
@@ -209,8 +206,11 @@ class BlankItemCard extends StatelessWidget {
                 ),
                 child: Text(
                   item.characteristics!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade700,
+                  style: const TextStyle(
+                    color: PurchaseBlankUi.mutedTextColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12,
+                    height: 15 / 12,
                   ),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -260,7 +260,9 @@ class BlankItemCard extends StatelessWidget {
                     Text(
                       item.trackNumber!,
                       style: TextStyle(
+                        fontFamily: 'Gilroy',
                         fontSize: 12,
+                        height: 14 / 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey.shade700,
                       ),
@@ -271,7 +273,9 @@ class BlankItemCard extends StatelessWidget {
                     Text(
                       'Комиссия: ¥${item.commission!.toStringAsFixed(2)}',
                       style: TextStyle(
+                        fontFamily: 'Gilroy',
                         fontSize: 12,
+                        height: 14 / 12,
                         color: Colors.grey.shade600,
                       ),
                     ),
@@ -281,7 +285,9 @@ class BlankItemCard extends StatelessWidget {
                     Text(
                       'Итог: ¥${item.itemTotal!.toStringAsFixed(2)}',
                       style: TextStyle(
+                        fontFamily: 'Gilroy',
                         fontSize: 13,
+                        height: 15 / 13,
                         fontWeight: FontWeight.w700,
                         color: context.brandPrimary,
                       ),
@@ -303,7 +309,9 @@ class BlankItemCard extends StatelessWidget {
                   Text(
                     'Трек и комиссия заполняются сотрудником',
                     style: TextStyle(
+                      fontFamily: 'Gilroy',
                       fontSize: 11,
+                      height: 13 / 11,
                       color: Colors.grey.shade400,
                       fontStyle: FontStyle.italic,
                     ),
@@ -355,7 +363,9 @@ class _InfoChip extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
+                fontFamily: 'Gilroy',
                 fontSize: 10,
+                height: 12 / 10,
                 fontWeight: FontWeight.w500,
                 color: Colors.grey.shade500,
               ),
@@ -364,10 +374,16 @@ class _InfoChip extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
+                fontFamily: 'Gilroy',
                 fontSize: 13,
+                height: 15 / 13,
                 fontWeight: FontWeight.w700,
-                color: highlighted ? context.brandPrimary : Colors.black87,
+                color: highlighted
+                    ? context.brandPrimary
+                    : PurchaseBlankUi.textColor,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

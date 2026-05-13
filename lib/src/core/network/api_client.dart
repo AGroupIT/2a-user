@@ -299,8 +299,24 @@ class ApiClient {
       responseHeader: false,
       responseBody: true,
       error: true,
-      logPrint: (object) => debugPrint(object.toString()),
+      logPrint: (object) => debugPrint(_sanitizeLogLine(object.toString())),
     );
+  }
+
+  String _sanitizeLogLine(String message) {
+    return message
+        .replaceAll(
+          RegExp(r'(Authorization:\s*Bearer\s+)[^\s,}]+', caseSensitive: false),
+          r'$1<redacted>',
+        )
+        .replaceAll(
+          RegExp(r'("token"\s*:\s*")[^"]+(")', caseSensitive: false),
+          r'$1<redacted>$2',
+        )
+        .replaceAll(
+          RegExp(r'(token:\s*)[^,\n}]+', caseSensitive: false),
+          r'$1<redacted>',
+        );
   }
 
   // Token management

@@ -212,6 +212,45 @@ final invoicesCountProvider = FutureProvider.family<int, String>((
   }
 });
 
+/// Количество счетов, созданных за последние 7 дней.
+final invoicesWeeklyCountProvider = FutureProvider.family<int, String>((
+  ref,
+  clientCode,
+) async {
+  final weekStart = DateTime.now().subtract(const Duration(days: 7));
+  if (ref.watch(demoModeProvider)) {
+    return DemoData.invoices
+        .where(
+          (invoice) =>
+              invoice.createdAt != null &&
+              !invoice.createdAt!.isBefore(weekStart),
+        )
+        .length;
+  }
+  final apiClient = ref.read(apiClientProvider);
+
+  try {
+    final response = await apiClient.get(
+      '/invoices',
+      queryParameters: {
+        'clientCode': clientCode,
+        'take': 1,
+        'dateFrom': weekStart.toUtc().toIso8601String(),
+        'sortBy': 'createdAt',
+      },
+    );
+
+    if (response.statusCode == 200 && response.data != null) {
+      final data = response.data as Map<String, dynamic>;
+      return data['total'] as int? ?? 0;
+    }
+    return 0;
+  } on DioException catch (e) {
+    debugPrint('Error loading weekly invoices count: $e');
+    return 0;
+  }
+});
+
 /// Провайдер для получения одного счёта по ID (для актуальных данных в чате)
 final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((
   ref,

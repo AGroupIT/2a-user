@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/demo_mode_provider.dart';
+import 'app_colors.dart';
 
 /// Persistent top banner shown while demo mode is active.
 /// Styled like the app's floating SnackBar notifications.
@@ -20,21 +21,21 @@ class DemoModeBanner extends ConsumerWidget {
       right: 0,
       top: 0,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: [Color(0xFFFE3301), Color(0xFFFF8800)],
+            colors: [context.brandPrimary, context.brandSecondary],
           ),
-          borderRadius: BorderRadius.only(
+          borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(16),
             bottomRight: Radius.circular(16),
           ),
           boxShadow: [
             BoxShadow(
-              color: Color(0x33FE3301),
+              color: context.brandPrimary.withValues(alpha: 0.2),
               blurRadius: 12,
-              offset: Offset(0, 4),
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -69,7 +70,10 @@ class DemoModeBanner extends ConsumerWidget {
             GestureDetector(
               onTap: () => ref.read(demoModeProvider.notifier).disable(),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(20),

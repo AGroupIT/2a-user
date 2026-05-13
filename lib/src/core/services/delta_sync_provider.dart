@@ -137,7 +137,7 @@ void _handleDeltaType(Ref ref, String type) {
       return;
 
     case 'notifications':
-      ref.read(notificationsControllerProvider.notifier).refresh();
+      ref.read(notificationsControllerProvider.notifier).refreshDebounced();
       return;
   }
 }

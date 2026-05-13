@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
@@ -70,34 +71,36 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
         TutorialStep(
           icon: Icons.add_box_rounded,
           title: 'Добавить треки',
-          description: 'Вставьте трек-номера — по одному или сразу несколько через новую строку.',
+          description:
+              'Вставьте трек-номера — по одному или сразу несколько через новую строку.',
         ),
         TutorialStep(
           icon: Icons.playlist_add_check_rounded,
           title: 'Несколько треков',
-          description: 'Каждый трек-номер на отдельной строке. Нажмите кнопку «Добавить» — треки сохранятся и появятся в разделе «Треки».',
+          description:
+              'Каждый трек-номер на отдельной строке. Нажмите кнопку «Добавить» — треки сохранятся и появятся в разделе «Треки».',
         ),
       ],
       child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              topPad * 0.7 + 16,
-              16,
-              100 + bottomPad + MediaQuery.of(context).viewInsets.bottom,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          topPad * 0.7 + 16,
+          16,
+          100 + bottomPad + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Добавить треки',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-              Text(
-                'Добавить треки',
-                style: Theme.of(
-                  context,
-                ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 18),
-              Builder(
-                builder: (_) {
-                  final w = Container(
+            const SizedBox(height: 18),
+            Builder(
+              builder: (_) {
+                final w = Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -114,114 +117,107 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                      'Введите трек-номера',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'По одному в строке или через запятую',
-                      style: TextStyle(color: Color(0xFF999999), fontSize: 13),
-                    ),
-                    const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(1.5),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12.5),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: TextField(
-                    controller: _ctrl,
-                    minLines: 6,
-                    maxLines: 10,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Пример:\nTRACK123456\nTRACK789012\nTRACK345678',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF999999),
-                        fontWeight: FontWeight.w400,
+                        'Введите трек-номера',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      const SizedBox(height: 4),
+                      const Text(
+                        'По одному в строке или через запятую',
+                        style: TextStyle(
+                          color: Color(0xFF999999),
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: Colors.red.shade700,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _error!,
-                          style: TextStyle(
-                            color: Colors.red.shade700,
-                            fontSize: 13,
+                      const SizedBox(height: 12),
+                      AppGradientInputFrame(
+                        child: TextField(
+                          controller: _ctrl,
+                          minLines: 6,
+                          maxLines: 10,
+                          decoration: const InputDecoration(
+                            hintText:
+                                'Пример:\nTRACK123456\nTRACK789012\nTRACK345678',
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF999999),
+                              fontWeight: FontWeight.w400,
+                            ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline_rounded,
+                                color: Colors.red.shade700,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: TextStyle(
+                                    color: Colors.red.shade700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _submitting
+                            ? null
+                            : () => _submit(clientCode),
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Добавить треки'),
+                      ),
                     ],
                   ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _submitting ? null : () => _submit(clientCode),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Добавить треки'),
+                );
+                return w;
+              },
+            ),
+            if (_result != null) ...[
+              const SizedBox(height: 18),
+              _ResultCard(
+                result: _result!,
+                onClose: () => setState(() => _result = null),
               ),
             ],
-          ),
-        );
-                  return w;
-                },
-              ),
-              if (_result != null) ...[
-                const SizedBox(height: 18),
-                _ResultCard(
-                  result: _result!,
-                  onClose: () => setState(() => _result = null),
-                ),
-              ],
-            ],
-          ),
-        ));
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _submit(String clientCode) async {
@@ -260,7 +256,9 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
       if (!mounted) return;
 
-      debugPrint('✅ Tracks added: ${res.added}, skipped: ${res.skipped.length}');
+      debugPrint(
+        '✅ Tracks added: ${res.added}, skipped: ${res.skipped.length}',
+      );
 
       setState(() {
         _result = res;
@@ -293,7 +291,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
 
       // Показать SnackBar с ошибкой
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(
             content: Row(
               children: [
@@ -313,7 +312,9 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
             ),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -331,7 +332,8 @@ class _AddTracksScreenState extends ConsumerState<AddTracksScreen> {
         ? 'Добавлено: ${result.added}, не добавлено: ${result.skipped.length}'
         : 'Успешно добавлено ${result.added} треков';
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Row(
           children: [

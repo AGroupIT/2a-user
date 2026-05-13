@@ -6,7 +6,7 @@ class NewsItem {
   final String title;
   final String excerpt;
 
-  /// Markdown content for rich text rendering (converted from Delta if needed)
+  /// Raw article content. It may be Quill Delta JSON or plain text.
   final String content;
   final DateTime publishedAt;
 
@@ -32,15 +32,11 @@ class NewsItem {
     }
 
     final rawContent = json['content'] as String? ?? '';
-    
-    // Конвертируем Delta JSON в Markdown если нужно
-    final content = DeltaConverter.toMarkdown(rawContent);
-
     return NewsItem(
       slug: json['id'].toString(),
       title: json['title'] as String? ?? '',
-      excerpt: _extractExcerpt(content),
-      content: content,
+      excerpt: _extractExcerpt(rawContent),
+      content: rawContent,
       publishedAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
@@ -50,8 +46,10 @@ class NewsItem {
 
   /// Извлекает первые ~150 символов для превью
   static String _extractExcerpt(String content) {
+    final plainText = DeltaConverter.toPlainText(content);
+
     // Убираем markdown разметку для чистого текста
-    final cleaned = content
+    final cleaned = plainText
         .replaceAll(RegExp(r'#{1,6}\s*'), '') // заголовки
         .replaceAll(RegExp(r'\*{1,2}'), '') // bold/italic
         .replaceAll(RegExp(r'`{1,3}'), '') // code

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/ui/app_colors.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -68,15 +70,11 @@ class _SplashScreenState extends State<SplashScreen>
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: context.brandGradient,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFfe3301).withValues(alpha: 0.3),
+                      color: context.brandPrimary.withValues(alpha: 0.3),
                       blurRadius: 30,
                       offset: const Offset(0, 10),
                     ),
@@ -95,7 +93,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Loading indicator
               SizedBox(
                 width: 32,
@@ -103,12 +101,12 @@ class _SplashScreenState extends State<SplashScreen>
                 child: CircularProgressIndicator(
                   strokeWidth: 3,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    const Color(0xFFfe3301).withValues(alpha: 0.7),
+                    context.brandPrimary.withValues(alpha: 0.7),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Loading text
               const Text(
                 'Загрузка...',

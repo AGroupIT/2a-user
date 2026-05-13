@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,7 +13,11 @@ class MoreSheet extends ConsumerWidget {
 
   void _go(BuildContext context, String route) {
     Navigator.of(context).pop();
-    context.push(route);
+    if (route == '/support') {
+      context.go(route);
+    } else {
+      context.push(route);
+    }
   }
 
   @override
@@ -131,7 +136,6 @@ class MoreSheet extends ConsumerWidget {
                       // Захватываем context-зависимые объекты ДО async-разрыва
                       final nav = Navigator.of(context);
                       final router = GoRouter.of(context);
-                      final messenger = ScaffoldMessenger.of(context);
                       final brandColor = context.brandPrimary;
 
                       final svc = ref.read(showcaseServiceProvider);
@@ -140,12 +144,16 @@ class MoreSheet extends ConsumerWidget {
                       for (final block in ShowcaseBlock.values) {
                         ref.invalidate(showcaseBlockProvider(block));
                       }
-                      ref.read(showcaseTutorialResetProvider.notifier).trigger();
+                      ref
+                          .read(showcaseTutorialResetProvider.notifier)
+                          .trigger();
                       ref.read(demoModeProvider.notifier).enable();
 
+                      if (!context.mounted) return;
                       nav.pop();
                       router.go('/');
-                      messenger.showSnackBar(
+                      AppToast.showFromSnackBar(
+                        context,
                         SnackBar(
                           content: const Text('Обучение запущено заново'),
                           backgroundColor: brandColor,

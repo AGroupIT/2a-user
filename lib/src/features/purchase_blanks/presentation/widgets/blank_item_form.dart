@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/network/api_config.dart';
 import '../../../../core/ui/app_colors.dart';
+import '../../../../core/ui/app_input_decoration.dart';
 import '../../data/purchase_blank_model.dart';
+import '../purchase_blank_ui.dart';
 
 /// Форма добавления / редактирования товара в бланке
 class BlankItemForm extends StatefulWidget {
@@ -123,21 +125,10 @@ class _BlankItemFormState extends State<BlankItemForm> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isEditing = widget.existingItem != null;
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: PurchaseBlankUi.cardDecoration(),
       padding: const EdgeInsets.all(16),
       child: Form(
         key: _formKey,
@@ -155,9 +146,7 @@ class _BlankItemFormState extends State<BlankItemForm> {
                 const SizedBox(width: 8),
                 Text(
                   isEditing ? 'Редактирование товара' : 'Новый товар',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: PurchaseBlankUi.sectionTitleStyle,
                 ),
                 const Spacer(),
                 if (widget.onCancel != null)
@@ -246,10 +235,8 @@ class _BlankItemFormState extends State<BlankItemForm> {
             // ── Фото ──────────────────────
             Text(
               'Фото товара',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
+              style: PurchaseBlankUi.bodyStyle.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
@@ -318,8 +305,10 @@ class _BlankItemFormState extends State<BlankItemForm> {
                     : Text(
                         isEditing ? 'Сохранить' : 'Добавить товар',
                         style: const TextStyle(
+                          fontFamily: 'Gilroy',
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
+                          height: 18 / 15,
                         ),
                       ),
               ),
@@ -359,10 +348,12 @@ class _FormField extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
+            color: PurchaseBlankUi.mutedTextColor,
+            fontFamily: 'Gilroy',
             fontSize: 13,
+            height: 15 / 13,
             fontWeight: FontWeight.w600,
-            color: Colors.grey.shade700,
           ),
         ),
         const SizedBox(height: 4),
@@ -372,33 +363,29 @@ class _FormField extends StatelessWidget {
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
           validator: validator,
-          style: const TextStyle(fontSize: 15),
-          decoration: InputDecoration(
+          style: const TextStyle(
+            color: PurchaseBlankUi.textColor,
+            fontFamily: 'Gilroy',
+            fontSize: 15,
+            height: 18 / 15,
+          ),
+          decoration: appInputDecoration(
+            context,
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            hintStyle: const TextStyle(
+              color: Color(0x662F2F2F),
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              height: 16 / 14,
+            ),
             isDense: true,
+            fillColor: context.brandPrimary.withValues(alpha: 0.05),
+            borderColor: Colors.grey.shade200,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 10,
             ),
-            filled: true,
-            fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: context.brandPrimary, width: 1.5),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Colors.red),
-            ),
+            errorBorderColor: Colors.red,
           ),
         ),
       ],

@@ -652,6 +652,7 @@ class AuthNotifier extends Notifier<AuthState> {
     inv(photosRecentProvider);
     inv(photosDaysProvider);
     inv(photosByDateProvider);
+    inv(paginatedPhotosProvider);
     inv(photosSearchProvider);
 
     // Notifications

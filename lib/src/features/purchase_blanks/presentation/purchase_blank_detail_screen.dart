@@ -1,13 +1,17 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../data/purchase_blank_model.dart';
 import '../data/purchase_blanks_provider.dart';
+import 'purchase_blank_ui.dart';
 import 'widgets/blank_item_card.dart';
 import 'widgets/blank_item_form.dart';
 import 'widgets/blank_status_badge.dart';
@@ -42,8 +46,8 @@ class _PurchaseBlankDetailScreenState
             Text('Ошибка загрузки: $e'),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: () => ref.invalidate(
-                  purchaseBlankDetailProvider(widget.blankId)),
+              onPressed: () =>
+                  ref.invalidate(purchaseBlankDetailProvider(widget.blankId)),
               child: const Text('Повторить'),
             ),
           ],
@@ -51,9 +55,7 @@ class _PurchaseBlankDetailScreenState
       ),
       data: (blank) {
         if (blank == null) {
-          return const Center(
-            child: Text('Бланк не найден'),
-          );
+          return const Center(child: Text('Бланк не найден'));
         }
         return _buildContent(context, blank);
       },
@@ -61,28 +63,33 @@ class _PurchaseBlankDetailScreenState
   }
 
   Widget _buildContent(BuildContext context, PurchaseBlank blank) {
-    final theme = Theme.of(context);
     final isEditable = blank.status.isEditableByClient;
     final isCancellable = blank.status.isCancellableByClient;
+    final topPad = AppLayout.topBarTotalHeight(context);
+    final bottomPad = AppLayout.bottomScrollPadding(context);
 
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(purchaseBlankDetailProvider(widget.blankId));
+        await ref.read(purchaseBlankDetailProvider(widget.blankId).future);
       },
       color: context.brandPrimary,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 70, 16, 100),
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad + 16),
         children: [
-          // ── Заголовок ────────────────────────────────
-          _buildHeaderSection(context, theme, blank),
-          const SizedBox(height: 20),
+          AppPageHeader(title: 'Бланк #${blank.id}', showBack: true),
+          const SizedBox(height: 15),
+
+          // ── Сводка ──────────────────────────────────
+          _buildHeaderSection(context, blank),
+          const SizedBox(height: 15),
 
           // ── Финансовая информация ────────────────────
-          _buildFinanceSection(context, theme, blank),
-          const SizedBox(height: 20),
+          _buildFinanceSection(context, blank),
+          const SizedBox(height: 15),
 
           // ── Список товаров ───────────────────────────
-          _buildItemsHeader(context, theme, blank, isEditable),
+          _buildItemsHeader(context, blank, isEditable),
           const SizedBox(height: 10),
 
           ...blank.items.map((item) {
@@ -91,27 +98,28 @@ class _PurchaseBlankDetailScreenState
                 padding: const EdgeInsets.only(bottom: 12),
                 child: BlankItemForm(
                   existingItem: item,
-                  onSave: ({
-                    required String productName,
-                    required String productUrl,
-                    String? characteristics,
-                    required int quantity,
-                    required double unitPrice,
-                    List<Uint8List>? newPhotos,
-                    List<String>? newPhotoNames,
-                  }) async {
-                    await _updateItem(
-                      blank.id,
-                      item.id,
-                      productName: productName,
-                      productUrl: productUrl,
-                      characteristics: characteristics,
-                      quantity: quantity,
-                      unitPrice: unitPrice,
-                      newPhotos: newPhotos,
-                      newPhotoNames: newPhotoNames,
-                    );
-                  },
+                  onSave:
+                      ({
+                        required String productName,
+                        required String productUrl,
+                        String? characteristics,
+                        required int quantity,
+                        required double unitPrice,
+                        List<Uint8List>? newPhotos,
+                        List<String>? newPhotoNames,
+                      }) async {
+                        await _updateItem(
+                          blank.id,
+                          item.id,
+                          productName: productName,
+                          productUrl: productUrl,
+                          characteristics: characteristics,
+                          quantity: quantity,
+                          unitPrice: unitPrice,
+                          newPhotos: newPhotos,
+                          newPhotoNames: newPhotoNames,
+                        );
+                      },
                   onCancel: () => setState(() => _editingItemId = null),
                 ),
               );
@@ -130,26 +138,27 @@ class _PurchaseBlankDetailScreenState
           // ── Форма добавления товара ──────────────────
           if (_showAddForm && isEditable) ...[
             BlankItemForm(
-              onSave: ({
-                required String productName,
-                required String productUrl,
-                String? characteristics,
-                required int quantity,
-                required double unitPrice,
-                List<Uint8List>? newPhotos,
-                List<String>? newPhotoNames,
-              }) async {
-                await _addItem(
-                  blank.id,
-                  productName: productName,
-                  productUrl: productUrl,
-                  characteristics: characteristics,
-                  quantity: quantity,
-                  unitPrice: unitPrice,
-                  newPhotos: newPhotos,
-                  newPhotoNames: newPhotoNames,
-                );
-              },
+              onSave:
+                  ({
+                    required String productName,
+                    required String productUrl,
+                    String? characteristics,
+                    required int quantity,
+                    required double unitPrice,
+                    List<Uint8List>? newPhotos,
+                    List<String>? newPhotoNames,
+                  }) async {
+                    await _addItem(
+                      blank.id,
+                      productName: productName,
+                      productUrl: productUrl,
+                      characteristics: characteristics,
+                      quantity: quantity,
+                      unitPrice: unitPrice,
+                      newPhotos: newPhotos,
+                      newPhotoNames: newPhotoNames,
+                    );
+                  },
               onCancel: () => setState(() => _showAddForm = false),
             ),
             const SizedBox(height: 16),
@@ -188,38 +197,29 @@ class _PurchaseBlankDetailScreenState
 
   // ── Заголовок ──────────────────────────────────────────────
 
-  Widget _buildHeaderSection(
-      BuildContext context, ThemeData theme, PurchaseBlank blank) {
+  Widget _buildHeaderSection(BuildContext context, PurchaseBlank blank) {
     final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: PurchaseBlankUi.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: context.brandPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                alignment: Alignment.center,
                 child: Icon(
                   Icons.description_rounded,
                   color: context.brandPrimary,
-                  size: 24,
+                  size: 22,
                 ),
               ),
               const SizedBox(width: 12),
@@ -227,17 +227,25 @@ class _PurchaseBlankDetailScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Бланк #${blank.id}',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    const Text(
+                      'Дата создания',
+                      style: TextStyle(
+                        color: PurchaseBlankUi.mutedTextColor,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12,
+                        height: 14 / 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
-                      'Создан: ${dateFormat.format(blank.createdAt)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade600,
+                      dateFormat.format(blank.createdAt),
+                      style: const TextStyle(
+                        color: PurchaseBlankUi.textColor,
+                        fontFamily: 'Gilroy',
+                        fontSize: 15,
+                        height: 18 / 15,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -251,8 +259,7 @@ class _PurchaseBlankDetailScreenState
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(10),
@@ -261,14 +268,19 @@ class _PurchaseBlankDetailScreenState
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.comment_rounded,
-                      size: 16, color: Colors.blue.shade700),
+                  Icon(
+                    Icons.comment_rounded,
+                    size: 16,
+                    color: Colors.blue.shade700,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       blank.employeeComment!,
                       style: TextStyle(
+                        fontFamily: 'Gilroy',
                         fontSize: 13,
+                        height: 16 / 13,
                         color: Colors.blue.shade700,
                       ),
                     ),
@@ -284,29 +296,16 @@ class _PurchaseBlankDetailScreenState
 
   // ── Финансовая секция ──────────────────────────────────────
 
-  Widget _buildFinanceSection(
-      BuildContext context, ThemeData theme, PurchaseBlank blank) {
+  Widget _buildFinanceSection(BuildContext context, PurchaseBlank blank) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: PurchaseBlankUi.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Финансовая информация',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: PurchaseBlankUi.sectionTitleStyle,
           ),
           const SizedBox(height: 12),
 
@@ -338,8 +337,8 @@ class _PurchaseBlankDetailScreenState
             value: blank.totalAmountCny != null
                 ? '¥${blank.totalAmountCny!.toStringAsFixed(2)}'
                 : (blank.clientTotalCny > 0
-                    ? '≈ ¥${blank.clientTotalCny.toStringAsFixed(2)}'
-                    : '—'),
+                      ? '≈ ¥${blank.clientTotalCny.toStringAsFixed(2)}'
+                      : '—'),
             isEmpty: blank.totalAmountCny == null && blank.clientTotalCny == 0,
             isTotal: true,
           ),
@@ -354,11 +353,13 @@ class _PurchaseBlankDetailScreenState
 
           // Сноска
           const SizedBox(height: 10),
-          Text(
+          const Text(
             '* Данные, отмеченные прочерком, заполняются сотрудником компании',
             style: TextStyle(
+              color: PurchaseBlankUi.mutedTextColor,
+              fontFamily: 'Gilroy',
               fontSize: 11,
-              color: Colors.grey.shade500,
+              height: 14 / 11,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -369,15 +370,16 @@ class _PurchaseBlankDetailScreenState
 
   // ── Заголовок списка товаров ───────────────────────────────
 
-  Widget _buildItemsHeader(BuildContext context, ThemeData theme,
-      PurchaseBlank blank, bool isEditable) {
+  Widget _buildItemsHeader(
+    BuildContext context,
+    PurchaseBlank blank,
+    bool isEditable,
+  ) {
     return Row(
       children: [
         Text(
           'Товары (${blank.itemsCount})',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
+          style: PurchaseBlankUi.sectionTitleStyle,
         ),
         const Spacer(),
         if (isEditable && !_showAddForm)
@@ -387,24 +389,24 @@ class _PurchaseBlankDetailScreenState
               _editingItemId = null;
             }),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: context.brandPrimary.withValues(alpha: 0.1),
+                color: context.brandPrimary,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.add_rounded,
-                      size: 16, color: context.brandPrimary),
+                  Icon(Icons.add_rounded, size: 16, color: Colors.white),
                   const SizedBox(width: 4),
                   Text(
                     'Добавить',
                     style: TextStyle(
+                      fontFamily: 'Gilroy',
                       fontSize: 13,
+                      height: 15 / 13,
                       fontWeight: FontWeight.w600,
-                      color: context.brandPrimary,
+                      color: Colors.white,
                     ),
                   ),
                 ],
@@ -419,39 +421,51 @@ class _PurchaseBlankDetailScreenState
 
   Widget _buildEmptyItemsState(BuildContext context, bool isEditable) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Column(
+      decoration: PurchaseBlankUi.cardDecoration(),
+      padding: const EdgeInsets.all(18),
+      child: Row(
         children: [
-          Icon(Icons.shopping_bag_outlined,
-              size: 48, color: Colors.grey.shade300),
-          const SizedBox(height: 12),
-          Text(
-            'Нет товаров',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade500,
-            ),
+          Icon(
+            Icons.shopping_bag_outlined,
+            size: 28,
+            color: context.brandPrimary,
           ),
-          const SizedBox(height: 4),
-          Text(
-            isEditable
-                ? 'Добавьте первый товар в бланк'
-                : 'Товары ещё не добавлены',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade400,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Нет товаров',
+                  style: TextStyle(
+                    color: PurchaseBlankUi.textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isEditable
+                      ? 'Добавьте первый товар в бланк'
+                      : 'Товары ещё не добавлены',
+                  style: PurchaseBlankUi.bodyStyle.copyWith(
+                    color: PurchaseBlankUi.mutedTextColor,
+                  ),
+                ),
+              ],
             ),
           ),
           if (isEditable) ...[
-            const SizedBox(height: 16),
-            TextButton.icon(
+            const SizedBox(width: 10),
+            IconButton.filled(
               onPressed: () => setState(() => _showAddForm = true),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Добавить товар'),
-              style: TextButton.styleFrom(
-                foregroundColor: context.brandPrimary,
+              style: IconButton.styleFrom(
+                backgroundColor: context.brandPrimary,
+                foregroundColor: Colors.white,
               ),
+              icon: const Icon(Icons.add_rounded),
             ),
           ],
         ],
@@ -462,7 +476,10 @@ class _PurchaseBlankDetailScreenState
   // ── Кнопки действий (черновик) ─────────────────────────────
 
   Widget _buildActionButtons(
-      BuildContext context, PurchaseBlank blank, bool isCancellable) {
+    BuildContext context,
+    PurchaseBlank blank,
+    bool isCancellable,
+  ) {
     return Column(
       children: [
         // Отправить
@@ -476,8 +493,10 @@ class _PurchaseBlankDetailScreenState
               label: const Text(
                 'Отправить бланк',
                 style: TextStyle(
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
+                  height: 18 / 16,
                 ),
               ),
               style: ElevatedButton.styleFrom(
@@ -500,7 +519,10 @@ class _PurchaseBlankDetailScreenState
               icon: const Icon(Icons.cancel_rounded, size: 18),
               label: const Text(
                 'Отменить бланк',
-                style: TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
@@ -519,7 +541,10 @@ class _PurchaseBlankDetailScreenState
   // ── Кнопки для не-черновика ────────────────────────────────
 
   Widget _buildReadOnlyNotice(
-      BuildContext context, PurchaseBlank blank, bool isCancellable) {
+    BuildContext context,
+    PurchaseBlank blank,
+    bool isCancellable,
+  ) {
     if (!isCancellable) return const SizedBox.shrink();
 
     return SizedBox(
@@ -530,7 +555,7 @@ class _PurchaseBlankDetailScreenState
         icon: const Icon(Icons.cancel_rounded, size: 18),
         label: const Text(
           'Отменить бланк',
-          style: TextStyle(fontWeight: FontWeight.w600),
+          style: TextStyle(fontFamily: 'Gilroy', fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.red,
@@ -640,18 +665,24 @@ class _PurchaseBlankDetailScreenState
               children: [
                 const SheetHandle(),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Удалить товар?',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  style: TextStyle(
+                    color: PurchaseBlankUi.textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   'Это действие нельзя отменить',
                   style: TextStyle(
-                    color: Colors.black54,
+                    color: PurchaseBlankUi.mutedTextColor,
+                    fontFamily: 'Gilroy',
                     fontSize: 14,
+                    height: 18 / 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -709,10 +740,14 @@ class _PurchaseBlankDetailScreenState
               children: [
                 const SheetHandle(),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Отправить бланк?',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  style: TextStyle(
+                    color: PurchaseBlankUi.textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -720,8 +755,10 @@ class _PurchaseBlankDetailScreenState
                   'После отправки редактирование будет невозможно. '
                   'Бланк будет передан сотруднику для обработки.',
                   style: TextStyle(
-                    color: Colors.black54,
+                    color: PurchaseBlankUi.mutedTextColor,
+                    fontFamily: 'Gilroy',
                     fontSize: 14,
+                    height: 18 / 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -751,8 +788,9 @@ class _PurchaseBlankDetailScreenState
     );
 
     if (confirmed == true) {
-      final success =
-          await ref.read(purchaseBlanksProvider.notifier).submitBlank(blankId);
+      final success = await ref
+          .read(purchaseBlanksProvider.notifier)
+          .submitBlank(blankId);
       if (mounted) {
         ref.invalidate(purchaseBlankDetailProvider(widget.blankId));
         if (success) {
@@ -782,18 +820,24 @@ class _PurchaseBlankDetailScreenState
               children: [
                 const SheetHandle(),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Отменить бланк?',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  style: TextStyle(
+                    color: PurchaseBlankUi.textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   'Это действие нельзя отменить',
                   style: TextStyle(
-                    color: Colors.black54,
+                    color: PurchaseBlankUi.mutedTextColor,
+                    fontFamily: 'Gilroy',
                     fontSize: 14,
+                    height: 18 / 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -826,8 +870,9 @@ class _PurchaseBlankDetailScreenState
     );
 
     if (confirmed == true) {
-      final success =
-          await ref.read(purchaseBlanksProvider.notifier).cancelBlank(blankId);
+      final success = await ref
+          .read(purchaseBlanksProvider.notifier)
+          .cancelBlank(blankId);
       if (mounted) {
         ref.invalidate(purchaseBlankDetailProvider(widget.blankId));
         if (success) {
@@ -840,7 +885,8 @@ class _PurchaseBlankDetailScreenState
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Row(
           children: [
@@ -864,19 +910,25 @@ class _PurchaseBlankDetailScreenState
                 message,
                 style: const TextStyle(
                   color: Colors.white,
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w600,
+                  fontSize: 14,
                 ),
               ),
             ),
           ],
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor:
-            isError ? const Color(0xFFE53935) : context.brandPrimary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+        backgroundColor: isError
+            ? const Color(0xFFE53935)
+            : context.brandPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          AppLayout.bottomBarObstruction(context) + 12,
         ),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -908,22 +960,27 @@ class _FinanceRow extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
+              fontFamily: 'Gilroy',
               fontSize: isTotal ? 14 : 13,
+              height: isTotal ? 17 / 14 : 16 / 13,
               fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-              color:
-                  isTotal ? Colors.black87 : Colors.grey.shade700,
+              color: isTotal
+                  ? PurchaseBlankUi.textColor
+                  : PurchaseBlankUi.mutedTextColor,
             ),
           ),
           Text(
             value,
             style: TextStyle(
+              fontFamily: 'Gilroy',
               fontSize: isTotal ? 15 : 13,
+              height: isTotal ? 18 / 15 : 16 / 13,
               fontWeight: FontWeight.w700,
               color: isEmpty
                   ? Colors.grey.shade400
                   : (isTotal
-                      ? context.brandPrimary
-                      : Colors.black87),
+                        ? context.brandPrimary
+                        : PurchaseBlankUi.textColor),
             ),
           ),
         ],

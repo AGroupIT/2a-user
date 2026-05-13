@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/agent_domain_resolver.dart';
+import '../../../core/ui/app_colors.dart';
 import '../data/auth_provider.dart';
 
 /// Этапы восстановления пароля
@@ -260,10 +262,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
         // Если есть токен - авторизуем пользователя
         if (token != null && userData != null) {
-          final success = await ref.read(authProvider.notifier).loginWithData(
-            token: token,
-            userData: userData,
-          );
+          final success = await ref
+              .read(authProvider.notifier)
+              .loginWithData(token: token, userData: userData);
 
           if (success && mounted) {
             // Перенаправляем в приложение
@@ -299,7 +300,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
     );
   }
@@ -431,7 +433,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     switch (_currentStep) {
       case ResetStep.enterPhone:
         icon = Icons.lock_reset_rounded;
-        color = const Color(0xFFfe3301);
+        color = context.brandPrimary;
       case ResetStep.waitingCall:
         icon = Icons.phone_callback_rounded;
         color = Colors.blue;
@@ -513,7 +515,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         Container(
           decoration: BoxDecoration(
             border: Border.all(
-              color: hasDomainError ? Colors.red.shade400 : const Color(0xFFE0E0E0),
+              color: hasDomainError
+                  ? Colors.red.shade400
+                  : const Color(0xFFE0E0E0),
             ),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -528,10 +532,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             },
             decoration: InputDecoration(
               hintText: 'example-company',
-              hintStyle: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
+              hintStyle: const TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 14,
+              ),
               prefixIcon: Icon(
                 Icons.business_rounded,
-                color: hasDomainError ? Colors.red.shade400 : const Color(0xFF999999),
+                color: hasDomainError
+                    ? Colors.red.shade400
+                    : const Color(0xFF999999),
                 size: 20,
               ),
               border: InputBorder.none,
@@ -546,10 +555,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           const SizedBox(height: 8),
           Text(
             _domainError!,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.red.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.red.shade600),
           ),
         ],
         const SizedBox(height: 16),
@@ -567,7 +573,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         Container(
           decoration: BoxDecoration(
             border: Border.all(
-              color: hasPhoneError ? Colors.red.shade400 : const Color(0xFFE0E0E0),
+              color: hasPhoneError
+                  ? Colors.red.shade400
+                  : const Color(0xFFE0E0E0),
             ),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -582,10 +590,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             },
             decoration: InputDecoration(
               hintText: '+7 (999) 123-45-67',
-              hintStyle: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
+              hintStyle: const TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 14,
+              ),
               prefixIcon: Icon(
                 Icons.phone_rounded,
-                color: hasPhoneError ? Colors.red.shade400 : const Color(0xFF999999),
+                color: hasPhoneError
+                    ? Colors.red.shade400
+                    : const Color(0xFF999999),
                 size: 20,
               ),
               border: InputBorder.none,
@@ -600,10 +613,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           const SizedBox(height: 8),
           Text(
             _phoneError!,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.red.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.red.shade600),
           ),
         ],
         const SizedBox(height: 20),
@@ -649,12 +659,19 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.amber, size: 16),
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: Colors.amber,
+                      size: 16,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Изменить пароль на постоянный можно в настройках профиля',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF666666)),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF666666),
+                        ),
                       ),
                     ),
                   ],
@@ -788,12 +805,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red.shade600, size: 20),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.red.shade600,
+                size: 20,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Звоните с номера ${_formatPhoneDisplay()}\nИначе звонок не будет засчитан',
-                  style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -1020,16 +1045,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           width: 20,
           height: 20,
           decoration: BoxDecoration(
-            color: const Color(0xFFfe3301).withValues(alpha: 0.1),
+            color: context.brandPrimary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Center(
             child: Text(
               number,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFFfe3301),
+                color: context.brandPrimary,
               ),
             ),
           ),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/services/agent_domain_resolver.dart';
+import '../../../core/ui/app_colors.dart';
 import '../data/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -106,7 +108,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Row(
           children: [
@@ -152,9 +155,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.all(16),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         duration: const Duration(seconds: 5),
@@ -188,11 +189,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFfe3301), Color(0xFFff5f02)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    gradient: context.brandGradient,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Center(
@@ -279,10 +276,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: const Text(
+                        child: Text(
                           'Забыли пароль?',
                           style: TextStyle(
-                            color: Color(0xFFfe3301),
+                            color: context.brandPrimary,
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
                           ),
@@ -325,10 +322,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   GestureDetector(
                     onTap: () => context.push('/register'),
-                    child: const Text(
+                    child: Text(
                       'Подать заявку',
                       style: TextStyle(
-                        color: Color(0xFFfe3301),
+                        color: context.brandPrimary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 
 /// Тип результата оплаты
-enum PaymentResultType {
-  success,
-  fail,
-}
+enum PaymentResultType { success, fail }
 
 /// Обработчик результата оплаты (для deep links)
 class PaymentResultHandler {
@@ -43,9 +41,7 @@ class PaymentResultHandler {
           size: 64,
           color: isSuccess ? Colors.green : Colors.red,
         ),
-        title: Text(
-          isSuccess ? 'Оплата успешна!' : 'Ошибка оплаты',
-        ),
+        title: Text(isSuccess ? 'Оплата успешна!' : 'Ошибка оплаты'),
         content: Text(
           isSuccess
               ? 'Ваш платёж успешно обработан. Спасибо!'
@@ -69,7 +65,8 @@ class PaymentResultHandler {
   ) {
     final isSuccess = result == PaymentResultType.success;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Row(
           children: [
@@ -100,11 +97,7 @@ class PaymentResultScreen extends StatelessWidget {
   final PaymentResultType result;
   final VoidCallback? onClose;
 
-  const PaymentResultScreen({
-    super.key,
-    required this.result,
-    this.onClose,
-  });
+  const PaymentResultScreen({super.key, required this.result, this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -122,8 +115,9 @@ class PaymentResultScreen extends StatelessWidget {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: (isSuccess ? Colors.green : Colors.red)
-                        .withValues(alpha: 0.1),
+                    color: (isSuccess ? Colors.green : Colors.red).withValues(
+                      alpha: 0.1,
+                    ),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -136,8 +130,8 @@ class PaymentResultScreen extends StatelessWidget {
                 Text(
                   isSuccess ? 'Оплата успешна!' : 'Ошибка оплаты',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -145,9 +139,9 @@ class PaymentResultScreen extends StatelessWidget {
                   isSuccess
                       ? 'Ваш платёж успешно обработан.\nБлагодарим за оплату!'
                       : 'К сожалению, платёж не прошёл.\nПопробуйте ещё раз или используйте\nдругой способ оплаты.',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 48),

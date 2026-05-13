@@ -10,10 +10,7 @@ class RegistrationState {
   final bool isLoading;
   final String? error;
 
-  const RegistrationState({
-    this.isLoading = false,
-    this.error,
-  });
+  const RegistrationState({this.isLoading = false, this.error});
 
   RegistrationState copyWith({
     bool? isLoading,
@@ -49,6 +46,7 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     required String email,
     required String password,
     required String confirmPassword,
+    String? agentCode,
     String? referralCode,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
@@ -62,6 +60,8 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
           'email': email.trim().toLowerCase(),
           'password': password,
           'confirmPassword': confirmPassword,
+          if (agentCode != null && agentCode.trim().isNotEmpty)
+            'agentCode': agentCode.trim(),
           if (referralCode != null && referralCode.isNotEmpty)
             'referralCode': referralCode.trim().toUpperCase(),
         },
@@ -73,16 +73,16 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
         final userData = data['user'] as Map<String, dynamic>;
 
         // Автологин — тот же метод что использует сброс пароля
-        await ref.read(authProvider.notifier).loginWithData(
-          token: token,
-          userData: userData,
-        );
+        await ref
+            .read(authProvider.notifier)
+            .loginWithData(token: token, userData: userData);
 
         state = state.copyWith(isLoading: false);
         return true;
       } else {
         final errorMsg =
-            response.data?['error'] as String? ?? 'Не удалось зарегистрироваться';
+            response.data?['error'] as String? ??
+            'Не удалось зарегистрироваться';
         state = state.copyWith(isLoading: false, error: errorMsg);
         return false;
       }
@@ -92,7 +92,8 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
       String errorMessage;
       if (e.response?.statusCode == 409) {
         final msg = e.response?.data?['error'] as String?;
-        errorMessage = msg ?? 'Пользователь с такими данными уже зарегистрирован';
+        errorMessage =
+            msg ?? 'Пользователь с такими данными уже зарегистрирован';
       } else if (e.response?.statusCode == 400) {
         final msg = e.response?.data?['error'] as String?;
         errorMessage = msg ?? 'Проверьте введённые данные';
@@ -104,7 +105,10 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
       return false;
     } catch (e) {
       debugPrint('Register error: $e');
-      state = state.copyWith(isLoading: false, error: 'Произошла ошибка. Попробуйте позже');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Произошла ошибка. Попробуйте позже',
+      );
       return false;
     }
   }
@@ -113,5 +117,5 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
 /// Провайдер состояния регистрации
 final registrationProvider =
     NotifierProvider<RegistrationNotifier, RegistrationState>(
-  RegistrationNotifier.new,
-);
+      RegistrationNotifier.new,
+    );

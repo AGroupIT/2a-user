@@ -3,10 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
+
+const _calcTextColor = Color(0xFF2F2F2F);
+const _calcMutedTextColor = Color(0x992F2F2F);
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -28,7 +33,9 @@ final _tariffsProvider = FutureProvider.autoDispose<List<_Tariff>>((ref) async {
   return list.map((e) => _Tariff.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-final _coefsProvider = FutureProvider.autoDispose<List<_PhotoCoef>>((ref) async {
+final _coefsProvider = FutureProvider.autoDispose<List<_PhotoCoef>>((
+  ref,
+) async {
   final apiClient = ref.read(apiClientProvider);
   final response = await apiClient.get('/photo-report-coefficients');
   final data = response.data as Map<String, dynamic>;
@@ -39,7 +46,9 @@ final _coefsProvider = FutureProvider.autoDispose<List<_PhotoCoef>>((ref) async 
       .toList();
 });
 
-final _packagingsProvider = FutureProvider.autoDispose<List<_Packaging>>((ref) async {
+final _packagingsProvider = FutureProvider.autoDispose<List<_Packaging>>((
+  ref,
+) async {
   final apiClient = ref.read(apiClientProvider);
   final response = await apiClient.get('/packagings');
   final d = response.data;
@@ -56,13 +65,17 @@ class _WeightTier {
   final double minWeight;
   final double maxWeight;
   final double pricePerKg;
-  _WeightTier({required this.minWeight, required this.maxWeight, required this.pricePerKg});
+  _WeightTier({
+    required this.minWeight,
+    required this.maxWeight,
+    required this.pricePerKg,
+  });
 
   factory _WeightTier.fromJson(Map<String, dynamic> j) => _WeightTier(
-        minWeight: (j['minWeight'] as num?)?.toDouble() ?? 0,
-        maxWeight: (j['maxWeight'] as num?)?.toDouble() ?? double.infinity,
-        pricePerKg: (j['pricePerKg'] as num?)?.toDouble() ?? 0,
-      );
+    minWeight: (j['minWeight'] as num?)?.toDouble() ?? 0,
+    maxWeight: (j['maxWeight'] as num?)?.toDouble() ?? double.infinity,
+    pricePerKg: (j['pricePerKg'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 class _DensityTier {
@@ -71,16 +84,27 @@ class _DensityTier {
   final double? clientPricePerKg;
   final double? clientPricePerM3;
 
-  _DensityTier({required this.minDensity, this.maxDensity, this.clientPricePerKg, this.clientPricePerM3});
+  _DensityTier({
+    required this.minDensity,
+    this.maxDensity,
+    this.clientPricePerKg,
+    this.clientPricePerM3,
+  });
 
   bool get isVolumetric => clientPricePerM3 != null;
 
   factory _DensityTier.fromJson(Map<String, dynamic> j) => _DensityTier(
-        minDensity: (j['minDensity'] as num?)?.toDouble() ?? 0,
-        maxDensity: j['maxDensity'] != null ? (j['maxDensity'] as num).toDouble() : null,
-        clientPricePerKg: j['clientPricePerKg'] != null ? (j['clientPricePerKg'] as num).toDouble() : null,
-        clientPricePerM3: j['clientPricePerM3'] != null ? (j['clientPricePerM3'] as num).toDouble() : null,
-      );
+    minDensity: (j['minDensity'] as num?)?.toDouble() ?? 0,
+    maxDensity: j['maxDensity'] != null
+        ? (j['maxDensity'] as num).toDouble()
+        : null,
+    clientPricePerKg: j['clientPricePerKg'] != null
+        ? (j['clientPricePerKg'] as num).toDouble()
+        : null,
+    clientPricePerM3: j['clientPricePerM3'] != null
+        ? (j['clientPricePerM3'] as num).toDouble()
+        : null,
+  );
 }
 
 class _Tariff {
@@ -91,26 +115,36 @@ class _Tariff {
   final List<_WeightTier> weightTiers;
   final List<_DensityTier> densityTiers;
 
-  _Tariff({required this.id, required this.name, required this.baseCost, this.pricingType = 'weight', required this.weightTiers, this.densityTiers = const []});
+  _Tariff({
+    required this.id,
+    required this.name,
+    required this.baseCost,
+    this.pricingType = 'weight',
+    required this.weightTiers,
+    this.densityTiers = const [],
+  });
 
   bool get isDensity => pricingType == 'density';
 
   factory _Tariff.fromJson(Map<String, dynamic> j) => _Tariff(
-        id: (j['id'] is int) ? j['id'] as int : int.tryParse(j['id'].toString()) ?? 0,
-        name: (j['name'] as String?) ?? '',
-        baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
-        pricingType: (j['pricingType'] as String?) ?? 'weight',
-        weightTiers: ((j['weightTiers'] as List?) ?? [])
-            .map((t) => _WeightTier.fromJson(t as Map<String, dynamic>))
-            .toList(),
-        densityTiers: ((j['densityTiers'] as List?) ?? [])
-            .map((t) => _DensityTier.fromJson(t as Map<String, dynamic>))
-            .toList(),
-      );
+    id: (j['id'] is int)
+        ? j['id'] as int
+        : int.tryParse(j['id'].toString()) ?? 0,
+    name: (j['name'] as String?) ?? '',
+    baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
+    pricingType: (j['pricingType'] as String?) ?? 'weight',
+    weightTiers: ((j['weightTiers'] as List?) ?? [])
+        .map((t) => _WeightTier.fromJson(t as Map<String, dynamic>))
+        .toList(),
+    densityTiers: ((j['densityTiers'] as List?) ?? [])
+        .map((t) => _DensityTier.fromJson(t as Map<String, dynamic>))
+        .toList(),
+  );
 
   double priceForWeight(double weight) {
     for (final tier in weightTiers) {
-      if (weight >= tier.minWeight && (tier.maxWeight == double.infinity || weight < tier.maxWeight)) {
+      if (weight >= tier.minWeight &&
+          (tier.maxWeight == double.infinity || weight < tier.maxWeight)) {
         return tier.pricePerKg;
       }
     }
@@ -118,14 +152,25 @@ class _Tariff {
   }
 
   /// Расчёт для тарифа по плотности
-  ({double price, double shipping, String unit}) calcDensity(double weight, double volume, double photoCoef) {
-    if (volume <= 0 || weight <= 0) return (price: baseCost, shipping: weight * baseCost * photoCoef, unit: 'кг');
+  ({double price, double shipping, String unit}) calcDensity(
+    double weight,
+    double volume,
+    double photoCoef,
+  ) {
+    if (volume <= 0 || weight <= 0) {
+      return (
+        price: baseCost,
+        shipping: weight * baseCost * photoCoef,
+        unit: 'кг',
+      );
+    }
     final density = weight / volume;
     final sorted = List<_DensityTier>.from(densityTiers)
       ..sort((a, b) => a.minDensity.compareTo(b.minDensity));
     for (int i = sorted.length - 1; i >= 0; i--) {
       final tier = sorted[i];
-      if (density >= tier.minDensity && (tier.maxDensity == null || density <= tier.maxDensity!)) {
+      if (density >= tier.minDensity &&
+          (tier.maxDensity == null || density <= tier.maxDensity!)) {
         if (tier.isVolumetric) {
           final p = tier.clientPricePerM3 ?? 0;
           return (price: p, shipping: volume * p * photoCoef, unit: 'м³');
@@ -135,7 +180,11 @@ class _Tariff {
         }
       }
     }
-    return (price: baseCost, shipping: weight * baseCost * photoCoef, unit: 'кг');
+    return (
+      price: baseCost,
+      shipping: weight * baseCost * photoCoef,
+      unit: 'кг',
+    );
   }
 }
 
@@ -153,11 +202,11 @@ class _PhotoCoef {
   });
 
   factory _PhotoCoef.fromJson(Map<String, dynamic> j) => _PhotoCoef(
-        minPercent: (j['minPercent'] as num?)?.toDouble() ?? 0,
-        maxPercent: (j['maxPercent'] as num?)?.toDouble() ?? 100,
-        coefficient: (j['coefficient'] as num?)?.toDouble() ?? 1.0,
-        isActive: (j['isActive'] as bool?) ?? true,
-      );
+    minPercent: (j['minPercent'] as num?)?.toDouble() ?? 0,
+    maxPercent: (j['maxPercent'] as num?)?.toDouble() ?? 100,
+    coefficient: (j['coefficient'] as num?)?.toDouble() ?? 1.0,
+    isActive: (j['isActive'] as bool?) ?? true,
+  );
 }
 
 class _Packaging {
@@ -166,14 +215,21 @@ class _Packaging {
   final double baseCost;
   final bool isActive;
 
-  _Packaging({required this.id, required this.name, required this.baseCost, required this.isActive});
+  _Packaging({
+    required this.id,
+    required this.name,
+    required this.baseCost,
+    required this.isActive,
+  });
 
   factory _Packaging.fromJson(Map<String, dynamic> j) => _Packaging(
-        id: (j['id'] is int) ? j['id'] as int : int.tryParse(j['id'].toString()) ?? 0,
-        name: (j['nameRu'] as String?) ?? (j['name'] as String?) ?? '',
-        baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
-        isActive: (j['isActive'] as bool?) ?? true,
-      );
+    id: (j['id'] is int)
+        ? j['id'] as int
+        : int.tryParse(j['id'].toString()) ?? 0,
+    name: (j['nameRu'] as String?) ?? (j['name'] as String?) ?? '',
+    baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
+    isActive: (j['isActive'] as bool?) ?? true,
+  );
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -216,7 +272,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   // ── Calculation ────────────────────────────────────────────────────────────
 
   _CalcResult? _calculate(List<_Tariff> tariffs, List<_PhotoCoef> coefs) {
-    final tariff = _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
+    final tariff =
+        _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
     if (tariff == null) return null;
 
     final weight = double.tryParse(_weightCtrl.text.replaceAll(',', '.')) ?? 0;
@@ -287,7 +344,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final packagingsAsync = ref.watch(_packagingsProvider);
 
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final bottomPad = AppLayout.bottomScrollPadding(context);
 
     return TutorialScreenWrapper(
       screenKey: 'calculator',
@@ -295,63 +352,61 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         TutorialStep(
           icon: Icons.calculate_rounded,
           title: 'Калькулятор стоимости',
-          description: 'Рассчитайте примерную стоимость доставки заранее. Выберите тариф, введите вес и объём посылки.',
+          description:
+              'Рассчитайте примерную стоимость доставки заранее. Выберите тариф, введите вес и объём посылки.',
           targetKey: _calcFormKey,
         ),
         TutorialStep(
           icon: Icons.local_shipping_rounded,
           title: 'Выбор тарифа',
-          description: 'Тариф определяет цену за кг. Уточните у менеджера, какой тариф применяется к вашим товарам.',
+          description:
+              'Тариф определяет цену за кг. Уточните у менеджера, какой тариф применяется к вашим товарам.',
           targetKey: _tariffKey,
         ),
         TutorialStep(
           icon: Icons.photo_camera_rounded,
           title: 'Надбавка за фотоотчёты',
-          description: 'Чем больше позиций сфотографировано — тем ниже итоговая стоимость. Коэффициент виден в строке «Фотоотчёт».',
+          description:
+              'Чем больше позиций сфотографировано — тем ниже итоговая стоимость. Коэффициент виден в строке «Фотоотчёт».',
           targetKey: _photoSurchargeKey,
         ),
         TutorialStep(
           icon: Icons.inventory_rounded,
           title: 'Упаковка',
-          description: 'Выберите тип упаковки, чтобы добавить её стоимость к расчёту. Упаковка оплачивается отдельно.',
+          description:
+              'Выберите тип упаковки, чтобы добавить её стоимость к расчёту. Упаковка оплачивается отдельно.',
           targetKey: _packagingKey,
         ),
         TutorialStep(
           icon: Icons.calculate_outlined,
           title: 'Кнопка «Рассчитать»',
-          description: 'После заполнения всех полей нажмите «Рассчитать» — внизу появится итоговая стоимость с разбивкой по статьям.',
+          description:
+              'После заполнения всех полей нажмите «Рассчитать» — внизу появится итоговая стоимость с разбивкой по статьям.',
           targetKey: _calcButtonKey,
         ),
       ],
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-      body: Stack(
+      child: Stack(
         children: [
-        SingleChildScrollView(
-          controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 32 + bottomPad),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 16,
+              16,
+              bottomPad + 16,
+            ),
             children: [
               // ── Header ──
-              const Text(
-                'Калькулятор доставки',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
+              const AppPageHeader(
+                title: 'Калькулятор доставки',
+                showBack: true,
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Расчёт носит информационный характер. Фактический вес, количество мест и плотность груза могут быть определены только непосредственно перед отправкой товара.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textPrimary.withValues(alpha: 0.5),
-                  height: 1.4,
-                ),
+              const SizedBox(height: 15),
+              const _InfoCard(
+                text:
+                    'Расчёт носит информационный характер. Фактический вес, количество мест и плотность груза могут быть определены только непосредственно перед отправкой товара.',
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 15),
 
               // ── Тариф ──
               tariffsAsync.when(
@@ -359,15 +414,25 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => _SectionCard(
-                  child: Text('Не удалось загрузить тарифы: $e',
-                      style: const TextStyle(color: Colors.red)),
+                  child: Text(
+                    'Не удалось загрузить тарифы: $e',
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontFamily: 'Gilroy',
+                      fontSize: 14,
+                      height: 18 / 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
                 data: (tariffs) {
                   if (_selectedTariff == null && tariffs.isNotEmpty) {
                     _selectedTariff = tariffs.first;
                   }
                   if (tariffs.isEmpty) {
-                    return const _SectionCard(child: Text('Тарифы не найдены'));
+                    return const _SectionCard(
+                      child: _MutedMessage('Тарифы не найдены'),
+                    );
                   }
                   return KeyedSubtree(
                     key: _tariffKey,
@@ -376,7 +441,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                         value: _selectedTariff ?? tariffs.first,
                         label: 'Тариф',
                         items: tariffs
-                            .map((t) => _CalcDropdownItem(value: t, label: t.name))
+                            .map(
+                              (t) => _CalcDropdownItem(value: t, label: t.name),
+                            )
                             .toList(),
                         onChanged: (v) => setState(() => _selectedTariff = v),
                       ),
@@ -384,7 +451,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 15),
 
               // ── Упаковка ──
               packagingsAsync.when(
@@ -392,11 +459,11 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                 error: (e, st) => const SizedBox.shrink(),
                 data: (packagings) {
                   if (packagings.isEmpty) return const SizedBox.shrink();
-                  return KeyedSubtree(
-                    key: _packagingKey,
-                    child: Column(
-                    children: [
-                      _SectionCard(
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 15),
+                    child: KeyedSubtree(
+                      key: _packagingKey,
+                      child: _SectionCard(
                         child: _CalcDropdown<_Packaging?>(
                           value: _selectedPackaging,
                           label: 'Упаковка',
@@ -405,17 +472,19 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                               value: null,
                               label: 'Без упаковки',
                             ),
-                            ...packagings.map((p) => _CalcDropdownItem<_Packaging?>(
-                                  value: p,
-                                  label: '${p.name}  (\$${p.baseCost.toStringAsFixed(2)}/мест)',
-                                )),
+                            ...packagings.map(
+                              (p) => _CalcDropdownItem<_Packaging?>(
+                                value: p,
+                                label:
+                                    '${p.name}  (\$${p.baseCost.toStringAsFixed(2)}/мест)',
+                              ),
+                            ),
                           ],
-                          onChanged: (v) => setState(() => _selectedPackaging = v),
+                          onChanged: (v) =>
+                              setState(() => _selectedPackaging = v),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
+                    ),
                   );
                 },
               ),
@@ -494,7 +563,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 15),
 
               // ── Результат ──
               tariffsAsync.maybeWhen(
@@ -506,9 +575,13 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                         child: Center(
                           child: Text(
                             'Введите вес, мест и количество треков',
-                            style: TextStyle(
-                              color: AppColors.textPrimary.withValues(alpha: 0.4),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: _calcMutedTextColor,
+                              fontFamily: 'Gilroy',
                               fontSize: 14,
+                              height: 18 / 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -522,10 +595,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               ),
             ],
           ),
-        ),
-        ScrollToTopButton(controller: _scrollController),
+          ScrollToTopButton(controller: _scrollController),
         ],
-      ),
       ),
     );
   }
@@ -583,7 +654,10 @@ class _ResultCard extends StatelessWidget {
 
           // Тариф
           _Row('Тариф', result.tariffName),
-          _Row('Цена за ${result.priceUnit}', '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}'),
+          _Row(
+            'Цена за ${result.priceUnit}',
+            '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}',
+          ),
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
 
           // Фотоотчёт
@@ -617,7 +691,8 @@ class _ResultCard extends StatelessWidget {
             _Row(
               'Упаковка${result.packagingName != null ? ' (${result.packagingName})' : ''}',
               '\$${result.packagingCost.toStringAsFixed(2)}',
-              subtitle: '${result.places} мест × \$${(result.packagingCost / result.places).toStringAsFixed(2)}',
+              subtitle:
+                  '${result.places} мест × \$${(result.packagingCost / result.places).toStringAsFixed(2)}',
             ),
           ],
 
@@ -630,16 +705,20 @@ class _ResultCard extends StatelessWidget {
               const Text(
                 'Итого',
                 style: TextStyle(
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
-                  color: AppColors.textPrimary,
+                  height: 19 / 16,
+                  color: _calcTextColor,
                 ),
               ),
               Text(
                 '\$${result.total.toStringAsFixed(2)}',
                 style: TextStyle(
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w800,
                   fontSize: 20,
+                  height: 24 / 20,
                   color: context.brandSecondary,
                 ),
               ),
@@ -659,16 +738,21 @@ class _ResultCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.info_outline_rounded,
-                    size: 16, color: Colors.orange),
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 16,
+                  color: Colors.orange,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Расчёт носит информационный характер. Фактический вес, количество мест и плотность груза могут быть определены только непосредственно перед отправкой товара.',
                     style: TextStyle(
+                      fontFamily: 'Gilroy',
                       fontSize: 12,
+                      fontWeight: FontWeight.w500,
                       color: Colors.orange[800],
-                      height: 1.4,
+                      height: 15 / 12,
                     ),
                   ),
                 ),
@@ -683,6 +767,68 @@ class _ResultCard extends StatelessWidget {
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
+class _InfoCard extends StatelessWidget {
+  final String text;
+
+  const _InfoCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: context.brandPrimary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: _calcMutedTextColor,
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                height: 17 / 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MutedMessage extends StatelessWidget {
+  final String text;
+
+  const _MutedMessage(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: _calcMutedTextColor,
+        fontFamily: 'Gilroy',
+        fontSize: 14,
+        height: 18 / 14,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
 class _SectionCard extends StatelessWidget {
   final Widget child;
   const _SectionCard({required this.child});
@@ -691,14 +837,14 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.all(Radius.circular(10)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Color(0x1A000000),
+            offset: Offset(3, 4),
+            blurRadius: 25,
           ),
         ],
       ),
@@ -716,9 +862,12 @@ class _Label extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        fontWeight: FontWeight.w700,
-        fontSize: 15,
-        color: AppColors.textPrimary,
+        color: _calcTextColor,
+        fontFamily: 'Gilroy',
+        fontWeight: FontWeight.w600,
+        fontSize: 18,
+        height: 22 / 18,
+        letterSpacing: 0,
       ),
     );
   }
@@ -741,27 +890,41 @@ class _Row extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textPrimary.withValues(alpha: 0.7),
-                    )),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 18 / 14,
+                    fontWeight: FontWeight.w500,
+                    color: _calcMutedTextColor,
+                  ),
+                ),
                 if (subtitle != null)
-                  Text(subtitle!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textPrimary.withValues(alpha: 0.45),
-                      )),
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(
+                      color: _calcMutedTextColor,
+                      fontFamily: 'Gilroy',
+                      fontSize: 11,
+                      height: 14 / 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Text(value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              )),
+          Text(
+            value,
+            style: const TextStyle(
+              color: _calcTextColor,
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              height: 18 / 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -788,12 +951,16 @@ class _NumField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary.withValues(alpha: 0.7),
-            )),
+        Text(
+          label,
+          style: const TextStyle(
+            color: _calcMutedTextColor,
+            fontFamily: 'Gilroy',
+            fontSize: 13,
+            height: 16 / 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
@@ -803,34 +970,37 @@ class _NumField extends StatelessWidget {
               : TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.allow(
-                decimal ? RegExp(r'[\d.,]') : RegExp(r'\d')),
+              decimal ? RegExp(r'[\d.,]') : RegExp(r'\d'),
+            ),
           ],
-          decoration: _inputDecoration(hint),
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          decoration: _inputDecoration(context, hint),
+          style: const TextStyle(
+            color: _calcTextColor,
+            fontFamily: 'Gilroy',
+            fontSize: 15,
+            height: 18 / 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
   }
 }
 
-InputDecoration _inputDecoration(String hint) => InputDecoration(
+InputDecoration _inputDecoration(BuildContext context, String hint) =>
+    appInputDecoration(
+      context,
       hintText: hint,
-      hintStyle: TextStyle(color: AppColors.textPrimary.withValues(alpha: 0.3)),
+      hintStyle: const TextStyle(
+        color: Color(0x662F2F2F),
+        fontFamily: 'Gilroy',
+        fontSize: 14,
+        height: 16 / 14,
+        fontWeight: FontWeight.w500,
+      ),
+      fillColor: context.brandPrimary.withValues(alpha: 0.05),
+      borderColor: Colors.grey.shade200,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.brandOrange, width: 1.5),
-      ),
-      filled: true,
-      fillColor: Colors.grey.shade50,
     );
 
 // ─── Dropdown (same style as status filter on tracks screen) ─────────────────
@@ -879,7 +1049,8 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
   }
 
   void _showMenu() {
-    final renderBox = _targetKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+        _targetKey.currentContext?.findRenderObject() as RenderBox?;
     final menuWidth = renderBox?.size.width ?? 200.0;
 
     _overlayEntry = OverlayEntry(
@@ -899,9 +1070,10 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                   onTap: () {},
                   child: Material(
                     elevation: 8,
-                    borderRadius: BorderRadius.circular(14),
+                    shadowColor: const Color(0x1A000000),
+                    borderRadius: BorderRadius.circular(10),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(10),
                       child: Container(
                         width: menuWidth,
                         constraints: BoxConstraints(
@@ -926,8 +1098,12 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                                 _hideMenu();
                               },
                               borderRadius: BorderRadius.vertical(
-                                top: isFirst ? const Radius.circular(14) : Radius.zero,
-                                bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                                top: isFirst
+                                    ? const Radius.circular(10)
+                                    : Radius.zero,
+                                bottom: isLast
+                                    ? const Radius.circular(10)
+                                    : Radius.zero,
                               ),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -936,19 +1112,31 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isSelected
-                                      ? AppColors.brandOrange.withValues(alpha: 0.1)
+                                      ? context.brandPrimary.withValues(
+                                          alpha: 0.1,
+                                        )
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.vertical(
-                                    top: isFirst ? const Radius.circular(14) : Radius.zero,
-                                    bottom: isLast ? const Radius.circular(14) : Radius.zero,
+                                    top: isFirst
+                                        ? const Radius.circular(10)
+                                        : Radius.zero,
+                                    bottom: isLast
+                                        ? const Radius.circular(10)
+                                        : Radius.zero,
                                   ),
                                 ),
                                 child: Text(
                                   item.label,
                                   style: TextStyle(
+                                    fontFamily: 'Gilroy',
                                     fontSize: 14,
-                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                    color: isSelected ? AppColors.brandOrange : Colors.black87,
+                                    height: 18 / 14,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? context.brandPrimary
+                                        : _calcTextColor,
                                   ),
                                 ),
                               ),
@@ -995,9 +1183,9 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
         child: Container(
           key: _targetKey,
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade300),
+            color: context.brandPrimary.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade200),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
@@ -1011,8 +1199,10 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                     Text(
                       widget.label,
                       style: const TextStyle(
+                        color: _calcMutedTextColor,
+                        fontFamily: 'Gilroy',
                         fontSize: 12,
-                        color: Color(0xFF999999),
+                        height: 14 / 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1020,8 +1210,10 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                     Text(
                       selectedLabel,
                       style: const TextStyle(
+                        color: _calcTextColor,
+                        fontFamily: 'Gilroy',
                         fontSize: 14,
-                        color: Colors.black87,
+                        height: 18 / 14,
                         fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -1034,7 +1226,7 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                 _overlayEntry != null
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: AppColors.brandOrange,
+                color: context.brandPrimary,
                 size: 20,
               ),
             ],

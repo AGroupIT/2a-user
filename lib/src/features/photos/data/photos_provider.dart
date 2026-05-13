@@ -18,7 +18,7 @@ import '../domain/photo_item.dart';
 /// подписку на `ws.deltas` и `ws.dataChanged` для типов
 /// `'photo_requests'` (само событие создания/обновления) и `'tracks'`
 /// (когда фото привязывается к треку), и при каждом событии (с дебаунсом)
-/// делает `ref.invalidate()` всех providers фото.
+/// делает `ref.invalidate()` вспомогательных providers фото.
 ///
 /// Подключается в `photos_screen.dart` через `ref.watch(photosRealtimeBridgeProvider);`,
 /// чтобы он жил вместе с экраном (autoDispose снимает подписки при выходе).
@@ -30,8 +30,10 @@ final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
     debounce?.cancel();
     debounce = Timer(const Duration(milliseconds: 250), () {
       debugPrint('[UserPhotos] silent invalidate ($reason)');
-      // Все family providers инвалидируются разом — Riverpod пересчитает
-      // только те, что watch'атся в текущий момент.
+      // Не инвалидируем paginatedPhotosProvider: это пересоздаёт notifier,
+      // запускает загрузку с skip=0 и возвращает текущий скролл в начало.
+      // Видимый список обновляется pull-to-refresh и мягким refresh внутри
+      // PaginatedPhotosNotifier.
       ref.invalidate(photosTotalCountProvider);
       ref.invalidate(photosRecentProvider);
       ref.invalidate(photosDaysProvider);
@@ -306,7 +308,7 @@ class PaginatedPhotosState {
   final bool hasMore;
   final int total;
   final String? error;
-  final String date;
+  final String? date;
   final String clientCode;
 
   const PaginatedPhotosState({
@@ -315,7 +317,7 @@ class PaginatedPhotosState {
     this.hasMore = true,
     this.total = 0,
     this.error,
-    required this.date,
+    this.date,
     required this.clientCode,
   });
 
@@ -340,8 +342,8 @@ class PaginatedPhotosState {
 }
 
 class PaginatedPhotosNotifier {
-  static const int _pageSize = 18;
-  static const _photoTypes = {'photo_requests'};
+  static const int _pageSize = 12;
+  static const _photoTypes = {'photo_requests', 'tracks'};
 
   final Ref _ref;
   PaginatedPhotosState _state;
@@ -352,7 +354,7 @@ class PaginatedPhotosNotifier {
   StreamSubscription? _reconnectSub;
   Timer? _refreshTimer;
 
-  PaginatedPhotosNotifier(this._ref, String clientCode, String date)
+  PaginatedPhotosNotifier(this._ref, String clientCode, [String? date])
     : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
     // Delta sync is the primary update mechanism.
     // data_changed broadcast is not used to avoid full page reloads
@@ -370,7 +372,7 @@ class PaginatedPhotosNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = Timer(const Duration(milliseconds: 500), () {
       debugPrint(
-        '[PaginatedPhotos] WS event — silent refresh for ${_state.date}',
+        '[PaginatedPhotos] WS event — silent refresh for ${_state.date ?? 'all'}',
       );
       _silentRefresh();
     });
@@ -387,7 +389,7 @@ class PaginatedPhotosNotifier {
         queryParameters: {
           'clientCode': _state.clientCode,
           'source': 'photoRequest',
-          'date': _state.date,
+          if (_state.date != null) 'date': _state.date,
           'take': take,
           'skip': 0,
         },
@@ -435,7 +437,7 @@ class PaginatedPhotosNotifier {
 
   Future<void> loadInitial() async {
     if (_ref.read(demoModeProvider)) {
-      final d = DateTime.tryParse(_state.date);
+      final d = _state.date == null ? null : DateTime.tryParse(_state.date!);
       final demoPhotos = d == null
           ? DemoData.photos
           : DemoData.photos
@@ -512,7 +514,7 @@ class PaginatedPhotosNotifier {
         'take': _pageSize,
         'skip': skip,
       },
-      throttleKey: '2a-user-photos-fetch-start-${_state.date}-$skip',
+      throttleKey: '2a-user-photos-fetch-start-${_state.date ?? 'all'}-$skip',
     );
 
     try {
@@ -521,7 +523,7 @@ class PaginatedPhotosNotifier {
         queryParameters: {
           'clientCode': _state.clientCode,
           'source': 'photoRequest',
-          'date': _state.date,
+          if (_state.date != null) 'date': _state.date,
           'take': _pageSize,
           'skip': skip,
         },
@@ -547,7 +549,8 @@ class PaginatedPhotosNotifier {
             'total': total,
             'hasMore': photos.length >= _pageSize,
           },
-          throttleKey: '2a-user-photos-fetch-success-${_state.date}-$skip',
+          throttleKey:
+              '2a-user-photos-fetch-success-${_state.date ?? 'all'}-$skip',
         );
         return (photos: photos, total: total);
       }
@@ -562,7 +565,8 @@ class PaginatedPhotosNotifier {
           'skip': skip,
           'statusCode': response.statusCode,
         },
-        throttleKey: '2a-user-photos-fetch-bad-status-${_state.date}-$skip',
+        throttleKey:
+            '2a-user-photos-fetch-bad-status-${_state.date ?? 'all'}-$skip',
       );
       throw Exception('Failed to load photos');
     } catch (e) {
@@ -577,18 +581,25 @@ class PaginatedPhotosNotifier {
           'skip': skip,
           'error': ClientDiagnosticsService.errorSummary(e),
         },
-        throttleKey: '2a-user-photos-fetch-error-${_state.date}-$skip',
+        throttleKey: '2a-user-photos-fetch-error-${_state.date ?? 'all'}-$skip',
       );
       rethrow;
     }
   }
 }
 
-final paginatedPhotosByDateProvider =
-    Provider.family<
-      PaginatedPhotosNotifier,
-      ({String clientCode, String date})
-    >((ref, params) {
+final paginatedPhotosProvider = Provider.autoDispose
+    .family<PaginatedPhotosNotifier, String>((ref, clientCode) {
+      final notifier = PaginatedPhotosNotifier(ref, clientCode);
+      ref.onDispose(() => notifier.dispose());
+      return notifier;
+    });
+
+final paginatedPhotosByDateProvider = Provider.autoDispose
+    .family<PaginatedPhotosNotifier, ({String clientCode, String date})>((
+      ref,
+      params,
+    ) {
       final notifier = PaginatedPhotosNotifier(
         ref,
         params.clientCode,

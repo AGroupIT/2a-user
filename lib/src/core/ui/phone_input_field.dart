@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phone_form_field/phone_form_field.dart';
 
 import 'app_colors.dart';
+import 'app_input_decoration.dart';
 
 class PhoneInputField extends StatelessWidget {
   final PhoneController? controller;
@@ -82,27 +83,19 @@ class PhoneInputField extends StatelessWidget {
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w600,
           ),
-          searchBoxDecoration: InputDecoration(
+          searchBoxDecoration: appInputDecoration(
+            context,
             hintText: 'Поиск страны',
             hintStyle: const TextStyle(
               color: Color(0xFF999999),
               fontWeight: FontWeight.w500,
             ),
             prefixIcon: Icon(Icons.search_rounded, color: primary),
-            filled: true,
             fillColor: const Color(0xFFF7F7FA),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: primary, width: 2),
-            ),
+            borderColor: const Color(0xFFE0E0E0),
+            focusedBorderColor: primary,
+            focusedWidth: 2,
+            radius: kAppInputLargeRadius,
           ),
         ),
         isCountryButtonPersistent: true,
@@ -118,38 +111,22 @@ class PhoneInputField extends StatelessWidget {
             color: AppColors.textPrimary,
           ),
         ),
-        decoration: InputDecoration(
+        decoration: appInputDecoration(
+          context,
           hintText: hintText,
           hintStyle: const TextStyle(
             color: Color(0xFF999999),
             fontWeight: FontWeight.w500,
           ),
-          filled: true,
           fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 12,
           ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: primary, width: 2),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE53935)),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE53935), width: 2),
-          ),
+          borderColor: const Color(0xFFE0E0E0),
+          focusedBorderColor: primary,
+          radius: kAppInputLargeRadius,
+          focusedWidth: 2,
         ),
         enabled: enabled,
         textInputAction: textInputAction,

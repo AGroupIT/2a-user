@@ -2,6 +2,7 @@ class InvoiceItem {
   final String id;
   final String invoiceNumber;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final DateTime? sendDate;
   final DateTime? arrivalDate; // arrivedAt в БД
   final DateTime? paidAt; // paidAt в БД
@@ -45,6 +46,7 @@ class InvoiceItem {
     required this.id,
     required this.invoiceNumber,
     this.createdAt,
+    this.updatedAt,
     this.sendDate,
     this.arrivalDate,
     this.paidAt,
@@ -114,6 +116,11 @@ class InvoiceItem {
     DateTime? createdAt;
     if (json['createdAt'] != null) {
       createdAt = DateTime.tryParse(json['createdAt'].toString());
+    }
+
+    DateTime? updatedAt;
+    if (json['updatedAt'] != null) {
+      updatedAt = DateTime.tryParse(json['updatedAt'].toString());
     }
 
     DateTime? sendDate;
@@ -245,6 +252,7 @@ class InvoiceItem {
           json['number'] as String? ??
           'INV-${json['id']}',
       createdAt: createdAt,
+      updatedAt: updatedAt,
       sendDate: sendDate,
       arrivalDate: arrivalDate,
       paidAt: paidAt,

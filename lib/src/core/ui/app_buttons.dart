@@ -68,6 +68,15 @@ class _PrimaryButtonState extends State<PrimaryButton> {
   Widget build(BuildContext context) {
     final isCircular = widget.width == widget.height;
     final borderRadius = isCircular ? widget.height / 2 : 10.0;
+    final brandPrimary = context.brandPrimary;
+    final brandGradient = context.brandGradient;
+    final hoverGradient = LinearGradient(
+      colors: brandGradient.colors
+          .map((color) => color.withValues(alpha: 0.85))
+          .toList(),
+      begin: brandGradient.begin,
+      end: brandGradient.end,
+    );
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -89,22 +98,15 @@ class _PrimaryButtonState extends State<PrimaryButton> {
               width: widget.width,
               height: widget.height,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: _isHovered && _isEnabled
-                      ? [
-                          AppColors.brandOrangeDark.withValues(alpha: 0.85),
-                          AppColors.brandOrangeLight.withValues(alpha: 0.85),
-                        ]
-                      : [AppColors.brandOrangeDark, AppColors.brandOrangeLight],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
+                gradient: _isHovered && _isEnabled
+                    ? hoverGradient
+                    : brandGradient,
                 borderRadius: BorderRadius.circular(borderRadius),
                 boxShadow: _isPressed
                     ? []
                     : [
                         BoxShadow(
-                          color: AppColors.brandOrange.withValues(alpha: 0.25),
+                          color: brandPrimary.withValues(alpha: 0.25),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -125,6 +127,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                       : DefaultTextStyle(
                           style: const TextStyle(
                             color: Colors.white,
+                            fontFamily: 'Gilroy',
                             fontWeight: FontWeight.w600,
                             fontSize: 15,
                           ),
@@ -212,6 +215,8 @@ class _SecondaryButtonState extends State<SecondaryButton> {
   Widget build(BuildContext context) {
     final isCircular = widget.width == widget.height;
     final borderRadius = isCircular ? widget.height / 2 : 10.0;
+    final brandPrimary = context.brandPrimary;
+    final brandGradient = context.brandGradient;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -233,21 +238,14 @@ class _SecondaryButtonState extends State<SecondaryButton> {
               width: widget.width,
               height: widget.height,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    AppColors.brandOrangeDark,
-                    AppColors.brandOrangeLight,
-                  ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
+                gradient: brandGradient,
                 borderRadius: BorderRadius.circular(borderRadius),
               ),
               padding: const EdgeInsets.all(1.5),
               child: Container(
                 decoration: BoxDecoration(
                   color: _isHovered && _isEnabled
-                      ? AppColors.brandOrange.withValues(alpha: 0.05)
+                      ? brandPrimary.withValues(alpha: 0.05)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(borderRadius - 1.5),
                 ),
@@ -260,20 +258,19 @@ class _SecondaryButtonState extends State<SecondaryButton> {
                             height: 22,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation(
-                                AppColors.brandOrange,
-                              ),
+                              valueColor: AlwaysStoppedAnimation(brandPrimary),
                             ),
                           )
                         : DefaultTextStyle(
-                            style: const TextStyle(
-                              color: AppColors.brandOrange,
+                            style: TextStyle(
+                              color: brandPrimary,
+                              fontFamily: 'Gilroy',
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                             ),
                             child: IconTheme(
-                              data: const IconThemeData(
-                                color: AppColors.brandOrange,
+                              data: IconThemeData(
+                                color: brandPrimary,
                                 size: 22,
                               ),
                               child: widget.child,

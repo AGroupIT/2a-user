@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -17,6 +18,7 @@ import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
@@ -524,11 +526,12 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   void _showErrorSnackbar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
       ),
     );
   }
@@ -790,6 +793,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               children: [
                 // Отступ от верха экрана
                 const SizedBox(height: 65),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: AppPageHeader(title: 'Чат по оплате', showBack: true),
+                ),
+                const SizedBox(height: 12),
                 // Информационный блок о назначении чата
                 _buildInfoBanner(),
 
@@ -865,6 +873,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: messages.length,
+      addAutomaticKeepAlives: false,
+      addSemanticIndexes: false,
       itemBuilder: (context, index) {
         final message = messages[index];
         return _buildMessageBubble(message);
@@ -969,7 +979,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     }
 
     final isMe = message.isFromClient;
-    final dateFormat = DateFormat('HH:mm');
+    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
 
     // Используем реальное имя из сообщения
     final authorName = message.senderName;
@@ -1077,29 +1087,34 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                           selectable: true,
                           styleSheet: MarkdownStyleSheet(
                             p: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             strong: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               fontWeight: FontWeight.bold,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             em: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               fontStyle: FontStyle.italic,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             a: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               color: isMe ? Colors.white : context.brandPrimary,
                               decoration: TextDecoration.underline,
                             ),
                             code: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 14,
                               color: isMe ? Colors.white : Colors.black87,
                               backgroundColor: isMe
@@ -1107,6 +1122,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                                   : Colors.grey.withValues(alpha: 0.2),
                             ),
                             listBullet: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
@@ -1201,6 +1217,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                 child: CachedNetworkImage(
                   imageUrl: fullUrl,
                   fit: BoxFit.cover,
+                  memCacheWidth: 360,
+                  memCacheHeight: 360,
+                  maxWidthDiskCache: 720,
+                  maxHeightDiskCache: 720,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  useOldImageOnUrlChange: false,
+                  filterQuality: FilterQuality.low,
                   placeholder: (context, url) => Container(
                     width: 150,
                     height: 150,
@@ -1392,7 +1416,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   Future<void> _downloadFile(String url, String fileName) async {
     try {
       // Показываем индикатор загрузки
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Row(
             children: [
@@ -1409,7 +1434,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             ],
           ),
           duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
 
@@ -1426,12 +1451,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       final savedText = tr(context, ru: 'Файл сохранён', zh: '文件已保存');
       final openText = tr(context, ru: 'Открыть', zh: '打开');
 
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.hide();
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Text('$savedText: $fileName'),
           backgroundColor: Colors.green.shade700,
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           action: SnackBarAction(
             label: openText,
             textColor: Colors.white,
@@ -1444,14 +1470,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.hide();
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Text(
             '${tr(context, ru: 'Ошибка загрузки', zh: '下载错误')}: $e',
           ),
           backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
     }
@@ -1739,12 +1766,18 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                       borderRadius: BorderRadius.circular(12),
                       child: isImage
                           ? CachedNetworkImage(
-                              imageUrl: url.startsWith('http')
-                                  ? url
-                                  : '${ApiConfig.mediaBaseUrl}$url',
+                              imageUrl: ApiConfig.getMediaUrl(url),
                               width: 80,
                               height: 80,
                               fit: BoxFit.cover,
+                              memCacheWidth: 160,
+                              memCacheHeight: 160,
+                              maxWidthDiskCache: 320,
+                              maxHeightDiskCache: 320,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              useOldImageOnUrlChange: false,
+                              filterQuality: FilterQuality.low,
                               placeholder: (context, url) => Container(
                                 color: const Color(0xFFF0F0F0),
                                 child: const Center(
@@ -1981,6 +2014,7 @@ class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
                   prefixIcon: const Icon(
                     Icons.search_rounded,
                     color: Colors.grey,
+                    size: 26,
                   ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -2371,7 +2405,7 @@ class _InvoicePaymentBubble extends ConsumerWidget {
     final invoiceAsync = ref.watch(invoiceByIdProvider(invoiceId));
     final isMe = message.isFromClient;
     final moneyFmt = NumberFormat.decimalPattern('ru');
-    final dateFormat = DateFormat('HH:mm');
+    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),

@@ -5,7 +5,11 @@ class AssemblyItem {
   final int id;
   final String number;
   final String status;
+  final String statusCode;
+  final String? statusColor;
   final DateTime date;
+  final DateTime createdAt;
+  final DateTime updatedAt;
   final int tracksCount;
   final String? tariffName;
   final String? packagingName;
@@ -15,7 +19,11 @@ class AssemblyItem {
     required this.id,
     required this.number,
     required this.status,
+    this.statusCode = '',
+    this.statusColor,
     required this.date,
+    required this.createdAt,
+    required this.updatedAt,
     this.tracksCount = 0,
     this.tariffName,
     this.packagingName,
@@ -25,38 +33,48 @@ class AssemblyItem {
   factory AssemblyItem.fromJson(Map<String, dynamic> json) {
     // Получаем статус
     final statusData = json['statusData'] as Map<String, dynamic>?;
-    final status = statusData?['nameRu'] as String? ?? 
-                   json['status'] as String? ?? 
-                   'unknown';
-    
+    final statusCode = json['status']?.toString() ?? '';
+    final status =
+        statusData?['nameRu'] as String? ??
+        json['statusName'] as String? ??
+        json['statusNameRu'] as String? ??
+        statusCode.ifEmpty('unknown');
+    final statusColor =
+        statusData?['color'] as String? ?? json['statusColor'] as String?;
+
     // Получаем дату
-    DateTime date;
-    if (json['createdAt'] != null) {
-      date = DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now();
-    } else {
-      date = DateTime.now();
-    }
-    
+    final createdAt = json['createdAt'] != null
+        ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+        : DateTime.now();
+    final updatedAt = json['updatedAt'] != null
+        ? DateTime.tryParse(json['updatedAt'].toString()) ?? createdAt
+        : createdAt;
+
     // Количество треков
     final tracks = json['tracks'] as List<dynamic>?;
     final tracksCount = tracks?.length ?? json['tracksCount'] as int? ?? 0;
-    
+
     // Тариф и упаковка
     final tariff = json['tariff'] as Map<String, dynamic>?;
     final packaging = json['packagingType'] as Map<String, dynamic>?;
 
     // Коробки
     final boxesData = json['boxes'] as List<dynamic>?;
-    final boxes = boxesData
+    final boxes =
+        boxesData
             ?.map((b) => Box.fromJson(b as Map<String, dynamic>))
             .toList() ??
         [];
 
     return AssemblyItem(
-      id: json['id'] as int,
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       number: json['number'] as String? ?? 'ASM-${json['id']}',
       status: status,
-      date: date,
+      statusCode: statusCode,
+      statusColor: statusColor,
+      date: createdAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
       tracksCount: tracksCount,
       tariffName: tariff?['name'] as String?,
       packagingName: packaging?['nameRu'] as String?,
@@ -86,4 +104,8 @@ class AssemblyItem {
     if (weight == null || volume == null || volume == 0) return null;
     return weight / volume;
   }
+}
+
+extension on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }

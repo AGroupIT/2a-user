@@ -63,7 +63,7 @@ class _ShopSearchBarState extends State<ShopSearchBar> {
             hintStyle: TextStyle(fontSize: 15, color: Colors.grey.shade400),
             prefixIcon: Icon(
               CupertinoIcons.search,
-              size: 20,
+              size: 22,
               color: Colors.grey.shade400,
             ),
             suffixIcon: IconButton(

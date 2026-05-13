@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../data/purchase_blank_model.dart';
 import '../data/purchase_blanks_provider.dart';
+import 'purchase_blank_ui.dart';
 import 'widgets/blank_status_badge.dart';
 
 class PurchaseBlanksScreen extends ConsumerStatefulWidget {
@@ -31,18 +33,11 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
     });
   }
 
-  List<PurchaseBlank> get _filteredBlanks {
-    final blanks = ref.read(purchaseBlanksProvider).blanks;
-    if (_selectedStatus == null) return blanks;
-    return blanks.where((b) => b.status == _selectedStatus).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(purchaseBlanksProvider);
-    final theme = Theme.of(context);
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final bottomPad = AppLayout.bottomScrollPadding(context);
 
     // Загрузка
     if (state.isLoading && state.blanks.isEmpty) {
@@ -58,104 +53,90 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
       );
     }
 
-    final blanks = _filteredBlanks;
+    final blanks = _selectedStatus == null
+        ? state.blanks
+        : state.blanks.where((b) => b.status == _selectedStatus).toList();
 
     return Stack(
       children: [
         RefreshIndicator(
           onRefresh: () => ref.read(purchaseBlanksProvider.notifier).reload(),
           color: context.brandPrimary,
-          child: ListView.builder(
+          child: ListView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
               16,
               topPad * 0.7 + 16,
               16,
-              24 + bottomPad,
+              bottomPad + 16,
             ),
-            itemCount: blanks.length + 2, // заголовок + фильтр + items
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return _buildHeader(context, theme);
-              }
-              if (i == 1) {
-                return _buildFilters(context);
-              }
-
-              final blank = blanks[i - 2];
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: i - 2 == blanks.length - 1 ? 0 : 12,
+            children: [
+              _buildHeader(context),
+              const SizedBox(height: 15),
+              _buildFilters(context),
+              const SizedBox(height: 15),
+              if (state.blanks.isEmpty)
+                _buildEmptyCard(
+                  context,
+                  title: 'Нет бланков',
+                  message: 'Создайте первый бланк на выкуп товара',
+                )
+              else if (blanks.isEmpty)
+                _buildEmptyCard(
+                  context,
+                  title: 'По фильтру ничего нет',
+                  message: 'Выберите другой статус или создайте новый бланк',
+                )
+              else
+                ...blanks.map(
+                  (blank) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _BlankCard(blank: blank),
+                  ),
                 ),
-                child: _BlankCard(blank: blank),
-              );
-            },
+            ],
           ),
         ),
         ScrollToTopButton(controller: _scrollController),
-
-        // Пустое состояние (после фильтров)
-        if (state.blanks.isEmpty)
-          Center(
-            child: EmptyState(
-              icon: Icons.description_rounded,
-              title: 'Нет бланков',
-              message: 'Создайте первый бланк на выкуп товара',
-            ),
-          ),
       ],
     );
   }
 
-  Widget _buildHeader(BuildContext context, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Выкуп по бланку',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+  Widget _buildHeader(BuildContext context) {
+    return AppPageHeader(
+      title: 'Выкуп по бланку',
+      showBack: true,
+      actions: [
+        GestureDetector(
+          onTap: _createBlank,
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: context.brandPrimary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                SizedBox(width: 4),
+                Text(
+                  'Создать',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    height: 15 / 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
-          // Кнопка создать
-          GestureDetector(
-            onTap: _createBlank,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: context.brandGradient,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: context.brandPrimary.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.add_rounded, size: 18, color: Colors.white),
-                  SizedBox(width: 4),
-                  Text(
-                    'Создать',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -170,48 +151,84 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
       PurchaseBlankStatus.cancelled: 'Отменены',
     };
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: SizedBox(
-        height: 36,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: allStatuses.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 6),
-          itemBuilder: (context, i) {
-            final status = allStatuses[i];
-            final isSelected = _selectedStatus == status;
-            final color = status?.color ?? context.brandPrimary;
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: allStatuses.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final status = allStatuses[i];
+          final isSelected = _selectedStatus == status;
+          final color = status?.color ?? context.brandPrimary;
 
-            return GestureDetector(
-              onTap: () => setState(() => _selectedStatus = status),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? color.withValues(alpha: 0.15)
-                      : Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(10),
-                  border: isSelected
-                      ? Border.all(color: color.withValues(alpha: 0.4))
-                      : null,
-                ),
-                child: Text(
-                  labels[status] ?? '',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? color : Colors.grey.shade600,
+          return GestureDetector(
+            onTap: () => setState(() => _selectedStatus = status),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected ? color : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x12000000),
+                    offset: Offset(2, 3),
+                    blurRadius: 14,
                   ),
+                ],
+              ),
+              child: Text(
+                labels[status] ?? '',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : PurchaseBlankUi.textColor,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 15 / 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyCard(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      decoration: PurchaseBlankUi.cardDecoration(),
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        children: [
+          Icon(
+            Icons.description_rounded,
+            color: context.brandPrimary,
+            size: 26,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: PurchaseBlankUi.sectionTitleStyle),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: PurchaseBlankUi.bodyStyle.copyWith(
+                    color: PurchaseBlankUi.mutedTextColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -239,26 +256,15 @@ class _BlankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: PurchaseBlankUi.cardDecoration(),
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
           onTap: () => context.push('/purchase-blanks/${blank.id}'),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -268,15 +274,17 @@ class _BlankCard extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      width: 42,
+                      height: 42,
                       decoration: BoxDecoration(
                         color: context.brandPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                      alignment: Alignment.center,
                       child: Icon(
                         Icons.description_rounded,
                         color: context.brandPrimary,
-                        size: 24,
+                        size: 22,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -286,15 +294,22 @@ class _BlankCard extends StatelessWidget {
                         children: [
                           Text(
                             'Бланк #${blank.id}',
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            style: const TextStyle(
+                              color: PurchaseBlankUi.textColor,
+                              fontFamily: 'Gilroy',
+                              fontSize: 18,
+                              height: 22 / 18,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             dateFormat.format(blank.createdAt),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade600,
+                            style: const TextStyle(
+                              color: PurchaseBlankUi.mutedTextColor,
+                              fontFamily: 'Gilroy',
+                              fontSize: 12,
+                              height: 14 / 12,
                             ),
                           ),
                         ],
@@ -309,8 +324,8 @@ class _BlankCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                    color: context.brandPrimary.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
@@ -351,7 +366,7 @@ class _BlankCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.blue.shade200),
                     ),
                     child: Row(
@@ -366,7 +381,10 @@ class _BlankCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             blank.employeeComment!,
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            style: TextStyle(
+                              fontFamily: 'Gilroy',
+                              fontSize: 12,
+                              height: 15 / 12,
                               color: Colors.blue.shade700,
                             ),
                             maxLines: 2,
@@ -422,7 +440,9 @@ class _StatItem extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
+                    fontFamily: 'Gilroy',
                     fontSize: 10,
+                    height: 12 / 10,
                     fontWeight: FontWeight.w500,
                     color: Colors.grey.shade600,
                   ),
@@ -430,9 +450,11 @@ class _StatItem extends StatelessWidget {
                 Text(
                   value,
                   style: const TextStyle(
+                    fontFamily: 'Gilroy',
                     fontSize: 13,
+                    height: 15 / 13,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    color: PurchaseBlankUi.textColor,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

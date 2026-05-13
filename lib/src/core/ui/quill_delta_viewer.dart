@@ -21,8 +21,10 @@ class QuillDeltaViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final defaultTextStyle = baseTextStyle ??
+    final defaultTextStyle =
+        baseTextStyle ??
         const TextStyle(
+          fontFamily: 'Gilroy',
           fontSize: 15,
           height: 1.6,
           color: Color(0xFF333333),
@@ -42,19 +44,13 @@ class QuillDeltaViewer extends StatelessWidget {
         ops = parsed;
       } else {
         // Если это не Quill Delta, показываем как обычный текст
-        return SelectableText(
-          jsonContent,
-          style: defaultTextStyle,
-        );
+        return SelectableText(jsonContent, style: defaultTextStyle);
       }
 
       return _buildDeltaContent(ops, defaultTextStyle, defaultLinkColor);
     } catch (e) {
       // Если парсинг не удался, показываем как обычный текст
-      return SelectableText(
-        jsonContent,
-        style: defaultTextStyle,
-      );
+      return SelectableText(jsonContent, style: defaultTextStyle);
     }
   }
 
@@ -78,22 +74,21 @@ class QuillDeltaViewer extends StatelessWidget {
 
         for (int i = 0; i < lines.length; i++) {
           if (lines[i].isNotEmpty) {
-            currentParagraph.add(_buildTextSpan(
-              lines[i],
-              attributes,
-              baseStyle,
-              linkColor,
-            ));
+            currentParagraph.add(
+              _buildTextSpan(lines[i], attributes, baseStyle, linkColor),
+            );
           }
 
           // Новая строка - сохраняем параграф
           if (i < lines.length - 1) {
             if (currentParagraph.isNotEmpty) {
-              widgets.add(_buildParagraphWidget(
-                currentParagraph.toList(),
-                attributes,
-                baseStyle,
-              ));
+              widgets.add(
+                _buildParagraphWidget(
+                  currentParagraph.toList(),
+                  attributes,
+                  baseStyle,
+                ),
+              );
               currentParagraph.clear();
             }
           }
@@ -101,11 +96,9 @@ class QuillDeltaViewer extends StatelessWidget {
       } else if (insert is Map) {
         // Встроенный контент (изображение, видео и т.д.)
         if (currentParagraph.isNotEmpty) {
-          widgets.add(_buildParagraphWidget(
-            currentParagraph.toList(),
-            null,
-            baseStyle,
-          ));
+          widgets.add(
+            _buildParagraphWidget(currentParagraph.toList(), null, baseStyle),
+          );
           currentParagraph.clear();
         }
 
@@ -117,11 +110,9 @@ class QuillDeltaViewer extends StatelessWidget {
 
     // Добавляем последний параграф
     if (currentParagraph.isNotEmpty) {
-      widgets.add(_buildParagraphWidget(
-        currentParagraph.toList(),
-        null,
-        baseStyle,
-      ));
+      widgets.add(
+        _buildParagraphWidget(currentParagraph.toList(), null, baseStyle),
+      );
     }
 
     return Column(
@@ -141,12 +132,18 @@ class QuillDeltaViewer extends StatelessWidget {
     if (attributes != null) {
       // Bold
       if (attributes['bold'] == true || attributes['b'] == true) {
-        style = style.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A));
+        style = style.copyWith(
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF1A1A1A),
+        );
       }
 
       // Italic
       if (attributes['italic'] == true || attributes['i'] == true) {
-        style = style.copyWith(fontStyle: FontStyle.italic, color: const Color(0xFF444444));
+        style = style.copyWith(
+          fontStyle: FontStyle.italic,
+          color: const Color(0xFF444444),
+        );
       }
 
       // Underline
@@ -181,10 +178,7 @@ class QuillDeltaViewer extends StatelessWidget {
           style: style,
           recognizer: TapGestureRecognizer()
             ..onTap = () {
-              launchUrl(
-                Uri.parse(url),
-                mode: LaunchMode.externalApplication,
-              );
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
             },
         );
       }
@@ -304,9 +298,7 @@ class QuillDeltaViewer extends StatelessWidget {
             color: const Color(0xFFFFF5F3),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: SelectableText.rich(
-            TextSpan(children: spans),
-          ),
+          child: SelectableText.rich(TextSpan(children: spans)),
         );
       }
 
@@ -337,11 +329,7 @@ class QuillDeltaViewer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             leading,
-            Expanded(
-              child: SelectableText.rich(
-                TextSpan(children: spans),
-              ),
-            ),
+            Expanded(child: SelectableText.rich(TextSpan(children: spans))),
           ],
         ),
       );
@@ -349,9 +337,7 @@ class QuillDeltaViewer extends StatelessWidget {
 
     return Padding(
       padding: padding,
-      child: SelectableText.rich(
-        TextSpan(children: spans),
-      ),
+      child: SelectableText.rich(TextSpan(children: spans)),
     );
   }
 

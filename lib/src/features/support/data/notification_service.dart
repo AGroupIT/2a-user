@@ -1,21 +1,25 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/ui/app_colors.dart';
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService();
 });
 
 class NotificationService {
-  final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -35,12 +39,10 @@ class NotificationService {
     // Request permissions on iOS
     if (Platform.isIOS) {
       await _notifications
-          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          );
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
     }
 
     _isInitialized = true;
@@ -61,8 +63,8 @@ class NotificationService {
     }
 
     // Truncate message if too long
-    final truncatedMessage = message.length > 100 
-        ? '${message.substring(0, 100)}...' 
+    final truncatedMessage = message.length > 100
+        ? '${message.substring(0, 100)}...'
         : message;
 
     final androidDetails = AndroidNotificationDetails(
@@ -73,7 +75,7 @@ class NotificationService {
       priority: Priority.high,
       showWhen: true,
       icon: 'ic_notification',
-      color: const Color(0xFFfe3301),
+      color: BrandColors.defaultColors.primary,
       enableVibration: true,
       playSound: true,
       category: AndroidNotificationCategory.message,

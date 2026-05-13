@@ -29,16 +29,14 @@ class BlankStatusBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            status.icon,
-            size: compact ? 14 : 16,
-            color: status.color,
-          ),
+          Icon(status.icon, size: compact ? 14 : 16, color: status.color),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
+              fontFamily: 'Gilroy',
               fontSize: compact ? 11 : 13,
+              height: compact ? 13 / 11 : 15 / 13,
               fontWeight: FontWeight.w600,
               color: status.color,
             ),

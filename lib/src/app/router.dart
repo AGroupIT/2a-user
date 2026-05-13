@@ -119,7 +119,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/tracks',
-                builder: (context, state) => const TracksScreen(),
+                builder: (context, state) {
+                  final query = state.uri.queryParameters;
+                  return TracksScreen(
+                    initialTrackId: int.tryParse(query['trackId'] ?? ''),
+                    initialTrackCode: query['trackCode'],
+                    initialAssemblyId: int.tryParse(query['assemblyId'] ?? ''),
+                  );
+                },
               ),
             ],
           ),
@@ -127,7 +134,20 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/invoices',
-                builder: (context, state) => const InvoicesScreen(),
+                builder: (context, state) => InvoicesScreen(
+                  initialInvoiceId: state.uri.queryParameters['invoiceId'],
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/support',
+                builder: (context, state) {
+                  final initialMessage = state.extra as String?;
+                  return SupportChatScreen(initialMessage: initialMessage);
+                },
               ),
             ],
           ),
@@ -156,17 +176,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           title: 'Поиск по трек-номеру',
           child: TrackSearchNoCodeScreen(),
         ),
-      ),
-      GoRoute(
-        path: '/support',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final initialMessage = state.extra as String?;
-          return AppScaffold(
-            title: 'Поддержка',
-            child: SupportChatScreen(initialMessage: initialMessage),
-          );
-        },
       ),
       GoRoute(
         path: '/payment-chat',

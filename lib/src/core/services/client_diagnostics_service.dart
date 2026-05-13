@@ -8,7 +8,10 @@ import 'platform_helper.dart';
 
 class ClientDiagnosticsService {
   static const Duration _defaultThrottle = Duration(seconds: 20);
+  static const Duration _endpointUnavailableBackoff = Duration(hours: 1);
   static final Map<String, DateTime> _lastSentAt = <String, DateTime>{};
+  static DateTime? _disabledUntil;
+  static bool _endpointUnavailableLogged = false;
 
   static void log(
     ApiClient apiClient, {
@@ -19,6 +22,7 @@ class ClientDiagnosticsService {
     String? throttleKey,
     Duration throttle = _defaultThrottle,
   }) {
+    if (_isTemporarilyDisabled()) return;
     if (throttleKey != null && !_canSend(throttleKey, throttle)) return;
 
     unawaited(
@@ -49,6 +53,18 @@ class ClientDiagnosticsService {
     return true;
   }
 
+  static bool _isTemporarilyDisabled() {
+    final disabledUntil = _disabledUntil;
+    if (disabledUntil == null) return false;
+
+    final now = DateTime.now();
+    if (now.isBefore(disabledUntil)) return true;
+
+    _disabledUntil = null;
+    _endpointUnavailableLogged = false;
+    return false;
+  }
+
   static Future<void> _send(
     ApiClient apiClient, {
     required String app,
@@ -72,8 +88,19 @@ class ClientDiagnosticsService {
         ),
       );
     } catch (error) {
+      if (error is DioException && error.response?.statusCode == 404) {
+        _disabledUntil = DateTime.now().add(_endpointUnavailableBackoff);
+        if (kDebugMode && !_endpointUnavailableLogged) {
+          debugPrint(
+            '[Diagnostics] /client-diagnostics returned 404; disabled for '
+            '${_endpointUnavailableBackoff.inMinutes} min',
+          );
+        }
+        _endpointUnavailableLogged = true;
+        return;
+      }
       if (kDebugMode) {
-        debugPrint('[Diagnostics] skipped: $error');
+        debugPrint('[Diagnostics] skipped: ${errorSummary(error)}');
       }
     }
   }

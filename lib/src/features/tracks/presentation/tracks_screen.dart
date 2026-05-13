@@ -1,7 +1,9 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
@@ -12,6 +14,7 @@ import 'package:phone_form_field/phone_form_field.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/phone_input_field.dart';
 
 import '../../../core/ui/app_layout.dart';
@@ -65,12 +68,12 @@ void _showStyledSnackBar(
   String message, {
   bool isError = false,
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
+  AppToast.showFromSnackBar(
+    context,
     SnackBar(
       content: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => messenger.hideCurrentSnackBar(),
+        onTap: AppToast.hide,
         child: Row(
           children: [
             Container(
@@ -122,7 +125,16 @@ String _formatDecimal(double value) {
 }
 
 class TracksScreen extends ConsumerStatefulWidget {
-  const TracksScreen({super.key});
+  final int? initialTrackId;
+  final String? initialTrackCode;
+  final int? initialAssemblyId;
+
+  const TracksScreen({
+    super.key,
+    this.initialTrackId,
+    this.initialTrackCode,
+    this.initialAssemblyId,
+  });
 
   @override
   ConsumerState<TracksScreen> createState() => _TracksScreenState();
@@ -139,9 +151,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   // Фильтры - теперь используем код статуса из БД
   String? _statusCode; // null = Все
-  ViewMode _viewMode = ViewMode.all;
+  String? _photoRequestStatusCode;
+  String? _questionStatusCode;
+  ViewMode _viewMode = ViewMode.singles;
   ProductInfoMode _productInfoMode = ProductInfoMode.all;
+  DeliveryInfoMode _deliveryInfoMode = DeliveryInfoMode.all;
+  TrackSortMode _sortMode = TrackSortMode.createdAt;
   String _query = '';
+  bool _isSearchVisible = false;
   Timer? _searchDebounce;
 
   // Текущий notifier для отслеживания изменений состояния
@@ -183,10 +200,28 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   bool _isRefreshing = false;
   DateTime? _lastLoadMoreTime;
+  String? _handledInitialTargetKey;
+  String? _filtersInitializedForClientCode;
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialAssemblyId != null) {
+      _viewMode = ViewMode.groups;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant TracksScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTrackId != widget.initialTrackId ||
+        oldWidget.initialTrackCode != widget.initialTrackCode ||
+        oldWidget.initialAssemblyId != widget.initialAssemblyId) {
+      _handledInitialTargetKey = null;
+      if (widget.initialAssemblyId != null) {
+        _viewMode = ViewMode.groups;
+      }
+    }
   }
 
   @override
@@ -381,41 +416,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: const BorderRadius.all(Radius.circular(14)),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.all(Radius.circular(12.5)),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          hintText: 'Пожелание для сборщиков…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText: 'Пожелание для сборщиков…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -573,41 +592,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.5),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          hintText: 'Опишите ваш вопрос по треку…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Опишите ваш вопрос по треку…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -779,42 +782,26 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: const BorderRadius.all(Radius.circular(14)),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.all(Radius.circular(12.5)),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 4,
-                        autofocus: true,
-                        decoration: const InputDecoration(
-                          hintText: 'Пожелание для сборщиков…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 4,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Пожелание для сборщиков…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -1005,41 +992,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.5),
-                      ),
-                      child: TextField(
-                        controller: returnCodeController,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(
-                          hintText: 'Введите код возврата…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: returnCodeController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        hintText: 'Введите код возврата…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -1128,41 +1099,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.5),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          hintText: 'Добавьте или отредактируйте заметку…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText: 'Добавьте или отредактируйте заметку…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -1247,42 +1202,26 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.all(1.5),
-                    child: Container(
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.5),
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          hintText:
-                              'Добавьте или отредактируйте заметку по сборке…',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
+                  AppGradientInputFrame(
+                    child: TextField(
+                      controller: controller,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Добавьте или отредактируйте заметку по сборке…',
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF999999),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                       ),
                     ),
@@ -1373,39 +1312,23 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: const BorderRadius.all(Radius.circular(14)),
-                ),
-                padding: const EdgeInsets.all(1.5),
-                child: Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.all(Radius.circular(12.5)),
-                  ),
-                  child: TextField(
-                    controller: controller,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: 'Опишите ваш вопрос по сборке…',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF999999),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
+              AppGradientInputFrame(
+                child: TextField(
+                  controller: controller,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Опишите ваш вопрос по сборке…',
+                    hintStyle: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF999999),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
                     ),
                   ),
                 ),
@@ -2538,7 +2461,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             imageWidget = isUrl
                                 ? CachedNetworkImage(
                                     imageUrl: ApiConfig.getMediaUrl(path),
-                                    memCacheWidth: 400,
+                                    memCacheWidth: 320,
+                                    memCacheHeight: 240,
+                                    maxWidthDiskCache: 640,
+                                    maxHeightDiskCache: 480,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    useOldImageOnUrlChange: false,
+                                    filterQuality: FilterQuality.low,
                                     imageBuilder: (_, imageProvider) =>
                                         DecoratedBox(
                                           decoration: BoxDecoration(
@@ -2767,20 +2697,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   /// Получить текущие параметры фильтрации
   TracksFilterParams _getFilterParams(String clientCode) {
+    final isAssemblyMode = _viewMode == ViewMode.groups;
     return TracksFilterParams(
       clientCode: clientCode,
-      statusCode: _statusCode,
+      statusCode: isAssemblyMode ? null : _statusCode,
+      assemblyStatusCode: isAssemblyMode ? _statusCode : null,
       search: _query.isNotEmpty ? _query : null,
       viewMode: _viewMode == ViewMode.all
           ? 'all'
           : _viewMode == ViewMode.groups
           ? 'groups'
           : 'singles',
-      productInfo: switch (_productInfoMode) {
-        ProductInfoMode.all => null,
-        ProductInfoMode.filled => 'filled',
-        ProductInfoMode.empty => 'empty',
-      },
+      productInfo: isAssemblyMode
+          ? null
+          : switch (_productInfoMode) {
+              ProductInfoMode.all => null,
+              ProductInfoMode.filled => 'filled',
+              ProductInfoMode.empty => 'empty',
+            },
+      photoRequestStatus: isAssemblyMode ? null : _photoRequestStatusCode,
+      questionStatus: isAssemblyMode ? null : _questionStatusCode,
+      assemblyDeliveryInfo: !isAssemblyMode
+          ? null
+          : switch (_deliveryInfoMode) {
+              DeliveryInfoMode.all => null,
+              DeliveryInfoMode.filled => 'filled',
+              DeliveryInfoMode.empty => 'empty',
+            },
+      sortBy: _sortMode.queryValue,
     );
   }
 
@@ -2795,25 +2739,313 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     });
   }
 
-  /// Обработчик изменения статуса
-  void _onStatusChanged(String? statusCode, String clientCode) {
-    setState(() => _statusCode = statusCode);
+  void _onSortModeChanged(TrackSortMode mode, String clientCode) {
+    setState(() => _sortMode = mode);
 
     final params = _getFilterParams(clientCode);
     ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
   }
 
-  /// Обработчик изменения режима просмотра
-  void _onViewModeChanged(ViewMode mode, String clientCode) {
-    setState(() => _viewMode = mode);
+  void _onDisplayModeChanged(ViewMode mode, String clientCode) {
+    if (_viewMode == mode) return;
+    setState(() {
+      _viewMode = mode;
+      // Статусы у треков и сборок разные, поэтому при переключении вкладки
+      // сбрасываем выбранный статус, чтобы не применить нерелевантный код.
+      _statusCode = null;
+    });
 
     final params = _getFilterParams(clientCode);
     ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
   }
 
-  void _onProductInfoModeChanged(ProductInfoMode mode, String clientCode) {
-    setState(() => _productInfoMode = mode);
+  void _maybeOpenInitialTarget(List<_GroupBucket> groups) {
+    final hasTarget =
+        widget.initialTrackId != null ||
+        (widget.initialTrackCode?.isNotEmpty ?? false) ||
+        widget.initialAssemblyId != null;
+    if (!hasTarget || groups.isEmpty) return;
 
+    final targetKey =
+        '${widget.initialTrackId}|${widget.initialTrackCode}|${widget.initialAssemblyId}';
+    if (_handledInitialTargetKey == targetKey) return;
+
+    _GroupBucket? bucket;
+    if (widget.initialAssemblyId != null) {
+      for (final group in groups) {
+        if (group.assembly?.id == widget.initialAssemblyId) {
+          bucket = group;
+          break;
+        }
+      }
+    } else {
+      for (final group in groups) {
+        final hasTrack = group.tracks.any((track) {
+          final idMatches =
+              widget.initialTrackId != null &&
+              track.id == widget.initialTrackId;
+          final codeMatches =
+              widget.initialTrackCode != null &&
+              track.code.toLowerCase() ==
+                  widget.initialTrackCode!.toLowerCase();
+          return idMatches || codeMatches;
+        });
+        if (hasTrack) {
+          bucket = group;
+          break;
+        }
+      }
+    }
+
+    if (bucket == null) return;
+    _handledInitialTargetKey = targetKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openDigestTrackSheet(bucket!);
+    });
+  }
+
+  Future<void> _openDigestTrackSheet(_GroupBucket bucket) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        initialChildSize: 0.84,
+        minChildSize: 0.45,
+        maxChildSize: 0.96,
+        expand: false,
+        builder: (sheetContext, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+            ),
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [const SheetHandle(), _buildTrackGroupCard(bucket)],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  _TrackGroupCard _buildTrackGroupCard(
+    _GroupBucket group, {
+    GlobalKey? tutorialActionsKey,
+    GlobalKey? tutorialAssemblyKey,
+  }) {
+    return _TrackGroupCard(
+      assembly: group.assembly,
+      tracks: group.tracks,
+      selectedTrackCodes: _selectedTracks,
+      selectedStatus: _selectedStatus,
+      onToggle: _toggleTrack,
+      requestedPhotoReports: _requestedPhotoReports,
+      onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
+      onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
+      onEditPhotoWish: (track) => _showEditPhotoWishSheet(context, track),
+      photoRequestCreatedAt: _photoRequestCreatedAt,
+      photoRequestUpdatedAt: _photoRequestUpdatedAt,
+      photoRequestNotes: _photoRequestNotes,
+      overrideComments: _overrideComments,
+      onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+      onCancelQuestion: (track) => _cancelQuestion(track),
+      onEditComment: (track) => _showCommentSheet(context, track),
+      onEditProduct: (track) => _showAboutProductSheet(context, track),
+      askedQuestions: _askedQuestions,
+      questionCreatedAt: _questionCreatedAt,
+      questionUpdatedAt: _questionUpdatedAt,
+      questionStatus: _questionStatus,
+      questionAnswers: _questionAnswers,
+      productInfos: _productInfos,
+      groupComments: _groupComments,
+      groupQuestions: _groupQuestions,
+      groupQuestionCreatedAt: _groupQuestionCreatedAt,
+      groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
+      onEditGroupComment: (assembly) =>
+          _showGroupCommentSheet(context, assembly),
+      onAskGroupQuestion: (assembly) =>
+          _showGroupQuestionSheet(context, assembly),
+      onSelectDelivery: (assembly) => _showDeliverySheet(context, assembly),
+      onDeleteTrack: (track) => _deleteTrack(track),
+      onReturnRequest: (track) => _showReturnSheet(context, track),
+      returnRequestedTracks: _returnRequestedTracks,
+      tutorialActionsKey: tutorialActionsKey,
+      tutorialAssemblyKey: tutorialAssemblyKey,
+    );
+  }
+
+  Widget _buildHeaderSection(
+    BuildContext context, {
+    required String clientCode,
+    required PaginatedTracksState tracksState,
+    required List<TrackStatus> trackStatuses,
+    required List<TrackStatus> assemblyStatuses,
+    required List<TrackStatus> photoRequestStatuses,
+    required List<TrackStatus> questionStatuses,
+  }) {
+    final isAssemblyMode = _viewMode == ViewMode.groups;
+    final activeFilters =
+        _statusCode != null ||
+        (isAssemblyMode
+            ? _deliveryInfoMode != DeliveryInfoMode.all
+            : _productInfoMode != ProductInfoMode.all ||
+                  _photoRequestStatusCode != null ||
+                  _questionStatusCode != null);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 36,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Expanded(
+                child: Text(
+                  'Треки и сборки',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 24,
+                    height: 29 / 24,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2F2F2F),
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              _HeaderIconButton(
+                key: _filtersKey,
+                icon: Icons.filter_alt_rounded,
+                tooltip: 'Фильтр',
+                isActive: activeFilters,
+                onTap: () => _showTrackFiltersSheet(
+                  clientCode,
+                  tracksState.tracks,
+                  trackStatuses: trackStatuses,
+                  assemblyStatuses: assemblyStatuses,
+                  photoRequestStatuses: photoRequestStatuses,
+                  questionStatuses: questionStatuses,
+                ),
+              ),
+              const SizedBox(width: 10),
+              _HeaderIconButton(
+                icon: Icons.swap_vert_rounded,
+                tooltip: 'Сортировка',
+                isActive: _sortMode != TrackSortMode.createdAt,
+                onTap: () => _showSortSheet(clientCode),
+              ),
+              const SizedBox(width: 10),
+              _HeaderIconButton(
+                icon: Icons.search_rounded,
+                tooltip: 'Поиск',
+                isActive: _isSearchVisible || _query.isNotEmpty,
+                onTap: () {
+                  setState(() => _isSearchVisible = !_isSearchVisible);
+                },
+              ),
+              const SizedBox(width: 10),
+              _HeaderAddTrackButton(
+                key: _fabKey,
+                onTap: () => showAddTracksDialog(context, ref),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        _TracksViewModeSwitch(
+          value: _viewMode == ViewMode.groups
+              ? ViewMode.groups
+              : ViewMode.singles,
+          onChanged: (mode) => _onDisplayModeChanged(mode, clientCode),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: (_isSearchVisible || _query.isNotEmpty)
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _TracksSearchField(
+                    query: _query,
+                    onChanged: (value) => _onSearchChanged(value, clientCode),
+                    onClear: () {
+                      setState(() {
+                        _query = '';
+                        _isSearchVisible = false;
+                      });
+                      _onSearchChanged('', clientCode);
+                    },
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(height: 15),
+      ],
+    );
+  }
+
+  Future<void> _showSortSheet(String clientCode) async {
+    final selected = await showModalBottomSheet<TrackSortMode>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => _TrackSortSheet(selected: _sortMode),
+    );
+    if (selected == null || selected == _sortMode || !mounted) return;
+    _onSortModeChanged(selected, clientCode);
+  }
+
+  Future<void> _showTrackFiltersSheet(
+    String clientCode,
+    List<TrackItem> tracks, {
+    required List<TrackStatus> trackStatuses,
+    required List<TrackStatus> assemblyStatuses,
+    required List<TrackStatus> photoRequestStatuses,
+    required List<TrackStatus> questionStatuses,
+  }) async {
+    final result = await showModalBottomSheet<_TrackFiltersResult>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => _TrackFiltersSheet(
+        statusCode: _statusCode,
+        viewMode: _viewMode,
+        tracks: tracks,
+        trackStatuses: trackStatuses,
+        assemblyStatuses: assemblyStatuses,
+        photoRequestStatuses: photoRequestStatuses,
+        questionStatuses: questionStatuses,
+        productInfoMode: _productInfoMode,
+        photoRequestStatusCode: _photoRequestStatusCode,
+        questionStatusCode: _questionStatusCode,
+        deliveryInfoMode: _deliveryInfoMode,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _statusCode = result.statusCode;
+      _productInfoMode = result.productInfoMode;
+      _photoRequestStatusCode = result.photoRequestStatusCode;
+      _questionStatusCode = result.questionStatusCode;
+      _deliveryInfoMode = result.deliveryInfoMode;
+    });
     final params = _getFilterParams(clientCode);
     ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
   }
@@ -2836,6 +3068,29 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     _updateNotifierListener(tracksNotifier);
 
     final tracksState = tracksNotifier.state;
+    if (_filtersInitializedForClientCode != clientCode) {
+      _filtersInitializedForClientCode = clientCode;
+      final initialFilters = _getFilterParams(clientCode);
+      if (tracksState.filters != initialFilters) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref
+              .read(paginatedTracksProvider(clientCode))
+              .updateFilters(initialFilters);
+        });
+      }
+    }
+    final trackStatuses =
+        ref.watch(trackStatusesProvider).asData?.value ?? const <TrackStatus>[];
+    final assemblyStatuses =
+        ref.watch(assemblyStatusesProvider).asData?.value ??
+        const <TrackStatus>[];
+    final photoRequestStatuses =
+        ref.watch(photoRequestStatusesProvider).asData?.value ??
+        const <TrackStatus>[];
+    final questionStatuses =
+        ref.watch(questionStatusesProvider).asData?.value ??
+        const <TrackStatus>[];
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 72.0;
@@ -2843,6 +3098,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     final groups = tracksState.tracks.isNotEmpty
         ? _groupTracks(tracksState.tracks)
         : <_GroupBucket>[];
+    _maybeOpenInitialTarget(groups);
     final bottomScrollPad =
         bottomPad + 16 + (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8);
 
@@ -2860,7 +3116,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           icon: Icons.add_circle_rounded,
           title: 'Добавить трек',
           description:
-              'Нажмите кнопку «+» в правом нижнем углу, чтобы добавить трек-номер новой посылки. Мы начнём её отслеживать.',
+              'Нажмите кнопку «+» в верхней панели, чтобы добавить трек-номер новой посылки. Мы начнём её отслеживать.',
           targetKey: _fabKey,
         ),
         TutorialStep(
@@ -2970,59 +3226,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
                     sliver: SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Треки',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 18),
-                          Container(
-                            key: _filtersKey,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x14000000),
-                                  blurRadius: 24,
-                                  offset: Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: _FiltersNew(
-                              statusCode: _statusCode,
-                              tracks: tracksState.tracks,
-                              viewMode: _viewMode,
-                              productInfoMode: _productInfoMode,
-                              query: _query,
-                              onStatusChanged: (v) =>
-                                  _onStatusChanged(v, clientCode),
-                              onViewModeChanged: (v) =>
-                                  _onViewModeChanged(v, clientCode),
-                              onProductInfoModeChanged: (v) =>
-                                  _onProductInfoModeChanged(v, clientCode),
-                              onQueryChanged: (v) =>
-                                  _onSearchChanged(v, clientCode),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          if (tracksState.total > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Text(
-                                'Показано ${tracksState.tracks.length} из ${tracksState.total}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                        ],
+                      child: _buildHeaderSection(
+                        context,
+                        clientCode: clientCode,
+                        tracksState: tracksState,
+                        trackStatuses: trackStatuses,
+                        assemblyStatuses: assemblyStatuses,
+                        photoRequestStatuses: photoRequestStatuses,
+                        questionStatuses: questionStatuses,
                       ),
                     ),
                   ),
@@ -3037,21 +3248,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               ),
             ),
           ),
-          // Нижние кнопки: "Отправка на сборку" (если выбраны треки) + FAB "Добавить треки"
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom:
-                AppLayout.bottomBarHeight +
-                AppLayout.bottomBarBottomMargin +
-                35, // Минимальный отступ от нижнего меню
-            child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.end, // FAB справа по умолчанию
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Кнопки выбора и действия (показываются только когда выбраны треки)
-                if (_selectedTracks.isNotEmpty) ...[
+          // Нижние кнопки выбора и отправки показываются только когда выбраны треки.
+          if (_selectedTracks.isNotEmpty)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom:
+                  AppLayout.bottomBarHeight +
+                  AppLayout.bottomBarBottomMargin +
+                  35, // Минимальный отступ от нижнего меню
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: OutlinedButton(
@@ -3076,19 +3285,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     ),
                   ),
                 ],
-                // FAB кнопка для добавления треков (всегда справа)
-                FloatingActionButton(
-                  key: _fabKey,
-                  onPressed: () => showAddTracksDialog(context, ref),
-                  backgroundColor: context.brandPrimary,
-                  foregroundColor: Colors.white,
-                  elevation: 8,
-                  child: const Icon(Icons.add_box_rounded, size: 28),
-                ),
-              ],
+              ),
             ),
+          ScrollToTopButton(
+            controller: _scrollController,
+            bottomOffset:
+                AppLayout.bottomBarHeight +
+                AppLayout.bottomBarBottomMargin +
+                37,
           ),
-          ScrollToTopButton(controller: _scrollController),
         ],
       ),
     );
@@ -3143,6 +3348,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
         sliver: SliverList.builder(
           itemCount: groups.length + 1, // +1 для footer
+          addAutomaticKeepAlives: false,
+          addSemanticIndexes: false,
           itemBuilder: (context, index) {
             // Footer: индикатор загрузки, ошибка или "все загружены"
             if (index == groups.length) {
@@ -3182,44 +3389,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             final isFirstAssembly =
                 g.assembly != null &&
                 groups.sublist(0, index).every((gr) => gr.assembly == null);
-            final trackCard = _TrackGroupCard(
-              assembly: g.assembly,
-              tracks: g.tracks,
-              selectedTrackCodes: _selectedTracks,
-              selectedStatus: _selectedStatus,
-              onToggle: _toggleTrack,
-              requestedPhotoReports: _requestedPhotoReports,
-              onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
-              onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
-              onEditPhotoWish: (track) =>
-                  _showEditPhotoWishSheet(context, track),
-              photoRequestCreatedAt: _photoRequestCreatedAt,
-              photoRequestUpdatedAt: _photoRequestUpdatedAt,
-              photoRequestNotes: _photoRequestNotes,
-              overrideComments: _overrideComments,
-              onAskQuestion: (track) => _showAskQuestionSheet(context, track),
-              onCancelQuestion: (track) => _cancelQuestion(track),
-              onEditComment: (track) => _showCommentSheet(context, track),
-              onEditProduct: (track) => _showAboutProductSheet(context, track),
-              askedQuestions: _askedQuestions,
-              questionCreatedAt: _questionCreatedAt,
-              questionUpdatedAt: _questionUpdatedAt,
-              questionStatus: _questionStatus,
-              questionAnswers: _questionAnswers,
-              productInfos: _productInfos,
-              groupComments: _groupComments,
-              groupQuestions: _groupQuestions,
-              groupQuestionCreatedAt: _groupQuestionCreatedAt,
-              groupQuestionUpdatedAt: _groupQuestionUpdatedAt,
-              onEditGroupComment: (assembly) =>
-                  _showGroupCommentSheet(context, assembly),
-              onAskGroupQuestion: (assembly) =>
-                  _showGroupQuestionSheet(context, assembly),
-              onSelectDelivery: (assembly) =>
-                  _showDeliverySheet(context, assembly),
-              onDeleteTrack: (track) => _deleteTrack(track),
-              onReturnRequest: (track) => _showReturnSheet(context, track),
-              returnRequestedTracks: _returnRequestedTracks,
+            final trackCard = _buildTrackGroupCard(
+              g,
               tutorialActionsKey: index == 0 ? _actionsRowKey : null,
               tutorialAssemblyKey: isFirstAssembly ? _assemblyKey : null,
             );
@@ -3246,10 +3417,37 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
     final list = byKey.values.toList(growable: false);
     for (final bucket in list) {
-      bucket.tracks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      bucket.tracks.sort(_compareTracksBySelectedSort);
     }
-    list.sort((a, b) => b.latestDate.compareTo(a.latestDate));
+    list.sort((a, b) {
+      final byDate = _latestGroupDate(b).compareTo(_latestGroupDate(a));
+      if (byDate != 0) return byDate;
+      final aId = a.tracks.isNotEmpty ? a.tracks.first.id ?? 0 : 0;
+      final bId = b.tracks.isNotEmpty ? b.tracks.first.id ?? 0 : 0;
+      return bId.compareTo(aId);
+    });
     return list;
+  }
+
+  int _compareTracksBySelectedSort(TrackItem a, TrackItem b) {
+    final byDate = _sortDate(b).compareTo(_sortDate(a));
+    if (byDate != 0) return byDate;
+    return (b.id ?? 0).compareTo(a.id ?? 0);
+  }
+
+  DateTime _sortDate(TrackItem track) {
+    return _sortMode == TrackSortMode.updatedAt
+        ? track.updatedAt
+        : track.createdAt;
+  }
+
+  DateTime _latestGroupDate(_GroupBucket bucket) {
+    var latest = DateTime.fromMillisecondsSinceEpoch(0);
+    for (final track in bucket.tracks) {
+      final date = _sortDate(track);
+      if (date.isAfter(latest)) latest = date;
+    }
+    return latest;
   }
 
   void _toggleTrack(TrackItem track) {
@@ -3338,7 +3536,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           'Подтверждение «Получен» добавим следующим шагом.',
         _ => 'Действие добавим следующим шагом.',
       };
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      AppToast.showFromSnackBar(context, SnackBar(content: Text(text)));
     }
   }
 }
@@ -3346,6 +3544,780 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 enum ViewMode { all, groups, singles }
 
 enum ProductInfoMode { all, filled, empty }
+
+enum DeliveryInfoMode { all, filled, empty }
+
+enum TrackSortMode { createdAt, updatedAt }
+
+extension TrackSortModeX on TrackSortMode {
+  String get queryValue => switch (this) {
+    TrackSortMode.createdAt => 'createdAt',
+    TrackSortMode.updatedAt => 'updatedAt',
+  };
+
+  String get label => switch (this) {
+    TrackSortMode.createdAt => 'По дате добавления',
+    TrackSortMode.updatedAt => 'По дате изменения',
+  };
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _HeaderIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isActive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? context.brandPrimary : const Color(0xFF2F2F2F);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Center(child: Icon(icon, size: 23, color: color)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderAddTrackButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HeaderAddTrackButton({super.key, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Добавить треки',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: context.brandPrimary,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: context.brandPrimary.withValues(alpha: 0.28),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.add_box_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TracksViewModeSwitch extends StatelessWidget {
+  final ViewMode value;
+  final ValueChanged<ViewMode> onChanged;
+
+  const _TracksViewModeSwitch({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 40,
+      padding: EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 25,
+            offset: Offset(3, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _TracksViewModeSegment(
+              label: 'Треки',
+              selected: value == ViewMode.singles,
+              onTap: () => onChanged(ViewMode.singles),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _TracksViewModeSegment(
+              label: 'Сборки',
+              selected: value == ViewMode.groups,
+              onTap: () => onChanged(ViewMode.groups),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TracksViewModeSegment extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TracksViewModeSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: selected ? context.brandGradient : null,
+            color: selected ? null : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'Gilroy',
+              fontSize: 17,
+              height: 20 / 17,
+              fontWeight: FontWeight.w400,
+              color: selected ? Colors.white : const Color(0xFF2F2F2F),
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TracksSearchField extends StatefulWidget {
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _TracksSearchField({
+    required this.query,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  State<_TracksSearchField> createState() => _TracksSearchFieldState();
+}
+
+class _TracksSearchFieldState extends State<_TracksSearchField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.query);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TracksSearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query && _controller.text != widget.query) {
+      _controller.text = widget.query;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 25,
+            offset: Offset(3, 4),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _controller,
+        style: const TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF2F2F2F),
+          letterSpacing: 0,
+        ),
+        decoration: InputDecoration(
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: context.brandPrimary,
+            size: 22,
+          ),
+          suffixIcon: _controller.text.isNotEmpty
+              ? IconButton(
+                  onPressed: () {
+                    _controller.clear();
+                    widget.onClear();
+                  },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF8A8A8A),
+                    size: 20,
+                  ),
+                )
+              : null,
+          hintText: 'Поиск по треку',
+          hintStyle: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Color(0x99000000),
+            letterSpacing: 0,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          isDense: true,
+        ),
+        onChanged: (value) {
+          setState(() {});
+          widget.onChanged(value);
+        },
+      ),
+    );
+  }
+}
+
+class _TrackSortSheet extends StatelessWidget {
+  final TrackSortMode selected;
+
+  const _TrackSortSheet({required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHandle(),
+            const SizedBox(height: 12),
+            const Text(
+              'Сортировка',
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2F2F2F),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final mode in TrackSortMode.values)
+              _SheetOptionTile(
+                title: mode.label,
+                selected: mode == selected,
+                onTap: () => Navigator.pop(context, mode),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackFiltersResult {
+  final String? statusCode;
+  final ProductInfoMode productInfoMode;
+  final String? photoRequestStatusCode;
+  final String? questionStatusCode;
+  final DeliveryInfoMode deliveryInfoMode;
+
+  const _TrackFiltersResult({
+    required this.statusCode,
+    required this.productInfoMode,
+    required this.photoRequestStatusCode,
+    required this.questionStatusCode,
+    required this.deliveryInfoMode,
+  });
+}
+
+class _StatusOption {
+  final String? code;
+  final String label;
+
+  const _StatusOption({required this.code, required this.label});
+}
+
+class _TrackFiltersSheet extends StatefulWidget {
+  final String? statusCode;
+  final ViewMode viewMode;
+  final List<TrackItem> tracks;
+  final List<TrackStatus> trackStatuses;
+  final List<TrackStatus> assemblyStatuses;
+  final List<TrackStatus> photoRequestStatuses;
+  final List<TrackStatus> questionStatuses;
+  final ProductInfoMode productInfoMode;
+  final String? photoRequestStatusCode;
+  final String? questionStatusCode;
+  final DeliveryInfoMode deliveryInfoMode;
+
+  const _TrackFiltersSheet({
+    required this.statusCode,
+    required this.viewMode,
+    required this.tracks,
+    required this.trackStatuses,
+    required this.assemblyStatuses,
+    required this.photoRequestStatuses,
+    required this.questionStatuses,
+    required this.productInfoMode,
+    required this.photoRequestStatusCode,
+    required this.questionStatusCode,
+    required this.deliveryInfoMode,
+  });
+
+  @override
+  State<_TrackFiltersSheet> createState() => _TrackFiltersSheetState();
+}
+
+class _TrackFiltersSheetState extends State<_TrackFiltersSheet> {
+  static const _noneStatusCode = 'none';
+
+  late String? _statusCode = widget.statusCode;
+  late ProductInfoMode _productInfoMode = widget.productInfoMode;
+  late String? _photoRequestStatusCode = widget.photoRequestStatusCode;
+  late String? _questionStatusCode = widget.questionStatusCode;
+  late DeliveryInfoMode _deliveryInfoMode = widget.deliveryInfoMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAssemblyMode = widget.viewMode == ViewMode.groups;
+    final statusOptions = _buildStatusOptions();
+    final photoRequestOptions = _buildTaskStatusOptions(
+      widget.photoRequestStatuses,
+      _fallbackPhotoRequestStatuses(),
+      noneLabel: 'Без запроса',
+    );
+    final questionOptions = _buildTaskStatusOptions(
+      widget.questionStatuses,
+      _fallbackQuestionStatuses(),
+      noneLabel: 'Без вопроса',
+    );
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHandle(),
+            const SizedBox(height: 12),
+            const Text(
+              'Фильтр',
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2F2F2F),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const _FilterSectionTitle('Статус'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in statusOptions)
+                  _FilterChipButton(
+                    label: option.label,
+                    selected: option.code == _statusCode,
+                    onTap: () => setState(() => _statusCode = option.code),
+                  ),
+              ],
+            ),
+            if (isAssemblyMode) ...[
+              const SizedBox(height: 18),
+              const _FilterSectionTitle('Данные доставки'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _FilterChipButton(
+                    label: 'Все',
+                    selected: _deliveryInfoMode == DeliveryInfoMode.all,
+                    onTap: () => setState(
+                      () => _deliveryInfoMode = DeliveryInfoMode.all,
+                    ),
+                  ),
+                  _FilterChipButton(
+                    label: 'Заполнены',
+                    selected: _deliveryInfoMode == DeliveryInfoMode.filled,
+                    onTap: () => setState(
+                      () => _deliveryInfoMode = DeliveryInfoMode.filled,
+                    ),
+                  ),
+                  _FilterChipButton(
+                    label: 'Не заполнены',
+                    selected: _deliveryInfoMode == DeliveryInfoMode.empty,
+                    onTap: () => setState(
+                      () => _deliveryInfoMode = DeliveryInfoMode.empty,
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 18),
+              const _FilterSectionTitle('О товаре'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _FilterChipButton(
+                    label: 'Все',
+                    selected: _productInfoMode == ProductInfoMode.all,
+                    onTap: () =>
+                        setState(() => _productInfoMode = ProductInfoMode.all),
+                  ),
+                  _FilterChipButton(
+                    label: 'Заполнено',
+                    selected: _productInfoMode == ProductInfoMode.filled,
+                    onTap: () => setState(
+                      () => _productInfoMode = ProductInfoMode.filled,
+                    ),
+                  ),
+                  _FilterChipButton(
+                    label: 'Пусто',
+                    selected: _productInfoMode == ProductInfoMode.empty,
+                    onTap: () => setState(
+                      () => _productInfoMode = ProductInfoMode.empty,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const _FilterSectionTitle('Фотоотчет'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final option in photoRequestOptions)
+                    _FilterChipButton(
+                      label: option.label,
+                      selected: option.code == _photoRequestStatusCode,
+                      onTap: () =>
+                          setState(() => _photoRequestStatusCode = option.code),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const _FilterSectionTitle('Вопросы'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final option in questionOptions)
+                    _FilterChipButton(
+                      label: option.label,
+                      selected: option.code == _questionStatusCode,
+                      onTap: () =>
+                          setState(() => _questionStatusCode = option.code),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(
+                      context,
+                      const _TrackFiltersResult(
+                        statusCode: null,
+                        productInfoMode: ProductInfoMode.all,
+                        photoRequestStatusCode: null,
+                        questionStatusCode: null,
+                        deliveryInfoMode: DeliveryInfoMode.all,
+                      ),
+                    ),
+                    child: const Text('Сбросить'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: context.brandPrimary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(
+                      context,
+                      _TrackFiltersResult(
+                        statusCode: _statusCode,
+                        productInfoMode: _productInfoMode,
+                        photoRequestStatusCode: _photoRequestStatusCode,
+                        questionStatusCode: _questionStatusCode,
+                        deliveryInfoMode: _deliveryInfoMode,
+                      ),
+                    ),
+                    child: const Text('Применить'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_StatusOption> _buildStatusOptions() {
+    final options = <_StatusOption>[
+      const _StatusOption(code: null, label: 'Все'),
+    ];
+    final added = <String>{};
+    final isAssemblyMode = widget.viewMode == ViewMode.groups;
+    final statuses = isAssemblyMode
+        ? widget.assemblyStatuses
+        : widget.trackStatuses;
+
+    for (final status in statuses) {
+      if (status.code.isEmpty || added.contains(status.code)) continue;
+      added.add(status.code);
+      options.add(_StatusOption(code: status.code, label: status.nameRu));
+    }
+
+    for (final track in widget.tracks) {
+      if (isAssemblyMode) {
+        final assembly = track.assembly;
+        if (assembly == null ||
+            assembly.status.isEmpty ||
+            added.contains(assembly.status)) {
+          continue;
+        }
+        added.add(assembly.status);
+        options.add(
+          _StatusOption(
+            code: assembly.status,
+            label: assembly.statusName?.isNotEmpty == true
+                ? assembly.statusName!
+                : assembly.status,
+          ),
+        );
+      } else {
+        if (track.statusCode.isEmpty || added.contains(track.statusCode)) {
+          continue;
+        }
+        added.add(track.statusCode);
+        options.add(_StatusOption(code: track.statusCode, label: track.status));
+      }
+    }
+
+    return options;
+  }
+
+  List<_StatusOption> _buildTaskStatusOptions(
+    List<TrackStatus> statuses,
+    Map<String, String> fallbackStatuses, {
+    required String noneLabel,
+  }) {
+    final options = <_StatusOption>[
+      const _StatusOption(code: null, label: 'Все'),
+      _StatusOption(code: _noneStatusCode, label: noneLabel),
+    ];
+    final added = <String>{_noneStatusCode};
+
+    for (final status in statuses) {
+      if (status.code.isEmpty || added.contains(status.code)) continue;
+      added.add(status.code);
+      options.add(_StatusOption(code: status.code, label: status.nameRu));
+    }
+
+    for (final entry in fallbackStatuses.entries) {
+      if (entry.key.isEmpty || added.contains(entry.key)) continue;
+      added.add(entry.key);
+      options.add(_StatusOption(code: entry.key, label: entry.value));
+    }
+
+    return options;
+  }
+
+  Map<String, String> _fallbackPhotoRequestStatuses() {
+    final statuses = <String, String>{
+      'new': 'Новый',
+      'at_warehouse': 'На складе',
+      'in_progress': 'Передан в работу',
+      'assigned': 'Назначен ответственный',
+      'completed': 'Выполнен',
+      'cancelled': 'Отменён',
+    };
+    for (final track in widget.tracks) {
+      for (final request in track.photoRequests) {
+        statuses[request.status] = request.statusLabel;
+      }
+    }
+    return statuses;
+  }
+
+  Map<String, String> _fallbackQuestionStatuses() {
+    final statuses = <String, String>{
+      'new': 'Новый',
+      'at_warehouse': 'На складе',
+      'in_progress': 'Передан в работу',
+      'assigned': 'Назначен ответственный',
+      'completed': 'Отвечен',
+      'cancelled': 'Отменён',
+    };
+    for (final track in widget.tracks) {
+      for (final question in track.questions) {
+        statuses[question.status] = question.statusLabel;
+      }
+    }
+    return statuses;
+  }
+}
+
+class _FilterSectionTitle extends StatelessWidget {
+  final String title;
+
+  const _FilterSectionTitle(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontFamily: 'Gilroy',
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF2F2F2F),
+      ),
+    );
+  }
+}
+
+class _FilterChipButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChipButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected
+              ? context.brandPrimary.withValues(alpha: 0.12)
+              : const Color(0x0A000000),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? context.brandPrimary : const Color(0x00000000),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? context.brandPrimary : const Color(0xB3000000),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetOptionTile extends StatelessWidget {
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SheetOptionTile({
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        title,
+        style: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 15,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          color: selected ? context.brandPrimary : const Color(0xFF2F2F2F),
+        ),
+      ),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: context.brandPrimary)
+          : null,
+      onTap: onTap,
+    );
+  }
+}
 
 class _Filters extends StatefulWidget {
   final String status;
@@ -3398,66 +4370,50 @@ class _FiltersState extends State<_Filters> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [context.brandPrimary, context.brandSecondary],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.all(1.5),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: context.brandPrimary,
-                  size: 20,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          _searchController.selection =
-                              const TextSelection.collapsed(offset: 0);
-                          _searchController.clear();
-                          widget.onQueryChanged('');
-                        },
-                      )
-                    : null,
-                hintText: 'Поиск по треку',
-                hintStyle: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF999999),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+        AppGradientInputFrame(
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: context.brandPrimary,
+                size: 22,
               ),
-              onChanged: (value) {
-                setState(() {});
-                widget.onQueryChanged(value);
-              },
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF999999),
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        _searchController.selection =
+                            const TextSelection.collapsed(offset: 0);
+                        _searchController.clear();
+                        widget.onQueryChanged('');
+                      },
+                    )
+                  : null,
+              hintText: 'Поиск по треку',
+              hintStyle: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF999999),
+                fontWeight: FontWeight.w500,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
             ),
+            onChanged: (value) {
+              setState(() {});
+              widget.onQueryChanged(value);
+            },
           ),
         ),
         const SizedBox(height: 10),
@@ -3583,7 +4539,7 @@ class _FiltersNewState extends State<_FiltersNew> {
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   color: context.brandPrimary,
-                  size: 18,
+                  size: 20,
                 ),
                 prefixIconConstraints: const BoxConstraints(minWidth: 36),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -3749,9 +4705,10 @@ class _TrackGroupCard extends StatefulWidget {
 }
 
 class _TrackGroupCardState extends State<_TrackGroupCard> {
-  bool _showAssemblyDetails = false;
+  bool _showDelivery = false;
   bool _showBoxes = false;
-  bool _showTracks = true;
+  bool _showTracks = false;
+  bool _showAssemblyDetails = false;
 
   @override
   Widget build(BuildContext context) {
@@ -3771,15 +4728,22 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final groupQuestionUpdated = widget.assembly != null
         ? widget.groupQuestionUpdatedAt[widget.assembly!.id.toString()]
         : null;
+    if (widget.assembly == null && widget.tracks.length == 1) {
+      return _buildTrackCard(context, df, widget.tracks.first);
+    }
+    if (widget.assembly != null) {
+      return _buildAssemblyCard(context);
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
+        borderRadius: BorderRadius.all(Radius.circular(10)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+            color: Color(0x1A000000),
+            blurRadius: 26,
+            offset: Offset(3, 4),
           ),
         ],
       ),
@@ -4457,7 +5421,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                     ClipboardData(text: track.code),
                                   );
                                   HapticFeedback.lightImpact();
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  AppToast.showFromSnackBar(
+                                    context,
                                     const SnackBar(
                                       content: Text('Трек скопирован'),
                                       duration: Duration(seconds: 1),
@@ -4576,6 +5541,1085 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               );
             }),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTrackCard(BuildContext context, DateFormat df, TrackItem track) {
+    final canSelect = track.status == 'На складе';
+    final allowedByStatus =
+        widget.selectedStatus == null || widget.selectedStatus == track.status;
+    final canShowCheckbox = canSelect && allowedByStatus;
+    final isSelected = widget.selectedTrackCodes.contains(track.code);
+
+    final canAskQuestion =
+        track.status == 'В ожидании' || track.status == 'На складе';
+    final canRequestReturn =
+        track.status == 'На складе' &&
+        track.statusCode == 'in_warehouse' &&
+        !widget.returnRequestedTracks.contains(track.code);
+    final availableFillInfo =
+        track.status == 'В ожидании' ||
+        track.status == 'На складе' ||
+        track.status == 'На сборке' ||
+        track.status == 'Отправлен';
+
+    final activePhoto = track.activePhotoRequest;
+    final visibleQuestions = track.questions
+        .where((q) => q.status != 'cancelled')
+        .toList();
+    final isPhotoRequested =
+        activePhoto != null ||
+        widget.requestedPhotoReports.contains(track.code);
+    final canRequestPhoto = track.status == 'В ожидании' && !isPhotoRequested;
+    final canCancelPhoto = activePhoto?.status == 'new';
+
+    final commentText = widget.overrideComments[track.code] ?? track.comment;
+    final commentValue = (commentText ?? '').trim();
+    final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '')
+        .trim();
+    final hasQuestion =
+        visibleQuestions.isNotEmpty || pendingLocalQuestion.isNotEmpty;
+
+    final photoCreated =
+        activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
+    final photoUpdated =
+        activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
+    final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
+    final photoMediaUrls = _collectPhotoMediaUrls(track, activePhoto);
+
+    final apiProductInfo = track.productInfo;
+    final localProductInfo = widget.productInfos[track.code];
+    final productInfoName =
+        apiProductInfo?.name ?? localProductInfo?.name ?? '';
+    final productInfoQuantity =
+        apiProductInfo?.quantity ?? localProductInfo?.quantity;
+    final productInfoImages = (localProductInfo?.images.isNotEmpty == true)
+        ? localProductInfo!.images
+        : (apiProductInfo?.imageUrl?.isNotEmpty == true
+              ? [apiProductInfo!.imageUrl!]
+              : <String>[]);
+    final hasProductInfo =
+        productInfoName.isNotEmpty ||
+        productInfoQuantity != null ||
+        productInfoImages.isNotEmpty;
+
+    final infoSections = <Widget>[];
+    if (commentValue.isNotEmpty) {
+      infoSections.add(
+        _CollapsibleNote(
+          text: commentValue,
+          onEdit: () => widget.onEditComment(track),
+        ),
+      );
+    }
+    if ((activePhoto != null || isPhotoRequested) &&
+        (photoMediaUrls.isEmpty || canCancelPhoto)) {
+      final photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
+          ? activePhoto!.wishes!
+          : widget.photoRequestNotes[track.code] ?? '';
+      infoSections.add(
+        _CollapsiblePhotoReport(
+          statusLabel: photoStatusLabel,
+          photoNote: photoNote,
+          canCancel: canCancelPhoto,
+          warehouseComment: activePhoto?.warehouseComment,
+          createdAt: photoCreated != null ? df.format(photoCreated) : null,
+          updatedAt: photoUpdated != null ? df.format(photoUpdated) : null,
+          mediaUrls: photoMediaUrls,
+          trackCode: track.code,
+          photoCreatedDate: photoCreated,
+          onEditWish: () => widget.onEditPhotoWish(track),
+          onCancel: () => widget.onCancelPhotoRequest(track),
+        ),
+      );
+    }
+    if (hasQuestion) {
+      for (var i = 0; i < visibleQuestions.length; i++) {
+        final q = visibleQuestions[i];
+        final statusColor = q.hasAnswer
+            ? Colors.green
+            : q.status == 'cancelled'
+            ? Colors.red
+            : Colors.orange;
+        infoSections.add(
+          _CollapsibleQuestion(
+            title: visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
+            statusLabel: q.statusLabel,
+            statusColor: statusColor,
+            question: q.question,
+            answer: q.hasAnswer ? q.answer : null,
+            createdAt: df.format(q.createdAt),
+            answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
+            canCancel: q.isActive,
+            onCancel: () => widget.onCancelQuestion(track),
+          ),
+        );
+      }
+      if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty) {
+        infoSections.add(
+          _CollapsibleQuestion(
+            title: 'Вопрос',
+            statusLabel: widget.questionStatus[track.code] ?? 'Новый',
+            statusColor: Colors.orange,
+            question: pendingLocalQuestion,
+            answer: null,
+            createdAt: df.format(DateTime.now()),
+            answeredAt: null,
+            canCancel: true,
+            onCancel: () => widget.onCancelQuestion(track),
+          ),
+        );
+      }
+    }
+
+    final actions = <_TrackCardAction>[
+      if (canRequestPhoto)
+        _TrackCardAction(
+          label: 'Фотоотчет',
+          onTap: () => widget.onPhotoRequest(track),
+        ),
+      if (canAskQuestion && !hasQuestion)
+        _TrackCardAction(
+          label: 'Вопрос',
+          onTap: () => widget.onAskQuestion(track),
+        ),
+      if (commentValue.isEmpty)
+        _TrackCardAction(
+          label: 'Заметка',
+          onTap: () => widget.onEditComment(track),
+        ),
+      if (availableFillInfo && !hasProductInfo)
+        _TrackCardAction(
+          label: 'О товаре',
+          onTap: () => widget.onEditProduct(track),
+        ),
+      if (canRequestReturn)
+        _TrackCardAction(
+          label: 'Возврат',
+          onTap: () => widget.onReturnRequest(track),
+        ),
+    ];
+
+    final activeQuestion = track.activeQuestion;
+    final questionDone =
+        activeQuestion?.hasAnswer == true ||
+        activeQuestion?.status == 'completed';
+    final questionPending = activeQuestion != null && !questionDone;
+    final photoDone =
+        photoMediaUrls.isNotEmpty || activePhoto?.status == 'completed';
+    final photoPending = activePhoto != null && !photoDone;
+    final statusColor = parseHexColor(track.statusColor);
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            offset: Offset(3, 4),
+            blurRadius: 26,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTrackCardHeader(
+              context,
+              track: track,
+              canShowCheckbox: canShowCheckbox,
+              isSelected: isSelected,
+              statusColor: statusColor,
+              photoDone: photoDone,
+              photoPending: photoPending,
+              questionDone: questionDone,
+              questionPending: questionPending,
+              hasProductInfo: hasProductInfo,
+              actions: actions,
+              canDelete: track.status == 'В ожидании',
+            ),
+            if (hasProductInfo || photoMediaUrls.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              _buildTrackCardMediaSection(
+                context,
+                track: track,
+                productName: productInfoName,
+                productQuantity: productInfoQuantity,
+                productImageUrls: productInfoImages,
+                photoMediaUrls: photoMediaUrls,
+                hasProductInfo: hasProductInfo,
+              ),
+            ],
+            if (infoSections.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0x0F000000),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (int i = 0; i < infoSections.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 10),
+                      infoSections[i],
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssemblyCard(BuildContext context) {
+    final assembly = widget.assembly!;
+    final statusColor = parseHexColor(assembly.statusColor);
+    final createdAt = _assemblyCreatedAt();
+    final updatedAt = _assemblyUpdatedAt();
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            offset: Offset(3, 4),
+            blurRadius: 26,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildAssemblyHeader(
+              context,
+              assembly: assembly,
+              createdAt: createdAt,
+              updatedAt: updatedAt,
+              statusColor: statusColor,
+            ),
+            const SizedBox(height: 15),
+            _buildAssemblyActions(context, assembly),
+            const SizedBox(height: 15),
+            _buildAssemblyDeliveryBlock(context, assembly),
+            if (assembly.boxes.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              _buildAssemblyBoxesBlock(context, assembly),
+            ],
+            if (widget.tracks.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              _buildAssemblyTracksBlock(context, assembly),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssemblyHeader(
+    BuildContext context, {
+    required TrackAssembly assembly,
+    required DateTime? createdAt,
+    required DateTime? updatedAt,
+    required Color? statusColor,
+  }) {
+    final dateFormat = DateFormat('dd.MM.yy', 'ru');
+    final dateColor = const Color(0xFF2F2F2F).withValues(alpha: 0.5);
+
+    return SizedBox(
+      height: 42,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 187,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  assembly.number,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF2F2F2F),
+                    fontFamily: 'Gilroy',
+                    fontSize: 16,
+                    height: 19 / 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Opacity(
+                  opacity: 0.5,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 2,
+                    children: [
+                      if (createdAt != null)
+                        _TrackDateMeta(
+                          icon: CupertinoIcons.plus_circle,
+                          value: dateFormat.format(createdAt),
+                          color: dateColor,
+                        ),
+                      if (updatedAt != null)
+                        _TrackDateMeta(
+                          icon: CupertinoIcons.arrow_2_circlepath_circle,
+                          value: dateFormat.format(updatedAt),
+                          color: dateColor,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          _AssemblyStatusPill(
+            text: assembly.statusName?.isNotEmpty == true
+                ? assembly.statusName!
+                : assembly.status,
+            color: statusColor ?? const Color(0xFFB8E1C8),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssemblyActions(BuildContext context, TrackAssembly assembly) {
+    final accent = context.brandPrimary;
+    return SizedBox(
+      height: 24,
+      child: Row(
+        children: [
+          Row(
+            children: [
+              _TrackCardActionChip(
+                action: _TrackCardAction(
+                  label: 'Заметка',
+                  onTap: () => widget.onEditGroupComment(assembly),
+                ),
+                accent: accent,
+              ),
+              const SizedBox(width: 5),
+              _TrackCardActionChip(
+                action: _TrackCardAction(
+                  label: 'Доставка',
+                  onTap: () => widget.onSelectDelivery(assembly),
+                ),
+                accent: accent,
+              ),
+            ],
+          ),
+          const Spacer(),
+          _TrackDeleteButton(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _showStyledSnackBar(
+                context,
+                'Удаление сборки недоступно',
+                isError: true,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssemblyDeliveryBlock(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) {
+    final lines = _assemblyDeliveryLines(assembly);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _AssemblySectionHeader(
+          title: 'Доставка',
+          isExpanded: _showDelivery,
+          onTap: () => setState(() => _showDelivery = !_showDelivery),
+        ),
+        if (_showDelivery) ...[
+          const SizedBox(height: 3),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 237,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < lines.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 5),
+                    _AssemblyPlainText(lines[i]),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAssemblyBoxesBlock(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _AssemblySectionHeader(
+          title: 'Коробки (${assembly.boxes.length})',
+          isExpanded: _showBoxes,
+          onTap: () => setState(() => _showBoxes = !_showBoxes),
+        ),
+        if (_showBoxes) ...[
+          const SizedBox(height: 7),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < assembly.boxes.length; i++) ...[
+                if (i > 0) const SizedBox(height: 15),
+                _buildAssemblyBoxRow(context, assembly, assembly.boxes[i]),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAssemblyTracksBlock(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _AssemblySectionHeader(
+          title: 'Трек-номера (${assembly.trackCount ?? widget.tracks.length})',
+          isExpanded: _showTracks,
+          onTap: () => setState(() => _showTracks = !_showTracks),
+        ),
+        if (_showTracks) ...[
+          const SizedBox(height: 7),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < widget.tracks.length; i++) ...[
+                if (i > 0) const SizedBox(height: 20),
+                _buildAssemblyTrackRow(context, widget.tracks[i]),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAssemblyBoxRow(
+    BuildContext context,
+    TrackAssembly assembly,
+    Box box,
+  ) {
+    final photos = box.photos.map((photo) => photo.url).where((url) {
+      return url.trim().isNotEmpty;
+    }).toList();
+    return SizedBox(
+      height: 126,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: photos.isEmpty
+                ? null
+                : () => _openAssemblyMediaViewer(context, photos),
+            child: Container(
+              width: 154,
+              height: 124,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: const Color(0xFFC4C4C4),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1A000000),
+                    offset: Offset(3, 4),
+                    blurRadius: 25,
+                  ),
+                ],
+              ),
+              child: photos.isEmpty
+                  ? const SizedBox.shrink()
+                  : CachedNetworkImage(
+                      imageUrl: ApiConfig.getMediaUrl(photos.first),
+                      memCacheWidth: 220,
+                      memCacheHeight: 220,
+                      maxWidthDiskCache: 440,
+                      maxHeightDiskCache: 440,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      useOldImageOnUrlChange: false,
+                      filterQuality: FilterQuality.low,
+                      imageBuilder: (_, imageProvider) => DecoratedBox(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: imageProvider,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      placeholder: (_, _) => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      errorWidget: (_, _, _) => const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 22),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: SizedBox(
+              height: 126,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _AssemblyInvoiceText(
+                    value: (box.orderNumber ?? assembly.number).trim(),
+                  ),
+                  _AssemblyPlainText(
+                    'Габариты: ${_boxDimensionsForDesign(box)}',
+                  ),
+                  _AssemblyPlainText('Вес: ${_formatDecimal(box.weight)} кг'),
+                  _AssemblyPlainText(
+                    'Объём: ${box.volume.toStringAsFixed(4)} м³',
+                  ),
+                  _AssemblyPlainText(
+                    'Плотность: ${box.density.toStringAsFixed(0)} кг/м3',
+                  ),
+                  _AssemblyPlainText(
+                    'Тариф: ${box.tariffName ?? assembly.tariffName ?? '—'}',
+                  ),
+                  _AssemblyPlainText(
+                    'Упаковка: ${_boxPackagingForDesign(box, assembly)}',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssemblyTrackRow(BuildContext context, TrackItem track) {
+    final dateFormat = DateFormat('dd.MM.yy', 'ru');
+    final dateColor = const Color(0xFF2F2F2F).withValues(alpha: 0.5);
+    final apiProductInfo = track.productInfo;
+    final localProductInfo = widget.productInfos[track.code];
+    final productName =
+        (apiProductInfo?.name ?? localProductInfo?.name ?? '').trim().isNotEmpty
+        ? (apiProductInfo?.name ?? localProductInfo?.name ?? '').trim()
+        : 'О товаре';
+    final productQuantity =
+        apiProductInfo?.quantity ?? localProductInfo?.quantity;
+
+    return SizedBox(
+      height: 42,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 187,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: track.code));
+                HapticFeedback.lightImpact();
+                _showStyledSnackBar(context, 'Трек скопирован');
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.code,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF2F2F2F),
+                      fontFamily: 'Gilroy',
+                      fontSize: 16,
+                      height: 19 / 16,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Opacity(
+                    opacity: 0.5,
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 2,
+                      children: [
+                        _TrackDateMeta(
+                          icon: CupertinoIcons.plus_circle,
+                          value: dateFormat.format(track.createdAt),
+                          color: dateColor,
+                        ),
+                        _TrackDateMeta(
+                          icon: CupertinoIcons.arrow_2_circlepath_circle,
+                          value: dateFormat.format(track.updatedAt),
+                          color: dateColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: 101,
+            height: 35,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  productName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF2F2F2F),
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 16 / 14,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                Text(
+                  productQuantity != null
+                      ? 'Количество: $productQuantity шт'
+                      : 'Количество: —',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF2F2F2F),
+                    fontFamily: 'Gilroy',
+                    fontSize: 12,
+                    height: 14 / 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _assemblyDeliveryLines(TrackAssembly assembly) {
+    final isTransport = assembly.deliveryMethod == 'transport_company';
+    final deliveryType = assembly.deliveryMethod == null
+        ? '—'
+        : isTransport
+        ? ((assembly.transportCompanyName ?? '').trim().isNotEmpty
+              ? assembly.transportCompanyName!.trim()
+              : 'Транспортная компания')
+        : 'Самовывоз';
+    return [
+      'Тип доставки: $deliveryType',
+      'ФИО получателя: ${_emptyDash(assembly.recipientName)}',
+      'Телефон: ${_emptyDash(assembly.recipientPhone)}',
+      'Адрес доставки: ${_emptyDash(assembly.recipientCity)}',
+    ];
+  }
+
+  String _boxDimensionsForDesign(Box box) {
+    return '${box.height.toStringAsFixed(0)}x${box.width.toStringAsFixed(0)}x${box.length.toStringAsFixed(0)} см';
+  }
+
+  String _boxPackagingForDesign(Box box, TrackAssembly assembly) {
+    final values = box.packagingTypes.isNotEmpty
+        ? box.packagingTypes
+        : assembly.packagingTypes;
+    return values.isEmpty ? '—' : values.join(', ');
+  }
+
+  String _emptyDash(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? '—' : trimmed;
+  }
+
+  DateTime? _assemblyCreatedAt() {
+    DateTime? result;
+    for (final track in widget.tracks) {
+      final value = track.createdAt;
+      if (result == null || value.isBefore(result)) result = value;
+    }
+    return result;
+  }
+
+  DateTime? _assemblyUpdatedAt() {
+    DateTime? result;
+    for (final track in widget.tracks) {
+      final value = track.updatedAt;
+      if (result == null || value.isAfter(result)) result = value;
+    }
+    return result;
+  }
+
+  void _openAssemblyMediaViewer(
+    BuildContext context,
+    List<String> mediaUrls, {
+    int initialIndex = 0,
+  }) {
+    if (mediaUrls.isEmpty) return;
+    final safeInitialIndex = initialIndex
+        .clamp(0, mediaUrls.length - 1)
+        .toInt();
+    final photos = mediaUrls
+        .map((url) => PhotoItem(url: url, date: DateTime.now()))
+        .toList();
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(
+          item: photos[safeInitialIndex],
+          allPhotos: photos,
+          initialIndex: safeInitialIndex,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackCardHeader(
+    BuildContext context, {
+    required TrackItem track,
+    required bool canShowCheckbox,
+    required bool isSelected,
+    required Color? statusColor,
+    required bool photoDone,
+    required bool photoPending,
+    required bool questionDone,
+    required bool questionPending,
+    required bool hasProductInfo,
+    required List<_TrackCardAction> actions,
+    required bool canDelete,
+  }) {
+    final dateFormat = DateFormat('dd.MM.yy', 'ru');
+    final accent = context.brandPrimary;
+    final dateColor = const Color(0xFF2F2F2F).withValues(alpha: 0.5);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 76),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (canShowCheckbox) ...[
+                          _TrackCheckbox(
+                            value: isSelected,
+                            accent: accent,
+                            onTap: () => widget.onToggle(track),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Flexible(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Clipboard.setData(
+                                ClipboardData(text: track.code),
+                              );
+                              HapticFeedback.lightImpact();
+                              _showStyledSnackBar(context, 'Трек скопирован');
+                            },
+                            child: Text(
+                              track.code,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF2F2F2F),
+                                fontFamily: 'Gilroy',
+                                fontSize: 16,
+                                height: 19 / 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Opacity(
+                      opacity: 0.5,
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 2,
+                        children: [
+                          _TrackDateMeta(
+                            icon: CupertinoIcons.plus_circle,
+                            value: dateFormat.format(track.createdAt),
+                            color: dateColor,
+                          ),
+                          _TrackDateMeta(
+                            icon: CupertinoIcons.arrow_2_circlepath_circle,
+                            value: dateFormat.format(track.updatedAt),
+                            color: dateColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 89,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _TrackCardStatusPill(
+                      text: track.status,
+                      color: statusColor,
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 24,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _TrackMarkerIcon(
+                            icon: CupertinoIcons.camera_circle,
+                            color: _trackMarkerColor(
+                              context,
+                              done: photoDone,
+                              pending: photoPending,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          _TrackMarkerIcon(
+                            icon: CupertinoIcons.info_circle,
+                            color: _trackMarkerColor(
+                              context,
+                              done: hasProductInfo,
+                              pending: false,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          _TrackMarkerIcon(
+                            icon: CupertinoIcons.question_circle,
+                            color: _trackMarkerColor(
+                              context,
+                              done: questionDone,
+                              pending: questionPending,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (actions.isNotEmpty || canDelete) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 24,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < actions.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 5),
+                            _TrackCardActionChip(
+                              action: actions[i],
+                              accent: accent,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (canDelete) ...[
+                    const SizedBox(width: 10),
+                    _TrackDeleteButton(
+                      onTap: () => widget.onDeleteTrack(track),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrackCardMediaSection(
+    BuildContext context, {
+    required TrackItem track,
+    required String productName,
+    required int? productQuantity,
+    required List<String> productImageUrls,
+    required List<String> photoMediaUrls,
+    required bool hasProductInfo,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final canUseRow =
+            hasProductInfo &&
+            photoMediaUrls.isNotEmpty &&
+            constraints.maxWidth >= 330;
+        if (canUseRow) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _TrackProductPreview(
+                name: productName,
+                quantity: productQuantity,
+                imageUrls: productImageUrls,
+                trackCode: track.code,
+                onEdit: () => widget.onEditProduct(track),
+                onTap: productImageUrls.isNotEmpty
+                    ? () => _openMediaViewer(context, productImageUrls, track)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _TrackPhotoGrid(
+                  mediaUrls: photoMediaUrls,
+                  track: track,
+                  onTap: (index) =>
+                      _openMediaViewer(context, photoMediaUrls, track, index),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasProductInfo)
+              _TrackProductPreview(
+                name: productName,
+                quantity: productQuantity,
+                imageUrls: productImageUrls,
+                trackCode: track.code,
+                onEdit: () => widget.onEditProduct(track),
+                onTap: productImageUrls.isNotEmpty
+                    ? () => _openMediaViewer(context, productImageUrls, track)
+                    : null,
+              ),
+            if (hasProductInfo && photoMediaUrls.isNotEmpty)
+              const SizedBox(height: 10),
+            if (photoMediaUrls.isNotEmpty)
+              _TrackPhotoGrid(
+                mediaUrls: photoMediaUrls,
+                track: track,
+                onTap: (index) =>
+                    _openMediaViewer(context, photoMediaUrls, track, index),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<String> _collectPhotoMediaUrls(
+    TrackItem track,
+    PhotoRequest? activePhoto,
+  ) {
+    final urls = <String>[];
+    final seen = <String>{};
+    if (activePhoto?.mediaUrls.isNotEmpty == true) {
+      for (final url in activePhoto!.mediaUrls) {
+        if (seen.add(url)) urls.add(url);
+      }
+    }
+    for (final url in track.photoReportUrls) {
+      if (seen.add(url)) urls.add(url);
+    }
+    return urls;
+  }
+
+  Color _trackMarkerColor(
+    BuildContext context, {
+    required bool done,
+    required bool pending,
+  }) {
+    if (done) return const Color(0xFF27C47A);
+    if (pending) return context.brandPrimary;
+    return const Color(0xFF2F2F2F).withValues(alpha: 0.28);
+  }
+
+  void _openMediaViewer(
+    BuildContext context,
+    List<String> mediaUrls,
+    TrackItem track, [
+    int initialIndex = 0,
+  ]) {
+    if (mediaUrls.isEmpty) return;
+    final safeInitialIndex = initialIndex
+        .clamp(0, mediaUrls.length - 1)
+        .toInt();
+    final photos = mediaUrls
+        .map(
+          (url) => PhotoItem(
+            url: url,
+            date: DateTime.now(),
+            trackingNumber: track.code,
+          ),
+        )
+        .toList();
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(
+          item: photos[safeInitialIndex],
+          allPhotos: photos,
+          initialIndex: safeInitialIndex,
+        ),
       ),
     );
   }
@@ -4716,7 +6760,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 ),
                 child: CachedNetworkImage(
                   imageUrl: ApiConfig.getMediaUrl(box.photos.first.url),
-                  memCacheWidth: 400,
+                  memCacheWidth: 360,
+                  memCacheHeight: 240,
+                  maxWidthDiskCache: 720,
+                  maxHeightDiskCache: 480,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  useOldImageOnUrlChange: false,
+                  filterQuality: FilterQuality.low,
                   imageBuilder: (_, imageProvider) => DecoratedBox(
                     decoration: BoxDecoration(
                       image: DecorationImage(
@@ -4771,6 +6822,546 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TrackCardAction {
+  final String label;
+  final VoidCallback onTap;
+
+  const _TrackCardAction({required this.label, required this.onTap});
+}
+
+class _AssemblyStatusPill extends StatelessWidget {
+  final String text;
+  final Color color;
+
+  const _AssemblyStatusPill({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 89,
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          style: const TextStyle(
+            color: Colors.black,
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            height: 16 / 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssemblySectionHeader extends StatelessWidget {
+  final String title;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  const _AssemblySectionHeader({
+    required this.title,
+    required this.isExpanded,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 18,
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF2F2F2F),
+                fontFamily: 'Gilroy',
+                fontSize: 15,
+                height: 18 / 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            Icon(
+              isExpanded
+                  ? CupertinoIcons.chevron_up
+                  : CupertinoIcons.chevron_down,
+              size: 16,
+              color: const Color(0xFF2F2F2F),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssemblyPlainText extends StatelessWidget {
+  final String text;
+
+  const _AssemblyPlainText(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xFF2F2F2F),
+        fontFamily: 'Gilroy',
+        fontSize: 12,
+        height: 14.508 / 12,
+        fontWeight: FontWeight.w400,
+      ),
+    );
+  }
+}
+
+class _AssemblyInvoiceText extends StatelessWidget {
+  final String value;
+
+  const _AssemblyInvoiceText({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          const TextSpan(text: 'Накладная: '),
+          TextSpan(
+            text: value.isEmpty ? '—' : value,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xFF2F2F2F),
+        fontFamily: 'Gilroy',
+        fontSize: 12,
+        height: 14.508 / 12,
+        fontWeight: FontWeight.w400,
+      ),
+    );
+  }
+}
+
+class _TrackCheckbox extends StatelessWidget {
+  final bool value;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _TrackCheckbox({
+    required this.value,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(
+          color: value ? accent : Colors.white,
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(
+            color: value ? Colors.white : const Color(0xFF2F2F2F),
+          ),
+        ),
+        child: value
+            ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+            : null,
+      ),
+    );
+  }
+}
+
+class _TrackDateMeta extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color color;
+
+  const _TrackDateMeta({
+    required this.icon,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 5),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            height: 16 / 14,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrackCardStatusPill extends StatelessWidget {
+  final String text;
+  final Color? color;
+
+  const _TrackCardStatusPill({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = color ?? const Color(0xFFB8E1C8);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 89, maxWidth: 156),
+      child: Container(
+        height: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            style: const TextStyle(
+              color: Color(0xFF2F2F2F),
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              height: 16 / 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackMarkerIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _TrackMarkerIcon({required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(icon, size: 24, color: color);
+  }
+}
+
+class _TrackCardActionChip extends StatelessWidget {
+  final _TrackCardAction action;
+  final Color accent;
+
+  const _TrackCardActionChip({required this.action, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: action.onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: accent, width: 0.5),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            action.label,
+            style: const TextStyle(
+              color: Color(0xFF2F2F2F),
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              height: 16 / 14,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackDeleteButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _TrackDeleteButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 26,
+        height: 23,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFE1A1A),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(CupertinoIcons.trash, size: 12, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _TrackProductPreview extends StatelessWidget {
+  final String name;
+  final int? quantity;
+  final List<String> imageUrls;
+  final String trackCode;
+  final VoidCallback? onTap;
+  final VoidCallback? onEdit;
+
+  const _TrackProductPreview({
+    required this.name,
+    required this.quantity,
+    required this.imageUrls,
+    required this.trackCode,
+    this.onTap,
+    this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrls.isNotEmpty;
+    final title = name.trim().isNotEmpty ? name.trim() : 'О товаре';
+    final countText = quantity != null ? 'Количество: $quantity шт' : null;
+
+    return SizedBox(
+      width: 124,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: onTap,
+            child: Container(
+              width: 124,
+              height: 115,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: const Color(0xFFC4C4C4),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1A000000),
+                    offset: Offset(3, 4),
+                    blurRadius: 25,
+                  ),
+                ],
+              ),
+              child: hasImage
+                  ? CachedNetworkImage(
+                      imageUrl: ApiConfig.getMediaUrl(imageUrls.first),
+                      memCacheWidth: 220,
+                      memCacheHeight: 220,
+                      maxWidthDiskCache: 440,
+                      maxHeightDiskCache: 440,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      useOldImageOnUrlChange: false,
+                      filterQuality: FilterQuality.low,
+                      imageBuilder: (context, imageProvider) => DecoratedBox(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: imageProvider,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      placeholder: (_, _) => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      errorWidget: (_, _, _) => const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 24),
+                      ),
+                    )
+                  : const Center(
+                      child: Icon(
+                        Icons.inventory_2_outlined,
+                        size: 28,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onEdit,
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF2F2F2F),
+                fontFamily: 'Gilroy',
+                fontSize: 16,
+                height: 19 / 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (countText != null)
+            Text(
+              countText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF2F2F2F),
+                fontFamily: 'Gilroy',
+                fontSize: 14,
+                height: 16 / 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrackPhotoGrid extends StatelessWidget {
+  final List<String> mediaUrls;
+  final TrackItem track;
+  final ValueChanged<int> onTap;
+
+  const _TrackPhotoGrid({
+    required this.mediaUrls,
+    required this.track,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleUrls = mediaUrls.take(6).toList(growable: false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gridWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth.clamp(0.0, 246.0).toDouble()
+            : 246.0;
+        final tileSize = ((gridWidth - 20) / 3).clamp(54.0, 75.5).toDouble();
+        return SizedBox(
+          width: gridWidth,
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var i = 0; i < visibleUrls.length; i++)
+                GestureDetector(
+                  onTap: () => onTap(i),
+                  child: Container(
+                    width: tileSize,
+                    height: tileSize,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFC4C4C4),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1A000000),
+                          offset: Offset(3, 4),
+                          blurRadius: 25,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: ApiConfig.getMediaUrl(visibleUrls[i]),
+                          memCacheWidth: 180,
+                          memCacheHeight: 180,
+                          maxWidthDiskCache: 360,
+                          maxHeightDiskCache: 360,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          useOldImageOnUrlChange: false,
+                          filterQuality: FilterQuality.low,
+                          imageBuilder: (context, imageProvider) =>
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  image: DecorationImage(
+                                    image: imageProvider,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                          placeholder: (_, _) => const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          errorWidget: (_, _, _) => const Center(
+                            child: Icon(Icons.broken_image_outlined, size: 20),
+                          ),
+                        ),
+                        if (_isVideoUrl(ApiConfig.getMediaUrl(visibleUrls[i])))
+                          Center(
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -5191,7 +7782,7 @@ class _ActionChipButton extends StatelessWidget {
                     style: TextStyle(
                       color: isDestructive ? activeColor : Colors.black54,
                       fontWeight: FontWeight.w500,
-                      fontSize: 12,
+                      fontSize: 14,
                     ),
                   ),
               ],
@@ -5226,41 +7817,25 @@ Widget _outlinedInput(
   List<TextInputFormatter>? inputFormatters,
   ValueChanged<String>? onChanged,
 }) {
-  return Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [context.brandPrimary, context.brandSecondary],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      ),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    padding: const EdgeInsets.all(1.5),
-    child: Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.5),
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        inputFormatters: inputFormatters,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF999999),
-            fontWeight: FontWeight.w500,
-          ),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
-          ),
+  return AppGradientInputFrame(
+    child: TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFF999999),
+          fontWeight: FontWeight.w500,
+        ),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
         ),
       ),
     ),
@@ -5476,15 +8051,19 @@ class _ProductInfoInline extends StatelessWidget {
           children: [
             if (name.isNotEmpty)
               Expanded(
-                child: Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onEdit,
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             if (quantity != null) ...[
@@ -5548,7 +8127,14 @@ class _ProductInfoInline extends StatelessWidget {
               ),
               child: CachedNetworkImage(
                 imageUrl: ApiConfig.getMediaUrl(imageUrls.first),
-                memCacheWidth: 400,
+                memCacheWidth: 320,
+                memCacheHeight: 240,
+                maxWidthDiskCache: 640,
+                maxHeightDiskCache: 480,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                useOldImageOnUrlChange: false,
+                filterQuality: FilterQuality.low,
                 imageBuilder: (_, imageProvider) => DecoratedBox(
                   decoration: BoxDecoration(
                     image: DecorationImage(
@@ -5786,6 +8372,8 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                           shrinkWrap: true,
                           padding: EdgeInsets.zero,
                           physics: const NeverScrollableScrollPhysics(),
+                          addAutomaticKeepAlives: false,
+                          addSemanticIndexes: false,
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
@@ -5834,8 +8422,14 @@ class _CollapsiblePhotoReportState extends State<_CollapsiblePhotoReport> {
                                   children: [
                                     CachedNetworkImage(
                                       imageUrl: fullUrl,
-                                      memCacheWidth: 200,
-                                      memCacheHeight: 200,
+                                      memCacheWidth: 160,
+                                      memCacheHeight: 160,
+                                      maxWidthDiskCache: 320,
+                                      maxHeightDiskCache: 320,
+                                      fadeInDuration: Duration.zero,
+                                      fadeOutDuration: Duration.zero,
+                                      useOldImageOnUrlChange: false,
+                                      filterQuality: FilterQuality.low,
                                       imageBuilder: (context, imageProvider) =>
                                           DecoratedBox(
                                             decoration: BoxDecoration(

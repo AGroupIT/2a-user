@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../add_tracks/data/add_tracks_repository.dart';
 import '../../add_tracks/domain/add_tracks_result.dart';
@@ -85,7 +87,9 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
 
       if (!mounted) return;
 
-      debugPrint('✅ Tracks added from dialog: ${result.added}, skipped: ${result.skipped.length}');
+      debugPrint(
+        '✅ Tracks added from dialog: ${result.added}, skipped: ${result.skipped.length}',
+      );
 
       setState(() {
         _submitting = false;
@@ -126,7 +130,8 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
 
       // Показать SnackBar с ошибкой
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(
             content: Row(
               children: [
@@ -146,7 +151,9 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
             ),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -179,19 +186,13 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
             const SizedBox(height: 16),
             const Text(
               'Ошибка загрузки',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             const Text(
               'Произошла ошибка при загрузке формы добавления треков.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF666666),
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Color(0xFF666666), fontSize: 14),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -228,8 +229,8 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                   child: Text(
                     'Добавить треки',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -255,47 +256,30 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                 style: TextStyle(color: Color(0xFF999999), fontSize: 13),
               ),
               const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+              AppGradientInputFrame(
+                fillColor: const Color(0xFFF8F9FA),
+                child: TextField(
+                  controller: _ctrl,
+                  maxLines: 8,
+                  enabled: !_submitting,
+                  style: const TextStyle(fontSize: 14, fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    hintText: 'ABC123456789\nDEF987654321\n...',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.all(14),
                   ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.all(3),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: TextField(
-                    controller: _ctrl,
-                    maxLines: 8,
-                    enabled: !_submitting,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'monospace',
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: 'ABC123456789\nDEF987654321\n...',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.all(14),
-                    ),
-                    onChanged: (_) {
-                      if (_error != null || _result != null) {
-                        setState(() {
-                          _error = null;
-                          _result = null;
-                        });
-                      }
-                    },
-                  ),
+                  onChanged: (_) {
+                    if (_error != null || _result != null) {
+                      setState(() {
+                        _error = null;
+                        _result = null;
+                      });
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 16),
@@ -348,16 +332,20 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        ...(_result!.skipped.take(3).map((item) => Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                '• ${item.code}: ${item.reason}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF999999),
+                        ...(_result!.skipped
+                            .take(3)
+                            .map(
+                              (item) => Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  '• ${item.code}: ${item.reason}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF999999),
+                                  ),
                                 ),
                               ),
-                            ))),
+                            )),
                         if (_result!.skipped.length > 3)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
@@ -439,10 +427,7 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
               const Text(
                 'Сначала выберите код клиента в шапке',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF999999),
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Color(0xFF999999), fontSize: 14),
               ),
             ],
           ],

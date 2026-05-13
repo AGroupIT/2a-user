@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/tutorial_card.dart';
 
 class MoreScreen extends ConsumerStatefulWidget {
@@ -30,90 +31,94 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
         TutorialStep(
           icon: Icons.newspaper_rounded,
           title: 'Новости и правила',
-          description: 'Здесь собраны новости компании и правила оказания услуг. Читайте обновления и условия работы.',
+          description:
+              'Здесь собраны новости компании и правила оказания услуг. Читайте обновления и условия работы.',
           targetKey: _newsRulesKey,
         ),
         TutorialStep(
           icon: Icons.chat_bubble_outline_rounded,
           title: 'Чат поддержки',
-          description: 'Возникли вопросы? Напишите нам в чат поддержки — отвечаем быстро в рабочее время.',
+          description:
+              'Возникли вопросы? Напишите нам в чат поддержки — отвечаем быстро в рабочее время.',
           targetKey: _supportKey,
         ),
         TutorialStep(
           icon: Icons.person_outline_rounded,
           title: 'Профиль',
-          description: 'Здесь можно посмотреть статистику, изменить личные данные и настройки аккаунта.',
+          description:
+              'Здесь можно изменить личные данные, посмотреть контакты компании и настройки аккаунта.',
           targetKey: _profileKey,
         ),
       ],
       child: SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 100 + bottomPad),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Дополнительно',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          topPad * 0.7 + 16,
+          16,
+          100 + bottomPad,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AppPageHeader(title: 'Дополнительно'),
+            const SizedBox(height: 24),
+            _MenuSection(
+              title: 'Информация',
+              items: [
+                _MenuItem(
+                  icon: CupertinoIcons.news,
+                  title: 'Новости',
+                  subtitle: 'Последние обновления',
+                  onTap: () => context.push('/news'),
                 ),
-          ),
-          const SizedBox(height: 24),
-          _MenuSection(
-            title: 'Информация',
-            items: [
-              _MenuItem(
-                icon: CupertinoIcons.news,
-                title: 'Новости',
-                subtitle: 'Последние обновления',
-                onTap: () => context.push('/news'),
-              ),
-              _MenuItem(
-                icon: CupertinoIcons.doc_text,
-                title: 'Правила оказания услуг',
-                subtitle: 'Условия и положения',
-                onTap: () => context.push('/rules'),
-              ),
-              _MenuItem(
-                icon: CupertinoIcons.cart,
-                title: 'Мои заявки на выкуп',
-                subtitle: 'История заявок',
-                onTap: () => context.push('/shop/purchases'),
-              ),
-              _MenuItem(
-                icon: Icons.description_rounded,
-                title: 'Выкуп по бланку',
-                subtitle: 'Бланки на выкуп товаров',
-                onTap: () => context.push('/purchase-blanks'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _MenuSection(
-            title: 'Поддержка',
-            items: [
-              _MenuItem(
-                icon: CupertinoIcons.chat_bubble_2,
-                title: 'Чат поддержки',
-                subtitle: 'Задайте вопрос',
-                onTap: () => context.push('/support'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _MenuSection(
-            title: 'Аккаунт',
-            items: [
-              _MenuItem(
-                icon: CupertinoIcons.person,
-                title: 'Профиль',
-                subtitle: 'Настройки аккаунта',
-                onTap: () => context.push('/profile'),
-              ),
-            ],
-          ),
-        ],
+                _MenuItem(
+                  icon: CupertinoIcons.doc_text,
+                  title: 'Правила оказания услуг',
+                  subtitle: 'Условия и положения',
+                  onTap: () => context.push('/rules'),
+                ),
+                _MenuItem(
+                  icon: CupertinoIcons.cart,
+                  title: 'Мои заявки на выкуп',
+                  subtitle: 'История заявок',
+                  onTap: () => context.push('/shop/purchases'),
+                ),
+                _MenuItem(
+                  icon: Icons.description_rounded,
+                  title: 'Выкуп по бланку',
+                  subtitle: 'Бланки на выкуп товаров',
+                  onTap: () => context.push('/purchase-blanks'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _MenuSection(
+              title: 'Поддержка',
+              items: [
+                _MenuItem(
+                  icon: CupertinoIcons.chat_bubble_2,
+                  title: 'Чат поддержки',
+                  subtitle: 'Задайте вопрос',
+                  onTap: () => context.go('/support'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _MenuSection(
+              title: 'Аккаунт',
+              items: [
+                _MenuItem(
+                  icon: CupertinoIcons.person,
+                  title: 'Профиль',
+                  subtitle: 'Настройки аккаунта',
+                  onTap: () => context.push('/profile'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }
 
@@ -121,10 +126,7 @@ class _MenuSection extends StatelessWidget {
   final String title;
   final List<_MenuItem> items;
 
-  const _MenuSection({
-    required this.title,
-    required this.items,
-  });
+  const _MenuSection({required this.title, required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -202,11 +204,7 @@ class _MenuItem extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 22,
-                ),
+                child: Icon(icon, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 16),
               Expanded(

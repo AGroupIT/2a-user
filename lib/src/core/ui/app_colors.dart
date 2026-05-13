@@ -15,11 +15,11 @@ class BrandColors {
     required this.primaryLight,
   });
 
-  /// Дефолтные цвета (оранжевые)
+  /// Нейтральные цвета до загрузки профиля агента.
   static const defaultColors = BrandColors(
-    primary: Color(0xFFFF5E04),
-    primaryDark: Color(0xFFFE3301),
-    primaryLight: Color(0xFFFF8800),
+    primary: Color(0xFF6B7280),
+    primaryDark: Color(0xFF4B5563),
+    primaryLight: Color(0xFF9CA3AF),
   );
 
   /// Создать из HEX строки
@@ -56,13 +56,17 @@ class BrandColors {
   /// Затемнить цвет
   static Color _darken(Color color, double amount) {
     final hsl = HSLColor.fromColor(color);
-    return hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0)).toColor();
+    return hsl
+        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
+        .toColor();
   }
 
   /// Осветлить цвет
   static Color _lighten(Color color, double amount) {
     final hsl = HSLColor.fromColor(color);
-    return hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0)).toColor();
+    return hsl
+        .withLightness((hsl.lightness + amount).clamp(0.0, 1.0))
+        .toColor();
   }
 
   /// Градиент бренда
@@ -95,10 +99,11 @@ final brandColorsProvider = Provider<BrandColors>((ref) {
 class AppColors {
   const AppColors._();
 
-  // Дефолтные статические цвета (для использования до загрузки профиля)
-  static const brandOrangeDark = Color(0xFFFE3301);
-  static const brandOrange = Color(0xFFFF5E04);
-  static const brandOrangeLight = Color(0xFFFF8800);
+  // Legacy aliases. Keep them neutral so old widgets do not flash an
+  // unrelated agent color before real brand colors are loaded.
+  static const brandOrangeDark = Color(0xFF4B5563);
+  static const brandOrange = Color(0xFF6B7280);
+  static const brandOrangeLight = Color(0xFF9CA3AF);
 
   static const brandBg = Color(0xFFF2F2F7);
 
@@ -116,20 +121,21 @@ class AppColors {
 extension BrandColorsExtension on BuildContext {
   /// Получить primary цвет из темы (загруженный из БД)
   Color get brandPrimary => Theme.of(this).colorScheme.primary;
-  
+
   /// Получить secondary цвет из темы (загруженный из БД)
   Color get brandSecondary => Theme.of(this).colorScheme.secondary;
-  
+
   /// Создать градиент с цветами бренда
   LinearGradient get brandGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      HSLColor.fromColor(brandPrimary).withLightness(
-        (HSLColor.fromColor(brandPrimary).lightness - 0.1).clamp(0.0, 1.0)
-      ).toColor(),
+      HSLColor.fromColor(brandPrimary)
+          .withLightness(
+            (HSLColor.fromColor(brandPrimary).lightness - 0.1).clamp(0.0, 1.0),
+          )
+          .toColor(),
       brandSecondary,
     ],
   );
 }
-

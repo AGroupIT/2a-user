@@ -57,7 +57,8 @@ class UserDeliveryTariff {
       baseCost: _parse(json['baseCost']),
       allowedItems: json['allowedItems'] as String?,
       prohibitedItems: json['prohibitedItems'] as String?,
-      weightTiers: (json['weightTiers'] as List<dynamic>?)
+      weightTiers:
+          (json['weightTiers'] as List<dynamic>?)
               ?.map((e) => UserWeightTier.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -111,7 +112,9 @@ class UserPhotoCoefficient {
   factory UserPhotoCoefficient.fromJson(Map<String, dynamic> json) {
     return UserPhotoCoefficient(
       minPercent: _parse(json['minPercent']),
-      maxPercent: json['maxPercent'] != null ? _parse(json['maxPercent']) : null,
+      maxPercent: json['maxPercent'] != null
+          ? _parse(json['maxPercent'])
+          : null,
       coefficient: _parse(json['coefficient']),
     );
   }
@@ -182,8 +185,7 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
 
     final tariffsJson = extract(results[0].data, ['tariffs', 'data']);
     final packagingsJson = extract(results[1].data, ['packagings', 'data']);
-    final coefficientsJson =
-        extract(results[2].data, ['coefficients', 'data']);
+    final coefficientsJson = extract(results[2].data, ['coefficients', 'data']);
 
     return UserTariffsData(
       deliveryTariffs: tariffsJson
@@ -201,6 +203,30 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
     debugPrint('Error loading tariffs: $e');
     rethrow;
   }
+});
+
+final publicDefaultTariffsProvider = FutureProvider<List<UserDeliveryTariff>>((
+  ref,
+) async {
+  final api = ref.read(apiClientProvider);
+  final response = await api.get(
+    '/public/tariffs',
+    queryParameters: const {'agentId': 1, 'take': 6},
+  );
+
+  final data = response.data;
+  final List<dynamic> list = data is Map<String, dynamic>
+      ? (data['tariffs'] as List<dynamic>? ??
+            data['data'] as List<dynamic>? ??
+            const <dynamic>[])
+      : data is List
+      ? data
+      : const <dynamic>[];
+
+  return list
+      .map((e) => UserDeliveryTariff.fromJson(e as Map<String, dynamic>))
+      .where((t) => t.isActive)
+      .toList();
 });
 
 // ============================================================

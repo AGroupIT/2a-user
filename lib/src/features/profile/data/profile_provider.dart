@@ -119,18 +119,40 @@ class AgentInfo {
   final String name;
   final String? domain;
   final String? prefix;
+  final String? email;
+  final String? phone;
   final String? colorPrimary;
   final String? colorSecondary;
   final String? logoUrl;
+  final String? homeBannerImageUrl;
+  final String? homeBannerEyebrow;
+  final String? homeBannerTitle;
+  final String? homeBannerDescription;
+  final String? companyWebsiteUrl;
+  final String? companyTelegramUrl;
+  final String? companyTelegramChannelUrl;
+  final String? companyWhatsappUrl;
+  final String? companyVkUrl;
 
   const AgentInfo({
     required this.id,
     required this.name,
     this.domain,
     this.prefix,
+    this.email,
+    this.phone,
     this.colorPrimary,
     this.colorSecondary,
     this.logoUrl,
+    this.homeBannerImageUrl,
+    this.homeBannerEyebrow,
+    this.homeBannerTitle,
+    this.homeBannerDescription,
+    this.companyWebsiteUrl,
+    this.companyTelegramUrl,
+    this.companyTelegramChannelUrl,
+    this.companyWhatsappUrl,
+    this.companyVkUrl,
   });
 
   factory AgentInfo.fromJson(Map<String, dynamic> json) {
@@ -139,11 +161,39 @@ class AgentInfo {
       name: json['name'] as String? ?? '',
       domain: json['domain'] as String?,
       prefix: json['prefix'] as String?,
+      email: json['email'] as String?,
+      phone: json['phone'] as String?,
       colorPrimary: json['colorPrimary'] as String?,
       colorSecondary: json['colorSecondary'] as String?,
       logoUrl: json['logoUrl'] as String?,
+      homeBannerImageUrl: json['homeBannerImageUrl'] as String?,
+      homeBannerEyebrow: json['homeBannerEyebrow'] as String?,
+      homeBannerTitle: json['homeBannerTitle'] as String?,
+      homeBannerDescription: json['homeBannerDescription'] as String?,
+      companyWebsiteUrl: json['companyWebsiteUrl'] as String?,
+      companyTelegramUrl: json['companyTelegramUrl'] as String?,
+      companyTelegramChannelUrl: json['companyTelegramChannelUrl'] as String?,
+      companyWhatsappUrl: json['companyWhatsappUrl'] as String?,
+      companyVkUrl: json['companyVkUrl'] as String?,
     );
   }
+
+  bool get hasHomeBanner =>
+      _hasText(homeBannerImageUrl) ||
+      _hasText(homeBannerEyebrow) ||
+      _hasText(homeBannerTitle) ||
+      _hasText(homeBannerDescription);
+
+  bool get hasCompanyContacts =>
+      _hasText(phone) ||
+      _hasText(email) ||
+      _hasText(companyWebsiteUrl) ||
+      _hasText(companyTelegramUrl) ||
+      _hasText(companyTelegramChannelUrl) ||
+      _hasText(companyWhatsappUrl) ||
+      _hasText(companyVkUrl);
+
+  static bool _hasText(String? value) => value?.trim().isNotEmpty == true;
 }
 
 /// Модель статистики клиента

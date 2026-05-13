@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -67,7 +68,9 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
         setState(() {
           _paymentResult = result;
           _isLoading = false;
-          _remainingSeconds = result.expiresAt.difference(DateTime.now()).inSeconds;
+          _remainingSeconds = result.expiresAt
+              .difference(DateTime.now())
+              .inSeconds;
         });
         _startCountdown();
         _startChecking();
@@ -110,7 +113,9 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
 
     try {
       final paymentService = ref.read(paymentServiceProvider);
-      final result = await paymentService.checkUsdtPayment(_paymentResult!.paymentId);
+      final result = await paymentService.checkUsdtPayment(
+        _paymentResult!.paymentId,
+      );
 
       if (result != null) {
         setState(() => _checkResult = result);
@@ -145,11 +150,7 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        icon: const Icon(
-          Icons.check_circle,
-          size: 64,
-          color: Colors.green,
-        ),
+        icon: const Icon(Icons.check_circle, size: 64, color: Colors.green),
         title: const Text('Оплата успешна!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -186,7 +187,8 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
 
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Text('$label скопирован'),
         duration: const Duration(seconds: 2),
@@ -204,32 +206,33 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Оплата USDT'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Оплата USDT'), centerTitle: true),
       body: TutorialScreenWrapper(
         screenKey: 'usdt_payment',
         steps: const [
           TutorialStep(
             icon: Icons.currency_bitcoin_rounded,
             title: 'Оплата USDT',
-            description: 'Экран показывает реквизиты для оплаты через криптовалюту USDT по сети TRC20.',
+            description:
+                'Экран показывает реквизиты для оплаты через криптовалюту USDT по сети TRC20.',
           ),
           TutorialStep(
             icon: Icons.qr_code_rounded,
             title: 'QR-код кошелька',
-            description: 'Отсканируйте QR-код в приложении криптокошелька или скопируйте адрес кнопкой рядом.',
+            description:
+                'Отсканируйте QR-код в приложении криптокошелька или скопируйте адрес кнопкой рядом.',
           ),
           TutorialStep(
             icon: Icons.copy_rounded,
             title: 'Скопировать сумму и адрес',
-            description: 'Нажмите иконку копирования рядом с суммой или адресом кошелька, чтобы скопировать их в буфер обмена.',
+            description:
+                'Нажмите иконку копирования рядом с суммой или адресом кошелька, чтобы скопировать их в буфер обмена.',
           ),
           TutorialStep(
             icon: Icons.timer_rounded,
             title: 'Таймер и статус',
-            description: 'Платёж действителен ограниченное время. Нажмите «Проверить статус», чтобы убедиться в зачислении средств.',
+            description:
+                'Платёж действителен ограниченное время. Нажмите «Проверить статус», чтобы убедиться в зачислении средств.',
           ),
         ],
         child: _buildBody(),
@@ -258,11 +261,7 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red,
-              ),
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
               Text(
                 _errorMessage!,
@@ -303,11 +302,7 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.timer_off,
-              size: 64,
-              color: Colors.orange,
-            ),
+            const Icon(Icons.timer_off, size: 64, color: Colors.orange),
             const SizedBox(height: 16),
             const Text(
               'Время платежа истекло',
@@ -396,9 +391,7 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
               size: 200,
               backgroundColor: Colors.white,
               errorStateBuilder: (context, error) {
-                return const Center(
-                  child: Text('Ошибка генерации QR'),
-                );
+                return const Center(child: Text('Ошибка генерации QR'));
               },
             ),
           ),
@@ -503,7 +496,8 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
                     const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.copy, size: 20),
-                      onPressed: () => _copyToClipboard(payment.walletAddress, 'Адрес'),
+                      onPressed: () =>
+                          _copyToClipboard(payment.walletAddress, 'Адрес'),
                       tooltip: 'Копировать адрес',
                     ),
                   ],
@@ -644,7 +638,9 @@ Future<PaymentProvider?> showPaymentMethodDialog(
               child: const Icon(Icons.credit_card, color: Colors.blue),
             ),
             title: const Text('Карта / СБП'),
-            subtitle: const Text('Банковская карта или Система быстрых платежей'),
+            subtitle: const Text(
+              'Банковская карта или Система быстрых платежей',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).pop(PaymentProvider.pally),
           ),
@@ -732,4 +728,3 @@ class _PallyPaymentScreen extends StatelessWidget {
     );
   }
 }
-

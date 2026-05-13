@@ -1,10 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_layout.dart';
 import '../data/purchase_provider.dart';
@@ -14,8 +16,7 @@ class PurchaseListScreen extends ConsumerStatefulWidget {
   const PurchaseListScreen({super.key});
 
   @override
-  ConsumerState<PurchaseListScreen> createState() =>
-      _PurchaseListScreenState();
+  ConsumerState<PurchaseListScreen> createState() => _PurchaseListScreenState();
 }
 
 class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
@@ -45,25 +46,29 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
             TutorialStep(
               icon: Icons.shopping_bag_rounded,
               title: 'Список выкупа',
-              description: 'Здесь товары, которые вы добавили из каталога. Перед отправкой можно изменить количество или удалить позиции.',
+              description:
+                  'Здесь товары, которые вы добавили из каталога. Перед отправкой можно изменить количество или удалить позиции.',
             ),
             TutorialStep(
               icon: Icons.add_circle_outline_rounded,
               title: 'Изменить количество',
-              description: 'Кнопки «−» и «+» рядом с товаром меняют количество. Кнопка корзины (×) удаляет товар из списка.',
+              description:
+                  'Кнопки «−» и «+» рядом с товаром меняют количество. Кнопка корзины (×) удаляет товар из списка.',
             ),
             TutorialStep(
               icon: Icons.send_rounded,
               title: 'Отправить на сборку',
-              description: 'Кнопка «Отправить на сборку» внизу экрана отправляет весь список менеджеру для оформления и выкупа.',
+              description:
+                  'Кнопка «Отправить на сборку» внизу экрана отправляет весь список менеджеру для оформления и выкупа.',
             ),
           ],
           child: Stack(
-          children: [
-            _buildContent(context, list, topPad, bottomPad),
-            _buildSubmitBar(context, list, bottomPad),
-          ],
-        ));
+            children: [
+              _buildContent(context, list, topPad, bottomPad),
+              _buildSubmitBar(context, list, bottomPad),
+            ],
+          ),
+        );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
@@ -93,16 +98,19 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
       children: [
         Text(
           'Список выкупа',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 60),
         Center(
           child: Column(
             children: [
-              Icon(Icons.shopping_cart_outlined,
-                  size: 64, color: Colors.grey.shade300),
+              Icon(
+                Icons.shopping_cart_outlined,
+                size: 64,
+                color: Colors.grey.shade300,
+              ),
               const SizedBox(height: 16),
               Text(
                 'Список пуст',
@@ -120,14 +128,16 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: () => context.pop(),
-                icon: const Icon(Icons.search, size: 18),
+                icon: const Icon(Icons.search, size: 20),
                 label: const Text('Перейти в каталог'),
                 style: OutlinedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ],
@@ -137,16 +147,20 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context, PurchaseList list, double topPad,
-      double bottomPad) {
+  Widget _buildContent(
+    BuildContext context,
+    PurchaseList list,
+    double topPad,
+    double bottomPad,
+  ) {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 120 + bottomPad),
       children: [
         Text(
           'Список выкупа',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 4),
         Text(
@@ -198,13 +212,13 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
               TextField(
                 controller: _noteController,
                 maxLines: 3,
-                decoration: InputDecoration(
+                decoration: appInputDecoration(
+                  context,
                   hintText: 'Пожелания, уточнения...',
                   hintStyle: TextStyle(color: Colors.grey.shade400),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
+                  radius: 12,
+                  fillColor: Colors.white,
+                  borderColor: Colors.grey.shade300,
                   contentPadding: const EdgeInsets.all(12),
                 ),
               ),
@@ -216,7 +230,10 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
   }
 
   Widget _buildSubmitBar(
-      BuildContext context, PurchaseList list, double bottomPad) {
+    BuildContext context,
+    PurchaseList list,
+    double bottomPad,
+  ) {
     // Total price
     double totalPrice = 0;
     for (final item in list.items) {
@@ -256,10 +273,7 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
                   ),
                   Text(
                     '${list.totalItems} товаров',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
               ),
@@ -285,8 +299,10 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
                 ),
               ),
               style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -309,7 +325,8 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
       ref.invalidate(activePurchaseListProvider);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
         );
       }
@@ -323,7 +340,8 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
       ref.invalidate(activePurchaseListProvider);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
         );
       }
@@ -346,20 +364,23 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
       ref.invalidate(purchaseListsProvider);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(
             content: const Text('Заявка отправлена менеджеру!'),
             backgroundColor: context.brandPrimary,
             behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
         );
       }
@@ -447,8 +468,10 @@ class _PurchaseItemCard extends StatelessWidget {
                           width: 72,
                           height: 72,
                           color: Colors.grey.shade100,
-                          child: Icon(Icons.image_outlined,
-                              color: Colors.grey.shade300),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: Colors.grey.shade300,
+                          ),
                         ),
                 ),
                 const SizedBox(width: 12),
@@ -515,10 +538,7 @@ class _QuantityControls extends StatelessWidget {
   final int quantity;
   final ValueChanged<int> onChanged;
 
-  const _QuantityControls({
-    required this.quantity,
-    required this.onChanged,
-  });
+  const _QuantityControls({required this.quantity, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -531,14 +551,15 @@ class _QuantityControls extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color:
-                  quantity > 1 ? Colors.grey.shade200 : Colors.grey.shade100,
+              color: quantity > 1 ? Colors.grey.shade200 : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.remove,
               size: 16,
-              color: quantity > 1 ? AppColors.textPrimary : Colors.grey.shade400,
+              color: quantity > 1
+                  ? AppColors.textPrimary
+                  : Colors.grey.shade400,
             ),
           ),
         ),

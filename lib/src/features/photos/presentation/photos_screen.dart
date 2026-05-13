@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/services/client_diagnostics_service.dart';
@@ -22,22 +23,15 @@ class PhotosScreen extends ConsumerStatefulWidget {
 }
 
 class _PhotosScreenState extends ConsumerState<PhotosScreen> {
-  late int _month;
-  late int _year;
-  String _selectedDate = '';
   final ScrollController _scrollController = ScrollController();
   PaginatedPhotosNotifier? _photosNotifier;
 
   final GlobalKey _statsKey = GlobalKey();
-  final GlobalKey _calendarKey = GlobalKey();
   final GlobalKey _photoGridKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _month = now.month - 1;
-    _year = now.year;
     _scrollController.addListener(_onScroll);
   }
 
@@ -76,50 +70,19 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     // Держим WebSocket-подписку для фонового обновления фото без перезагрузки экрана.
     ref.watch(photosRealtimeBridgeProvider);
 
-    final photosCountAsync = ref.watch(photosTotalCountProvider(clientCode));
-    final daysAsync = ref.watch(
-      photosDaysProvider((clientCode: clientCode, month: _month, year: _year)),
-    );
-    final photosCount = photosCountAsync.asData?.value;
-
-    // Subscribe to paginated photos notifier
-    if (_selectedDate.isNotEmpty) {
-      final newNotifier = ref.read(
-        paginatedPhotosByDateProvider((
-          clientCode: clientCode,
-          date: _selectedDate,
-        )),
-      );
-      if (_photosNotifier != newNotifier) {
-        _photosNotifier?.removeListener(_onPhotosChanged);
-        _photosNotifier = newNotifier;
-        newNotifier.addListener(_onPhotosChanged);
-      }
+    final newNotifier = ref.watch(paginatedPhotosProvider(clientCode));
+    if (_photosNotifier != newNotifier) {
+      _photosNotifier?.removeListener(_onPhotosChanged);
+      _photosNotifier = newNotifier;
+      newNotifier.addListener(_onPhotosChanged);
     }
-    final photosState = _selectedDate.isEmpty ? null : _photosNotifier?.state;
+    final photosState = newNotifier.state;
 
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
 
     Future<void> onRefresh() async {
-      ref.invalidate(photosTotalCountProvider(clientCode));
-      ref.invalidate(
-        photosDaysProvider((
-          clientCode: clientCode,
-          month: _month,
-          year: _year,
-        )),
-      );
-      if (_selectedDate.isNotEmpty) {
-        await _photosNotifier?.loadInitial();
-      }
-      await ref.read(
-        photosDaysProvider((
-          clientCode: clientCode,
-          month: _month,
-          year: _year,
-        )).future,
-      );
+      await _photosNotifier?.loadInitial();
     }
 
     return TutorialScreenWrapper(
@@ -131,13 +94,6 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
           description:
               'Мы фотографируем ваши посылки на складе. Здесь хранятся все снимки и видео по вашим отправлениям.',
           targetKey: _statsKey,
-        ),
-        TutorialStep(
-          icon: Icons.calendar_month_rounded,
-          title: 'Календарь дат',
-          description:
-              'Оранжевые даты — дни, когда есть фотографии. Нажмите на дату, чтобы открыть снимки за этот день.',
-          targetKey: _calendarKey,
         ),
         TutorialStep(
           icon: Icons.fullscreen_rounded,
@@ -166,125 +122,26 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Фотографии и видео',
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 12),
                         KeyedSubtree(
                           key: _statsKey,
-                          child: _PhotosStatsCard(count: photosCount),
+                          child: const _PhotosHeaderSection(),
                         ),
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: _CustomDropdown<int>(
-                                value: _month,
-                                label: 'Месяц',
-                                items: List.generate(
-                                  12,
-                                  (i) => _DropdownItem(
-                                    value: i,
-                                    label: _monthLabel(i),
-                                  ),
-                                ),
-                                onChanged: (v) {
-                                  if (v == null) return;
-                                  setState(() {
-                                    _month = v;
-                                    _selectedDate = '';
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 1,
-                              child: _CustomDropdown<int>(
-                                value: _year,
-                                label: 'Год',
-                                items: List.generate(5, (i) {
-                                  final y = DateTime.now().year - 2 + i;
-                                  return _DropdownItem(value: y, label: '$y');
-                                }),
-                                onChanged: (v) {
-                                  if (v == null) return;
-                                  setState(() {
-                                    _year = v;
-                                    _selectedDate = '';
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        daysAsync.when(
-                          loading: () => const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          ),
-                          error: (e, _) => Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text(
-                              'Не удалось загрузить даты: $e',
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                          data: (days) {
-                            _syncSelectedDate(days);
-                            return KeyedSubtree(
-                              key: _calendarKey,
-                              child: _CalendarGrid(
-                                year: _year,
-                                month: _month,
-                                selectedDate: _selectedDate,
-                                enabledDates: days,
-                                onPrevMonth: () {
-                                  setState(() {
-                                    if (_month == 0) {
-                                      _month = 11;
-                                      _year -= 1;
-                                    } else {
-                                      _month -= 1;
-                                    }
-                                    _selectedDate = '';
-                                  });
-                                },
-                                onNextMonth: () {
-                                  setState(() {
-                                    if (_month == 11) {
-                                      _month = 0;
-                                      _year += 1;
-                                    } else {
-                                      _month += 1;
-                                    }
-                                    _selectedDate = '';
-                                  });
-                                },
-                                onSelect: (date) =>
-                                    setState(() => _selectedDate = date),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 15),
                       ],
                     ),
                   ),
                 ),
                 ..._buildPhotosSlivers(context, photosState),
-                SliverToBoxAdapter(
-                  child: SizedBox(height: (24 + bottomPad) * 0.55),
-                ),
+                SliverToBoxAdapter(child: SizedBox(height: bottomPad + 16)),
               ],
             ),
-            ScrollToTopButton(controller: _scrollController),
+            ScrollToTopButton(
+              controller: _scrollController,
+              bottomOffset:
+                  AppLayout.bottomBarHeight +
+                  AppLayout.bottomBarBottomMargin +
+                  37,
+            ),
           ],
         ),
       ),
@@ -296,20 +153,8 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
   /// виртуализацию: только видимые ячейки держатся в дереве.
   List<Widget> _buildPhotosSlivers(
     BuildContext context,
-    PaginatedPhotosState? state,
+    PaginatedPhotosState state,
   ) {
-    if (state == null) {
-      return [
-        const SliverToBoxAdapter(
-          child: EmptyState(
-            icon: Icons.event_available_outlined,
-            title: 'Выберите дату',
-            message: 'Нажмите на оранжевый день в календаре.',
-          ),
-        ),
-      ];
-    }
-
     if (state.isLoading && state.photos.isEmpty) {
       return [
         const SliverToBoxAdapter(
@@ -343,42 +188,70 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
           child: EmptyState(
             icon: Icons.photo_library_outlined,
             title: 'Фотоотчёт отсутствует',
-            message: 'За выбранную дату нет фото/видео.',
+            message: 'Пока нет загруженных фото и видео.',
           ),
         ),
       ];
     }
 
     final items = state.photos;
-    return [
-      SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        sliver: SliverGrid(
-          key: _photoGridKey,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 1,
+    final groups = _groupPhotosByDate(items);
+    var globalIndex = 0;
+    final slivers = <Widget>[];
+
+    for (var groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      final group = groups[groupIndex];
+      final startIndex = globalIndex;
+      slivers.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, groupIndex == 0 ? 0 : 18, 16, 10),
+            child: _PhotoDateDivider(
+              date: group.date,
+              count: group.photos.length,
+            ),
           ),
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final item = items[index];
-            return _PhotoThumbnail(
-              item: item,
-              onOpen: () => Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute<void>(
-                  fullscreenDialog: true,
-                  builder: (_) => PhotoViewerScreen(
-                    item: item,
-                    allPhotos: items,
-                    initialIndex: index,
-                  ),
-                ),
-              ),
-            );
-          }, childCount: items.length),
         ),
-      ),
+      );
+      slivers.add(
+        SliverPadding(
+          key: groupIndex == 0 ? _photoGridKey : null,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final item = group.photos[index];
+                return _PhotoThumbnail(
+                  item: item,
+                  onOpen: () => Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute<void>(
+                      fullscreenDialog: true,
+                      builder: (_) => PhotoViewerScreen(
+                        item: item,
+                        allPhotos: items,
+                        initialIndex: startIndex + index,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              childCount: group.photos.length,
+              addAutomaticKeepAlives: false,
+              addSemanticIndexes: false,
+            ),
+          ),
+        ),
+      );
+      globalIndex += group.photos.length;
+    }
+
+    slivers.addAll([
       if (state.isLoading)
         const SliverToBoxAdapter(
           child: Padding(
@@ -397,301 +270,139 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             ),
           ),
         ),
-    ];
+    ]);
+
+    return slivers;
   }
 
-  void _syncSelectedDate(List<String> days) {
-    final next = days.isEmpty
-        ? ''
-        : (days.contains(_selectedDate) ? _selectedDate : days.first);
-    if (next == _selectedDate) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() => _selectedDate = next);
-    });
+  List<_PhotoDateGroup> _groupPhotosByDate(List<PhotoItem> items) {
+    final groups = <_PhotoDateGroup>[];
+    for (final item in items) {
+      final day = DateTime(item.date.year, item.date.month, item.date.day);
+      if (groups.isEmpty || !_isSameDay(groups.last.date, day)) {
+        groups.add(_PhotoDateGroup(date: day, photos: [item]));
+      } else {
+        groups.last.photos.add(item);
+      }
+    }
+    return groups;
   }
 
-  String _monthLabel(int monthIndex0) {
-    const names = [
-      'Январь',
-      'Февраль',
-      'Март',
-      'Апрель',
-      'Май',
-      'Июнь',
-      'Июль',
-      'Август',
-      'Сентябрь',
-      'Октябрь',
-      'Ноябрь',
-      'Декабрь',
-    ];
-    return names[monthIndex0.clamp(0, 11)];
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }
 
-class _PhotosStatsCard extends StatelessWidget {
-  final int? count;
+class _PhotoDateGroup {
+  final DateTime date;
+  final List<PhotoItem> photos;
 
-  const _PhotosStatsCard({required this.count});
+  _PhotoDateGroup({required this.date, required this.photos});
+}
+
+class _PhotoDateDivider extends StatelessWidget {
+  final DateTime date;
+  final int count;
+
+  const _PhotoDateDivider({required this.date, required this.count});
 
   @override
   Widget build(BuildContext context) {
-    final display = count == null ? '—' : count.toString();
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [context.brandPrimary, context.brandSecondary],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: context.brandPrimary.withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.20),
-                      Colors.transparent,
-                      Colors.white.withValues(alpha: 0.12),
-                    ],
-                    stops: const [0, 0.55, 1],
-                  ),
-                ),
+    final label = DateFormat('d MMMM yyyy', 'ru').format(date);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.70),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 16,
+                offset: const Offset(3, 4),
               ),
-            ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.photo_rounded,
-                    size: 26,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Всего фото и видео',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        display,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 28,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CalendarGrid extends StatelessWidget {
-  final int year;
-  final int month;
-  final String selectedDate;
-  final List<String> enabledDates;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onPrevMonth;
-  final VoidCallback onNextMonth;
-
-  const _CalendarGrid({
-    required this.year,
-    required this.month,
-    required this.selectedDate,
-    required this.enabledDates,
-    required this.onSelect,
-    required this.onPrevMonth,
-    required this.onNextMonth,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = enabledDates.toSet();
-    final daysInMonth = DateUtils.getDaysInMonth(year, month + 1);
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.6),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                height: 24,
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: onPrevMonth,
-                      child: SizedBox(
-                        width: 28,
-                        height: 24,
-                        child: Icon(
-                          Icons.keyboard_arrow_left_rounded,
-                          size: 22,
-                          color: context.brandPrimary,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        '${_monthName(month)} $year',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          height: 1.0,
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: onNextMonth,
-                      child: SizedBox(
-                        width: 28,
-                        height: 24,
-                        child: Icon(
-                          Icons.keyboard_arrow_right_rounded,
-                          size: 22,
-                          color: context.brandPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
+              Icon(
+                Icons.calendar_today_rounded,
+                size: 14,
+                color: context.brandPrimary,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 16 / 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2F2F2F),
+                  letterSpacing: 0,
                 ),
               ),
-              const SizedBox(height: 24),
-              GridView.builder(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 7,
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 6,
+              const SizedBox(width: 8),
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 16 / 13,
+                  fontWeight: FontWeight.w600,
+                  color: context.brandPrimary,
+                  letterSpacing: 0,
                 ),
-                itemCount: daysInMonth,
-                itemBuilder: (context, index) {
-                  final day = index + 1;
-                  final dateStr = _toYmd(year, month + 1, day);
-                  final hasPhotos = enabled.contains(dateStr);
-                  final isSelected = dateStr == selectedDate;
-
-                  final bgColor = isSelected
-                      ? context.brandPrimary
-                      : Colors.white;
-                  final borderColor = hasPhotos
-                      ? context.brandPrimary
-                      : Colors.grey[300]!;
-                  final textColor = isSelected ? Colors.white : Colors.black87;
-                  final textOpacity = hasPhotos ? 1.0 : 0.3;
-
-                  return InkWell(
-                    onTap: hasPhotos ? () => onSelect(dateStr) : null,
-                    borderRadius: BorderRadius.circular(999),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: borderColor, width: 2),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$day',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                            color: textColor.withValues(alpha: textOpacity),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
               ),
             ],
           ),
         ),
-      ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: Colors.white.withValues(alpha: 0.72),
+          ),
+        ),
+      ],
     );
   }
+}
 
-  static String _toYmd(int y, int m, int d) {
-    String pad(int n) => n < 10 ? '0$n' : '$n';
-    return '$y-${pad(m)}-${pad(d)}';
-  }
+class _PhotosHeaderSection extends StatelessWidget {
+  const _PhotosHeaderSection();
 
-  static String _monthName(int monthIndex0) {
-    const names = [
-      'Январь',
-      'Февраль',
-      'Март',
-      'Апрель',
-      'Май',
-      'Июнь',
-      'Июль',
-      'Август',
-      'Сентябрь',
-      'Октябрь',
-      'Ноябрь',
-      'Декабрь',
-    ];
-    return names[monthIndex0.clamp(0, 11)];
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 36,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              'Фотоотчеты',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 24,
+                height: 29 / 24,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2F2F2F),
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -739,10 +450,14 @@ class _PhotoThumbnail extends ConsumerWidget {
                   else
                     CachedNetworkImage(
                       imageUrl: imageUrl,
-                      memCacheWidth: 260,
-                      memCacheHeight: 260,
-                      maxWidthDiskCache: 520,
-                      maxHeightDiskCache: 520,
+                      memCacheWidth: 180,
+                      memCacheHeight: 180,
+                      maxWidthDiskCache: 360,
+                      maxHeightDiskCache: 360,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      useOldImageOnUrlChange: false,
+                      filterQuality: FilterQuality.low,
                       imageBuilder: (_, imageProvider) {
                         _logThumbDiagnostic(
                           ref,
@@ -759,7 +474,6 @@ class _PhotoThumbnail extends ConsumerWidget {
                         );
                       },
                       placeholder: (_, _) {
-                        _logThumbDiagnostic(ref, 'photos_thumb_wait', imageUrl);
                         return Container(
                           color: Colors.black.withValues(alpha: 0.06),
                           child: const Center(
@@ -807,7 +521,7 @@ class _PhotoThumbnail extends ConsumerWidget {
   }) {
     final photoKey = item.id?.toString() ?? imageUrl;
     final key = '$event:$photoKey';
-    if (_diagnosticEvents.length > 180 && !_diagnosticEvents.contains(key)) {
+    if (_diagnosticEvents.length > 80 && !_diagnosticEvents.contains(key)) {
       return;
     }
     if (!_diagnosticEvents.add(key)) return;
@@ -837,212 +551,4 @@ String _mediaExtension(String url) {
   final dotIndex = name.lastIndexOf('.');
   if (dotIndex < 0 || dotIndex == name.length - 1) return '';
   return name.substring(dotIndex + 1);
-}
-
-class _DropdownItem<T> {
-  final T value;
-  final String label;
-
-  _DropdownItem({required this.value, required this.label});
-}
-
-class _CustomDropdown<T> extends StatefulWidget {
-  final T value;
-  final String label;
-  final List<_DropdownItem<T>> items;
-  final ValueChanged<T?> onChanged;
-
-  const _CustomDropdown({
-    required this.value,
-    required this.label,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  State<_CustomDropdown<T>> createState() => _CustomDropdownState<T>();
-}
-
-class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
-  late T _selectedValue;
-  OverlayEntry? _overlayEntry;
-  final LayerLink _layerLink = LayerLink();
-  final GlobalKey _targetKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedValue = widget.value;
-  }
-
-  @override
-  void didUpdateWidget(_CustomDropdown<T> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _selectedValue = widget.value;
-    }
-  }
-
-  void _showMenu() {
-    final renderBox =
-        _targetKey.currentContext?.findRenderObject() as RenderBox?;
-    final double menuWidth = renderBox?.size.width ?? 200;
-    _overlayEntry = OverlayEntry(
-      builder: (context) => GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: _hideMenu,
-        child: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              child: CompositedTransformFollower(
-                link: _layerLink,
-                showWhenUnlinked: false,
-                offset: const Offset(0, 50),
-                child: GestureDetector(
-                  onTap: () {},
-                  child: Material(
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: menuWidth,
-                      constraints: const BoxConstraints(maxHeight: 280),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: ListView(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        children: widget.items.map((item) {
-                          return InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedValue = item.value;
-                              });
-                              widget.onChanged(item.value);
-                              _overlayEntry?.remove();
-                              _overlayEntry = null;
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _selectedValue == item.value
-                                    ? const Color(
-                                        0xFFfe3301,
-                                      ).withValues(alpha: 0.1)
-                                    : Colors.transparent,
-                              ),
-                              child: Text(
-                                item.label,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: _selectedValue == item.value
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  color: _selectedValue == item.value
-                                      ? context.brandPrimary
-                                      : Colors.black87,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    Overlay.of(context).insert(_overlayEntry!);
-  }
-
-  void _hideMenu() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
-
-  @override
-  void dispose() {
-    _hideMenu();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedLabel = widget.items
-        .firstWhere(
-          (item) => item.value == _selectedValue,
-          orElse: () => _DropdownItem(value: _selectedValue, label: 'N/A'),
-        )
-        .label;
-
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: GestureDetector(
-        onTap: () {
-          if (_overlayEntry == null) {
-            _showMenu();
-          } else {
-            _hideMenu();
-          }
-        },
-        child: Container(
-          key: _targetKey,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.70),
-              width: 1,
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF999999),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedLabel,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              Icon(
-                _overlayEntry != null
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: context.brandPrimary,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

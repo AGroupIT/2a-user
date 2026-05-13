@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:typed_data';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
@@ -24,12 +28,12 @@ void _showStyledSnackBar(
   String message, {
   bool isError = false,
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
+  AppToast.showFromSnackBar(
+    context,
     SnackBar(
       content: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => messenger.hideCurrentSnackBar(),
+        onTap: AppToast.hide,
         child: Row(
           children: [
             Container(
@@ -77,13 +81,15 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  static const _textColor = Color(0xFF2F2F2F);
+
   // Export button keys for sharePositionOrigin on iPad
   final ScrollController _scrollController = ScrollController();
   final _invoicesExportButtonKey = GlobalKey();
   final _tracksExportButtonKey = GlobalKey();
 
   final GlobalKey _personalDataKey = GlobalKey();
-  final GlobalKey _statsKey = GlobalKey();
+  final GlobalKey _companyKey = GlobalKey();
   final GlobalKey _exportKey = GlobalKey();
   final GlobalKey _logoutKey = GlobalKey();
 
@@ -125,19 +131,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final topPad = AppLayout.topBarTotalHeight(context);
-    final bottomPad = MediaQuery.paddingOf(context).bottom;
-    final clientCode = ref.watch(activeClientCodeProvider);
-    // Загружаем профиль и статистику
+    final bottomPad = AppLayout.bottomScrollPadding(context);
+    // Загружаем профиль. Статистика на странице профиля больше не показывается.
     final profileAsync = ref.watch(clientProfileProvider);
-    final statsAsync = ref.watch(clientStatsProvider(clientCode));
 
     Future<void> onRefresh() async {
       ref.invalidate(clientProfileProvider);
-      ref.invalidate(clientStatsProvider(clientCode));
-      await Future.wait([
-        ref.read(clientProfileProvider.future),
-        ref.read(clientStatsProvider(clientCode).future),
-      ]);
+      await ref.read(clientProfileProvider.future);
     }
 
     return profileAsync.when(
@@ -162,13 +162,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           return const Center(child: Text('Профиль не найден'));
         }
 
-        final companyDomain = profile.agent?.domain ?? '';
-        final stats = statsAsync.when(
-          data: (s) => s,
-          loading: () => ClientStats.empty,
-          error: (_, _) => ClientStats.empty,
-        );
-
         return TutorialScreenWrapper(
           screenKey: 'profile',
           steps: [
@@ -180,11 +173,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               targetKey: _personalDataKey,
             ),
             TutorialStep(
-              icon: Icons.bar_chart_rounded,
-              title: 'Статистика',
+              icon: Icons.business_rounded,
+              title: 'Компания',
               description:
-                  'Сколько треков, счетов и фотозапросов было создано. Удобно для отслеживания активности.',
-              targetKey: _statsKey,
+                  'Контакты вашей компании, мессенджеры и соцсети. Позже эти данные будут загружаться с сервера.',
+              targetKey: _companyKey,
             ),
             TutorialStep(
               icon: Icons.file_download_rounded,
@@ -213,56 +206,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     16,
                     topPad * 0.7 + 16,
                     16,
-                    24 + bottomPad,
+                    bottomPad + 16,
                   ),
                   children: [
-                    Text(
-                      'Профиль',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 18),
+                    const AppPageHeader(title: 'Профиль', showBack: true),
+                    const SizedBox(height: 15),
 
                     // Personal Info Section
                     KeyedSubtree(
                       key: _personalDataKey,
                       child: _buildPersonalDataSection(profile),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 15),
 
                     // Password Change Section
                     _buildPasswordSection(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 15),
 
                     // Company Info Section
-                    _buildSectionCard(
-                      title: 'Компания',
-                      children: [
-                        _buildReadonlyField(
-                          label: 'Домен компании',
-                          value: companyDomain,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Statistics Section
                     KeyedSubtree(
-                      key: _statsKey,
-                      child: _buildSectionCard(
-                        title: 'Статистика',
-                        children: [
-                          _buildStatsGroup('Трек-номера', stats.tracks),
-                          const SizedBox(height: 16),
-                          _buildStatsGroup('Счета', stats.invoices),
-                          const SizedBox(height: 16),
-                          _buildStatsGroup('Запросы фото', stats.photoRequests),
-                          const SizedBox(height: 16),
-                          _buildStatsGroup('Заданные вопросы', stats.questions),
-                        ],
-                      ),
+                      key: _companyKey,
+                      child: _buildCompanySection(profile),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 15),
 
                     // Export Section
                     KeyedSubtree(
@@ -288,30 +254,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 15),
 
                     // Logout Button
                     Container(
                       key: _logoutKey,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x14000000),
-                            blurRadius: 24,
-                            offset: Offset(0, 10),
-                          ),
-                        ],
-                      ),
+                      decoration: _profileCardDecoration(),
                       child: Material(
                         type: MaterialType.transparency,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(10),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(10),
                           onTap: _logout,
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(14),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -325,8 +281,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   'Выйти из аккаунта',
                                   style: TextStyle(
                                     color: Colors.red.shade600,
+                                    fontFamily: 'Gilroy',
                                     fontWeight: FontWeight.w700,
-                                    fontSize: 15,
+                                    fontSize: 14.6,
+                                    height: 18 / 14.6,
                                   ),
                                 ),
                               ],
@@ -346,9 +304,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         return Center(
                           child: Text(
                             'Версия ${info.version} (${info.buildNumber})',
-                            style: TextStyle(
+                            style: const TextStyle(
+                              color: Color(0x992F2F2F),
+                              fontFamily: 'Gilroy',
                               fontSize: 13,
-                              color: Colors.grey.shade500,
+                              height: 15 / 13,
                             ),
                           ),
                         );
@@ -366,6 +326,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   // ===== PERSONAL DATA EDITING =====
+
+  BoxDecoration _profileCardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x1A000000),
+          offset: Offset(3, 4),
+          blurRadius: 25,
+        ),
+      ],
+    );
+  }
+
+  TextStyle get _sectionTitleStyle {
+    return const TextStyle(
+      color: _textColor,
+      fontFamily: 'Gilroy',
+      fontSize: 18,
+      height: 22 / 18,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    );
+  }
 
   void _startEditing(ClientProfile profile) {
     setState(() {
@@ -423,20 +408,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _openCompanyLink(Uri uri) async {
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        _showStyledSnackBar(
+          context,
+          'Не удалось открыть ссылку',
+          isError: true,
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _showStyledSnackBar(context, 'Не удалось открыть ссылку', isError: true);
+    }
+  }
+
+  Uri _webUri(String value) {
+    final trimmed = value.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return Uri.parse(trimmed);
+    }
+    return Uri.parse('https://$trimmed');
+  }
+
+  String? _textOrNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  Uri _messengerUri(String value, {bool isTelegram = false}) {
+    final trimmed = value.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return Uri.parse(trimmed);
+    }
+    if (isTelegram && !trimmed.contains('/') && !trimmed.contains('.')) {
+      final username = trimmed.replaceFirst('@', '');
+      return Uri.parse('https://t.me/$username');
+    }
+    final digits = trimmed.replaceAll(RegExp(r'\D'), '');
+    if (digits.isNotEmpty && digits.length >= 7) {
+      return Uri.parse('https://wa.me/$digits');
+    }
+    return _webUri(trimmed);
+  }
+
+  String _linkDisplayValue(String value) {
+    return value
+        .trim()
+        .replaceFirst(RegExp(r'^https?://'), '')
+        .replaceFirst(RegExp(r'^www\.'), '')
+        .replaceFirst(RegExp(r'/$'), '');
+  }
+
   Widget _buildPersonalDataSection(ClientProfile profile) {
     if (_isEditing) {
       return Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 24,
-              offset: Offset(0, 10),
-            ),
-          ],
-        ),
+        decoration: _profileCardDecoration(),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -446,7 +474,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const Expanded(
                   child: Text(
                     'Личные данные',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      color: _textColor,
+                      fontFamily: 'Gilroy',
+                      fontSize: 18,
+                      height: 22 / 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 TextButton(
@@ -513,17 +547,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: _profileCardDecoration(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -533,7 +557,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const Expanded(
                 child: Text(
                   'Личные данные',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: _textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               IconButton(
@@ -575,21 +605,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
-      decoration: InputDecoration(
+      decoration: appInputDecoration(
+        context,
         labelText: label,
         prefixIcon: Icon(icon, size: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: context.brandPrimary, width: 2),
-        ),
+        radius: kAppInputLargeRadius,
+        fillColor: Colors.white,
+        borderColor: const Color(0xFFE0E0E0),
+        focusedWidth: 2,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -648,17 +671,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildPasswordSection() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: _profileCardDecoration(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -668,7 +681,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const Expanded(
                 child: Text(
                   'Безопасность',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: _textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               Icon(
@@ -801,7 +820,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      decoration: InputDecoration(
+      decoration: appInputDecoration(
+        context,
         labelText: label,
         prefixIcon: const Icon(Icons.lock_outline, size: 20),
         suffixIcon: IconButton(
@@ -811,18 +831,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           onPressed: onToggle,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: context.brandPrimary, width: 2),
-        ),
+        radius: kAppInputLargeRadius,
+        fillColor: Colors.white,
+        borderColor: const Color(0xFFE0E0E0),
+        focusedWidth: 2,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -970,30 +982,271 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildCompanySection(ClientProfile profile) {
+    final agent = profile.agent;
+    if (agent == null) return const SizedBox.shrink();
+
+    final companyName = agent.name.trim().isNotEmpty
+        ? agent.name.trim()
+        : 'Компания';
+    final companyWebsite = _textOrNull(agent.companyWebsiteUrl);
+    final companyPhone = _textOrNull(agent.phone);
+    final companyEmail = _textOrNull(agent.email);
+    final telegramManagerUrl = _textOrNull(agent.companyTelegramUrl);
+    final telegramChannelUrl = _textOrNull(agent.companyTelegramChannelUrl);
+    final whatsappUrl = _textOrNull(agent.companyWhatsappUrl);
+    final vkUrl = _textOrNull(agent.companyVkUrl);
+    final hasContactRows = companyPhone != null || companyEmail != null;
+    final hasSocialLinks =
+        telegramManagerUrl != null ||
+        telegramChannelUrl != null ||
+        whatsappUrl != null ||
+        vkUrl != null ||
+        companyWebsite != null;
+
+    return _buildSectionCard(
+      title: 'Компания',
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: context.brandPrimary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.business_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    companyName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textColor,
+                      fontFamily: 'Gilroy',
+                      fontSize: 18,
+                      height: 22 / 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (companyWebsite != null) ...[
+                    const SizedBox(height: 3),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openCompanyLink(_webUri(companyWebsite)),
+                      child: Text(
+                        _linkDisplayValue(companyWebsite),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0x992F2F2F),
+                          fontFamily: 'Gilroy',
+                          fontSize: 14,
+                          height: 16 / 14,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (hasContactRows) const SizedBox(height: 14),
+        if (companyPhone != null)
+          _buildCompanyContactRow(
+            icon: Icons.phone_rounded,
+            label: 'Телефон',
+            value: companyPhone,
+            onTap: () =>
+                _openCompanyLink(Uri(scheme: 'tel', path: companyPhone)),
+          ),
+        if (companyPhone != null && companyEmail != null)
+          const SizedBox(height: 10),
+        if (companyEmail != null)
+          _buildCompanyContactRow(
+            icon: Icons.email_rounded,
+            label: 'Email',
+            value: companyEmail,
+            onTap: () =>
+                _openCompanyLink(Uri(scheme: 'mailto', path: companyEmail)),
+          ),
+        if (hasSocialLinks) const SizedBox(height: 14),
+        if (hasSocialLinks)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (telegramManagerUrl != null)
+                _buildSocialChip(
+                  icon: Icons.send_rounded,
+                  label: 'Telegram',
+                  value: _linkDisplayValue(telegramManagerUrl),
+                  onTap: () => _openCompanyLink(
+                    _messengerUri(telegramManagerUrl, isTelegram: true),
+                  ),
+                ),
+              if (telegramChannelUrl != null)
+                _buildSocialChip(
+                  icon: Icons.campaign_rounded,
+                  label: 'Канал',
+                  value: _linkDisplayValue(telegramChannelUrl),
+                  onTap: () => _openCompanyLink(
+                    _messengerUri(telegramChannelUrl, isTelegram: true),
+                  ),
+                ),
+              if (whatsappUrl != null)
+                _buildSocialChip(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  label: 'WhatsApp',
+                  value: _linkDisplayValue(whatsappUrl),
+                  onTap: () => _openCompanyLink(_messengerUri(whatsappUrl)),
+                ),
+              if (vkUrl != null)
+                _buildSocialChip(
+                  icon: Icons.groups_2_rounded,
+                  label: 'VK',
+                  value: _linkDisplayValue(vkUrl),
+                  onTap: () => _openCompanyLink(_webUri(vkUrl)),
+                ),
+              if (companyWebsite != null)
+                _buildSocialChip(
+                  icon: Icons.language_rounded,
+                  label: 'Сайт',
+                  value: _linkDisplayValue(companyWebsite),
+                  onTap: () => _openCompanyLink(_webUri(companyWebsite)),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCompanyContactRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 16, color: context.brandPrimary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(
+                    text: value,
+                    style: const TextStyle(fontWeight: FontWeight.w400),
+                  ),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _textColor,
+                fontFamily: 'Gilroy',
+                fontSize: 14,
+                height: 16 / 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSocialChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: context.brandPrimary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: context.brandPrimary.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: context.brandPrimary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _textColor,
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                height: 15 / 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0x992F2F2F),
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                height: 15 / 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSectionCard({
     required String title,
     required List<Widget> children,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: _profileCardDecoration(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-          ),
+          Text(title, style: _sectionTitleStyle),
           const SizedBox(height: 14),
           ...children,
         ],
@@ -1008,8 +1261,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Text(
           label,
           style: const TextStyle(
+            color: Color(0x992F2F2F),
+            fontFamily: 'Gilroy',
             fontSize: 12,
-            color: Color(0xFF666666),
+            height: 14 / 12,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1020,7 +1275,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Text(
                 value,
                 style: const TextStyle(
+                  color: _textColor,
+                  fontFamily: 'Gilroy',
                   fontSize: 15,
+                  height: 18 / 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1036,89 +1294,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildStatsGroup(String title, Map<String, int> stats) {
-    final total = stats.values.fold(0, (a, b) => a + b);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$total',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: stats.entries
-              .map((e) => _buildStatChip(e.key, e.value))
-              .toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatChip(String label, int count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF666666)),
-          ),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: context.brandPrimary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: context.brandPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildExportButton({
     Key? key,
     required IconData icon,
@@ -1128,10 +1303,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return SizedBox(
       key: key,
       width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        label: Text(label),
+      height: 44,
+      child: Material(
+        color: context.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: context.brandPrimary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textColor,
+                      fontFamily: 'Gilroy',
+                      fontSize: 14,
+                      height: 16 / 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.download_rounded,
+                  size: 18,
+                  color: context.brandPrimary,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

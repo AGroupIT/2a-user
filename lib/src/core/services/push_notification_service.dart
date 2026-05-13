@@ -1,12 +1,12 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../firebase_options.dart';
 import '../../features/notifications/domain/notification_item.dart';
+import '../ui/app_colors.dart';
 import 'platform_helper.dart';
 
 /// Проверка платформы (безопасно для Web)
@@ -38,34 +38,37 @@ final pushNotificationServiceProvider = Provider<PushNotificationService>((
 class IsChatScreenOpenNotifier extends Notifier<bool> {
   @override
   bool build() => false;
-  
+
   void set(bool value) => state = value;
 }
 
 /// Провайдер для отслеживания открытого экрана чата
-final isChatScreenOpenProvider = NotifierProvider<IsChatScreenOpenNotifier, bool>(
-  IsChatScreenOpenNotifier.new,
-);
+final isChatScreenOpenProvider =
+    NotifierProvider<IsChatScreenOpenNotifier, bool>(
+      IsChatScreenOpenNotifier.new,
+    );
 
 /// Простой Notifier для int состояния
 class UnreadNotificationsCountNotifier extends Notifier<int> {
   @override
   int build() => 0;
-  
+
   void set(int value) => state = value;
 }
 
 /// Провайдер для счётчика непрочитанных уведомлений
-final unreadNotificationsCountProvider = NotifierProvider<UnreadNotificationsCountNotifier, int>(
-  UnreadNotificationsCountNotifier.new,
-);
+final unreadNotificationsCountProvider =
+    NotifierProvider<UnreadNotificationsCountNotifier, int>(
+      UnreadNotificationsCountNotifier.new,
+    );
 
 /// Сервис для управления push-уведомлениями и badge на иконке приложения
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
-  
+
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static FirebaseMessaging? _messaging;
@@ -75,7 +78,7 @@ class PushNotificationService {
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
-  
+
   // Callback для обработки FCM сообщений
   static Function(RemoteMessage)? onFCMMessageReceived;
 
@@ -96,7 +99,9 @@ class PushNotificationService {
         ).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('🔔 Firebase.initializeApp() timed out (10s) — Google servers may be blocked by ISP');
+            debugPrint(
+              '🔔 Firebase.initializeApp() timed out (10s) — Google servers may be blocked by ISP',
+            );
             return Firebase.app();
           },
         );
@@ -112,11 +117,9 @@ class PushNotificationService {
 
         // Запрос разрешений
         try {
-          final settings = await _messaging!.requestPermission(
-            alert: true,
-            badge: true,
-            sound: true,
-          ).timeout(const Duration(seconds: 5));
+          final settings = await _messaging!
+              .requestPermission(alert: true, badge: true, sound: true)
+              .timeout(const Duration(seconds: 5));
           debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
         } catch (e) {
           debugPrint('🔔 FCM Permission request failed/timed out: $e');
@@ -124,7 +127,9 @@ class PushNotificationService {
 
         // Получить токен сразу после инициализации
         try {
-          final token = await getFCMToken().timeout(const Duration(seconds: 10));
+          final token = await getFCMToken().timeout(
+            const Duration(seconds: 10),
+          );
           if (token != null) {
             _fcmTokenObtained = true;
             debugPrint('🔔 Initial FCM token obtained successfully');
@@ -132,11 +137,15 @@ class PushNotificationService {
             debugPrint('🔔 Warning: Initial FCM token is null');
           }
         } catch (e) {
-          debugPrint('🔔 Error getting initial FCM token (may retry later): $e');
+          debugPrint(
+            '🔔 Error getting initial FCM token (may retry later): $e',
+          );
         }
 
         // Background handler
-        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+        FirebaseMessaging.onBackgroundMessage(
+          _firebaseMessagingBackgroundHandler,
+        );
 
         // Token refresh — Firebase периодически обновляет FCM токен.
         // Без этого listener старый токен становится невалидным и пуши перестают приходить.
@@ -159,7 +168,9 @@ class PushNotificationService {
           // Handle navigation based on message data
         });
       } else {
-        debugPrint('🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)');
+        debugPrint(
+          '🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)',
+        );
       }
 
       _firebaseReady = true;
@@ -214,14 +225,14 @@ class PushNotificationService {
       delaySec = (delaySec * 2).clamp(30, 300); // макс 5 минут между попытками
     }
   }
-  
+
   /// Показать локальное уведомление из FCM
   static Future<void> _showFCMNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
-    
+
     final plugin = FlutterLocalNotificationsPlugin();
-    
+
     const androidDetails = AndroidNotificationDetails(
       'fcm_channel',
       'Push уведомления',
@@ -230,13 +241,13 @@ class PushNotificationService {
       priority: Priority.high,
       icon: 'ic_notification',
     );
-    
+
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
     );
-    
+
     await plugin.show(
       message.hashCode,
       notification.title,
@@ -245,10 +256,11 @@ class PushNotificationService {
       payload: message.data['route'],
     );
   }
-  
+
   /// VAPID Key для Web Push (Firebase Console → Project Settings → Cloud Messaging)
-  static const String _vapidKey = 'BN84z0kGwWRFRalLMJ-HlMPVYBp5Tu7QnsGiACoT-ODg7VkwtFV_kdDhFHapsr5BguDgeBs0E6Pe2aY2_0fMshQ';
-  
+  static const String _vapidKey =
+      'BN84z0kGwWRFRalLMJ-HlMPVYBp5Tu7QnsGiACoT-ODg7VkwtFV_kdDhFHapsr5BguDgeBs0E6Pe2aY2_0fMshQ';
+
   /// Получить FCM токен
   static Future<String?> getFCMToken() async {
     try {
@@ -272,7 +284,7 @@ class PushNotificationService {
       return null;
     }
   }
-  
+
   /// Подписаться на топик
   static Future<void> subscribeToTopic(String topic) async {
     // Topic subscription не поддерживается на Web
@@ -287,7 +299,7 @@ class PushNotificationService {
       debugPrint('🔔 Subscribe error: $e');
     }
   }
-  
+
   /// Отписаться от топика
   static Future<void> unsubscribeFromTopic(String topic) async {
     // Topic unsubscription не поддерживается на Web
@@ -423,7 +435,7 @@ class PushNotificationService {
       priority: Priority.high,
       showWhen: true,
       icon: 'ic_notification',
-      color: const Color(0xFFfe3301),
+      color: BrandColors.defaultColors.primary,
       enableVibration: true,
       playSound: true,
       category: _getCategoryForType(item.type),
@@ -599,7 +611,7 @@ class PushNotificationService {
     if (_isDesktop) {
       return;
     }
-    
+
     // Используем flutter_local_notifications для управления badge
     // На iOS badge управляется через badgeNumber в notification
     // На Android badges управляются через каналы уведомлений

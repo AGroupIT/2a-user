@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ui/app_colors.dart';
+import '../../core/ui/app_input_decoration.dart';
 
 class AppTheme {
   const AppTheme._();
@@ -14,18 +16,27 @@ class AppTheme {
   static ThemeData lightWithColors(BrandColors brand) {
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme:
-          ColorScheme.fromSeed(
-            seedColor: brand.primary,
-            brightness: Brightness.light,
-          ).copyWith(
-            primary: brand.primary,
-            secondary: brand.primaryLight,
-          ),
+      fontFamily: 'Gilroy',
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: brand.primary,
+        brightness: Brightness.light,
+      ).copyWith(primary: brand.primary, secondary: brand.primaryLight),
     );
 
     return base.copyWith(
       scaffoldBackgroundColor: Colors.transparent,
+      textTheme: base.textTheme.apply(fontFamily: 'Gilroy'),
+      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: 'Gilroy'),
+      cupertinoOverrideTheme: const CupertinoThemeData(
+        textTheme: CupertinoTextThemeData(
+          textStyle: TextStyle(fontFamily: 'Gilroy'),
+          actionTextStyle: TextStyle(fontFamily: 'Gilroy'),
+          navTitleTextStyle: TextStyle(fontFamily: 'Gilroy'),
+          navLargeTitleTextStyle: TextStyle(fontFamily: 'Gilroy'),
+          pickerTextStyle: TextStyle(fontFamily: 'Gilroy'),
+          dateTimePickerTextStyle: TextStyle(fontFamily: 'Gilroy'),
+        ),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -40,6 +51,7 @@ class AppTheme {
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return TextStyle(
+            fontFamily: 'Gilroy',
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected ? brand.primary : AppColors.textSecondary,
@@ -68,21 +80,16 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.75),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.70)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.70)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: brand.primary,
-            width: 1.5,
-          ),
-        ),
+        border: appInputBorder(Colors.white.withValues(alpha: 0.70)),
+        enabledBorder: appInputBorder(Colors.white.withValues(alpha: 0.70)),
+        focusedBorder: appInputBorder(brand.primary, width: 1.5),
+        errorBorder: appInputBorder(const Color(0xFFE53935)),
+        focusedErrorBorder: appInputBorder(const Color(0xFFE53935), width: 1.5),
+        disabledBorder: appInputBorder(Colors.white.withValues(alpha: 0.45)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
@@ -106,7 +113,11 @@ class AppTheme {
             const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           ),
           textStyle: WidgetStateProperty.all(
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            const TextStyle(
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
           ),
           elevation: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.pressed)) return 0;
@@ -153,7 +164,11 @@ class AppTheme {
             const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           ),
           textStyle: WidgetStateProperty.all(
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            const TextStyle(
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
           ),
         ),
       ),
@@ -166,7 +181,11 @@ class AppTheme {
             return brand.primary;
           }),
           textStyle: WidgetStateProperty.all(
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            const TextStyle(
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
           ),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

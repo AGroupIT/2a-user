@@ -26,14 +26,14 @@ class ChatRepository {
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        
+
         // API возвращает conversation и messages отдельно
         final conversationJson = data['conversation'] as Map<String, dynamic>;
         final messagesJson = data['messages'] as List<dynamic>? ?? [];
-        
+
         // Добавляем messages в conversation json для парсинга
         conversationJson['messages'] = messagesJson;
-        
+
         return ChatConversation.fromJson(conversationJson);
       }
       throw Exception('Failed to load conversation');
@@ -44,14 +44,19 @@ class ChatRepository {
   }
 
   /// Отправить сообщение в чат
-  Future<ChatMessage> sendMessage(String content, {String contentType = 'text', List<int>? attachmentIds}) async {
+  Future<ChatMessage> sendMessage(
+    String content, {
+    String contentType = 'text',
+    List<int>? attachmentIds,
+  }) async {
     try {
       final response = await _apiClient.post(
         '/client/chat',
         data: {
           'content': content,
           'contentType': contentType,
-          if (attachmentIds != null && attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
+          if (attachmentIds != null && attachmentIds.isNotEmpty)
+            'attachmentIds': attachmentIds,
         },
       );
 
@@ -72,14 +77,14 @@ class ChatRepository {
     try {
       final fileName = file.path.split('/').last;
       final mimeType = _getMimeType(fileName);
-      
+
       // Читаем файл в память сразу, чтобы избежать проблем с временными файлами iOS
       final bytes = await file.readAsBytes();
-      
+
       if (bytes.isEmpty) {
         throw Exception('File is empty');
       }
-      
+
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
           bytes,
@@ -105,14 +110,18 @@ class ChatRepository {
   }
 
   /// Загрузить вложение из bytes (для iOS - обход sandbox ограничений)
-  Future<ChatAttachment> uploadAttachmentFromBytes(Uint8List bytes, String fileName, int conversationId) async {
+  Future<ChatAttachment> uploadAttachmentFromBytes(
+    Uint8List bytes,
+    String fileName,
+    int conversationId,
+  ) async {
     try {
       if (bytes.isEmpty) {
         throw Exception('File is empty');
       }
-      
+
       final mimeType = _getMimeType(fileName);
-      
+
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
           bytes,
@@ -184,21 +193,22 @@ class ChatRepository {
   }
 
   /// Получить новые сообщения после указанного ID (для polling)
-  Future<List<ChatMessage>> getNewMessages(int conversationId, int afterMessageId) async {
+  Future<List<ChatMessage>> getNewMessages(
+    int conversationId,
+    int afterMessageId,
+  ) async {
     try {
       final response = await _apiClient.get(
         '/client/chat',
-        queryParameters: {
-          'afterMessageId': afterMessageId.toString(),
-        },
+        queryParameters: {'afterMessageId': afterMessageId.toString()},
       );
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        
+
         // messages приходят отдельно от conversation
         final messagesJson = data['messages'] as List<dynamic>? ?? [];
-        
+
         // Парсим только новые сообщения
         return messagesJson
             .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
@@ -344,7 +354,9 @@ class ChatController extends Notifier<ChatState> {
             if (message.isFromSupport) {
               final isChatOpen = ref.read(isChatScreenOpenProvider);
               if (!isChatOpen) {
-                final notificationService = ref.read(pushNotificationServiceProvider);
+                final notificationService = ref.read(
+                  pushNotificationServiceProvider,
+                );
                 notificationService.showChatMessageNotification(
                   senderName: message.senderName,
                   message: message.content,
@@ -434,24 +446,33 @@ class ChatController extends Notifier<ChatState> {
   Future<bool> sendMessage(String content, {List<int>? attachmentIds}) async {
     final hasContent = content.trim().isNotEmpty;
     final hasAttachments = attachmentIds != null && attachmentIds.isNotEmpty;
-    
+
     if (!hasContent && !hasAttachments) return false;
-    
+    if (state.isSending) return false;
+
     state = state.copyWith(isSending: true, clearError: true);
-    
+
     try {
       final message = await _repository.sendMessage(
         content.trim(),
         attachmentIds: attachmentIds,
       );
-      
-      // Добавляем сообщение в список
-      final newMessages = [...state.messages, message];
-      
+
+      // WebSocket может добавить это же сообщение раньше ответа POST.
+      final messageExists = state.messages.any((m) => m.id == message.id);
+      final newMessages = messageExists
+          ? state.messages
+          : [...state.messages, message];
+      final currentLastMessageId = state.lastMessageId;
+      final nextLastMessageId =
+          currentLastMessageId == null || message.id > currentLastMessageId
+          ? message.id
+          : currentLastMessageId;
+
       state = state.copyWith(
         messages: newMessages,
         isSending: false,
-        lastMessageId: message.id,
+        lastMessageId: nextLastMessageId,
         pendingAttachments: [], // Очищаем pending attachments
       );
       return true;
@@ -467,18 +488,21 @@ class ChatController extends Notifier<ChatState> {
   /// Загрузить файл и добавить к pending attachments
   Future<ChatAttachment?> uploadFile(File file) async {
     if (state.conversation == null) return null;
-    
+
     state = state.copyWith(isUploading: true, clearError: true);
-    
+
     try {
-      final attachment = await _repository.uploadAttachment(file, state.conversation!.id);
-      
+      final attachment = await _repository.uploadAttachment(
+        file,
+        state.conversation!.id,
+      );
+
       // Добавляем к pending attachments
       state = state.copyWith(
         isUploading: false,
         pendingAttachments: [...state.pendingAttachments, attachment],
       );
-      
+
       return attachment;
     } catch (e) {
       state = state.copyWith(
@@ -490,20 +514,27 @@ class ChatController extends Notifier<ChatState> {
   }
 
   /// Загрузить файл из bytes и добавить к pending attachments (для iOS)
-  Future<ChatAttachment?> uploadFileFromBytes(Uint8List bytes, String fileName) async {
+  Future<ChatAttachment?> uploadFileFromBytes(
+    Uint8List bytes,
+    String fileName,
+  ) async {
     if (state.conversation == null) return null;
-    
+
     state = state.copyWith(isUploading: true, clearError: true);
-    
+
     try {
-      final attachment = await _repository.uploadAttachmentFromBytes(bytes, fileName, state.conversation!.id);
-      
+      final attachment = await _repository.uploadAttachmentFromBytes(
+        bytes,
+        fileName,
+        state.conversation!.id,
+      );
+
       // Добавляем к pending attachments
       state = state.copyWith(
         isUploading: false,
         pendingAttachments: [...state.pendingAttachments, attachment],
       );
-      
+
       return attachment;
     } catch (e) {
       state = state.copyWith(
@@ -517,7 +548,9 @@ class ChatController extends Notifier<ChatState> {
   /// Удалить pending attachment
   void removePendingAttachment(int attachmentId) {
     state = state.copyWith(
-      pendingAttachments: state.pendingAttachments.where((a) => a.id != attachmentId).toList(),
+      pendingAttachments: state.pendingAttachments
+          .where((a) => a.id != attachmentId)
+          .toList(),
     );
   }
 
@@ -529,37 +562,40 @@ class ChatController extends Notifier<ChatState> {
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
     if (state.conversation == null) return;
-    
+
     // Если нет сообщений, загружаем с нуля
     final lastMessageId = state.lastMessageId ?? 0;
-    
+
     try {
       final newMessages = await _repository.getNewMessages(
         state.conversation!.id,
         lastMessageId,
       );
-      
+
       if (newMessages.isNotEmpty) {
         // Фильтруем дубликаты по id
         final existingIds = state.messages.map((m) => m.id).toSet();
-        final uniqueNewMessages = newMessages.where((m) => !existingIds.contains(m.id)).toList();
-        
+        final uniqueNewMessages = newMessages
+            .where((m) => !existingIds.contains(m.id))
+            .toList();
+
         if (uniqueNewMessages.isNotEmpty) {
           final allMessages = [...state.messages, ...uniqueNewMessages];
-          final lastId = allMessages.isNotEmpty ? allMessages.last.id : lastMessageId;
-          
-          state = state.copyWith(
-            messages: allMessages,
-            lastMessageId: lastId,
-          );
-          
+          final lastId = allMessages.isNotEmpty
+              ? allMessages.last.id
+              : lastMessageId;
+
+          state = state.copyWith(messages: allMessages, lastMessageId: lastId);
+
           // Показать локальное уведомление для сообщений от поддержки
           // только если экран чата закрыт
           final isChatOpen = ref.read(isChatScreenOpenProvider);
           if (!isChatOpen) {
             for (final msg in uniqueNewMessages) {
               if (msg.isFromSupport) {
-                final notificationService = ref.read(pushNotificationServiceProvider);
+                final notificationService = ref.read(
+                  pushNotificationServiceProvider,
+                );
                 await notificationService.showChatMessageNotification(
                   senderName: msg.senderName,
                   message: msg.content,
@@ -582,4 +618,6 @@ class ChatController extends Notifier<ChatState> {
 }
 
 /// Провайдер контроллера чата
-final chatControllerProvider = NotifierProvider<ChatController, ChatState>(ChatController.new);
+final chatControllerProvider = NotifierProvider<ChatController, ChatState>(
+  ChatController.new,
+);

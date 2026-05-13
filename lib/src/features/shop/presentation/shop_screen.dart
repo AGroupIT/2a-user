@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../shell/presentation/app_shell.dart';
 import '../data/purchase_provider.dart';
@@ -113,15 +114,18 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                   Expanded(
                     child: TextField(
                       controller: minCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d*')),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'От',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+[.,]?\d*'),
                         ),
+                      ],
+                      decoration: appInputDecoration(
+                        context,
+                        labelText: 'От',
+                        radius: 12,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 12,
@@ -133,15 +137,18 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                   Expanded(
                     child: TextField(
                       controller: maxCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d*')),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'До',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+[.,]?\d*'),
                         ),
+                      ],
+                      decoration: appInputDecoration(
+                        context,
+                        labelText: 'До',
+                        radius: 12,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 12,
@@ -177,8 +184,12 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                     child: FilledButton(
                       onPressed: () {
                         setState(() {
-                          final minVal = double.tryParse(minCtrl.text.replaceAll(',', '.'));
-                          final maxVal = double.tryParse(maxCtrl.text.replaceAll(',', '.'));
+                          final minVal = double.tryParse(
+                            minCtrl.text.replaceAll(',', '.'),
+                          );
+                          final maxVal = double.tryParse(
+                            maxCtrl.text.replaceAll(',', '.'),
+                          );
                           _minPrice = minVal;
                           _maxPrice = maxVal;
                         });
@@ -219,275 +230,293 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
         TutorialStep(
           icon: Icons.store_rounded,
           title: 'Магазин',
-          description: 'Каталог товаров с китайских торговых площадок. Выберите площадку (Taobao, 1688, Poizon) вверху экрана.',
+          description:
+              'Каталог товаров с китайских торговых площадок. Выберите площадку (Taobao, 1688, Poizon) вверху экрана.',
         ),
         TutorialStep(
           icon: Icons.search_rounded,
           title: 'Поиск товара',
-          description: 'Введите название товара или вставьте ссылку с площадки в строку поиска — мы найдём и покажем карточку.',
+          description:
+              'Введите название товара или вставьте ссылку с площадки в строку поиска — мы найдём и покажем карточку.',
         ),
         TutorialStep(
           icon: Icons.category_rounded,
           title: 'Категории',
-          description: 'Выберите категорию, чтобы просматривать товары по разделам. Нажмите на товар для перехода к деталям.',
+          description:
+              'Выберите категорию, чтобы просматривать товары по разделам. Нажмите на товар для перехода к деталям.',
         ),
         TutorialStep(
           icon: Icons.filter_alt_rounded,
           title: 'Фильтр по цене',
-          description: 'Нажмите иконку фильтра (воронка) рядом со строкой поиска, чтобы задать диапазон цен в юанях.',
+          description:
+              'Нажмите иконку фильтра (воронка) рядом со строкой поиска, чтобы задать диапазон цен в юанях.',
         ),
         TutorialStep(
           icon: Icons.shopping_cart_rounded,
           title: 'Список выкупа',
-          description: 'Иконка корзины вверху открывает ваш текущий список выкупа. Там собраны все товары перед отправкой заявки.',
+          description:
+              'Иконка корзины вверху открывает ваш текущий список выкупа. Там собраны все товары перед отправкой заявки.',
         ),
       ],
       child: Stack(
-      children: [
-        Column(
-          children: [
-            const SizedBox(height: 70),
+        children: [
+          Column(
+            children: [
+              const SizedBox(height: 70),
 
-            // Marketplace selector
-            MarketplaceSelector(onChanged: _onMarketplaceChanged),
-            const SizedBox(height: 12),
+              // Marketplace selector
+              MarketplaceSelector(onChanged: _onMarketplaceChanged),
+              const SizedBox(height: 12),
 
-            // Search bar
-            ShopSearchBar(
-              onSearch: _onSearch,
-              initialQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-            ),
-            const SizedBox(height: 8),
+              // Search bar
+              ShopSearchBar(
+                onSearch: _onSearch,
+                initialQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+              ),
+              const SizedBox(height: 8),
 
-            // Sort + Filter row (only when results are shown)
-            if (showSearchResults)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    // Sort dropdown
-                    Expanded(
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _orderBy,
-                            isExpanded: true,
-                            icon: Icon(Icons.sort,
-                                size: 18, color: Colors.grey.shade600),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade800,
-                            ),
-                            items: _sortOptions
-                                .map(
-                                  (opt) => DropdownMenuItem(
-                                    value: opt.$1,
-                                    child: Text(opt.$2),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _orderBy = value);
-                              }
-                            },
+              // Sort + Filter row (only when results are shown)
+              if (showSearchResults)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      // Sort dropdown
+                      Expanded(
+                        child: Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Filter button
-                    GestureDetector(
-                      onTap: _showFiltersSheet,
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: (_minPrice != null || _maxPrice != null)
-                              ? context.brandPrimary.withValues(alpha: 0.1)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                          border: (_minPrice != null || _maxPrice != null)
-                              ? Border.all(color: context.brandPrimary, width: 1)
-                              : null,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.tune,
-                              size: 18,
-                              color: (_minPrice != null || _maxPrice != null)
-                                  ? context.brandPrimary
-                                  : Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _buildFilterLabel(),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _orderBy,
+                              isExpanded: true,
+                              icon: Icon(
+                                Icons.sort,
+                                size: 20,
+                                color: Colors.grey.shade600,
+                              ),
                               style: TextStyle(
                                 fontSize: 13,
+                                color: Colors.grey.shade800,
+                              ),
+                              items: _sortOptions
+                                  .map(
+                                    (opt) => DropdownMenuItem(
+                                      value: opt.$1,
+                                      child: Text(opt.$2),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _orderBy = value);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Filter button
+                      GestureDetector(
+                        onTap: _showFiltersSheet,
+                        child: Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: (_minPrice != null || _maxPrice != null)
+                                ? context.brandPrimary.withValues(alpha: 0.1)
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                            border: (_minPrice != null || _maxPrice != null)
+                                ? Border.all(
+                                    color: context.brandPrimary,
+                                    width: 1,
+                                  )
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.tune,
+                                size: 20,
                                 color: (_minPrice != null || _maxPrice != null)
                                     ? context.brandPrimary
-                                    : Colors.grey.shade700,
+                                    : Colors.grey.shade600,
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            if (showSearchResults) const SizedBox(height: 8),
-
-            // Category filter chip
-            if (_searchCategoryId != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Chip(
-                        label: Text(
-                          _searchCategoryName ?? 'Категория',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: context.brandPrimary,
+                              const SizedBox(width: 4),
+                              Text(
+                                _buildFilterLabel(),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color:
+                                      (_minPrice != null || _maxPrice != null)
+                                      ? context.brandPrimary
+                                      : Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
-                        onDeleted: _clearCategorySearch,
-                        backgroundColor:
-                            context.brandPrimary.withValues(alpha: 0.1),
-                        side: BorderSide.none,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (showSearchResults) const SizedBox(height: 8),
+
+              // Category filter chip
+              if (_searchCategoryId != null)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    bottom: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Chip(
+                          label: Text(
+                            _searchCategoryName ?? 'Категория',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: context.brandPrimary,
+                            ),
+                          ),
+                          deleteIcon: const Icon(Icons.close, size: 16),
+                          onDeleted: _clearCategorySearch,
+                          backgroundColor: context.brandPrimary.withValues(
+                            alpha: 0.1,
+                          ),
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Content
-            Expanded(
-              child: showSearchResults
-                  ? ShopSearchResults(
-                      params: ShopSearchParams(
-                        query: _searchQuery,
-                        marketplace: marketplace,
-                        categoryId: _searchCategoryId,
-                        orderBy: _orderBy,
-                        minPrice: _minPrice,
-                        maxPrice: _maxPrice,
-                      ),
-                    )
-                  : _CategoriesView(
-                      marketplace: marketplace,
-                      onCategorySearch: _onCategorySearch,
-                    ),
-            ),
-          ],
-        ),
-
-        // Floating history button
-        Positioned(
-          right: 16,
-          bottom: cartCount > 0 ? 181 : 115,
-          child: GestureDetector(
-            onTap: () => context.push('/shop/purchases'),
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+                    ],
                   ),
-                ],
-              ),
-              child: Icon(
-                Icons.receipt_long_rounded,
-                color: context.brandPrimary,
-                size: 22,
-              ),
-            ),
-          ),
-        ),
+                ),
 
-        // Floating cart button
-        if (cartCount > 0)
+              // Content
+              Expanded(
+                child: showSearchResults
+                    ? ShopSearchResults(
+                        params: ShopSearchParams(
+                          query: _searchQuery,
+                          marketplace: marketplace,
+                          categoryId: _searchCategoryId,
+                          orderBy: _orderBy,
+                          minPrice: _minPrice,
+                          maxPrice: _maxPrice,
+                        ),
+                      )
+                    : _CategoriesView(
+                        marketplace: marketplace,
+                        onCategorySearch: _onCategorySearch,
+                      ),
+              ),
+            ],
+          ),
+
+          // Floating history button
           Positioned(
             right: 16,
-            bottom: 115,
+            bottom: cartCount > 0 ? 181 : 115,
             child: GestureDetector(
-              onTap: () => context.push('/shop/cart'),
+              onTap: () => context.push('/shop/purchases'),
               child: Container(
-                width: 56,
-                height: 56,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: context.brandPrimary.withValues(alpha: 0.4),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const Icon(
-                      Icons.shopping_cart_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          '$cartCount',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Icon(
+                  Icons.receipt_long_rounded,
+                  color: context.brandPrimary,
+                  size: 22,
                 ),
               ),
             ),
           ),
-      ],
-    ));
+
+          // Floating cart button
+          if (cartCount > 0)
+            Positioned(
+              right: 16,
+              bottom: 115,
+              child: GestureDetector(
+                onTap: () => context.push('/shop/cart'),
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [context.brandPrimary, context.brandSecondary],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(
+                        Icons.shopping_cart_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            '$cartCount',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   String _buildFilterLabel() {
@@ -571,8 +600,11 @@ class _CategoriesViewState extends ConsumerState<_CategoriesView> {
                   onTap: _goBack,
                   child: Row(
                     children: [
-                      Icon(CupertinoIcons.chevron_left,
-                          size: 18, color: context.brandPrimary),
+                      Icon(
+                        CupertinoIcons.chevron_left,
+                        size: 18,
+                        color: context.brandPrimary,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         _stack.last.title,
@@ -601,7 +633,9 @@ class _CategoriesViewState extends ConsumerState<_CategoriesView> {
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: context.brandPrimary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -609,8 +643,11 @@ class _CategoriesViewState extends ConsumerState<_CategoriesView> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.grid_view,
-                            size: 14, color: context.brandPrimary),
+                        Icon(
+                          Icons.grid_view,
+                          size: 14,
+                          color: context.brandPrimary,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           'Товары',
@@ -639,8 +676,11 @@ class _CategoriesViewState extends ConsumerState<_CategoriesView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.category_outlined,
-                          size: 56, color: Colors.grey.shade300),
+                      Icon(
+                        Icons.category_outlined,
+                        size: 56,
+                        color: Colors.grey.shade300,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         'Введите запрос для поиска товаров',
@@ -671,13 +711,15 @@ class _CategoriesViewState extends ConsumerState<_CategoriesView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.error_outline,
-                      size: 48, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'Не удалось загрузить категории',
-                    style:
-                        TextStyle(fontSize: 15, color: Colors.grey.shade500),
+                    style: TextStyle(fontSize: 15, color: Colors.grey.shade500),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
@@ -717,8 +759,7 @@ class _CategoryTile extends StatelessWidget {
         ],
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         title: Text(
           category.name,
           style: const TextStyle(
@@ -729,9 +770,8 @@ class _CategoryTile extends StatelessWidget {
         ),
         trailing: category.isParent
             ? Icon(Icons.chevron_right, color: Colors.grey.shade400)
-            : Icon(Icons.search, size: 20, color: Colors.grey.shade400),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            : Icon(Icons.search, size: 22, color: Colors.grey.shade400),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         onTap: onTap,
       ),
     );

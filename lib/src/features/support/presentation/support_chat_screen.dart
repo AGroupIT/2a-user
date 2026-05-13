@@ -1,8 +1,10 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -17,14 +19,10 @@ import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
-import '../../clients/application/client_codes_controller.dart';
-import '../../invoices/data/invoices_provider.dart';
-import '../../invoices/domain/invoice_item.dart';
-import '../../tracks/data/tracks_provider.dart';
-import '../../tracks/domain/track_item.dart';
 import '../data/chat_provider.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import '../../../core/utils/locale_text.dart';
@@ -46,7 +44,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   Timer? _pollingTimer;
   bool _isDisposed = false;
 
-  final bool _showQuickActions = true;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
   // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
@@ -156,12 +153,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     if (_isSendingLocally) return;
 
     final chatState = ref.read(chatControllerProvider);
+    if (chatState.isSending) return;
+
     final pendingAttachments = chatState.pendingAttachments;
 
     // Если нет текста и нет вложений - ничего не делаем
     if (text.trim().isEmpty && pendingAttachments.isEmpty) return;
 
-    _isSendingLocally = true;
+    setState(() => _isSendingLocally = true);
     try {
       HapticFeedback.lightImpact();
       _textController.selection = const TextSelection.collapsed(offset: 0);
@@ -184,18 +183,30 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         _scrollToBottom();
       }
     } finally {
-      _isSendingLocally = false;
+      if (mounted) {
+        setState(() => _isSendingLocally = false);
+      } else {
+        _isSendingLocally = false;
+      }
     }
   }
 
   /// Показать диалог выбора типа вложения
   void _showAttachmentPicker() {
+    FocusScope.of(context).unfocus();
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useRootNavigator: true,
       builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
+        margin: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          AppLayout.bottomBarObstruction(context) + 16,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFF1E1E2E),
           borderRadius: BorderRadius.circular(20),
@@ -500,11 +511,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   void _showErrorSnackbar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppToast.showFromSnackBar(
+      context,
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
       ),
     );
   }
@@ -513,7 +525,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          _scrollController.position.minScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -521,176 +533,16 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     });
   }
 
-  void _showQuickSendSheet() {
-    HapticFeedback.mediumImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      builder: (context) => _QuickSendSheet(
-        onTrackSelected: _sendTrackInfo,
-        onInvoiceSelected: _sendInvoiceInfo,
-      ),
-    );
-  }
-
-  void _sendTrackInfo(TrackItem track) {
-    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
-    final buffer = StringBuffer();
-
-    if (isZh(context)) {
-      buffer.writeln('📦 **运单信息**');
-      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-      buffer.writeln('🔢 单号: ${track.code}');
-      buffer.writeln('📊 状态: ${track.status}');
-      buffer.writeln('📅 日期: ${dateFormat.format(track.date)}');
-      if (track.comment != null) {
-        buffer.writeln('💬 备注: ${track.comment}');
-      }
-      if (track.assembly != null) {
-        buffer.writeln('');
-        buffer.writeln('📁 **集包:** ${track.assembly!.number}');
-        buffer.writeln(
-          '   • 状态: ${track.assembly!.statusName ?? track.assembly!.status}',
-        );
-      }
-      if (track.photoReportUrls.isNotEmpty) {
-        buffer.writeln('');
-        buffer.writeln('📸 照片报告: ${track.photoReportUrls.length} 张照片');
-      }
-      final activePhoto = track.activePhotoRequest;
-      if (activePhoto != null) {
-        buffer.writeln('📷 照片请求: ${activePhoto.status}');
-      }
-    } else {
-      buffer.writeln('📦 **Информация о треке**');
-      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-      buffer.writeln('🔢 Номер: ${track.code}');
-      buffer.writeln('📊 Статус: ${track.status}');
-      buffer.writeln('📅 Дата: ${dateFormat.format(track.date)}');
-      if (track.comment != null) {
-        buffer.writeln('💬 Комментарий: ${track.comment}');
-      }
-      if (track.assembly != null) {
-        buffer.writeln('');
-        buffer.writeln('📁 **Сборка:** ${track.assembly!.number}');
-        buffer.writeln(
-          '   • Статус: ${track.assembly!.statusName ?? track.assembly!.status}',
-        );
-      }
-      if (track.photoReportUrls.isNotEmpty) {
-        buffer.writeln('');
-        buffer.writeln('📸 Фото отчёт: ${track.photoReportUrls.length} фото');
-      }
-      final activePhoto = track.activePhotoRequest;
-      if (activePhoto != null) {
-        buffer.writeln('📷 Запрос фото: ${activePhoto.status}');
-      }
-    }
-
-    _handleMessageSend(buffer.toString());
-  }
-
-  void _sendInvoiceInfo(InvoiceItem invoice) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
-    final buffer = StringBuffer();
-
-    if (isZh(context)) {
-      buffer.writeln('🧾 **发票信息**');
-      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-      buffer.writeln('🔢 单号: ${invoice.invoiceNumber}');
-      buffer.writeln('📊 状态: ${invoice.status}');
-      if (invoice.sendDate != null) {
-        buffer.writeln('📅 发送日期: ${dateFormat.format(invoice.sendDate!)}');
-      }
-      buffer.writeln('');
-      buffer.writeln('📦 **货物参数:**');
-      buffer.writeln('   • 件数: ${invoice.placesCount}');
-      buffer.writeln('   • 重量: ${invoice.weight.toStringAsFixed(1)} 公斤');
-      buffer.writeln('   • 体积: ${invoice.volume.toStringAsFixed(2)} 立方米');
-      buffer.writeln('   • 密度: ${invoice.density.toStringAsFixed(0)} 公斤/立方米');
-      if (invoice.tariffName != null) {
-        buffer.writeln('   • 资费: ${invoice.tariffName}');
-      }
-      buffer.writeln('');
-      buffer.writeln('💰 **费用:**');
-      if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln(
-          '   • 资费: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/公斤',
-        );
-      }
-      if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
-        buffer.writeln(
-          '   • 保险: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
-        );
-      }
-      final packagingTotal = invoice.resolvedPackagingCostTotal;
-      if (packagingTotal != null && packagingTotal > 0) {
-        buffer.writeln('   • 包装: \$${packagingTotal.toStringAsFixed(2)}');
-      }
-      buffer.writeln(
-        '   • **总计:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
-      );
-      if (invoice.scalePhotoUrls.isNotEmpty) {
-        buffer.writeln('');
-        buffer.writeln('📸 照片: ${invoice.scalePhotoUrls.length} 张');
-      }
-    } else {
-      buffer.writeln('🧾 **Информация о счёте**');
-      buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-      buffer.writeln('🔢 Номер: ${invoice.invoiceNumber}');
-      buffer.writeln('📊 Статус: ${invoice.status}');
-      if (invoice.sendDate != null) {
-        buffer.writeln(
-          '📅 Дата отправки: ${dateFormat.format(invoice.sendDate!)}',
-        );
-      }
-      buffer.writeln('');
-      buffer.writeln('📦 **Параметры груза:**');
-      buffer.writeln('   • Мест: ${invoice.placesCount}');
-      buffer.writeln('   • Вес: ${invoice.weight.toStringAsFixed(1)} кг');
-      buffer.writeln('   • Объём: ${invoice.volume.toStringAsFixed(2)} м³');
-      buffer.writeln(
-        '   • Плотность: ${invoice.density.toStringAsFixed(0)} кг/м³',
-      );
-      if (invoice.tariffName != null) {
-        buffer.writeln('   • Тариф: ${invoice.tariffName}');
-      }
-      buffer.writeln('');
-      buffer.writeln('💰 **Стоимость:**');
-      if (invoice.tariffBaseCost != null && invoice.tariffBaseCost! > 0) {
-        buffer.writeln(
-          '   • Тариф: \$${invoice.tariffBaseCost!.toStringAsFixed(2)}/кг',
-        );
-      }
-      if (invoice.insuranceCost != null && invoice.insuranceCost! > 0) {
-        buffer.writeln(
-          '   • Страховка: \$${invoice.insuranceCost!.toStringAsFixed(2)}',
-        );
-      }
-      final packagingTotal = invoice.resolvedPackagingCostTotal;
-      if (packagingTotal != null && packagingTotal > 0) {
-        buffer.writeln('   • Упаковка: \$${packagingTotal.toStringAsFixed(2)}');
-      }
-      buffer.writeln(
-        '   • **Итого:** ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
-      );
-      if (invoice.scalePhotoUrls.isNotEmpty) {
-        buffer.writeln('');
-        buffer.writeln('📸 Фото: ${invoice.scalePhotoUrls.length} шт.');
-      }
-    }
-
-    _handleMessageSend(buffer.toString());
-  }
-
   // Хранение контекста Showcase для вызова next()
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final bottomInset = mediaQuery.viewInsets.bottom;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final shellBottomInset = AppLayout.bottomBarObstruction(context) + 8;
+    final keyboardBottomInset = keyboardInset + 8;
+    final composerBottomInset = keyboardBottomInset > shellBottomInset
+        ? keyboardBottomInset
+        : shellBottomInset;
 
     return TutorialScreenWrapper(
       screenKey: 'support',
@@ -717,28 +569,26 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           targetKey: _inputAreaKey,
         ),
       ],
-      child: Stack(
-        children: [
-          // Градиентный фон как на других страницах
-          const Positioned.fill(child: AppBackground()),
-
-          SafeArea(
-            top: false, // Контент скроллится под топ-меню
-            bottom: false,
-            child: Column(
-              children: [
-                // Список сообщений
-                Expanded(key: _messagesAreaKey, child: _buildMessagesList()),
-
-                // Панель быстрых действий
-                if (_showQuickActions) _buildQuickActionsBar(),
-
-                // Поле ввода
-                _buildInputField(bottomInset),
-              ],
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            const Positioned.fill(child: AppBackground()),
+            SafeArea(
+              top: false, // Контент скроллится под топ-меню
+              bottom: false,
+              child: KeyedSubtree(
+                key: _messagesAreaKey,
+                child: _buildMessagesList(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+        bottomNavigationBar: Padding(
+          padding: EdgeInsets.only(bottom: composerBottomInset),
+          child: _buildInputField(),
+        ),
       ),
     );
   }
@@ -790,15 +640,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       return _buildEmptyState();
     }
 
-    // Автопрокрутка вниз
-    _scrollToBottom();
-
     return ListView.builder(
       controller: _scrollController,
+      reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: messages.length,
+      addAutomaticKeepAlives: false,
+      addSemanticIndexes: false,
       itemBuilder: (context, index) {
-        final message = messages[index];
+        final message = messages[messages.length - 1 - index];
         return _buildMessageBubble(message);
       },
     );
@@ -806,7 +656,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   Widget _buildMessageBubble(ChatMessage message) {
     final isMe = message.isFromClient;
-    final dateFormat = DateFormat('HH:mm');
+    final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
 
     // Используем реальное имя из сообщения
     final authorName = message.senderName;
@@ -921,29 +771,34 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                           selectable: true,
                           styleSheet: MarkdownStyleSheet(
                             p: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             strong: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               fontWeight: FontWeight.bold,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             em: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               fontStyle: FontStyle.italic,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
                             a: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               height: 1.4,
                               color: isMe ? Colors.white : context.brandPrimary,
                               decoration: TextDecoration.underline,
                             ),
                             code: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 14,
                               color: isMe ? Colors.white : Colors.black87,
                               backgroundColor: isMe
@@ -951,6 +806,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                                   : Colors.grey.withValues(alpha: 0.2),
                             ),
                             listBullet: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 15,
                               color: isMe ? Colors.white : Colors.black87,
                             ),
@@ -1030,7 +886,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final messages = ref.read(chatControllerProvider).messages;
     final index = messages.indexWhere((m) => m.id == messageId);
     if (index < 0 || !_scrollController.hasClients) return;
-    final offset = index * 80.0;
+    final reversedIndex = messages.length - 1 - index;
+    final offset = reversedIndex * 80.0;
     _scrollController.animateTo(
       offset.clamp(0, _scrollController.position.maxScrollExtent),
       duration: const Duration(milliseconds: 300),
@@ -1117,6 +974,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 child: CachedNetworkImage(
                   imageUrl: fullUrl,
                   fit: BoxFit.cover,
+                  memCacheWidth: 360,
+                  memCacheHeight: 360,
+                  maxWidthDiskCache: 720,
+                  maxHeightDiskCache: 720,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  useOldImageOnUrlChange: false,
+                  filterQuality: FilterQuality.low,
                   placeholder: (context, url) => Container(
                     width: 150,
                     height: 150,
@@ -1309,7 +1174,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     try {
       // Показываем индикатор загрузки
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppToast.showFromSnackBar(
+          context,
           SnackBar(
             content: Row(
               children: [
@@ -1326,7 +1192,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               ],
             ),
             duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
           ),
         );
       }
@@ -1341,14 +1207,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.hide();
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Text(
             tr(context, ru: 'Файл сохранён: $fileName', zh: '文件已保存：$fileName'),
           ),
           backgroundColor: Colors.green.shade700,
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           action: SnackBarAction(
             label: tr(context, ru: 'Открыть', zh: '打开'),
             textColor: Colors.white,
@@ -1361,12 +1228,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppToast.hide();
+      AppToast.showFromSnackBar(
+        context,
         SnackBar(
           content: Text(tr(context, ru: 'Ошибка загрузки: $e', zh: '下载错误：$e')),
           backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
     }
@@ -1421,184 +1289,214 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     );
   }
 
-  Widget _buildQuickActionsBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _QuickActionButton(
-              icon: Icons.local_shipping_rounded,
-              label: tr(context, ru: 'Отправить трек', zh: '发送运单'),
-              onTap: _showQuickSendSheet,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _QuickActionButton(
-              icon: Icons.receipt_long_rounded,
-              label: tr(context, ru: 'Отправить счёт', zh: '发送发票'),
-              onTap: _showQuickSendSheet,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputField(double bottomInset) {
+  Widget _buildInputField() {
     final chatState = ref.watch(chatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     final isUploading = chatState.isUploading;
-    return Container(
-      key: _inputAreaKey,
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 12,
-        bottom: 12 + bottomInset,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Preview прикреплённых файлов
-            if (pendingAttachments.isNotEmpty || isUploading)
-              _buildPendingAttachments(
-                context,
-                pendingAttachments,
-                isUploading,
-              ),
 
-            Row(
+    return Padding(
+      key: _inputAreaKey,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 25,
+              offset: const Offset(3, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+            child: Stack(
               children: [
-                // Кнопка прикрепления файла
-                GestureDetector(
-                  onTap: _showAttachmentPicker,
-                  onLongPress: _showQuickSendSheet,
-                  child: Container(
-                    width: 44,
-                    height: 44,
+                Positioned.fill(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
                       gradient: LinearGradient(
-                        colors: [context.brandPrimary, context.brandSecondary],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.44),
+                          Colors.white.withValues(alpha: 0.10),
+                          Colors.white.withValues(alpha: 0.24),
+                        ],
+                        stops: const [0, 0.52, 1],
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.attach_file_rounded,
-                      color: Colors.white,
-                      size: 22,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-
-                // Поле ввода
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8F8F8),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: TextField(
-                      controller: _textController,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.newline,
-                      decoration: InputDecoration(
-                        hintText: tr(
-                          context,
-                          ru: 'Введите ваше сообщение...',
-                          zh: '输入您的消息...',
-                        ),
-                        hintStyle: const TextStyle(
-                          color: Colors.black38,
-                          fontSize: 15,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.black87,
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.36),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-
-                // Кнопка отправки с индикатором загрузки
-                Builder(
-                  builder: (context) {
-                    final isSending = ref.watch(
-                      chatControllerProvider.select((s) => s.isSending),
-                    );
-                    return GestureDetector(
-                      onTap: (isSending || isUploading)
-                          ? null
-                          : () => _handleMessageSend(_textController.text),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: (isSending || isUploading)
-                                ? [Colors.grey, Colors.grey.shade400]
-                                : [
-                                    context.brandPrimary,
-                                    context.brandSecondary,
-                                  ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: (isSending || isUploading)
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
+                  child: SafeArea(
+                    top: false,
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        left: 16,
+                        right: 16,
+                        top: 12,
+                        bottom: 12,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (pendingAttachments.isNotEmpty || isUploading)
+                            _buildPendingAttachments(
+                              context,
+                              pendingAttachments,
+                              isUploading,
+                            ),
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: _showAttachmentPicker,
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        context.brandPrimary,
+                                        context.brandSecondary,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: const Icon(
+                                    Icons.attach_file_rounded,
+                                    color: Colors.white,
+                                    size: 22,
                                   ),
                                 ),
-                              )
-                            : const Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 20,
                               ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8F8F8),
+                                    borderRadius: BorderRadius.circular(22),
+                                  ),
+                                  child: TextField(
+                                    controller: _textController,
+                                    focusNode: _focusNode,
+                                    minLines: 1,
+                                    maxLines: 5,
+                                    textInputAction: TextInputAction.newline,
+                                    decoration: InputDecoration(
+                                      hintText: tr(
+                                        context,
+                                        ru: 'Введите ваше сообщение...',
+                                        zh: '输入您的消息...',
+                                      ),
+                                      hintStyle: const TextStyle(
+                                        color: Colors.black38,
+                                        fontSize: 15,
+                                      ),
+                                      border: InputBorder.none,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 12,
+                                          ),
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.black87,
+                                    ),
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Builder(
+                                builder: (context) {
+                                  final isSending = ref.watch(
+                                    chatControllerProvider.select(
+                                      (s) => s.isSending,
+                                    ),
+                                  );
+                                  final sendDisabled =
+                                      isSending ||
+                                      isUploading ||
+                                      _isSendingLocally;
+                                  return GestureDetector(
+                                    onTap: sendDisabled
+                                        ? null
+                                        : () => _handleMessageSend(
+                                            _textController.text,
+                                          ),
+                                    child: Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: sendDisabled
+                                              ? [
+                                                  Colors.grey,
+                                                  Colors.grey.shade400,
+                                                ]
+                                              : [
+                                                  context.brandPrimary,
+                                                  context.brandSecondary,
+                                                ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: sendDisabled
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                      Color
+                                                    >(Colors.white),
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.send_rounded,
+                                              color: Colors.white,
+                                              size: 20,
+                                            ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1658,12 +1556,18 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       borderRadius: BorderRadius.circular(12),
                       child: isImage
                           ? CachedNetworkImage(
-                              imageUrl: url.startsWith('http')
-                                  ? url
-                                  : '${ApiConfig.mediaBaseUrl}$url',
+                              imageUrl: ApiConfig.getMediaUrl(url),
                               width: 80,
                               height: 80,
                               fit: BoxFit.cover,
+                              memCacheWidth: 160,
+                              memCacheHeight: 160,
+                              maxWidthDiskCache: 320,
+                              maxHeightDiskCache: 320,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              useOldImageOnUrlChange: false,
+                              filterQuality: FilterQuality.low,
                               placeholder: (context, url) => Container(
                                 color: const Color(0xFFF0F0F0),
                                 child: const Center(
@@ -1744,463 +1648,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                 ),
               );
             }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF5F2),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: context.brandPrimary.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: context.brandPrimary),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: context.brandPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickSendSheet extends ConsumerStatefulWidget {
-  final Function(TrackItem) onTrackSelected;
-  final Function(InvoiceItem) onInvoiceSelected;
-
-  const _QuickSendSheet({
-    required this.onTrackSelected,
-    required this.onInvoiceSelected,
-  });
-
-  @override
-  ConsumerState<_QuickSendSheet> createState() => _QuickSendSheetState();
-}
-
-class _QuickSendSheetState extends ConsumerState<_QuickSendSheet>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final _searchController = TextEditingController();
-  String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final clientCodeAsync = ref.watch(clientCodesControllerProvider);
-    final clientCode = clientCodeAsync.value?.activeCode ?? '';
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.black12,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // Header
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Text(
-                  tr(context, ru: 'Быстрая отправка', zh: '快速发送'),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  tr(
-                    context,
-                    ru: 'Выберите трек или счёт для отправки в чат',
-                    zh: '选择运单或发票发送到聊天',
-                  ),
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-
-          // Search
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8F8F8),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) => setState(() => _searchQuery = value),
-                decoration: InputDecoration(
-                  hintText: tr(
-                    context,
-                    ru: 'Поиск по номеру...',
-                    zh: '按单号搜索...',
-                  ),
-                  hintStyle: TextStyle(color: Colors.grey[500]),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: Colors.grey,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Tabs
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F8F8),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.black54,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              padding: const EdgeInsets.all(4),
-              tabs: [
-                Tab(
-                  text: tr(context, ru: 'Треки', zh: '运单'),
-                ),
-                Tab(
-                  text: tr(context, ru: 'Счета', zh: '发票'),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTracksList(clientCode),
-                _buildInvoicesList(clientCode),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTracksList(String clientCode) {
-    final tracksAsync = ref.watch(tracksSimpleListProvider(clientCode));
-
-    return tracksAsync.when(
-      loading: () =>
-          Center(child: CircularProgressIndicator(color: context.brandPrimary)),
-      error: (e, _) => Center(
-        child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e')),
-      ),
-      data: (tracks) {
-        final filtered = tracks
-            .where(
-              (t) =>
-                  t.code.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                  t.status.toLowerCase().contains(_searchQuery.toLowerCase()),
-            )
-            .toList();
-
-        if (filtered.isEmpty) {
-          return Center(
-            child: Text(
-              tr(context, ru: 'Треки не найдены', zh: '未找到运单'),
-              style: const TextStyle(color: Colors.grey),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: filtered.length,
-          itemBuilder: (context, index) {
-            final track = filtered[index];
-            return _TrackListTile(
-              track: track,
-              onTap: () {
-                widget.onTrackSelected(track);
-                Navigator.pop(context);
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildInvoicesList(String clientCode) {
-    final invoicesAsync = ref.watch(invoicesListProvider(clientCode));
-
-    return invoicesAsync.when(
-      loading: () =>
-          Center(child: CircularProgressIndicator(color: context.brandPrimary)),
-      error: (e, _) => Center(
-        child: Text(tr(context, ru: 'Ошибка: $e', zh: '错误：$e')),
-      ),
-      data: (invoices) {
-        final filtered = invoices
-            .where(
-              (i) =>
-                  i.invoiceNumber.toLowerCase().contains(
-                    _searchQuery.toLowerCase(),
-                  ) ||
-                  i.status.toLowerCase().contains(_searchQuery.toLowerCase()),
-            )
-            .toList();
-
-        if (filtered.isEmpty) {
-          return Center(
-            child: Text(
-              tr(context, ru: 'Счета не найдены', zh: '未找到发票'),
-              style: const TextStyle(color: Colors.grey),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: filtered.length,
-          itemBuilder: (context, index) {
-            final invoice = filtered[index];
-            return _InvoiceListTile(
-              invoice: invoice,
-              onTap: () {
-                widget.onInvoiceSelected(invoice);
-                Navigator.pop(context);
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _TrackListTile extends StatelessWidget {
-  final TrackItem track;
-  final VoidCallback onTap;
-
-  const _TrackListTile({required this.track, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFEEEEEE)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF5F2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.local_shipping_rounded,
-                color: context.brandPrimary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.code,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${track.status} • ${dateFormat.format(track.date)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InvoiceListTile extends StatelessWidget {
-  final InvoiceItem invoice;
-  final VoidCallback onTap;
-
-  const _InvoiceListTile({required this.invoice, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFEEEEEE)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF5F2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.receipt_long_rounded,
-                color: context.brandPrimary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    invoice.invoiceNumber,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${invoice.status}${invoice.sendDate != null ? ' • ${dateFormat.format(invoice.sendDate!)}' : ''} • ${invoice.totalCostRub.toStringAsFixed(0)} ₽',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [context.brandPrimary, context.brandSecondary],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
           ],
         ),
       ),

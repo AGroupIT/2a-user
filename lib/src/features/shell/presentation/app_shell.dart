@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +22,8 @@ class BottomNavVisibleNotifier extends Notifier<bool> {
 
 final bottomNavVisibleProvider =
     NotifierProvider<BottomNavVisibleNotifier, bool>(
-        BottomNavVisibleNotifier.new);
+      BottomNavVisibleNotifier.new,
+    );
 
 class AppShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
@@ -32,6 +35,7 @@ class AppShell extends ConsumerWidget {
     'Фото',
     'Треки',
     'Счета',
+    'Поддержка',
     'Ещё',
   ];
 
@@ -58,7 +62,9 @@ class AppShell extends ConsumerWidget {
             // Проверяем, что shell - активный маршрут (нет внутренних страниц поверх)
             // Используем rootNavigator чтобы проверить есть ли страницы поверх shell
             final rootNavigator = Navigator.of(context, rootNavigator: true);
-            if (rootNavigator.canPop()) return; // Есть внутренняя страница - не обрабатываем свайп
+            if (rootNavigator.canPop()) {
+              return; // Есть внутренняя страница - не обрабатываем свайп
+            }
 
             // Дополнительная проверка для shell navigator
             if (Navigator.of(context).canPop()) return;
@@ -68,7 +74,10 @@ class AppShell extends ConsumerWidget {
             if (v > 250) {
               if (currentIndex > 0) {
                 HapticFeedback.lightImpact();
-                navigationShell.goBranch(currentIndex - 1, initialLocation: false);
+                navigationShell.goBranch(
+                  currentIndex - 1,
+                  initialLocation: false,
+                );
               }
             }
             // Swipe left: next tab
@@ -76,7 +85,10 @@ class AppShell extends ConsumerWidget {
               // Не позволяем свайпать на последнюю вкладку "Ещё" (она открывается только по тапу)
               if (currentIndex < _titles.length - 2) {
                 HapticFeedback.lightImpact();
-                navigationShell.goBranch(currentIndex + 1, initialLocation: false);
+                navigationShell.goBranch(
+                  currentIndex + 1,
+                  initialLocation: false,
+                );
               }
             }
           },
@@ -93,24 +105,32 @@ class AppShell extends ConsumerWidget {
                 right: 0,
                 child: AppFloatingTopBar(title: title, showBack: false),
               ),
-            ],
-          ),
-        ),
-        bottomNavigationBar: AnimatedSlide(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          offset: bottomNavVisible ? Offset.zero : const Offset(0, 1.5),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-              child: _AnimatedBottomNav(
-                currentIndex: currentIndex,
-                onTap: (index) {
-                  navigationShell.goBranch(index, initialLocation: index == currentIndex);
-                },
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  offset: bottomNavVisible ? Offset.zero : const Offset(0, 1.5),
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                      child: _PixsoBottomNav(
+                        currentIndex: currentIndex,
+                        onTap: (index) {
+                          navigationShell.goBranch(
+                            index,
+                            initialLocation: index == currentIndex,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -118,66 +138,55 @@ class AppShell extends ConsumerWidget {
   }
 }
 
-class _AnimatedBottomNav extends StatefulWidget {
+class _PixsoBottomNav extends StatefulWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  const _AnimatedBottomNav({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _PixsoBottomNav({required this.currentIndex, required this.onTap});
 
   @override
-  State<_AnimatedBottomNav> createState() => _AnimatedBottomNavState();
+  State<_PixsoBottomNav> createState() => _PixsoBottomNavState();
 }
 
-class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-  int _previousIndex = 0;
+class _PixsoBottomNavState extends State<_PixsoBottomNav> {
   double _dragStart = 0;
 
   static const _items = [
-    (icon: CupertinoIcons.house, selectedIcon: CupertinoIcons.house_fill, label: 'Главная'),
-    (icon: CupertinoIcons.photo, selectedIcon: CupertinoIcons.photo_fill, label: 'Фото'),
-    (icon: CupertinoIcons.cube_box, selectedIcon: CupertinoIcons.cube_box_fill, label: 'Треки'),
-    (icon: CupertinoIcons.doc, selectedIcon: CupertinoIcons.doc_fill, label: 'Счета'),
-    (icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'Ещё'),
+    (
+      icon: CupertinoIcons.house,
+      selectedIcon: CupertinoIcons.house_fill,
+      label: 'Главная',
+    ),
+    (
+      icon: CupertinoIcons.photo_on_rectangle,
+      selectedIcon: CupertinoIcons.photo_fill_on_rectangle_fill,
+      label: 'Фотоотчёты',
+    ),
+    (
+      icon: CupertinoIcons.cube,
+      selectedIcon: CupertinoIcons.cube_fill,
+      label: 'Треки',
+    ),
+    (
+      icon: CupertinoIcons.creditcard,
+      selectedIcon: CupertinoIcons.creditcard_fill,
+      label: 'Счета',
+    ),
+    (
+      icon: CupertinoIcons.chat_bubble_text,
+      selectedIcon: CupertinoIcons.chat_bubble_text_fill,
+      label: 'Чат',
+    ),
+    (
+      icon: CupertinoIcons.ellipsis,
+      selectedIcon: CupertinoIcons.ellipsis,
+      label: 'Ещё',
+    ),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    _previousIndex = widget.currentIndex;
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-    _animation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOutCubic,
-    );
-  }
-
-  @override
-  void didUpdateWidget(_AnimatedBottomNav oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentIndex != widget.currentIndex) {
-      _previousIndex = oldWidget.currentIndex;
-      _controller.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   void _handleSwipe(double delta) {
     final nextIndex = widget.currentIndex;
-    
+
     // Swipe right - go to previous item
     if (delta > 20) {
       if (nextIndex > 0) {
@@ -209,99 +218,294 @@ class _AnimatedBottomNavState extends State<_AnimatedBottomNav>
     return GestureDetector(
       onHorizontalDragStart: _onHorizontalDragStart,
       onHorizontalDragEnd: _onHorizontalDragEnd,
-      child: Container(
-        height: 74,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final itemWidth = constraints.maxWidth / _items.length;
-              
-              return Stack(
-                children: [
-                  // Animated indicator
-                  AnimatedBuilder(
-                    animation: _animation,
-                    builder: (context, child) {
-                      final start = _previousIndex * itemWidth;
-                      final end = widget.currentIndex * itemWidth;
-                      final current = start + (end - start) * _animation.value;
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: _BottomNavSurface(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final contentWidth = constraints.maxWidth;
+                final buttonSize = contentWidth >= 300
+                    ? 50.0
+                    : contentWidth / _items.length;
+                final iconSize = 34 * (buttonSize / 50);
+                final gap = _items.length > 1
+                    ? (contentWidth - buttonSize * _items.length) /
+                          (_items.length - 1)
+                    : 0.0;
+                final selectedIndex = widget.currentIndex.clamp(
+                  0,
+                  _items.length - 1,
+                );
+                final selectedLeft = selectedIndex * (buttonSize + gap);
 
-                      return Positioned(
-                        left: current + 4,
-                        top: 10,
-                        bottom: 10,
-                        child: Container(
-                          width: itemWidth - 8,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [context.brandPrimary, context.brandSecondary],
-                            ),
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: context.brandSecondary.withValues(alpha: 0.4),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                return Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeInOutCubic,
+                      left: selectedLeft,
+                      top: 5,
+                      child: _ActiveNavBackground(size: buttonSize),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: List.generate(_items.length, (index) {
+                        final item = _items[index];
+                        final isSelected = index == widget.currentIndex;
+
+                        return _BottomNavButton(
+                          icon: isSelected ? item.selectedIcon : item.icon,
+                          label: item.label,
+                          isSelected: isSelected,
+                          size: buttonSize,
+                          iconSize: iconSize,
+                          horizontalPadding: 7 * (buttonSize / 50),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            if (index == _items.length - 1) {
+                              showModalBottomSheet<void>(
+                                context: context,
+                                backgroundColor: Colors.white,
+                                barrierColor: Colors.black.withValues(
+                                  alpha: 0.22,
+                                ),
+                                useSafeArea: true,
+                                isScrollControlled: true,
+                                builder: (_) => const MoreSheet(),
+                              );
+                            } else {
+                              widget.onTap(index);
+                            }
+                          },
+                        );
+                      }),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNavSurface extends StatelessWidget {
+  final Widget child;
+
+  const _BottomNavSurface({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 25,
+            offset: const Offset(3, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.44),
+                        Colors.white.withValues(alpha: 0.10),
+                        Colors.white.withValues(alpha: 0.24),
+                      ],
+                      stops: const [0, 0.52, 1],
+                    ),
                   ),
-                  // Items
-                  Row(
-                    children: List.generate(_items.length, (index) {
-                      final item = _items[index];
-                      final isSelected = index == widget.currentIndex;
-                      return Expanded(
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              // Если нажали на кнопку "Ещё" (последняя), показываем модальное окно
-                              if (index == _items.length - 1) {
-                                showModalBottomSheet<void>(
-                                  context: context,
-                                  backgroundColor: Colors.white,
-                                  barrierColor: Colors.black.withValues(alpha: 0.22),
-                                  useSafeArea: true,
-                                  isScrollControlled: true,
-                                  builder: (_) => const MoreSheet(),
-                                );
-                              } else {
-                                widget.onTap(index);
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(18),
-                            child: Center(
-                              child: Icon(
-                                isSelected ? item.selectedIcon : item.icon,
-                                size: 26,
-                                color: isSelected ? Colors.white : context.brandPrimary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.36),
+                    ),
                   ),
+                ),
+                child,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveNavBackground extends StatelessWidget {
+  final double size;
+
+  const _ActiveNavBackground({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomNavButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final double size;
+  final double iconSize;
+  final double horizontalPadding;
+  final VoidCallback onTap;
+
+  const _BottomNavButton({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.size,
+    required this.iconSize,
+    required this.horizontalPadding,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (!isSelected) const _InactiveNavGlass(),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(scale: animation, child: child),
+                      ),
+                      child: Icon(
+                        icon,
+                        key: ValueKey('${icon.codePoint}-$isSelected'),
+                        size: iconSize,
+                        color: isSelected ? Colors.white : context.brandPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InactiveNavGlass extends StatelessWidget {
+  const _InactiveNavGlass();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.black.withValues(alpha: 0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.34),
+                blurRadius: 12,
+                offset: const Offset(-6, -6),
+              ),
+            ],
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.58),
+                  Colors.white.withValues(alpha: 0.18),
+                  Colors.white.withValues(alpha: 0.04),
                 ],
-              );
-            },
+                stops: const [0, 0.52, 1],
+              ),
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                gradient: RadialGradient(
+                  center: const Alignment(-0.65, -0.75),
+                  radius: 1.15,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.38),
+                    Colors.white.withValues(alpha: 0.06),
+                    Colors.transparent,
+                  ],
+                  stops: const [0, 0.48, 1],
+                ),
+              ),
+            ),
           ),
         ),
       ),

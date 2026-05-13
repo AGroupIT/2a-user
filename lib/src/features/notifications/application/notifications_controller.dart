@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -150,9 +152,17 @@ NotificationType _parseNotificationType(String? type) {
 /// Контроллер уведомлений
 class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
   String? _clientCode;
+  Timer? _refreshDebounce;
+  bool _isRefreshing = false;
+  bool _disposeRegistered = false;
 
   @override
   Future<List<NotificationItem>> build() async {
+    if (!_disposeRegistered) {
+      ref.onDispose(() => _refreshDebounce?.cancel());
+      _disposeRegistered = true;
+    }
+
     // В Riverpod 3.x family notifier получает arg через специальный механизм
     // Мы используем workaround через активный clientCode
     _clientCode = ref.watch(activeClientCodeProvider);
@@ -241,13 +251,34 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
 
   Future<void> refresh() async {
     if (_clientCode == null) return;
+    if (_isRefreshing) return;
 
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
+    _isRefreshing = true;
+    final previous = state.value;
+    try {
       final repo = ref.read(notificationsRepositoryProvider);
-      final items = await repo.fetchNotifications(clientCode: _clientCode!);
-      _updateBadge(items);
-      return items;
+      final page = await repo.fetchPage(
+        clientCode: _clientCode!,
+        page: 1,
+        limit: 50,
+      );
+      _updateBadge(page.items, backendUnread: page.unreadCount);
+      state = AsyncData(page.items);
+    } catch (error, stackTrace) {
+      if (previous == null) {
+        state = AsyncError(error, stackTrace);
+      } else {
+        debugPrint('🔔 Silent notifications refresh skipped: $error');
+      }
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
+  void refreshDebounced() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 700), () {
+      unawaited(refresh());
     });
   }
 

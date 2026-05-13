@@ -52,18 +52,21 @@ class TrackStatus {
   }
 }
 
-/// Провайдер для получения статусов треков из БД
-final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
+/// Провайдер для получения статусов из БД по типу сущности.
+final statusesByTypeProvider = FutureProvider.family<List<TrackStatus>, String>((
+  ref,
+  type,
+) async {
   final apiClient = ref.read(apiClientProvider);
 
   try {
     final response = await apiClient.get(
       '/statuses',
-      queryParameters: {'type': 'track', 'activeOnly': 'true'},
+      queryParameters: {'type': type, 'activeOnly': 'true'},
     );
 
     debugPrint(
-      'trackStatusesProvider: statusCode=${response.statusCode}, data=${response.data}',
+      'statusesByTypeProvider($type): statusCode=${response.statusCode}, data=${response.data}',
     );
 
     if (response.statusCode == 200 && response.data != null) {
@@ -71,7 +74,7 @@ final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
       final statusesJson = data['data'] as List<dynamic>? ?? [];
 
       debugPrint(
-        'trackStatusesProvider: parsed ${statusesJson.length} statuses',
+        'statusesByTypeProvider($type): parsed ${statusesJson.length} statuses',
       );
 
       return statusesJson
@@ -80,10 +83,22 @@ final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
     }
     return [];
   } on DioException catch (e) {
-    debugPrint('Error loading track statuses: $e');
+    debugPrint('Error loading $type statuses: $e');
     return [];
   }
 });
+
+/// Провайдер для получения статусов треков из БД
+final trackStatusesProvider = statusesByTypeProvider('track');
+
+/// Провайдер для получения статусов сборок из БД
+final assemblyStatusesProvider = statusesByTypeProvider('assembly');
+
+/// Провайдер для получения статусов фотоотчётов из БД
+final photoRequestStatusesProvider = statusesByTypeProvider('photo_request');
+
+/// Провайдер для получения статусов вопросов из БД
+final questionStatusesProvider = statusesByTypeProvider('question');
 
 // ==================== Paginated Tracks State ====================
 
@@ -91,16 +106,26 @@ final trackStatusesProvider = FutureProvider<List<TrackStatus>>((ref) async {
 class TracksFilterParams {
   final String clientCode;
   final String? statusCode; // код статуса из БД
+  final String? assemblyStatusCode; // код статуса сборки из БД
   final String? search;
   final String? viewMode; // 'all', 'groups', 'singles'
   final String? productInfo; // 'filled', 'empty'
+  final String? photoRequestStatus; // 'none' или код статуса
+  final String? questionStatus; // 'none' или код статуса
+  final String? assemblyDeliveryInfo; // 'filled', 'empty'
+  final String sortBy; // 'createdAt' или 'updatedAt'
 
   const TracksFilterParams({
     required this.clientCode,
     this.statusCode,
+    this.assemblyStatusCode,
     this.search,
     this.viewMode,
     this.productInfo,
+    this.photoRequestStatus,
+    this.questionStatus,
+    this.assemblyDeliveryInfo,
+    this.sortBy = 'createdAt',
   });
 
   @override
@@ -110,34 +135,66 @@ class TracksFilterParams {
           runtimeType == other.runtimeType &&
           clientCode == other.clientCode &&
           statusCode == other.statusCode &&
+          assemblyStatusCode == other.assemblyStatusCode &&
           search == other.search &&
           viewMode == other.viewMode &&
-          productInfo == other.productInfo;
+          productInfo == other.productInfo &&
+          photoRequestStatus == other.photoRequestStatus &&
+          questionStatus == other.questionStatus &&
+          assemblyDeliveryInfo == other.assemblyDeliveryInfo &&
+          sortBy == other.sortBy;
 
   @override
   int get hashCode =>
       clientCode.hashCode ^
       statusCode.hashCode ^
+      assemblyStatusCode.hashCode ^
       search.hashCode ^
       viewMode.hashCode ^
-      productInfo.hashCode;
+      productInfo.hashCode ^
+      photoRequestStatus.hashCode ^
+      questionStatus.hashCode ^
+      assemblyDeliveryInfo.hashCode ^
+      sortBy.hashCode;
 
   TracksFilterParams copyWith({
     String? clientCode,
     String? statusCode,
+    String? assemblyStatusCode,
     String? search,
     String? viewMode,
     String? productInfo,
+    String? photoRequestStatus,
+    String? questionStatus,
+    String? assemblyDeliveryInfo,
+    String? sortBy,
     bool clearStatus = false,
+    bool clearAssemblyStatus = false,
     bool clearSearch = false,
     bool clearProductInfo = false,
+    bool clearPhotoRequestStatus = false,
+    bool clearQuestionStatus = false,
+    bool clearAssemblyDeliveryInfo = false,
   }) {
     return TracksFilterParams(
       clientCode: clientCode ?? this.clientCode,
       statusCode: clearStatus ? null : (statusCode ?? this.statusCode),
+      assemblyStatusCode: clearAssemblyStatus
+          ? null
+          : (assemblyStatusCode ?? this.assemblyStatusCode),
       search: clearSearch ? null : (search ?? this.search),
       viewMode: viewMode ?? this.viewMode,
       productInfo: clearProductInfo ? null : (productInfo ?? this.productInfo),
+      photoRequestStatus: clearPhotoRequestStatus
+          ? null
+          : (photoRequestStatus ?? this.photoRequestStatus),
+      questionStatus: clearQuestionStatus
+          ? null
+          : (questionStatus ?? this.questionStatus),
+      assemblyDeliveryInfo: clearAssemblyDeliveryInfo
+          ? null
+          : (assemblyDeliveryInfo ?? this.assemblyDeliveryInfo),
+      sortBy: sortBy ?? this.sortBy,
     );
   }
 }
@@ -262,6 +319,7 @@ class PaginatedTracksNotifier {
   /// Загрузить начальную страницу
   /// [silent] - если true, не показывать индикатор загрузки (для фонового обновления)
   Future<void> loadInitial({bool silent = false}) async {
+    final requestFilters = _state.filters;
     if (_ref.read(demoModeProvider)) {
       _updateState(
         _state.copyWith(
@@ -285,7 +343,15 @@ class PaginatedTracksNotifier {
       try {
         final currentCount = _state.tracks.length;
         final take = currentCount > _pageSize ? currentCount : _pageSize;
-        final result = await _fetchTracks(skip: 0, take: take);
+        final result = await _fetchTracks(
+          skip: 0,
+          take: take,
+          filters: requestFilters,
+        );
+        if (_state.filters != requestFilters) {
+          await loadInitial(silent: true);
+          return;
+        }
         _updateState(
           _state.copyWith(
             tracks: result.tracks,
@@ -314,7 +380,16 @@ class PaginatedTracksNotifier {
     );
 
     try {
-      final result = await _fetchTracks(skip: 0, take: _pageSize);
+      final result = await _fetchTracks(
+        skip: 0,
+        take: _pageSize,
+        filters: requestFilters,
+      );
+      if (_state.filters != requestFilters) {
+        _updateState(_state.copyWith(isLoading: false));
+        await loadInitial();
+        return;
+      }
       _updateState(
         _state.copyWith(
           tracks: result.tracks,
@@ -332,18 +407,25 @@ class PaginatedTracksNotifier {
   Future<void> loadMore() async {
     if (_state.isLoading || !_state.hasMore) return;
 
+    final requestFilters = _state.filters;
     _updateState(_state.copyWith(isLoading: true, clearError: true));
 
     try {
       final result = await _fetchTracks(
         skip: _state.tracks.length,
         take: _pageSize,
+        filters: requestFilters,
       );
+      if (_state.filters != requestFilters) {
+        _updateState(_state.copyWith(isLoading: false));
+        await loadInitial();
+        return;
+      }
 
-      final newTracks = _sortTracksByCreatedAtDesc([
+      final newTracks = _sortTracksDesc([
         ..._state.tracks,
         ...result.tracks,
-      ]);
+      ], _state.filters.sortBy);
       _updateState(
         _state.copyWith(
           tracks: newTracks,
@@ -384,37 +466,59 @@ class PaginatedTracksNotifier {
   Future<_TracksResult> _fetchTracks({
     required int skip,
     required int take,
+    TracksFilterParams? filters,
   }) async {
+    final requestFilters = filters ?? _state.filters;
     final queryParams = <String, dynamic>{
-      'clientCode': _state.filters.clientCode,
+      'clientCode': requestFilters.clientCode,
       'take': take,
       'skip': skip,
-      'sortBy': 'createdAt',
+      'sortBy': requestFilters.sortBy,
     };
 
     // Фильтр по статусу (код статуса из БД)
-    if (_state.filters.statusCode != null &&
-        _state.filters.statusCode!.isNotEmpty) {
-      queryParams['status'] = _state.filters.statusCode;
+    if (requestFilters.statusCode != null &&
+        requestFilters.statusCode!.isNotEmpty) {
+      queryParams['status'] = requestFilters.statusCode;
+    }
+
+    if (requestFilters.assemblyStatusCode != null &&
+        requestFilters.assemblyStatusCode!.isNotEmpty) {
+      queryParams['assemblyStatus'] = requestFilters.assemblyStatusCode;
     }
 
     // Поиск
-    if (_state.filters.search != null && _state.filters.search!.isNotEmpty) {
-      queryParams['search'] = _state.filters.search;
+    if (requestFilters.search != null && requestFilters.search!.isNotEmpty) {
+      queryParams['search'] = requestFilters.search;
     }
 
     // Фильтр по виду (сборки/одиночные)
-    if (_state.filters.viewMode == 'groups') {
+    if (requestFilters.viewMode == 'groups') {
       // Треки в сборках - assemblyId не null
       queryParams['hasAssembly'] = 'true';
-    } else if (_state.filters.viewMode == 'singles') {
+    } else if (requestFilters.viewMode == 'singles') {
       // Одиночные треки - без сборки
       queryParams['assemblyId'] = 'null';
     }
 
-    if (_state.filters.productInfo != null &&
-        _state.filters.productInfo!.isNotEmpty) {
-      queryParams['productInfo'] = _state.filters.productInfo;
+    if (requestFilters.productInfo != null &&
+        requestFilters.productInfo!.isNotEmpty) {
+      queryParams['productInfo'] = requestFilters.productInfo;
+    }
+
+    if (requestFilters.photoRequestStatus != null &&
+        requestFilters.photoRequestStatus!.isNotEmpty) {
+      queryParams['photoRequestStatus'] = requestFilters.photoRequestStatus;
+    }
+
+    if (requestFilters.questionStatus != null &&
+        requestFilters.questionStatus!.isNotEmpty) {
+      queryParams['questionStatus'] = requestFilters.questionStatus;
+    }
+
+    if (requestFilters.assemblyDeliveryInfo != null &&
+        requestFilters.assemblyDeliveryInfo!.isNotEmpty) {
+      queryParams['assemblyDeliveryInfo'] = requestFilters.assemblyDeliveryInfo;
     }
 
     debugPrint('Fetching tracks: $queryParams');
@@ -436,7 +540,7 @@ class PaginatedTracksNotifier {
       debugPrint('Fetched ${tracks.length} tracks, total: $total');
 
       return _TracksResult(
-        tracks: _sortTracksByCreatedAtDesc(tracks),
+        tracks: _sortTracksDesc(tracks, requestFilters.sortBy),
         total: total,
       );
     }
@@ -621,9 +725,15 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
 });
 
 List<TrackItem> _sortTracksByCreatedAtDesc(List<TrackItem> tracks) {
+  return _sortTracksDesc(tracks, 'createdAt');
+}
+
+List<TrackItem> _sortTracksDesc(List<TrackItem> tracks, String sortBy) {
   return [...tracks]..sort((a, b) {
-    final byCreatedAt = b.createdAt.compareTo(a.createdAt);
-    if (byCreatedAt != 0) return byCreatedAt;
+    final aDate = sortBy == 'updatedAt' ? a.updatedAt : a.createdAt;
+    final bDate = sortBy == 'updatedAt' ? b.updatedAt : b.createdAt;
+    final byDate = bDate.compareTo(aDate);
+    if (byDate != 0) return byDate;
     return (b.id ?? 0).compareTo(a.id ?? 0);
   });
 }
@@ -679,6 +789,43 @@ final tracksCountProvider = FutureProvider.family<int, String>((
     return 0;
   }
 });
+
+/// Количество треков, созданных за последние 7 дней.
+final tracksWeeklyCountProvider = FutureProvider.family<int, String>((
+  ref,
+  clientCode,
+) async {
+  final weekStart = _weekStart();
+  if (ref.watch(demoModeProvider)) {
+    return DemoData.tracks
+        .where((track) => !track.createdAt.isBefore(weekStart))
+        .length;
+  }
+  final apiClient = ref.read(apiClientProvider);
+
+  try {
+    final response = await apiClient.get(
+      '/tracks',
+      queryParameters: {
+        'clientCode': clientCode,
+        'take': 1,
+        'dateFrom': weekStart.toUtc().toIso8601String(),
+        'sortBy': 'createdAt',
+      },
+    );
+
+    if (response.statusCode == 200 && response.data != null) {
+      final data = response.data as Map<String, dynamic>;
+      return data['total'] as int? ?? 0;
+    }
+    return 0;
+  } on DioException catch (e) {
+    debugPrint('Error loading weekly tracks count: $e');
+    return 0;
+  }
+});
+
+DateTime _weekStart() => DateTime.now().subtract(const Duration(days: 7));
 
 /// Провайдер для количества треков без сборки
 final tracksWithoutAssemblyCountProvider = FutureProvider.family<int, String>((

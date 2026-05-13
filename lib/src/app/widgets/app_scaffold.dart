@@ -1,11 +1,15 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ui/app_background.dart';
 import '../../core/ui/app_layout.dart';
-import '../../core/ui/glass_surface.dart';
+import '../../core/ui/pixso_top_menu_surface.dart';
 import '../../features/clients/presentation/client_switcher_button.dart';
+import '../../features/notifications/application/notifications_controller.dart';
+import '../../features/notifications/domain/notification_item.dart';
 import '../../features/notifications/presentation/notifications_bell_button.dart';
 
 class AppScaffold extends StatelessWidget {
@@ -46,10 +50,7 @@ class AppScaffold extends StatelessWidget {
                 top: 0,
                 left: 0,
                 right: 0,
-                child: AppFloatingTopBar(
-                  title: title,
-                  showBack: showBack,
-                ),
+                child: AppFloatingTopBar(title: title, showBack: showBack),
               ),
             ],
           ),
@@ -88,10 +89,7 @@ class AppFloatingTopBar extends StatelessWidget {
         ),
         child: _buildTopBarSurface(
           context: context,
-          content: _TopBarContent(
-            title: title,
-            showBack: showBack,
-          ),
+          content: const _TopBarContent(),
         ),
       ),
     );
@@ -103,100 +101,123 @@ Widget _buildTopBarSurface({
   required Widget content,
 }) {
   // Transparent container - glass effect only on individual buttons
-  return SizedBox(
-    height: AppLayout.topBarHeight,
-    child: content,
-  );
+  return SizedBox(height: AppLayout.topBarHeight, child: content);
 }
 
 class _TopBarContent extends StatelessWidget {
-  final String title;
-  final bool showBack;
-
-  const _TopBarContent({
-    required this.title,
-    required this.showBack,
-  });
+  const _TopBarContent();
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        if (showBack)
-          IconButton(
-            tooltip: 'Назад',
-            onPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/');
-              }
-            },
-            icon: const Icon(Icons.chevron_left_rounded),
+        const Flexible(
+          fit: FlexFit.loose,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ClientSwitcherButton(),
           ),
-        const ClientSwitcherButton(),
-        const Spacer(),
+        ),
         const _ActionsPill(),
       ],
     );
   }
 }
 
-class _ActionsPill extends StatelessWidget {
+class _ActionsPill extends ConsumerWidget {
   const _ActionsPill();
 
   @override
-  Widget build(BuildContext context) {
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(999),
-      blur: 40,
-      useLiquidEffect: true,
-      saturation: 1.7,
-      tintColor: Colors.white.withValues(alpha: 0.08),
-      border: Border.all(
-        color: Colors.white.withValues(alpha: 0.50),
-        width: 1.0,
-      ),
-      addHighlights: false,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.06),
-          blurRadius: 12,
-          offset: const Offset(0, 6),
-        ),
-      ],
-      noiseOpacity: 0.0,
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifications = ref.watch(notificationsControllerProvider);
+    final hasUnreadSupportChat =
+        notifications.value?.any(
+          (item) => !item.isRead && item.type == NotificationType.chatMessage,
+        ) ??
+        false;
+
+    return PixsoTopMenuSurface(
+      width: 100,
       child: Material(
         type: MaterialType.transparency,
-        child: IconButtonTheme(
-          data: IconButtonThemeData(
-            style: ButtonStyle(
-              iconSize: const WidgetStatePropertyAll(22),
-              minimumSize: const WidgetStatePropertyAll(Size(40, 40)),
-              padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              overlayColor: WidgetStatePropertyAll(
-                Colors.black.withValues(alpha: 0.06),
-              ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TopBarActionButton(
+              tooltip: 'Главная',
+              width: 20,
+              icon: CupertinoIcons.house,
+              onTap: () => context.go('/'),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Builder(
-                builder: (context) => IconButton(
-                  tooltip: 'Домой',
-                  onPressed: () => context.go('/'),
-                  icon: const Icon(Icons.home_rounded),
-                ),
-              ),
-              const NotificationsBellButton(),
-            ],
-          ),
+            const SizedBox(width: 10),
+            const NotificationsBellButton(),
+            const SizedBox(width: 10),
+            _TopBarActionButton(
+              tooltip: 'Чат поддержки',
+              width: 20,
+              icon: CupertinoIcons.chat_bubble_2,
+              hasBadge: hasUnreadSupportChat,
+              onTap: () => context.go('/support'),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+class _TopBarActionButton extends StatelessWidget {
+  final String tooltip;
+  final double width;
+  final IconData icon;
+  final bool hasBadge;
+  final VoidCallback onTap;
+
+  const _TopBarActionButton({
+    required this.tooltip,
+    required this.width,
+    required this.icon,
+    required this.onTap,
+    this.hasBadge = false,
+  });
+
+  static const _contentColor = Color(0xFF2F2F2F);
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            SizedBox(
+              width: width,
+              height: 20,
+              child: Center(
+                child: Icon(icon, size: 19.6, color: _contentColor),
+              ),
+            ),
+            if (hasBadge)
+              Positioned(
+                right: -3,
+                top: -2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

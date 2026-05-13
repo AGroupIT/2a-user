@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_config.dart';
 import '../../auth/data/auth_provider.dart';
 import '../domain/news_item.dart';
 
@@ -74,7 +73,7 @@ final newsItemProvider = FutureProvider.family<NewsItem?, String>((
         final body = response.data as Map<String, dynamic>;
         final raw = body['data'] as Map<String, dynamic>?;
         if (raw != null) {
-          return NewsItemFromJson.fromJson(raw);
+          return NewsItem.fromJson(raw);
         }
       }
     } on DioException catch (e) {
@@ -90,44 +89,3 @@ final newsItemProvider = FutureProvider.family<NewsItem?, String>((
     orElse: () => null,
   );
 });
-
-/// Расширение модели NewsItem для парсинга из API
-extension NewsItemFromJson on NewsItem {
-  static NewsItem fromJson(Map<String, dynamic> json) {
-    // Обрабатываем imageUrl - добавляем базовый URL если путь относительный
-    String? imageUrl = json['imageUrl'] as String?;
-    if (imageUrl != null &&
-        imageUrl.isNotEmpty &&
-        !imageUrl.startsWith('http')) {
-      imageUrl = ApiConfig.getMediaUrl(imageUrl);
-    }
-
-    return NewsItem(
-      slug: json['id'].toString(),
-      title: json['title'] as String? ?? '',
-      excerpt: _extractExcerpt(json['content'] as String? ?? ''),
-      content: json['content'] as String? ?? '',
-      publishedAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
-          DateTime.now(),
-      imageUrl: imageUrl,
-    );
-  }
-
-  /// Извлекает первые ~150 символов для превью
-  static String _extractExcerpt(String content) {
-    // Убираем markdown разметку для чистого текста
-    final cleaned = content
-        .replaceAll(RegExp(r'#{1,6}\s*'), '') // заголовки
-        .replaceAll(RegExp(r'\*{1,2}'), '') // bold/italic
-        .replaceAll(RegExp(r'`{1,3}'), '') // code
-        .replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1') // links
-        .replaceAll(RegExp(r'>\s*'), '') // blockquotes
-        .replaceAll(RegExp(r'[-*]\s+'), '') // lists
-        .replaceAll(RegExp(r'\n+'), ' ') // newlines
-        .trim();
-
-    if (cleaned.length <= 150) return cleaned;
-    return '${cleaned.substring(0, 147)}...';
-  }
-}

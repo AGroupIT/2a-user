@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:io';
 
 import '../../../core/network/api_config.dart';
+import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
 
 void _showStyledSnackBar(
@@ -17,12 +19,12 @@ void _showStyledSnackBar(
   String message, {
   bool isError = false,
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
+  AppToast.showFromSnackBar(
+    context,
     SnackBar(
       content: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => messenger.hideCurrentSnackBar(),
+        onTap: AppToast.hide,
         child: Row(
           children: [
             Container(
@@ -54,9 +56,7 @@ void _showStyledSnackBar(
         ),
       ),
       behavior: SnackBarBehavior.floating,
-      backgroundColor: isError
-          ? const Color(0xFFE53935)
-          : const Color(0xFFfe3301),
+      backgroundColor: isError ? const Color(0xFFE53935) : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
       duration: const Duration(seconds: 3),
@@ -85,20 +85,20 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   double _swipeDy = 0;
   late PageController _pageController;
   late int _currentIndex;
-  
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex ?? 0;
     _pageController = PageController(initialPage: _currentIndex);
   }
-  
+
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
   }
-  
+
   PhotoItem get _currentItem {
     if (widget.allPhotos != null && widget.allPhotos!.isNotEmpty) {
       return widget.allPhotos![_currentIndex];
@@ -127,14 +127,18 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     setState(() => _isDownloading = true);
     try {
       final currentItem = _currentItem;
-      
+
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       if (!hasAccess) {
         final granted = await Gal.requestAccess(toAlbum: true);
         if (!granted) {
           if (mounted) {
-            _showStyledSnackBar(context, 'Нет разрешения на сохранение в галерею', isError: true);
+            _showStyledSnackBar(
+              context,
+              'Нет разрешения на сохранение в галерею',
+              isError: true,
+            );
           }
           return;
         }
@@ -150,10 +154,11 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       } else {
         // Для видео скачиваем через Dio
         final tempDir = await getTemporaryDirectory();
-        savePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
+        savePath =
+            '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
         await Dio().download(fullUrl, savePath);
       }
-      
+
       // Сохраняем в галерею
       if (currentItem.isVideo) {
         await Gal.putVideo(savePath, album: '2A Logistic');
@@ -164,7 +169,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       } else {
         await Gal.putImage(savePath, album: '2A Logistic');
       }
-      
+
       if (mounted) {
         _showStyledSnackBar(context, 'Сохранено в галерею');
       }
@@ -205,23 +210,24 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       } else {
         // Для видео скачиваем во временную директорию
         final tempDir = await getTemporaryDirectory();
-        filePath = '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        filePath =
+            '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
         await Dio().download(fullUrl, filePath);
       }
-      
+
       if (!mounted) return;
-      
+
       // Шарим файл (sharePositionOrigin нужен для iPad)
       await Share.shareXFiles(
         [XFile(filePath)],
-        text: currentItem.trackingNumber != null 
-            ? 'Трек: ${currentItem.trackingNumber}' 
+        text: currentItem.trackingNumber != null
+            ? 'Трек: ${currentItem.trackingNumber}'
             : null,
-        sharePositionOrigin: box != null 
+        sharePositionOrigin: box != null
             ? box.localToGlobal(Offset.zero) & box.size
             : const Rect.fromLTWH(0, 0, 100, 100),
       );
-      
+
       // Удаляем временный файл для видео после небольшой задержки
       if (currentItem.isVideo) {
         Future.delayed(const Duration(seconds: 5), () async {
@@ -247,8 +253,9 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasMultiplePhotos = widget.allPhotos != null && widget.allPhotos!.length > 1;
-    
+    final hasMultiplePhotos =
+        widget.allPhotos != null && widget.allPhotos!.length > 1;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
@@ -278,17 +285,24 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                             offset: Offset(0, _swipeDy),
                             child: Center(
                               child: item.isVideo
-                                  ? _VideoPlayerView(url: ApiConfig.getMediaUrl(item.url))
+                                  ? _VideoPlayerView(
+                                      url: ApiConfig.getMediaUrl(item.url),
+                                    )
                                   : InteractiveViewer(
                                       minScale: 1,
                                       maxScale: 4,
                                       child: CachedNetworkImage(
-                                        imageUrl: ApiConfig.getMediaUrl(item.url),
+                                        imageUrl: ApiConfig.getMediaUrl(
+                                          item.url,
+                                        ),
                                         fit: BoxFit.contain,
                                         placeholder: (_, _) => const SizedBox(
                                           width: 32,
                                           height: 32,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                         errorWidget: (_, _, _) => const Icon(
                                           Icons.broken_image_outlined,
@@ -309,17 +323,24 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                         offset: Offset(0, _swipeDy),
                         child: Center(
                           child: widget.item.isVideo
-                              ? _VideoPlayerView(url: ApiConfig.getMediaUrl(widget.item.url))
+                              ? _VideoPlayerView(
+                                  url: ApiConfig.getMediaUrl(widget.item.url),
+                                )
                               : InteractiveViewer(
                                   minScale: 1,
                                   maxScale: 4,
                                   child: CachedNetworkImage(
-                                    imageUrl: ApiConfig.getMediaUrl(widget.item.url),
+                                    imageUrl: ApiConfig.getMediaUrl(
+                                      widget.item.url,
+                                    ),
                                     fit: BoxFit.contain,
                                     placeholder: (_, _) => const SizedBox(
                                       width: 32,
                                       height: 32,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                     errorWidget: (_, _, _) => const Icon(
                                       Icons.broken_image_outlined,
@@ -358,7 +379,10 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                   children: [
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.black.withValues(alpha: 0.3),
                       ),
@@ -366,7 +390,10 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                     const Spacer(),
                     if (hasMultiplePhotos)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(16),
@@ -387,9 +414,15 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
-                          : const Icon(Icons.download_rounded, color: Colors.white),
+                          : const Icon(
+                              Icons.download_rounded,
+                              color: Colors.white,
+                            ),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.black.withValues(alpha: 0.3),
                       ),
@@ -397,7 +430,10 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                     const SizedBox(width: 8),
                     IconButton(
                       onPressed: () => _shareMedia(context),
-                      icon: const Icon(Icons.share_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.share_rounded,
+                        color: Colors.white,
+                      ),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.black.withValues(alpha: 0.3),
                       ),
@@ -407,7 +443,8 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
               ),
             ),
             // Bottom info
-            if (widget.item.trackingNumber != null || widget.item.assemblyNumber != null)
+            if (widget.item.trackingNumber != null ||
+                widget.item.assemblyNumber != null)
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -438,7 +475,11 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Row(
                             children: [
-                              const Icon(Icons.local_shipping_outlined, color: Colors.white70, size: 18),
+                              const Icon(
+                                Icons.local_shipping_outlined,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 'Трек: ${widget.item.trackingNumber}',
@@ -454,7 +495,11 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                       if (widget.item.assemblyNumber != null)
                         Row(
                           children: [
-                            const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 18),
+                            const Icon(
+                              Icons.inventory_2_outlined,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               'ID сборки: ${widget.item.assemblyNumber}',
@@ -480,9 +525,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
 class _VideoPlayerView extends StatefulWidget {
   final String url;
 
-  const _VideoPlayerView({
-    required this.url,
-  });
+  const _VideoPlayerView({required this.url});
 
   @override
   State<_VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -496,13 +539,15 @@ class _VideoPlayerViewState extends State<_VideoPlayerView> {
     super.initState();
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..setLooping(true)
-      ..initialize().then((_) {
-        if (!mounted) return;
-        setState(() {});
-        _controller.play();
-      }).catchError((e) {
-        debugPrint('[VideoPlayer] Failed to initialize: $e');
-      });
+      ..initialize()
+          .then((_) {
+            if (!mounted) return;
+            setState(() {});
+            _controller.play();
+          })
+          .catchError((e) {
+            debugPrint('[VideoPlayer] Failed to initialize: $e');
+          });
   }
 
   @override
@@ -546,7 +591,11 @@ class _VideoPlayerViewState extends State<_VideoPlayerView> {
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 34),
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
               ),
             ),
         ],

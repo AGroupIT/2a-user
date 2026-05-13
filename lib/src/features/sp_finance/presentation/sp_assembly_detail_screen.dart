@@ -1,15 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
+import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../assemblies/domain/box.dart';
 import '../data/sp_models.dart';
 import '../data/sp_provider.dart';
+import 'sp_finance_ui.dart';
 
 /// Показывает стилизованный SnackBar в едином дизайне приложения
 void _showStyledSnackBar(
@@ -17,12 +23,12 @@ void _showStyledSnackBar(
   String message, {
   bool isError = false,
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
+  AppToast.showFromSnackBar(
+    context,
     SnackBar(
       content: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => messenger.hideCurrentSnackBar(),
+        onTap: AppToast.hide,
         child: Row(
           children: [
             Container(
@@ -45,6 +51,7 @@ void _showStyledSnackBar(
                 message,
                 style: const TextStyle(
                   color: Colors.white,
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -56,7 +63,12 @@ void _showStyledSnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError ? const Color(0xFFE53935) : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
+      margin: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        AppLayout.bottomBarObstruction(context) + 12,
+      ),
       duration: const Duration(seconds: 3),
     ),
   );
@@ -68,13 +80,19 @@ class SpAssemblyDetailScreen extends ConsumerStatefulWidget {
   const SpAssemblyDetailScreen({super.key, required this.assemblyId});
 
   @override
-  ConsumerState<SpAssemblyDetailScreen> createState() => _SpAssemblyDetailScreenState();
+  ConsumerState<SpAssemblyDetailScreen> createState() =>
+      _SpAssemblyDetailScreenState();
 }
 
-class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen> {
+class _SpAssemblyDetailScreenState
+    extends ConsumerState<SpAssemblyDetailScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(spAssembliesControllerProvider);
+    final topPad = AppLayout.topBarTotalHeight(context);
+    final bottomPad = AppLayout.bottomScrollPadding(context);
     final assembly = state.assemblies.firstWhere(
       (a) => a.id == widget.assemblyId,
       orElse: () => throw Exception('Assembly not found'),
@@ -86,59 +104,282 @@ class _SpAssemblyDetailScreenState extends ConsumerState<SpAssemblyDetailScreen>
         TutorialStep(
           icon: Icons.group_rounded,
           title: 'Участники сборки',
-          description: 'Список всех участников совместной покупки с их треками, весом и долей в общем счёте.',
+          description:
+              'Список всех участников совместной покупки с их треками, весом и долей в общем счёте.',
         ),
         TutorialStep(
           icon: Icons.calculate_rounded,
           title: 'Финансы',
-          description: 'Итоговая сумма к оплате для каждого участника рассчитывается автоматически по весу и тарифу.',
+          description:
+              'Итоговая сумма к оплате для каждого участника рассчитывается автоматически по весу и тарифу.',
         ),
         TutorialStep(
           icon: Icons.edit_rounded,
           title: 'Редактирование трека',
-          description: 'Нажмите на трек, чтобы заполнить СП-данные: имя участника, цену в юанях и чистый вес.',
+          description:
+              'Нажмите на трек, чтобы заполнить СП-данные: имя участника, цену в юанях и чистый вес.',
         ),
         TutorialStep(
           icon: Icons.check_circle_outline_rounded,
           title: 'Отметить оплату',
-          description: 'Чекбокс «Оплачено» рядом с участником — отметьте, когда получите оплату от конкретного человека.',
+          description:
+              'Чекбокс «Оплачено» рядом с участником — отметьте, когда получите оплату от конкретного человека.',
         ),
         TutorialStep(
           icon: Icons.copy_rounded,
           title: 'Скопировать для отправки',
-          description: '«Скопировать для отправки» формирует текст с суммой для участника — удобно отправить в мессенджер.',
+          description:
+              '«Скопировать для отправки» формирует текст с суммой для участника — удобно отправить в мессенджер.',
         ),
       ],
-      child: Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
-        },
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Text(
-                assembly.displayName,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+      child: Stack(
+        children: [
+          RefreshIndicator(
+            color: context.brandPrimary,
+            onRefresh: () async {
+              await ref
+                  .read(spAssembliesControllerProvider.notifier)
+                  .loadAssemblies();
+            },
+            child: ListView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                topPad * 0.7 + 16,
+                16,
+                bottomPad + 16,
               ),
+              children: [
+                AppPageHeader(title: assembly.displayName, showBack: true),
+                const SizedBox(height: 15),
+                _AssemblySummaryCard(assembly: assembly),
+                const SizedBox(height: 15),
+                _StatsSection(assembly: assembly),
+                const SizedBox(height: 15),
+                if (assembly.boxes.isNotEmpty) ...[
+                  _BoxesSection(assembly: assembly),
+                  const SizedBox(height: 15),
+                ],
+                _ParticipantsSection(assembly: assembly),
+                const SizedBox(height: 15),
+                _TracksSection(assembly: assembly),
+              ],
             ),
-            _StatsSection(assembly: assembly),
-            const SizedBox(height: 24),
-            if (assembly.boxes.isNotEmpty) ...[
-              _BoxesSection(assembly: assembly),
-              const SizedBox(height: 24),
-            ],
-            _ParticipantsSection(assembly: assembly),
-            const SizedBox(height: 24),
-            _TracksSection(assembly: assembly),
-          ],
-        ),
+          ),
+          ScrollToTopButton(controller: _scrollController),
+        ],
       ),
-    ));
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+}
+
+class _AssemblySummaryCard extends StatelessWidget {
+  final SpAssembly assembly;
+
+  const _AssemblySummaryCard({required this.assembly});
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = assembly.stats;
+    final paidCount = stats.participants.where((p) => p.isPaid).length;
+    final totalParticipants = stats.participants.length;
+    final unfilledTracks = stats.tracksTotal - stats.tracksWithSP;
+    final createdDate = DateFormat('dd.MM.yyyy').format(assembly.createdAt);
+    final statusText = _assemblyStatusText(assembly.status);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.group_work_rounded,
+                  color: context.brandPrimary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Совместная покупка',
+                      style: SpFinanceUi.labelStyle.copyWith(
+                        color: SpFinanceUi.mutedTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      assembly.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: SpFinanceUi.textColor,
+                        fontFamily: 'Gilroy',
+                        fontSize: 20,
+                        height: 24 / 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _InfoChip(
+                icon: Icons.calendar_today_rounded,
+                label: createdDate,
+                color: context.brandPrimary,
+              ),
+              _InfoChip(
+                icon: Icons.flag_rounded,
+                label: statusText,
+                color: context.brandPrimary,
+              ),
+              _InfoChip(
+                icon: paidCount == totalParticipants && totalParticipants > 0
+                    ? Icons.check_circle_rounded
+                    : Icons.payments_rounded,
+                label: 'Оплата $paidCount/$totalParticipants',
+                color: paidCount == totalParticipants && totalParticipants > 0
+                    ? Colors.green.shade700
+                    : context.brandPrimary,
+              ),
+              _InfoChip(
+                icon: unfilledTracks > 0
+                    ? Icons.warning_rounded
+                    : Icons.verified_rounded,
+                label: unfilledTracks > 0
+                    ? 'Не заполнено: $unfilledTracks'
+                    : 'Треки заполнены',
+                color: unfilledTracks > 0
+                    ? Colors.orange.shade700
+                    : Colors.green.shade700,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _assemblyStatusText(String status) {
+    switch (status) {
+      case 'new':
+        return 'Новая';
+      case 'packing':
+        return 'Упаковка';
+      case 'packed':
+        return 'Упакована';
+      case 'shipped':
+        return 'Отправлена';
+      case 'completed':
+        return 'Завершена';
+      default:
+        return status;
+    }
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontFamily: 'Gilroy',
+              fontSize: 12,
+              height: 14 / 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineStatusChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _InlineStatusChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: SpFinanceUi.labelStyle.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -149,7 +390,6 @@ class _StatsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final stats = assembly.stats;
 
     // Получаем данные из счета
@@ -159,182 +399,211 @@ class _StatsSection extends StatelessWidget {
     final netWeightKg = stats.totalNetWeightKg;
 
     // Расчет стоимости за кг
-    final costPerKgGross = grossWeightKg > 0 ? deliveryCostRub / grossWeightKg : 0.0;
+    final costPerKgGross = grossWeightKg > 0
+        ? deliveryCostRub / grossWeightKg
+        : 0.0;
     final costPerKgNet = netWeightKg > 0 ? deliveryCostRub / netWeightKg : 0.0;
 
     // Проверка на нераспределенные треки
     final hasUndistributed = stats.tracksWithSP < stats.tracksTotal;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+      padding: const EdgeInsets.all(16),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon: Icons.analytics_rounded,
+            title: 'Финансы и вес',
+            trailing: hasUndistributed ? 'есть нераспределённые' : null,
+            trailingColor: Colors.orange.shade700,
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Статистика',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Ряд 1: Треки и Участники
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.shopping_bag_rounded,
-                    label: 'Треков',
-                    value: '${stats.tracksWithSP} / ${stats.tracksTotal}',
-                    subtitle: hasUndistributed ? 'есть нераспред.' : null,
-                    color: hasUndistributed ? Colors.orange.shade700 : null,
-                  ),
-                ),
-                Expanded(
-                  child: _StatTile(
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final itemWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _MetricTile(
+                    width: itemWidth,
                     icon: Icons.people_rounded,
-                    label: 'Участников',
+                    label: 'Участники',
                     value: '${stats.participants.length}',
                   ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-
-            // Ряд 2: Доставка (по центру)
-            Center(
-              child: _StatTile(
-                icon: Icons.local_shipping_rounded,
-                label: 'Стоимость доставки',
-                value: '${deliveryCostRub.toStringAsFixed(0)} ₽',
-                color: Colors.purple.shade700,
-              ),
-            ),
-            const Divider(height: 24),
-
-            // Ряд 3: Грязный вес и стоимость за кг
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.inventory_rounded,
-                    label: 'Грязный вес',
-                    value: '${grossWeightKg.toStringAsFixed(2)} кг',
-                    color: Colors.grey.shade700,
+                  _MetricTile(
+                    width: itemWidth,
+                    icon: Icons.shopping_bag_rounded,
+                    label: 'Треки СП',
+                    value: '${stats.tracksWithSP}/${stats.tracksTotal}',
+                    color: hasUndistributed ? Colors.orange.shade700 : null,
                   ),
-                ),
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.price_change_rounded,
-                    label: 'Цена за кг (гряз.)',
-                    value: '${costPerKgGross.toStringAsFixed(2)} ₽',
-                    color: Colors.grey.shade700,
+                  _MetricTile(
+                    width: itemWidth,
+                    icon: Icons.local_shipping_rounded,
+                    label: 'Доставка',
+                    value: '${deliveryCostRub.toStringAsFixed(0)} ₽',
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Ряд 4: Чистый вес и стоимость за кг
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
+                  _MetricTile(
+                    width: itemWidth,
                     icon: Icons.scale_rounded,
                     label: 'Чистый вес',
                     value: '${netWeightKg.toStringAsFixed(2)} кг',
-                    color: Colors.blue.shade700,
                   ),
-                ),
-                Expanded(
-                  child: _StatTile(
+                  _MetricTile(
+                    width: itemWidth,
+                    icon: Icons.inventory_2_rounded,
+                    label: 'Грязный вес',
+                    value: '${grossWeightKg.toStringAsFixed(2)} кг',
+                  ),
+                  _MetricTile(
+                    width: itemWidth,
                     icon: Icons.price_change_rounded,
-                    label: 'Цена за кг (чист.)',
+                    label: 'Цена/кг чист.',
                     value: '${costPerKgNet.toStringAsFixed(2)} ₽',
-                    color: Colors.blue.shade700,
                   ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-
-            // Ряд 5: Прибыль (по центру)
-            Center(
-              child: _StatTile(
-                icon: Icons.trending_up_rounded,
-                label: 'Прибыль',
-                value: '${stats.totalProfitRub.toStringAsFixed(0)} ₽',
-                color: stats.totalProfitRub > 0
-                    ? Colors.green.shade700
-                    : Colors.red.shade700,
-              ),
-            ),
-          ],
-        ),
+                  _MetricTile(
+                    width: itemWidth,
+                    icon: Icons.price_change_outlined,
+                    label: 'Цена/кг гряз.',
+                    value: '${costPerKgGross.toStringAsFixed(2)} ₽',
+                  ),
+                  _MetricTile(
+                    width: itemWidth,
+                    icon: Icons.trending_up_rounded,
+                    label: 'Прибыль',
+                    value: '${stats.totalProfitRub.toStringAsFixed(0)} ₽',
+                    color: stats.totalProfitRub >= 0
+                        ? Colors.green.shade700
+                        : Colors.red.shade700,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StatTile extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? trailing;
+  final Color? trailingColor;
+
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    this.trailing,
+    this.trailingColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: context.brandPrimary,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 15, color: Colors.white),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(title, style: SpFinanceUi.sectionTitleStyle)),
+        if (trailing != null)
+          Builder(
+            builder: (context) {
+              final color = trailingColor ?? context.brandPrimary;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  trailing!,
+                  style: SpFinanceUi.labelStyle.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  final double width;
   final IconData icon;
   final String label;
   final String value;
-  final String? subtitle;
   final Color? color;
 
-  const _StatTile({
+  const _MetricTile({
+    required this.width,
     required this.icon,
     required this.label,
     required this.value,
-    this.subtitle,
     this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      children: [
-        Icon(icon, size: 20, color: color ?? Colors.grey.shade600),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: Colors.grey.shade600,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        if (subtitle != null)
-          Text(
-            subtitle!,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.grey.shade500,
+    final resolvedColor = color ?? context.brandPrimary;
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: SpFinanceUi.softDecoration(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 15, color: resolvedColor),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SpFinanceUi.labelStyle.copyWith(
+                      color: SpFinanceUi.mutedTextColor,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-      ],
+            const SizedBox(height: 5),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: TextStyle(
+                  color: resolvedColor,
+                  fontFamily: 'Gilroy',
+                  fontSize: 18,
+                  height: 22 / 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -346,57 +615,42 @@ class _ParticipantsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     if (assembly.stats.participants.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+      padding: const EdgeInsets.all(16),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon: Icons.people_rounded,
+            title: 'Участники',
+            trailing: '${assembly.stats.participants.length}',
           ),
+          const SizedBox(height: 12),
+          ...assembly.stats.participants.map((participant) {
+            // Получаем треки участника
+            final participantTracks = assembly.tracks
+                .where((t) => t.spParticipantName == participant.name)
+                .toList();
+
+            // Считаем прибыль по участнику (сумма organizerMarginRub)
+            final participantProfit = participantTracks.fold<double>(
+              0,
+              (sum, t) => sum + (t.organizerMarginRub ?? 0),
+            );
+
+            return _ParticipantCard(
+              assemblyId: assembly.id,
+              participant: participant,
+              tracks: participantTracks,
+              profit: participantProfit,
+            );
+          }),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Участники',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...assembly.stats.participants.map((participant) {
-              // Получаем треки участника
-              final participantTracks = assembly.tracks
-                  .where((t) => t.spParticipantName == participant.name)
-                  .toList();
-
-              // Считаем прибыль по участнику (сумма organizerMarginRub)
-              final participantProfit = participantTracks.fold<double>(
-                0,
-                (sum, t) => sum + (t.organizerMarginRub ?? 0),
-              );
-
-              return _ParticipantCard(
-                assemblyId: assembly.id,
-                participant: participant,
-                tracks: participantTracks,
-                profit: participantProfit,
-              );
-            }),
-          ],
-        ),
       ),
     );
   }
@@ -430,7 +684,9 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
     setState(() => _isUpdating = true);
 
     final newStatus = !widget.participant.isPaid;
-    final success = await ref.read(spAssembliesControllerProvider.notifier).toggleParticipantPayment(
+    final success = await ref
+        .read(spAssembliesControllerProvider.notifier)
+        .toggleParticipantPayment(
           widget.assemblyId,
           widget.participant.name,
           newStatus,
@@ -440,7 +696,11 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
       setState(() => _isUpdating = false);
 
       if (!success) {
-        _showStyledSnackBar(context, 'Ошибка обновления статуса оплаты', isError: true);
+        _showStyledSnackBar(
+          context,
+          'Ошибка обновления статуса оплаты',
+          isError: true,
+        );
       }
     }
   }
@@ -475,8 +735,12 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
     // Итого
     buffer.writeln();
     buffer.writeln('Итого товары: ${totalClientPrice.toStringAsFixed(2)} ₽');
-    buffer.writeln('Итого доставка: ${totalShippingWithExpenses.toStringAsFixed(2)} ₽');
-    buffer.writeln('ВСЕГО: ${(totalClientPrice + totalShippingWithExpenses).toStringAsFixed(2)} ₽');
+    buffer.writeln(
+      'Итого доставка: ${totalShippingWithExpenses.toStringAsFixed(2)} ₽',
+    );
+    buffer.writeln(
+      'ВСЕГО: ${(totalClientPrice + totalShippingWithExpenses).toStringAsFixed(2)} ₽',
+    );
 
     Clipboard.setData(ClipboardData(text: buffer.toString()));
     _showStyledSnackBar(context, 'Данные скопированы');
@@ -484,8 +748,6 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     // Итоги для отображения
     double totalClientPrice = 0;
     double totalShipping = 0;
@@ -499,24 +761,29 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
     final totalShippingWithExpenses = totalShipping + totalAdditionalExpenses;
 
     final isPaid = widget.participant.isPaid;
+    final statusColor = isPaid ? Colors.green.shade700 : context.brandPrimary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         decoration: BoxDecoration(
-          color: isPaid ? Colors.green.shade50 : Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isPaid ? Colors.green.shade300 : Colors.grey.shade200,
-            width: isPaid ? 1.5 : 1,
-          ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: statusColor.withValues(alpha: 0.16)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.035),
+              offset: const Offset(0, 3),
+              blurRadius: 16,
+            ),
+          ],
         ),
         child: Column(
           children: [
             // Заголовок участника
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -528,25 +795,30 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                         width: 24,
                         height: 24,
                         decoration: BoxDecoration(
-                          color: isPaid ? Colors.green : Colors.white,
+                          color: isPaid ? statusColor : Colors.white,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: isPaid ? Colors.green.shade700 : Colors.grey.shade400,
+                            color: isPaid ? statusColor : Colors.grey.shade300,
                             width: 2,
                           ),
                         ),
                         child: isPaid
-                            ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
+                            ? const Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
                     ),
                     const SizedBox(width: 10),
                     CircleAvatar(
-                      backgroundColor: context.brandPrimary.withValues(alpha: 0.1),
+                      backgroundColor: statusColor.withValues(alpha: 0.1),
                       child: Text(
                         widget.participant.name[0].toUpperCase(),
                         style: TextStyle(
-                          color: context.brandPrimary,
+                          color: statusColor,
+                          fontFamily: 'Gilroy',
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -558,38 +830,25 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                         children: [
                           Text(
                             widget.participant.name,
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                            style: SpFinanceUi.bodyStyle.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${widget.participant.trackCount} треков • ${widget.participant.weight.toStringAsFixed(2)} кг',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade600,
+                            style: SpFinanceUi.labelStyle.copyWith(
+                              color: SpFinanceUi.mutedTextColor,
                             ),
                           ),
-                          if (isPaid) ...[
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 12,
-                                  color: Colors.green.shade700,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Оплачено',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          const SizedBox(height: 5),
+                          _InlineStatusChip(
+                            icon: isPaid
+                                ? Icons.check_circle_rounded
+                                : Icons.schedule_rounded,
+                            label: isPaid ? 'Оплачено' : 'Ожидает оплату',
+                            color: statusColor,
+                          ),
                         ],
                       ),
                     ),
@@ -599,7 +858,10 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       children: [
                         Text(
                           '${widget.profit.toStringAsFixed(0)} ₽',
-                          style: theme.textTheme.titleSmall?.copyWith(
+                          style: TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontSize: 15,
+                            height: 18 / 15,
                             fontWeight: FontWeight.w700,
                             color: widget.profit > 0
                                 ? Colors.green.shade700
@@ -608,8 +870,8 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                         ),
                         Text(
                           'прибыль',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.grey.shade500,
+                          style: SpFinanceUi.labelStyle.copyWith(
+                            color: SpFinanceUi.mutedTextColor,
                             fontSize: 10,
                           ),
                         ),
@@ -642,8 +904,8 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                             flex: 2,
                             child: Text(
                               'Трек',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: Colors.grey.shade600,
+                              style: SpFinanceUi.labelStyle.copyWith(
+                                color: SpFinanceUi.mutedTextColor,
                                 fontSize: 10,
                               ),
                             ),
@@ -651,8 +913,8 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                           Expanded(
                             child: Text(
                               'Цена',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: Colors.grey.shade600,
+                              style: SpFinanceUi.labelStyle.copyWith(
+                                color: SpFinanceUi.mutedTextColor,
                                 fontSize: 10,
                               ),
                               textAlign: TextAlign.right,
@@ -661,8 +923,8 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                           Expanded(
                             child: Text(
                               'Доставка',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: Colors.grey.shade600,
+                              style: SpFinanceUi.labelStyle.copyWith(
+                                color: SpFinanceUi.mutedTextColor,
                                 fontSize: 10,
                               ),
                               textAlign: TextAlign.right,
@@ -683,13 +945,13 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       children: [
                         Text(
                           'Итого товары:',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
                           '${totalClientPrice.toStringAsFixed(2)} ₽',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -701,13 +963,13 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       children: [
                         Text(
                           'Итого доставка:',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
                           '${totalShippingWithExpenses.toStringAsFixed(2)} ₽',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -719,13 +981,13 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       children: [
                         Text(
                           'ВСЕГО:',
-                          style: theme.textTheme.bodyMedium?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         Text(
                           '${(totalClientPrice + totalShippingWithExpenses).toStringAsFixed(2)} ₽',
-                          style: theme.textTheme.bodyMedium?.copyWith(
+                          style: SpFinanceUi.bodyStyle.copyWith(
                             fontWeight: FontWeight.w700,
                             color: context.brandPrimary,
                           ),
@@ -740,7 +1002,13 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       child: OutlinedButton.icon(
                         onPressed: _copyParticipantInfo,
                         icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('Скопировать для отправки'),
+                        label: const Text(
+                          'Скопировать для отправки',
+                          style: TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                         ),
@@ -764,7 +1032,6 @@ class _TrackInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final clientPrice = track.clientPriceRub ?? 0;
     final shipping = track.shippingCostRub ?? 0;
 
@@ -777,9 +1044,12 @@ class _TrackInfoRow extends StatelessWidget {
             flex: 2,
             child: Text(
               track.trackNumber,
-              style: theme.textTheme.bodySmall?.copyWith(
+              style: const TextStyle(
+                color: SpFinanceUi.textColor,
+                fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
+                height: 13 / 11,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -788,9 +1058,7 @@ class _TrackInfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               '${clientPrice.toStringAsFixed(2)} ₽',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-              ),
+              style: SpFinanceUi.labelStyle.copyWith(fontSize: 11),
               textAlign: TextAlign.right,
             ),
           ),
@@ -798,9 +1066,7 @@ class _TrackInfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               '${shipping.toStringAsFixed(2)} ₽',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-              ),
+              style: SpFinanceUi.labelStyle.copyWith(fontSize: 11),
               textAlign: TextAlign.right,
             ),
           ),
@@ -817,55 +1083,43 @@ class _TracksSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final allTracks = assembly.tracks;
-    final spTracksCount = allTracks.where((t) => t.spParticipantName != null).length;
+    final spTracksCount = allTracks
+        .where((t) => t.spParticipantName != null)
+        .length;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+      padding: const EdgeInsets.all(16),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon: Icons.local_shipping_rounded,
+            title: 'Треки',
+            trailing: '$spTracksCount/${allTracks.length} СП',
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Треки ($spTracksCount СП из ${allTracks.length})',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (allTracks.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'Нет треков в сборке',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey.shade500,
-                    ),
+          const SizedBox(height: 12),
+          if (allTracks.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Нет треков в сборке',
+                  style: SpFinanceUi.bodyStyle.copyWith(
+                    color: SpFinanceUi.mutedTextColor,
                   ),
                 ),
-              )
-            else
-              ...allTracks.map((track) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _TrackCard(track: track, assembly: assembly),
-                );
-              }),
-          ],
-        ),
+              ),
+            )
+          else
+            ...allTracks.map((track) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _TrackCard(track: track, assembly: assembly),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -895,7 +1149,11 @@ class _TrackCard extends StatelessWidget {
     if (netWeight == null || netWeight <= 0) return null;
 
     // Проверяем, что у всех СП-треков заполнен вес
-    final spTracks = assembly.tracks.where((t) => t.spParticipantName != null && t.spParticipantName!.isNotEmpty).toList();
+    final spTracks = assembly.tracks
+        .where(
+          (t) => t.spParticipantName != null && t.spParticipantName!.isNotEmpty,
+        )
+        .toList();
     if (spTracks.isEmpty) return null;
 
     double totalNetWeight = 0;
@@ -921,16 +1179,18 @@ class _TrackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     // Расчёты
-    final clientPriceRub = track.clientPriceRub ??
+    final clientPriceRub =
+        track.clientPriceRub ??
         (track.clientPriceYuan != null && track.purchaseRate != null
             ? track.clientPriceYuan! * track.purchaseRate!
             : null);
     final shippingCostRub = _calculateShippingCost() ?? track.shippingCostRub;
-    final totalRub = clientPriceRub != null ? clientPriceRub + (shippingCostRub ?? 0) : null;
-    final profitRub = track.organizerMarginRub ??
+    final totalRub = clientPriceRub != null
+        ? clientPriceRub + (shippingCostRub ?? 0)
+        : null;
+    final profitRub =
+        track.organizerMarginRub ??
         (track.clientPriceRub != null && track.costPriceRub != null
             ? track.clientPriceRub! - track.costPriceRub!
             : null);
@@ -938,155 +1198,158 @@ class _TrackCard extends StatelessWidget {
     // Информация о товаре
     final productName = track.productInfo?.title ?? track.productTitle;
     final productQty = track.productInfo?.quantity ?? 1;
+    final statusColor = isComplete
+        ? Colors.green.shade700
+        : Colors.orange.shade700;
 
-    return InkWell(
-      onTap: () {
-        context.push('/sp-finance/tracks/${track.id}', extra: {'assemblyId': assembly.id});
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isComplete ? Colors.green.shade200 : Colors.orange.shade200,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: () {
+          context.push(
+            '/sp-finance/tracks/${track.id}',
+            extra: {'assemblyId': assembly.id},
+          );
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: statusColor.withValues(alpha: 0.16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                offset: const Offset(0, 3),
+                blurRadius: 14,
+              ),
+            ],
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Верхняя строка: номер трека + статус
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    track.trackNumber,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Верхняя строка: номер трека + статус
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      track.trackNumber,
+                      style: SpFinanceUi.bodyStyle.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
-                // Статус заполненности
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isComplete ? Colors.green.shade50 : Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                  _InlineStatusChip(
+                    icon: isComplete
+                        ? Icons.check_circle_rounded
+                        : Icons.warning_rounded,
+                    label: isComplete ? 'Заполнено' : 'Не заполнено',
+                    color: statusColor,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isComplete ? Icons.check_circle_rounded : Icons.warning_rounded,
-                        size: 14,
-                        color: isComplete ? Colors.green.shade700 : Colors.orange.shade700,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isComplete ? 'Заполнено' : 'Не заполнено',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: isComplete ? Colors.green.shade700 : Colors.orange.shade700,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: Colors.grey,
                   ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
-              ],
-            ),
+                ],
+              ),
 
-            // О товаре
-            if (productName != null && productName.isNotEmpty) ...[
+              // О товаре
+              if (productName != null && productName.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.inventory_2_rounded,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '$productName × $productQty шт.',
+                        style: SpFinanceUi.labelStyle.copyWith(
+                          color: SpFinanceUi.mutedTextColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Имя участника
+              if (track.spParticipantName != null &&
+                  track.spParticipantName!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_rounded,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      track.spParticipantName!,
+                      style: SpFinanceUi.labelStyle.copyWith(
+                        color: context.brandPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              const Divider(height: 16),
+
+              // Финансовые показатели - 2 строки по 2 элемента
+              Row(
+                children: [
+                  Expanded(
+                    child: _FinanceItem(
+                      label: 'Цена товара',
+                      value: clientPriceRub,
+                      color: context.brandPrimary,
+                    ),
+                  ),
+                  Expanded(
+                    child: _FinanceItem(
+                      label: 'Цена доставки',
+                      value: shippingCostRub,
+                      color: context.brandPrimary,
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.inventory_2_rounded, size: 14, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      '$productName × $productQty шт.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            // Имя участника
-            if (track.spParticipantName != null && track.spParticipantName!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.person_rounded, size: 14, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Text(
-                    track.spParticipantName!,
-                    style: theme.textTheme.bodySmall?.copyWith(
+                    child: _FinanceItem(
+                      label: 'Итого к оплате',
+                      value: totalRub,
                       color: context.brandPrimary,
-                      fontWeight: FontWeight.w600,
+                      isBold: true,
+                    ),
+                  ),
+                  Expanded(
+                    child: _FinanceItem(
+                      label: 'Прибыль',
+                      value: profitRub,
+                      color: profitRub != null && profitRub > 0
+                          ? Colors.green.shade700
+                          : Colors.red.shade700,
+                      isBold: true,
                     ),
                   ),
                 ],
               ),
             ],
-
-            const Divider(height: 16),
-
-            // Финансовые показатели - 2 строки по 2 элемента
-            Row(
-              children: [
-                // Цена участника
-                Expanded(
-                  child: _FinanceItem(
-                    label: 'Цена товара',
-                    value: clientPriceRub,
-                    color: Colors.blue.shade700,
-                  ),
-                ),
-                // Доставка
-                Expanded(
-                  child: _FinanceItem(
-                    label: 'Цена доставки',
-                    value: shippingCostRub,
-                    color: Colors.purple.shade700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                // Итого
-                Expanded(
-                  child: _FinanceItem(
-                    label: 'Итого к оплате',
-                    value: totalRub,
-                    color: context.brandPrimary,
-                    isBold: true,
-                  ),
-                ),
-                // Прибыль
-                Expanded(
-                  child: _FinanceItem(
-                    label: 'Прибыль',
-                    value: profitRub,
-                    color: profitRub != null && profitRub > 0
-                        ? Colors.green.shade700
-                        : Colors.red.shade700,
-                    isBold: true,
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1108,25 +1371,19 @@ class _FinanceItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: Colors.grey.shade500,
-            fontSize: 10,
-          ),
-        ),
+        Text(label, style: SpFinanceUi.labelStyle.copyWith(fontSize: 10)),
         const SizedBox(height: 2),
         Text(
           value != null ? '${value!.toStringAsFixed(2)} ₽' : '—',
-          style: theme.textTheme.bodySmall?.copyWith(
+          style: TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 12,
+            height: 14 / 12,
             color: value != null ? color : Colors.grey.shade400,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
-            fontSize: 12,
           ),
         ),
       ],
@@ -1142,60 +1399,30 @@ class _BoxesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+      padding: const EdgeInsets.all(16),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon: Icons.inventory_2_outlined,
+            title: tr(context, ru: 'Коробки', zh: '箱子'),
+            trailing: '${assembly.boxes.length} шт.',
           ),
+          const SizedBox(height: 16),
+          // Отображаем каждую коробку
+          ...assembly.boxes.asMap().entries.map((entry) {
+            final index = entry.key;
+            final box = entry.value;
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index < assembly.boxes.length - 1 ? 12 : 0,
+              ),
+              child: _buildBoxCard(context, box),
+            );
+          }),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.inventory_2_outlined, size: 20, color: Color(0xFFfe3301)),
-                    const SizedBox(width: 8),
-                    Text(
-                      tr(context, ru: 'Коробки', zh: '箱子'),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  '${assembly.boxes.length} шт.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Отображаем каждую коробку
-            ...assembly.boxes.asMap().entries.map((entry) {
-              final index = entry.key;
-              final box = entry.value;
-              return Padding(
-                padding: EdgeInsets.only(bottom: index < assembly.boxes.length - 1 ? 12 : 0),
-                child: _buildBoxCard(context, box),
-              );
-            }),
-          ],
-        ),
       ),
     );
   }
@@ -1204,9 +1431,9 @@ class _BoxesSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        color: context.brandPrimary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1218,26 +1445,33 @@ class _BoxesSection extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFfe3301).withValues(alpha: 0.12),
+                  color: context.brandPrimary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
                   child: Text(
                     '#${box.number}',
-                    style: const TextStyle(
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
-                      color: Color(0xFFfe3301),
+                      height: 18 / 15,
+                      color: context.brandPrimary,
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                box.displayName(context),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+              Expanded(
+                child: Text(
+                  box.displayName(context),
+                  style: const TextStyle(
+                    color: SpFinanceUi.textColor,
+                    fontFamily: 'Gilroy',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    height: 19 / 16,
+                  ),
                 ),
               ),
             ],
@@ -1249,7 +1483,7 @@ class _BoxesSection extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
               children: [
@@ -1304,10 +1538,16 @@ class _BoxesSection extends StatelessWidget {
           if (box.photos.isNotEmpty) ...[
             const SizedBox(height: 14),
             Text(
-              tr(context, ru: 'Фото на весах (${box.photos.length})', zh: '称重照片 (${box.photos.length})'),
+              tr(
+                context,
+                ru: 'Фото на весах (${box.photos.length})',
+                zh: '称重照片 (${box.photos.length})',
+              ),
               style: const TextStyle(
+                fontFamily: 'Gilroy',
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
+                height: 15 / 13,
                 color: Colors.black54,
               ),
             ),
@@ -1322,7 +1562,9 @@ class _BoxesSection extends StatelessWidget {
                   final photoUrl = ApiConfig.getMediaUrl(photo.url);
 
                   return Padding(
-                    padding: EdgeInsets.only(right: index < box.photos.length - 1 ? 10 : 0),
+                    padding: EdgeInsets.only(
+                      right: index < box.photos.length - 1 ? 10 : 0,
+                    ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Material(
@@ -1343,13 +1585,18 @@ class _BoxesSection extends StatelessWidget {
                               placeholder: (_, _) => Container(
                                 color: Colors.black.withValues(alpha: 0.06),
                                 child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                               errorWidget: (_, _, _) => Container(
                                 color: Colors.black.withValues(alpha: 0.06),
                                 child: const Center(
-                                  child: Icon(Icons.broken_image_outlined, size: 24),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 24,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1367,7 +1614,8 @@ class _BoxesSection extends StatelessWidget {
     );
   }
 
-  Widget _buildBoxParam(BuildContext context, {
+  Widget _buildBoxParam(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required String value,
@@ -1382,7 +1630,9 @@ class _BoxesSection extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
+                fontFamily: 'Gilroy',
                 fontSize: 12,
+                height: 14 / 12,
                 color: Colors.black54,
                 fontWeight: FontWeight.w500,
               ),
@@ -1393,9 +1643,11 @@ class _BoxesSection extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
+            fontFamily: 'Gilroy',
             fontSize: 14,
+            height: 17 / 14,
             fontWeight: FontWeight.w700,
-            color: Colors.black87,
+            color: SpFinanceUi.textColor,
           ),
         ),
       ],

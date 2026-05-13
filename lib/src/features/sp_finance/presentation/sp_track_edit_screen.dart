@@ -1,16 +1,20 @@
 // ignore_for_file: deprecated_member_use
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
 import '../data/sp_models.dart';
 import '../data/sp_provider.dart';
+import 'sp_finance_ui.dart';
 
 /// Показывает стилизованный SnackBar в едином дизайне приложения
 void _showStyledSnackBar(
@@ -18,12 +22,12 @@ void _showStyledSnackBar(
   String message, {
   bool isError = false,
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
+  AppToast.showFromSnackBar(
+    context,
     SnackBar(
       content: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => messenger.hideCurrentSnackBar(),
+        onTap: AppToast.hide,
         child: Row(
           children: [
             Container(
@@ -46,6 +50,7 @@ void _showStyledSnackBar(
                 message,
                 style: const TextStyle(
                   color: Colors.white,
+                  fontFamily: 'Gilroy',
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -57,7 +62,12 @@ void _showStyledSnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: isError ? const Color(0xFFE53935) : context.brandPrimary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 15),
+      margin: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        AppLayout.bottomBarObstruction(context) + 12,
+      ),
       duration: const Duration(seconds: 3),
     ),
   );
@@ -133,12 +143,17 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
       _track = track;
       _assembly = assembly;
       _participantController.text = track.spParticipantName ?? '';
-      _supplierPriceController.text = track.supplierPriceYuan?.toStringAsFixed(2) ?? '';
-      _purchasePriceController.text = track.purchasePriceYuan?.toStringAsFixed(2) ?? '';
-      _purchaseRateController.text = track.purchaseRate?.toStringAsFixed(4) ?? '';
-      _clientPriceController.text = track.clientPriceYuan?.toStringAsFixed(2) ?? '';
+      _supplierPriceController.text =
+          track.supplierPriceYuan?.toStringAsFixed(2) ?? '';
+      _purchasePriceController.text =
+          track.purchasePriceYuan?.toStringAsFixed(2) ?? '';
+      _purchaseRateController.text =
+          track.purchaseRate?.toStringAsFixed(4) ?? '';
+      _clientPriceController.text =
+          track.clientPriceYuan?.toStringAsFixed(2) ?? '';
       _netWeightController.text = track.netWeightKg?.toStringAsFixed(3) ?? '';
-      _additionalExpensesController.text = track.additionalExpensesRub?.toStringAsFixed(2) ?? '';
+      _additionalExpensesController.text =
+          track.additionalExpensesRub?.toStringAsFixed(2) ?? '';
       _noteController.text = track.note ?? '';
     });
   }
@@ -149,7 +164,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     if (_assembly == null) return null;
 
     // Текущий вес трека (из поля ввода)
-    final currentNetWeight = double.tryParse(_netWeightController.text.replaceAll(',', '.'));
+    final currentNetWeight = double.tryParse(
+      _netWeightController.text.replaceAll(',', '.'),
+    );
     if (currentNetWeight == null || currentNetWeight <= 0) return null;
 
     // Проверяем, что у всех треков заполнен чистый вес
@@ -194,8 +211,12 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Цена поставщика (руб) = цена поставщика (юань) × курс
   double? _calculateSupplierPriceRub() {
-    final supplierPriceYuan = double.tryParse(_supplierPriceController.text.replaceAll(',', '.'));
-    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
+    final supplierPriceYuan = double.tryParse(
+      _supplierPriceController.text.replaceAll(',', '.'),
+    );
+    final rate = double.tryParse(
+      _purchaseRateController.text.replaceAll(',', '.'),
+    );
 
     if (supplierPriceYuan != null && rate != null) {
       return supplierPriceYuan * rate;
@@ -205,8 +226,12 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Себестоимость = цена выкупа × курс
   double? _calculateCostPrice() {
-    final purchasePrice = double.tryParse(_purchasePriceController.text.replaceAll(',', '.'));
-    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
+    final purchasePrice = double.tryParse(
+      _purchasePriceController.text.replaceAll(',', '.'),
+    );
+    final rate = double.tryParse(
+      _purchaseRateController.text.replaceAll(',', '.'),
+    );
 
     if (purchasePrice != null && rate != null) {
       return purchasePrice * rate;
@@ -216,8 +241,12 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   // Цена для участника (руб) = цена участника (юань) × курс
   double? _calculateClientPriceRub() {
-    final clientPriceYuan = double.tryParse(_clientPriceController.text.replaceAll(',', '.'));
-    final rate = double.tryParse(_purchaseRateController.text.replaceAll(',', '.'));
+    final clientPriceYuan = double.tryParse(
+      _clientPriceController.text.replaceAll(',', '.'),
+    );
+    final rate = double.tryParse(
+      _purchaseRateController.text.replaceAll(',', '.'),
+    );
 
     if (clientPriceYuan != null && rate != null) {
       return clientPriceYuan * rate;
@@ -229,9 +258,14 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   double? _calculateTotalRub() {
     final clientPriceRub = _calculateClientPriceRub();
     // Используем авто-расчёт доставки если доступен
-    final shippingCostRub = _calculateShippingCost() ?? _track?.shippingCostRub ?? 0;
+    final shippingCostRub =
+        _calculateShippingCost() ?? _track?.shippingCostRub ?? 0;
     // Дополнительные расходы
-    final additionalExpenses = double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')) ?? 0;
+    final additionalExpenses =
+        double.tryParse(
+          _additionalExpensesController.text.replaceAll(',', '.'),
+        ) ??
+        0;
 
     if (clientPriceRub != null) {
       return clientPriceRub + shippingCostRub + additionalExpenses;
@@ -262,13 +296,27 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
     try {
       final update = SpTrackUpdate(
-        spParticipantName: _participantController.text.isNotEmpty ? _participantController.text : null,
-        supplierPriceYuan: double.tryParse(_supplierPriceController.text.replaceAll(',', '.')),
-        purchasePriceYuan: double.tryParse(_purchasePriceController.text.replaceAll(',', '.')),
-        purchaseRate: double.tryParse(_purchaseRateController.text.replaceAll(',', '.')),
-        clientPriceYuan: double.tryParse(_clientPriceController.text.replaceAll(',', '.')),
-        netWeightKg: double.tryParse(_netWeightController.text.replaceAll(',', '.')),
-        additionalExpensesRub: double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')),
+        spParticipantName: _participantController.text.isNotEmpty
+            ? _participantController.text
+            : null,
+        supplierPriceYuan: double.tryParse(
+          _supplierPriceController.text.replaceAll(',', '.'),
+        ),
+        purchasePriceYuan: double.tryParse(
+          _purchasePriceController.text.replaceAll(',', '.'),
+        ),
+        purchaseRate: double.tryParse(
+          _purchaseRateController.text.replaceAll(',', '.'),
+        ),
+        clientPriceYuan: double.tryParse(
+          _clientPriceController.text.replaceAll(',', '.'),
+        ),
+        netWeightKg: double.tryParse(
+          _netWeightController.text.replaceAll(',', '.'),
+        ),
+        additionalExpensesRub: double.tryParse(
+          _additionalExpensesController.text.replaceAll(',', '.'),
+        ),
         note: _noteController.text.isNotEmpty ? _noteController.text : null,
       );
 
@@ -283,7 +331,11 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
         context.pop();
       } else {
         final error = ref.read(spTrackEditControllerProvider).error;
-        _showStyledSnackBar(context, error ?? 'Ошибка сохранения', isError: true);
+        _showStyledSnackBar(
+          context,
+          error ?? 'Ошибка сохранения',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
@@ -320,6 +372,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = AppLayout.topBarTotalHeight(context);
+    final bottomPad = AppLayout.bottomScrollPadding(context);
+
     if (_track == null) {
       _loadTrack();
     }
@@ -336,318 +391,326 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
         TutorialStep(
           icon: Icons.person_pin_rounded,
           title: 'Участник СП',
-          description: 'Укажите имя участника, которому принадлежит этот трек. Имя отображается в расчётах сборки.',
+          description:
+              'Укажите имя участника, которому принадлежит этот трек. Имя отображается в расчётах сборки.',
         ),
         TutorialStep(
           icon: Icons.currency_yuan_rounded,
           title: 'Цена и вес',
-          description: 'Введите стоимость товара в юанях и чистый вес. По этим данным считается доля в сборке.',
+          description:
+              'Введите стоимость товара в юанях и чистый вес. По этим данным считается доля в сборке.',
         ),
         TutorialStep(
           icon: Icons.save_rounded,
           title: 'Сохранить',
-          description: 'Нажмите «Сохранить» внизу страницы — данные обновятся в сборке для всех участников.',
+          description:
+              'Нажмите «Сохранить» внизу страницы — данные обновятся в сборке для всех участников.',
         ),
       ],
-      child: Scaffold(
-            body: _track == null
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
-                    children: [
-                      // Заголовок
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: Text(
-                          _track!.trackNumber,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                              ),
+      child: _track == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                topPad * 0.7 + 16,
+                16,
+                bottomPad + 16,
+              ),
+              children: [
+                AppPageHeader(title: _track!.trackNumber, showBack: true),
+                const SizedBox(height: 15),
+
+                // 1. Имя участника
+                Builder(
+                  builder: (_) {
+                    final w = _buildCard(
+                      title: 'Участник СП',
+                      child: TextField(
+                        controller: _participantController,
+                        style: SpFinanceUi.bodyStyle,
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Имя участника',
+                          hintText: 'Введите имя участника',
+                          prefixIcon: Icons.person_rounded,
                         ),
                       ),
+                    );
+                    return w;
+                  },
+                ),
+                const SizedBox(height: 15),
 
-                      // 1. Имя участника
-                      Builder(
-                        builder: (_) {
-                          final w = _buildCard(
-                            title: 'Участник СП',
-                            child: TextField(
-                              controller: _participantController,
-                              decoration: InputDecoration(
-                                labelText: 'Имя участника',
-                                hintText: 'Введите имя участника',
-                                prefixIcon: const Icon(Icons.person_rounded),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          );
-                          return w;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 2. Комментарий (всегда показываем, редактируемый)
-                      _buildCard(
-                        title: 'Комментарий',
-                        child: TextField(
-                          controller: _noteController,
-                          maxLines: 3,
-                          decoration: InputDecoration(
-                            hintText: 'Введите комментарий к треку...',
-                            prefixIcon: const Padding(
-                              padding: EdgeInsets.only(bottom: 48),
-                              child: Icon(Icons.comment_rounded),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 3. О товаре
-                      if (_track!.productInfo != null)
-                        ...[
-                          _buildProductInfoSection(),
-                          const SizedBox(height: 16),
-                        ],
-
-                      // 4. Фото отчёт
-                      if (_track!.photos != null && _track!.photos!.isNotEmpty)
-                        ...[
-                          _buildPhotoSection(),
-                          const SizedBox(height: 16),
-                        ],
-
-                      // 4. Вес и доставка
-                      _buildWeightSection(),
-                      const SizedBox(height: 16),
-
-                      // 5-8. Цены в юанях и курс
-                      Builder(
-                        builder: (_) {
-                          final w = _buildCard(
-                          title: 'Цены в юанях',
-                          child: Column(
-                            children: [
-                              // 5. Цена поставщика
-                              TextField(
-                                controller: _supplierPriceController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: InputDecoration(
-                                  labelText: 'Цена поставщика',
-                                  hintText: '0.00',
-                                  suffixText: '¥',
-                                  prefixIcon: const Icon(Icons.store_rounded),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
-                                ],
-                                onChanged: (_) => setState(() {}),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // 6. Цена выкупа
-                              TextField(
-                                controller: _purchasePriceController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: InputDecoration(
-                                  labelText: 'Цена выкупа (со скидкой)',
-                                  hintText: '0.00',
-                                  suffixText: '¥',
-                                  prefixIcon: const Icon(Icons.shopping_cart_rounded),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
-                                ],
-                                onChanged: (_) => setState(() {}),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // 7. Цена участника
-                              TextField(
-                                controller: _clientPriceController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: InputDecoration(
-                                  labelText: 'Цена для участника',
-                                  hintText: '0.00',
-                                  suffixText: '¥',
-                                  prefixIcon: const Icon(Icons.account_balance_wallet_rounded),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
-                                ],
-                                onChanged: (_) => setState(() {}),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // 8. Курс юаня
-                              TextField(
-                                controller: _purchaseRateController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: InputDecoration(
-                                  labelText: 'Курс юаня (¥→₽)',
-                                  hintText: '0.0000',
-                                  prefixIcon: const Icon(Icons.currency_exchange_rounded),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,4}')),
-                                ],
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ],
-                          ),
-                        );
-                          return w;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 9-14. Расчётные цены в рублях
-                      Builder(
-                        builder: (_) {
-                          final w = _buildCard(
-                          title: 'Расчёт в рублях',
-                          child: Column(
-                            children: [
-                              // 9. Цена поставщика (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.store_rounded,
-                                label: 'Цена поставщика',
-                                value: supplierPriceRub,
-                                color: Colors.grey,
-                              ),
-
-                              // 10. Цена выкупа / Себестоимость (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.shopping_cart_rounded,
-                                label: 'Себестоимость (цена выкупа)',
-                                value: costPrice,
-                                color: Colors.orange,
-                              ),
-
-                              // 11. Цена для участника (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.account_balance_wallet_rounded,
-                                label: 'Цена для участника',
-                                value: clientPriceRub,
-                                color: Colors.blue,
-                              ),
-
-                              // 12. Стоимость доставки (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.local_shipping_rounded,
-                                label: 'Стоимость доставки',
-                                value: _getShippingCost(),
-                                color: Colors.purple,
-                              ),
-
-                              // 12a. Дополнительные расходы (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.add_shopping_cart_rounded,
-                                label: 'Дополнительные расходы',
-                                value: double.tryParse(_additionalExpensesController.text.replaceAll(',', '.')),
-                                color: Colors.deepOrange,
-                              ),
-
-                              // 13. Итого к оплате (руб)
-                              _buildCalculatedRow(
-                                icon: Icons.receipt_long_rounded,
-                                label: 'Итого к оплате',
-                                value: totalRub,
-                                color: Colors.teal,
-                                isHighlighted: true,
-                              ),
-
-                              // 14. Прибыль (руб)
-                              _buildCalculatedRow(
-                                icon: profit != null && profit > 0
-                                    ? Icons.trending_up_rounded
-                                    : Icons.trending_down_rounded,
-                                label: 'Прибыль',
-                                value: profit,
-                                color: profit != null && profit > 0 ? Colors.green : Colors.red,
-                                isHighlighted: true,
-                                isLast: true,
-                              ),
-                            ],
-                          ),
-                        );
-                          return w;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Кнопка сохранения
-                      Builder(
-                        builder: (_) {
-                          final w = FilledButton.icon(
-                            onPressed: _isLoading ? null : _saveTrack,
-                            icon: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.save_rounded),
-                            label: Text(_isLoading ? 'Сохранение...' : 'Сохранить'),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                            ),
-                          );
-                          return w;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+                // 2. Комментарий (всегда показываем, редактируемый)
+                _buildCard(
+                  title: 'Комментарий',
+                  child: TextField(
+                    controller: _noteController,
+                    maxLines: 3,
+                    style: SpFinanceUi.bodyStyle,
+                    decoration: SpFinanceUi.inputDecoration(
+                      context,
+                      hintText: 'Введите комментарий к треку...',
+                      prefixIcon: Icons.comment_rounded,
+                    ),
                   ),
-          ));
+                ),
+                const SizedBox(height: 15),
+
+                // 3. О товаре
+                if (_track!.productInfo != null) ...[
+                  _buildProductInfoSection(),
+                  const SizedBox(height: 15),
+                ],
+
+                // 4. Фото отчёт
+                if (_track!.photos != null && _track!.photos!.isNotEmpty) ...[
+                  _buildPhotoSection(),
+                  const SizedBox(height: 15),
+                ],
+
+                // 4. Вес и доставка
+                _buildWeightSection(),
+                const SizedBox(height: 15),
+
+                // 5-8. Цены в юанях и курс
+                Builder(
+                  builder: (_) {
+                    final w = _buildCard(
+                      title: 'Цены в юанях',
+                      child: Column(
+                        children: [
+                          // 5. Цена поставщика
+                          TextField(
+                            controller: _supplierPriceController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: SpFinanceUi.bodyStyle,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Цена поставщика',
+                              hintText: '0.00',
+                              suffixText: '¥',
+                              prefixIcon: Icons.store_rounded,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+[.,]?\d{0,2}'),
+                              ),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // 6. Цена выкупа
+                          TextField(
+                            controller: _purchasePriceController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: SpFinanceUi.bodyStyle,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Цена выкупа (со скидкой)',
+                              hintText: '0.00',
+                              suffixText: '¥',
+                              prefixIcon: Icons.shopping_cart_rounded,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+[.,]?\d{0,2}'),
+                              ),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // 7. Цена участника
+                          TextField(
+                            controller: _clientPriceController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: SpFinanceUi.bodyStyle,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Цена для участника',
+                              hintText: '0.00',
+                              suffixText: '¥',
+                              prefixIcon: Icons.account_balance_wallet_rounded,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+[.,]?\d{0,2}'),
+                              ),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // 8. Курс юаня
+                          TextField(
+                            controller: _purchaseRateController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: SpFinanceUi.bodyStyle,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Курс юаня (¥→₽)',
+                              hintText: '0.0000',
+                              prefixIcon: Icons.currency_exchange_rounded,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+[.,]?\d{0,4}'),
+                              ),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ],
+                      ),
+                    );
+                    return w;
+                  },
+                ),
+                const SizedBox(height: 15),
+
+                // 9-14. Расчётные цены в рублях
+                Builder(
+                  builder: (_) {
+                    final w = _buildCard(
+                      title: 'Расчёт в рублях',
+                      child: Column(
+                        children: [
+                          // 9. Цена поставщика (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.store_rounded,
+                            label: 'Цена поставщика',
+                            value: supplierPriceRub,
+                            color: Colors.grey,
+                          ),
+
+                          // 10. Цена выкупа / Себестоимость (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.shopping_cart_rounded,
+                            label: 'Себестоимость (цена выкупа)',
+                            value: costPrice,
+                            color: Colors.orange,
+                          ),
+
+                          // 11. Цена для участника (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.account_balance_wallet_rounded,
+                            label: 'Цена для участника',
+                            value: clientPriceRub,
+                            color: Colors.blue,
+                          ),
+
+                          // 12. Стоимость доставки (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.local_shipping_rounded,
+                            label: 'Стоимость доставки',
+                            value: _getShippingCost(),
+                            color: Colors.purple,
+                          ),
+
+                          // 12a. Дополнительные расходы (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.add_shopping_cart_rounded,
+                            label: 'Дополнительные расходы',
+                            value: double.tryParse(
+                              _additionalExpensesController.text.replaceAll(
+                                ',',
+                                '.',
+                              ),
+                            ),
+                            color: Colors.deepOrange,
+                          ),
+
+                          // 13. Итого к оплате (руб)
+                          _buildCalculatedRow(
+                            icon: Icons.receipt_long_rounded,
+                            label: 'Итого к оплате',
+                            value: totalRub,
+                            color: Colors.teal,
+                            isHighlighted: true,
+                          ),
+
+                          // 14. Прибыль (руб)
+                          _buildCalculatedRow(
+                            icon: profit != null && profit > 0
+                                ? Icons.trending_up_rounded
+                                : Icons.trending_down_rounded,
+                            label: 'Прибыль',
+                            value: profit,
+                            color: profit != null && profit > 0
+                                ? Colors.green
+                                : Colors.red,
+                            isHighlighted: true,
+                            isLast: true,
+                          ),
+                        ],
+                      ),
+                    );
+                    return w;
+                  },
+                ),
+                const SizedBox(height: 15),
+
+                // Кнопка сохранения
+                Builder(
+                  builder: (_) {
+                    final w = FilledButton.icon(
+                      onPressed: _isLoading ? null : _saveTrack,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_rounded),
+                      label: Text(
+                        _isLoading ? 'Сохранение...' : 'Сохранить',
+                        style: const TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 16,
+                          height: 18 / 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: context.brandPrimary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                    return w;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+    );
   }
 
   Widget _buildCard({required String title, required Widget child}) {
-    final theme = Theme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: SpFinanceUi.cardDecoration(),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
+            Text(title, style: SpFinanceUi.sectionTitleStyle),
+            const SizedBox(height: 12),
             child,
           ],
         ),
@@ -656,8 +719,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   }
 
   Widget _buildWeightSection() {
-    final theme = Theme.of(context);
-    final netWeight = double.tryParse(_netWeightController.text.replaceAll(',', '.'));
+    final netWeight = double.tryParse(
+      _netWeightController.text.replaceAll(',', '.'),
+    );
 
     // Сначала пробуем рассчитать автоматически, если не получается - берём сохранённое значение
     final calculatedShipping = _calculateShippingCost();
@@ -666,7 +730,10 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
     // Расчёт стоимости за кг (если есть доставка и вес)
     double? costPerKg;
-    if (shippingCost != null && shippingCost > 0 && netWeight != null && netWeight > 0) {
+    if (shippingCost != null &&
+        shippingCost > 0 &&
+        netWeight != null &&
+        netWeight > 0) {
       costPerKg = shippingCost / netWeight;
     }
 
@@ -684,42 +751,28 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: SpFinanceUi.cardDecoration(),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Вес и доставка',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
+            Text('Вес и доставка', style: SpFinanceUi.sectionTitleStyle),
+            const SizedBox(height: 12),
 
             // Чистый вес (редактируемое поле)
             TextField(
               controller: _netWeightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: SpFinanceUi.bodyStyle,
+              decoration: SpFinanceUi.inputDecoration(
+                context,
                 labelText: 'Чистый вес (кг)',
                 hintText: '0.000',
                 suffixText: 'кг',
-                prefixIcon: const Icon(Icons.scale_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                prefixIcon: Icons.scale_rounded,
               ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,3}')),
@@ -731,15 +784,16 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
             // Дополнительные расходы (редактируемое поле)
             TextField(
               controller: _additionalExpensesController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: SpFinanceUi.bodyStyle,
+              decoration: SpFinanceUi.inputDecoration(
+                context,
                 labelText: 'Дополнительные расходы',
                 hintText: '0.00',
                 suffixText: '₽',
-                prefixIcon: const Icon(Icons.add_shopping_cart_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                prefixIcon: Icons.add_shopping_cart_rounded,
               ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d{0,2}')),
@@ -754,14 +808,18 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.purple.shade50,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.purple.shade200),
                 ),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.local_shipping_rounded, color: Colors.purple.shade700, size: 20),
+                        Icon(
+                          Icons.local_shipping_rounded,
+                          color: Colors.purple.shade700,
+                          size: 20,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -769,14 +827,14 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                             children: [
                               Text(
                                 'Стоимость доставки',
-                                style: theme.textTheme.bodyMedium?.copyWith(
+                                style: SpFinanceUi.bodyStyle.copyWith(
                                   color: Colors.purple.shade700,
                                 ),
                               ),
                               if (isAutoCalculated)
                                 Text(
                                   'рассчитано автоматически',
-                                  style: theme.textTheme.bodySmall?.copyWith(
+                                  style: SpFinanceUi.labelStyle.copyWith(
                                     color: Colors.purple.shade400,
                                     fontSize: 10,
                                   ),
@@ -786,7 +844,10 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                         ),
                         Text(
                           '${shippingCost.toStringAsFixed(2)} ₽',
-                          style: theme.textTheme.titleMedium?.copyWith(
+                          style: TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontSize: 16,
+                            height: 19 / 16,
                             fontWeight: FontWeight.w700,
                             color: Colors.purple.shade700,
                           ),
@@ -797,19 +858,23 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.price_change_rounded, color: Colors.purple.shade400, size: 18),
+                          Icon(
+                            Icons.price_change_rounded,
+                            color: Colors.purple.shade400,
+                            size: 18,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Цена за кг',
-                              style: theme.textTheme.bodySmall?.copyWith(
+                              style: SpFinanceUi.labelStyle.copyWith(
                                 color: Colors.purple.shade600,
                               ),
                             ),
                           ),
                           Text(
                             '${costPerKg.toStringAsFixed(2)} ₽/кг',
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                            style: SpFinanceUi.bodyStyle.copyWith(
                               fontWeight: FontWeight.w600,
                               color: Colors.purple.shade600,
                             ),
@@ -828,7 +893,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
               if (tracksWithoutWeight > 0)
                 Text(
                   'Для расчёта доставки заполните вес у всех треков (осталось: $tracksWithoutWeight)',
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: SpFinanceUi.labelStyle.copyWith(
                     color: Colors.orange.shade700,
                     fontStyle: FontStyle.italic,
                   ),
@@ -836,8 +901,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
               else
                 Text(
                   'Укажите чистый вес для расчёта стоимости доставки',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade500,
+                  style: SpFinanceUi.labelStyle.copyWith(
+                    color: SpFinanceUi.mutedTextColor,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -849,19 +914,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   }
 
   Widget _buildPhotoSection() {
-    final theme = Theme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: SpFinanceUi.cardDecoration(),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -870,17 +924,10 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Фото отчёт',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                Text('Фото отчёт', style: SpFinanceUi.sectionTitleStyle),
                 Text(
                   '${_track!.photos!.length} фото',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade600,
-                  ),
+                  style: SpFinanceUi.labelStyle,
                 ),
               ],
             ),
@@ -893,7 +940,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 separatorBuilder: (context, index) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final photo = _track!.photos![index];
-                  final fullUrl = ApiConfig.getMediaUrl(photo.thumbnailUrl ?? photo.url);
+                  final fullUrl = ApiConfig.getMediaUrl(
+                    photo.thumbnailUrl ?? photo.url,
+                  );
                   return GestureDetector(
                     onTap: () => _openPhotoViewer(index),
                     child: Stack(
@@ -913,7 +962,9 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                                 child: SizedBox(
                                   width: 24,
                                   height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                             ),
@@ -951,8 +1002,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
             const SizedBox(height: 8),
             Text(
               'Нажмите на фото для просмотра, скачивания или отправки',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.grey.shade500,
+              style: SpFinanceUi.labelStyle.copyWith(
+                color: SpFinanceUi.mutedTextColor,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -963,33 +1014,18 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   }
 
   Widget _buildProductInfoSection() {
-    final theme = Theme.of(context);
     final productInfo = _track!.productInfo!;
-    final hasImage = productInfo.imageUrl != null && productInfo.imageUrl!.isNotEmpty;
+    final hasImage =
+        productInfo.imageUrl != null && productInfo.imageUrl!.isNotEmpty;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
+      decoration: SpFinanceUi.cardDecoration(),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'О товаре',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            Text('О товаре', style: SpFinanceUi.sectionTitleStyle),
             const SizedBox(height: 12),
 
             // Название товара
@@ -1012,8 +1048,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
               const SizedBox(height: 12),
               Text(
                 'Фото товара',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade600,
+                style: SpFinanceUi.labelStyle.copyWith(
+                  color: SpFinanceUi.mutedTextColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1071,8 +1107,8 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
               const SizedBox(height: 8),
               Text(
                 'Нажмите на фото для просмотра, скачивания или отправки',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade500,
+                style: SpFinanceUi.labelStyle.copyWith(
+                  color: SpFinanceUi.mutedTextColor,
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -1088,7 +1124,6 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     required String label,
     required String value,
   }) {
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1097,14 +1132,14 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
           const SizedBox(width: 8),
           Text(
             '$label: ',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade600,
+            style: SpFinanceUi.bodyStyle.copyWith(
+              color: SpFinanceUi.mutedTextColor,
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: SpFinanceUi.bodyStyle.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1125,9 +1160,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => PhotoViewerScreen(
-          item: photoItem,
-        ),
+        builder: (context) => PhotoViewerScreen(item: photoItem),
       ),
     );
   }
@@ -1140,8 +1173,6 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     bool isHighlighted = false,
     bool isLast = false,
   }) {
-    final theme = Theme.of(context);
-
     if (value == null) {
       return const SizedBox.shrink();
     }
@@ -1154,7 +1185,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
             color: isHighlighted
                 ? color.withValues(alpha: 0.1)
                 : Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             border: isHighlighted
                 ? Border.all(color: color.withValues(alpha: 0.3))
                 : null,
@@ -1166,16 +1197,19 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
               Expanded(
                 child: Text(
                   label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.black87,
+                  style: SpFinanceUi.bodyStyle.copyWith(
+                    color: SpFinanceUi.textColor,
                   ),
                 ),
               ),
               Text(
                 '${value.toStringAsFixed(2)} ₽',
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontSize: 16,
+                  height: 19 / 16,
                   fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w600,
-                  color: isHighlighted ? color : Colors.black87,
+                  color: isHighlighted ? color : SpFinanceUi.textColor,
                 ),
               ),
             ],
