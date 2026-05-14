@@ -8,7 +8,7 @@ set -e  # Exit on error
 # ── Configuration ──
 PRODUCTION_SSH="root@5.188.158.33"
 RELEASES_DIR="/var/lib/docker/volumes/zc9s2du0h9jtyxlnaq552rkd-releases/_data"
-DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://prod-api.cp.2a-logistic.com/releases}"
+DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://prod-api.cp.2a-logistic.com/api/releases}"
 
 COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
 COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
