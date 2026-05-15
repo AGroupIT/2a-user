@@ -349,6 +349,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        allowCompression: false,
+        compressionQuality: 0,
       );
 
       debugPrint(

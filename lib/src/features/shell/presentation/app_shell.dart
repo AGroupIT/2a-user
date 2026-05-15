@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/widgets/app_scaffold.dart';
+import '../../../core/logging/client_log_service.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../more/presentation/more_sheet.dart';
@@ -74,6 +75,14 @@ class AppShell extends ConsumerWidget {
             if (v > 250) {
               if (currentIndex > 0) {
                 HapticFeedback.lightImpact();
+                ClientLogService.instance.action(
+                  'Навигация свайпом по вкладкам',
+                  data: {
+                    'fromTab': title,
+                    'toTab': _titles[currentIndex - 1],
+                    'direction': 'previous',
+                  },
+                );
                 navigationShell.goBranch(
                   currentIndex - 1,
                   initialLocation: false,
@@ -85,6 +94,14 @@ class AppShell extends ConsumerWidget {
               // Не позволяем свайпать на последнюю вкладку "Ещё" (она открывается только по тапу)
               if (currentIndex < _titles.length - 2) {
                 HapticFeedback.lightImpact();
+                ClientLogService.instance.action(
+                  'Навигация свайпом по вкладкам',
+                  data: {
+                    'fromTab': title,
+                    'toTab': _titles[currentIndex + 1],
+                    'direction': 'next',
+                  },
+                );
                 navigationShell.goBranch(
                   currentIndex + 1,
                   initialLocation: false,
@@ -191,6 +208,14 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
     if (delta > 20) {
       if (nextIndex > 0) {
         HapticFeedback.lightImpact();
+        ClientLogService.instance.action(
+          'Навигация свайпом по нижнему меню',
+          data: {
+            'fromTab': _items[nextIndex].label,
+            'toTab': _items[nextIndex - 1].label,
+            'direction': 'previous',
+          },
+        );
         widget.onTap(nextIndex - 1);
       }
     }
@@ -199,6 +224,14 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
       // Не позволяем свайпать на последнюю вкладку "Ещё" (она открывается только по тапу)
       if (nextIndex < _items.length - 2) {
         HapticFeedback.lightImpact();
+        ClientLogService.instance.action(
+          'Навигация свайпом по нижнему меню',
+          data: {
+            'fromTab': _items[nextIndex].label,
+            'toTab': _items[nextIndex + 1].label,
+            'direction': 'next',
+          },
+        );
         widget.onTap(nextIndex + 1);
       }
     }
@@ -265,7 +298,19 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
                           horizontalPadding: 7 * (buttonSize / 50),
                           onTap: () {
                             HapticFeedback.lightImpact();
+                            ClientLogService.instance.action(
+                              'Нажата нижняя навигация',
+                              data: {
+                                'tab': item.label,
+                                'index': index,
+                                'selected': isSelected,
+                              },
+                            );
                             if (index == _items.length - 1) {
+                              ClientLogService.instance.action(
+                                'Открыто меню Ещё',
+                                data: {'source': 'bottom_navigation'},
+                              );
                               showModalBottomSheet<void>(
                                 context: context,
                                 backgroundColor: Colors.white,

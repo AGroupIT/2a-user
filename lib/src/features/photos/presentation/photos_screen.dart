@@ -2,9 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/services/client_diagnostics_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -406,16 +404,14 @@ class _PhotosHeaderSection extends StatelessWidget {
   }
 }
 
-class _PhotoThumbnail extends ConsumerWidget {
-  static final Set<String> _diagnosticEvents = <String>{};
-
+class _PhotoThumbnail extends StatelessWidget {
   final PhotoItem item;
   final VoidCallback onOpen;
 
   const _PhotoThumbnail({required this.item, required this.onOpen});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final imageUrl = ApiConfig.getMediaUrl(item.url);
 
     return ClipRRect(
@@ -459,11 +455,6 @@ class _PhotoThumbnail extends ConsumerWidget {
                       useOldImageOnUrlChange: false,
                       filterQuality: FilterQuality.low,
                       imageBuilder: (_, imageProvider) {
-                        _logThumbDiagnostic(
-                          ref,
-                          'photos_thumb_success',
-                          imageUrl,
-                        );
                         return DecoratedBox(
                           decoration: BoxDecoration(
                             image: DecorationImage(
@@ -482,12 +473,6 @@ class _PhotoThumbnail extends ConsumerWidget {
                         );
                       },
                       errorWidget: (_, _, error) {
-                        _logThumbDiagnostic(
-                          ref,
-                          'photos_thumb_error',
-                          imageUrl,
-                          error: error,
-                        );
                         return Container(
                           color: Colors.black.withValues(alpha: 0.06),
                           child: const Center(
@@ -512,43 +497,4 @@ class _PhotoThumbnail extends ConsumerWidget {
       ),
     );
   }
-
-  void _logThumbDiagnostic(
-    WidgetRef ref,
-    String event,
-    String imageUrl, {
-    Object? error,
-  }) {
-    final photoKey = item.id?.toString() ?? imageUrl;
-    final key = '$event:$photoKey';
-    if (_diagnosticEvents.length > 80 && !_diagnosticEvents.contains(key)) {
-      return;
-    }
-    if (!_diagnosticEvents.add(key)) return;
-
-    ClientDiagnosticsService.log(
-      ref.read(apiClientProvider),
-      app: '2a-user',
-      event: event,
-      route: '/photos/thumb',
-      meta: <String, Object?>{
-        if (item.id != null) 'photoId': item.id,
-        'ext': _mediaExtension(imageUrl),
-        'isVideo': item.isVideo,
-        if (error != null)
-          'error': ClientDiagnosticsService.errorSummary(error),
-      },
-      throttleKey: '2a-user-photo-thumb-$key',
-      throttle: const Duration(minutes: 10),
-    );
-  }
-}
-
-String _mediaExtension(String url) {
-  final uri = Uri.tryParse(url);
-  final path = uri?.path ?? url;
-  final name = path.split('/').last.toLowerCase();
-  final dotIndex = name.lastIndexOf('.');
-  if (dotIndex < 0 || dotIndex == name.length - 1) return '';
-  return name.substring(dotIndex + 1);
 }

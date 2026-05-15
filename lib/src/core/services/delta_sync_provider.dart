@@ -15,6 +15,7 @@ import '../../features/clients/application/client_codes_controller.dart';
 import '../../features/sp_finance/data/sp_provider.dart';
 import '../../features/tracks/data/assemblies_provider.dart';
 import '../../features/tracks/data/tracks_provider.dart';
+import '../logging/client_log_service.dart';
 import 'websocket_provider.dart';
 
 /// Провайдер для автоматической синхронизации данных через WebSocket дельты.
@@ -34,6 +35,13 @@ final deltaSyncProvider = Provider<void>((ref) {
     pendingTypes.add(type);
     debounceTimer?.cancel();
     debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      final types = pendingTypes.toList(growable: false)..sort();
+      ClientLogService.instance.add(
+        type: 'data_delta_flush',
+        level: 'info',
+        message: 'Получены обновления данных',
+        data: {'types': types},
+      );
       for (final t in pendingTypes) {
         _handleDeltaType(ref, t);
       }
@@ -67,6 +75,11 @@ final deltaSyncProvider = Provider<void>((ref) {
   // При reconnect — инвалидируем все
   final reconnectSub = wsService.reconnected.listen((_) {
     debugPrint('[DeltaSync] WS reconnected — invalidating all providers');
+    ClientLogService.instance.add(
+      type: 'websocket_reconnected',
+      level: 'warning',
+      message: 'WebSocket переподключился, обновляем данные',
+    );
     _invalidateAll(ref);
   });
 
@@ -80,6 +93,13 @@ final deltaSyncProvider = Provider<void>((ref) {
 });
 
 void _handleDeltaType(Ref ref, String type) {
+  ClientLogService.instance.add(
+    type: 'data_invalidate',
+    level: 'info',
+    message: 'Обновляем провайдеры после дельты $type',
+    data: {'deltaType': type},
+  );
+
   switch (type) {
     case 'tracks':
       // PaginatedTracksNotifier использует custom listener pattern,

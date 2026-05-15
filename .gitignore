@@ -52,3 +52,5 @@ app.*.map.json
 .code-review-graph/
 .codegraph/
 .claude/settings.local.json
+
+sentry.properties

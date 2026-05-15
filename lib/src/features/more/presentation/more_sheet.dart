@@ -3,6 +3,7 @@ import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/sentry_config.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
@@ -166,6 +167,17 @@ class MoreSheet extends ConsumerWidget {
                       );
                     },
                   ),
+                  if (SentryConfig.verifyButtonEnabled) ...[
+                    const _SectionLabel(text: 'Диагностика'),
+                    _MenuItem(
+                      icon: Icons.bug_report_rounded,
+                      title: 'Verify Sentry Setup',
+                      iconColor: Colors.redAccent,
+                      onTap: () {
+                        throw StateError('Sentry verify test exception');
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -377,6 +377,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        allowCompression: false,
+        compressionQuality: 0,
       );
 
       debugPrint(

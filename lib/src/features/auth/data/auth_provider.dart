@@ -6,9 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 
-import '../../../core/config/sentry_config.dart';
+import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
@@ -194,6 +193,11 @@ class AuthNotifier extends Notifier<AuthState> {
         clientName: clientName,
         clientData: clientData,
       );
+      if (isLoggedIn) {
+        _setLogUserContextFromData(clientId: clientId, clientData: clientData);
+      } else {
+        ClientLogService.instance.clearUserContext();
+      }
 
       debugPrint(
         '✅ Auth state loaded: isLoggedIn=$isLoggedIn, email=$userEmail',
@@ -225,6 +229,10 @@ class AuthNotifier extends Notifier<AuthState> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
         state = state.copyWith(clientData: userData);
+        _setLogUserContextFromData(
+          clientId: state.clientId,
+          clientData: userData,
+        );
         debugPrint('✅ clientData refreshed from /auth/me');
       }
     } catch (e) {
@@ -304,6 +312,7 @@ class AuthNotifier extends Notifier<AuthState> {
           clientName: clientName,
           clientData: userData,
         );
+        _setLogUserContextFromData(clientId: clientId, clientData: userData);
 
         // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
         Future.microtask(() {
@@ -349,18 +358,12 @@ class AuthNotifier extends Notifier<AuthState> {
     } catch (e, stackTrace) {
       debugPrint('Login error: $e');
 
-      // Отправляем в Sentry только неожиданные ошибки
-      if (SentryConfig.enabled) {
-        await Sentry.captureException(
-          e,
-          stackTrace: stackTrace,
-          hint: Hint.withMap({
-            'type': 'login_error',
-            'email': email,
-            'domain': domain,
-          }),
-        );
-      }
+      await ClientLogService.instance.captureNonFatal(
+        'Неожиданная ошибка входа',
+        error: e,
+        stackTrace: stackTrace,
+        data: {'domain': domain},
+      );
 
       state = state.copyWith(isLoading: false, error: 'Произошла ошибка: $e');
       return false;
@@ -416,6 +419,7 @@ class AuthNotifier extends Notifier<AuthState> {
         clientName: clientName,
         clientData: userData,
       );
+      _setLogUserContextFromData(clientId: clientId, clientData: userData);
 
       // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
       Future.microtask(() {
@@ -584,6 +588,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Сначала обновляем state — при перестройке провайдеры увидят isLoggedIn: false
       state = const AuthState(isLoggedIn: false, isLoading: false);
+      ClientLogService.instance.clearUserContext();
 
       // Затем инвалидируем все провайдеры
       _invalidateAllProviders();
@@ -595,12 +600,39 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Всё равно устанавливаем состояние "разлогинен" даже если была ошибка
       state = const AuthState(isLoggedIn: false, isLoading: false);
+      ClientLogService.instance.clearUserContext();
 
       // Invalidate providers even on error
       _invalidateAllProviders();
     } finally {
       _isLoggingOut = false;
     }
+  }
+
+  void _setLogUserContextFromData({
+    required int? clientId,
+    required Map<String, dynamic>? clientData,
+  }) {
+    final agent = clientData?['agent'];
+    final agentId = clientData?['agentId'] is int
+        ? clientData!['agentId'] as int
+        : agent is Map<String, dynamic>
+        ? agent['id'] as int?
+        : null;
+    final codes = clientData?['codes'];
+    String? clientCode;
+    if (codes is List && codes.isNotEmpty) {
+      final first = codes.first;
+      if (first is Map<String, dynamic>) {
+        clientCode = first['code'] as String?;
+      }
+    }
+
+    ClientLogService.instance.setUserContext(
+      userId: clientId ?? clientData?['id'] as int?,
+      clientCode: clientCode,
+      agentId: agentId,
+    );
   }
 
   /// Инвалидация всех провайдеров данных при logout

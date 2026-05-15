@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 
+import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
@@ -418,6 +419,7 @@ class ChatController extends Notifier<ChatState> {
   /// Загрузить диалог
   Future<void> loadConversation() async {
     state = state.copyWith(isLoading: true, clearError: true);
+    ClientLogService.instance.action('Загрузка чата поддержки');
 
     try {
       final conversation = await _repository.getConversation();
@@ -434,7 +436,23 @@ class ChatController extends Notifier<ChatState> {
       // Присоединяемся к WebSocket комнате
       _wsService.joinConversation(conversation.id);
       _wsService.sendPresence(conversation.id, true);
+      ClientLogService.instance.add(
+        type: 'support_chat_loaded',
+        level: 'info',
+        message: 'Чат поддержки загружен',
+        data: {
+          'conversationId': conversation.id,
+          'messagesCount': messages.length,
+          'lastMessageId': lastId,
+        },
+      );
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'support_chat_load_error',
+        level: 'warning',
+        message: 'Не удалось загрузить чат поддержки',
+        data: {'error': e.toString()},
+      );
       state = state.copyWith(
         isLoading: false,
         error: 'Не удалось загрузить чат: $e',
@@ -451,6 +469,13 @@ class ChatController extends Notifier<ChatState> {
     if (state.isSending) return false;
 
     state = state.copyWith(isSending: true, clearError: true);
+    ClientLogService.instance.action(
+      'Отправка сообщения в чат поддержки',
+      data: {
+        'hasContent': hasContent,
+        'attachmentsCount': attachmentIds?.length ?? 0,
+      },
+    );
 
     try {
       final message = await _repository.sendMessage(
@@ -475,8 +500,20 @@ class ChatController extends Notifier<ChatState> {
         lastMessageId: nextLastMessageId,
         pendingAttachments: [], // Очищаем pending attachments
       );
+      ClientLogService.instance.add(
+        type: 'support_chat_message_sent',
+        level: 'info',
+        message: 'Сообщение в чат поддержки отправлено',
+        data: {'messageId': message.id, 'hasAttachments': hasAttachments},
+      );
       return true;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'support_chat_message_send_error',
+        level: 'warning',
+        message: 'Ошибка отправки сообщения в чат поддержки',
+        data: {'error': e.toString(), 'hasAttachments': hasAttachments},
+      );
       state = state.copyWith(
         isSending: false,
         error: 'Не удалось отправить сообщение',
@@ -490,6 +527,10 @@ class ChatController extends Notifier<ChatState> {
     if (state.conversation == null) return null;
 
     state = state.copyWith(isUploading: true, clearError: true);
+    ClientLogService.instance.action(
+      'Загрузка файла в чат поддержки',
+      data: {'source': 'file', 'conversationId': state.conversation!.id},
+    );
 
     try {
       final attachment = await _repository.uploadAttachment(
@@ -502,9 +543,21 @@ class ChatController extends Notifier<ChatState> {
         isUploading: false,
         pendingAttachments: [...state.pendingAttachments, attachment],
       );
+      ClientLogService.instance.add(
+        type: 'support_chat_attachment_uploaded',
+        level: 'info',
+        message: 'Файл в чат поддержки загружен',
+        data: {'attachmentId': attachment.id, 'source': 'file'},
+      );
 
       return attachment;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'support_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Ошибка загрузки файла в чат поддержки',
+        data: {'error': e.toString(), 'source': 'file'},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
@@ -521,6 +574,17 @@ class ChatController extends Notifier<ChatState> {
     if (state.conversation == null) return null;
 
     state = state.copyWith(isUploading: true, clearError: true);
+    ClientLogService.instance.action(
+      'Загрузка файла из bytes в чат поддержки',
+      data: {
+        'source': 'bytes',
+        'bytes': bytes.length,
+        'extension': fileName.contains('.')
+            ? fileName.split('.').last.toLowerCase()
+            : '',
+        'conversationId': state.conversation!.id,
+      },
+    );
 
     try {
       final attachment = await _repository.uploadAttachmentFromBytes(
@@ -534,9 +598,21 @@ class ChatController extends Notifier<ChatState> {
         isUploading: false,
         pendingAttachments: [...state.pendingAttachments, attachment],
       );
+      ClientLogService.instance.add(
+        type: 'support_chat_attachment_uploaded',
+        level: 'info',
+        message: 'Файл из bytes в чат поддержки загружен',
+        data: {'attachmentId': attachment.id, 'source': 'bytes'},
+      );
 
       return attachment;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'support_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Ошибка загрузки файла из bytes в чат поддержки',
+        data: {'error': e.toString(), 'source': 'bytes'},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
@@ -586,6 +662,12 @@ class ChatController extends Notifier<ChatState> {
               : lastMessageId;
 
           state = state.copyWith(messages: allMessages, lastMessageId: lastId);
+          ClientLogService.instance.add(
+            type: 'support_chat_poll_new_messages',
+            level: 'info',
+            message: 'Получены новые сообщения чата поддержки через polling',
+            data: {'count': uniqueNewMessages.length, 'lastMessageId': lastId},
+          );
 
           // Показать локальное уведомление для сообщений от поддержки
           // только если экран чата закрыт
@@ -607,6 +689,12 @@ class ChatController extends Notifier<ChatState> {
         }
       }
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'support_chat_poll_error',
+        level: 'warning',
+        message: 'Ошибка polling чата поддержки',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error polling messages: $e');
     }
   }

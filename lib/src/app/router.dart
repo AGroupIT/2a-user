@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../core/logging/client_log_service.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
@@ -41,6 +43,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
+    observers: [SentryNavigatorObserver(), ClientLogNavigatorObserver()],
     refreshListenable: _AuthRefreshNotifier(ref),
     redirect: (context, state) {
       final authState = ref.read(authProvider);
@@ -80,17 +83,24 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // Splash screen
       GoRoute(
+        name: 'splash',
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
       ),
 
       // Auth routes
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
+        name: 'login',
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        name: 'register',
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
       ),
       GoRoute(
+        name: 'forgot-password',
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
@@ -100,24 +110,30 @@ final routerProvider = Provider<GoRouter>((ref) {
             AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'home',
                 path: '/',
                 builder: (context, state) => const HomeScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'photos',
                 path: '/photos',
                 builder: (context, state) => const PhotosScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'tracks',
                 path: '/tracks',
                 builder: (context, state) {
                   final query = state.uri.queryParameters;
@@ -131,8 +147,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'invoices',
                 path: '/invoices',
                 builder: (context, state) => InvoicesScreen(
                   initialInvoiceId: state.uri.queryParameters['invoiceId'],
@@ -141,8 +159,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'support',
                 path: '/support',
                 builder: (context, state) {
                   final initialMessage = state.extra as String?;
@@ -152,8 +172,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
             routes: [
               GoRoute(
+                name: 'more',
                 path: '/more',
                 builder: (context, state) => const MoreScreen(),
               ),
@@ -162,6 +184,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        name: 'calculator',
         path: '/calculator',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
@@ -170,6 +193,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        name: 'search-nocode',
         path: '/search-nocode',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
@@ -178,6 +202,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        name: 'payment-chat',
         path: '/payment-chat',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
@@ -220,12 +245,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        name: 'news',
         path: '/news',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             const AppScaffold(title: 'Новости', child: NewsListScreen()),
         routes: [
           GoRoute(
+            name: 'news-detail',
             path: ':slug',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
@@ -239,18 +266,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        name: 'profile',
         path: '/profile',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             const AppScaffold(title: 'Профиль', child: ProfileScreen()),
       ),
       GoRoute(
+        name: 'rules',
         path: '/rules',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             const AppScaffold(title: 'Правила', child: RulesScreen()),
         routes: [
           GoRoute(
+            name: 'rule-detail',
             path: ':slug',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
@@ -264,6 +294,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        name: 'referral',
         path: '/referral',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
@@ -272,6 +303,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        name: 'tariffs',
         path: '/tariffs',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
@@ -279,6 +311,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       // SP Finance routes
       GoRoute(
+        name: 'sp-finance',
         path: '/sp-finance',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
@@ -287,6 +320,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
         routes: [
           GoRoute(
+            name: 'sp-assembly-detail',
             path: 'assemblies/:id',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
@@ -306,6 +340,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
+            name: 'sp-track-edit',
             path: 'tracks/:id',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {
@@ -345,6 +380,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       // Purchase Blanks routes
       GoRoute(
+        name: 'purchase-blanks',
         path: '/purchase-blanks',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
@@ -353,6 +389,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
         routes: [
           GoRoute(
+            name: 'purchase-blank-detail',
             path: ':id',
             parentNavigatorKey: _rootNavigatorKey,
             builder: (context, state) {

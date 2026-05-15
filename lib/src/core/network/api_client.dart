@@ -9,6 +9,8 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/sentry_config.dart';
+import '../logging/client_log_service.dart';
+import '../services/runtime/app_runtime_info.dart';
 import 'api_config.dart';
 
 /// Callback для обработки 401 ошибки (unauthorized)
@@ -33,6 +35,7 @@ class ApiClient {
   static String? _inMemoryToken;
   static Future<String?>? _tokenLoadInFlight;
   static const Duration _prefsTimeout = Duration(seconds: 3);
+  static int _requestSequence = 0;
 
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
@@ -66,6 +69,7 @@ class ApiClient {
     }
 
     // Добавляем интерсепторы
+    dio.interceptors.add(_clientTelemetryInterceptor());
     dio.interceptors.add(_authInterceptor());
 
     // Sentry interceptor для отслеживания HTTP ошибок
@@ -85,10 +89,11 @@ class ApiClient {
   /// Используется после долгого background/sleep: мобильные сети и WebView
   /// иногда оставляют keep-alive сокет в состоянии, где запрос уже не отвечает,
   /// но Future ещё ждёт receive timeout.
-  void resetConnections() {
+  void resetConnections({String reason = 'manual_or_retry'}) {
     final oldDio = _dio;
     _dio = _createDio();
     oldDio.close(force: true);
+    ClientLogService.instance.httpConnectionReset(reason: reason);
     debugPrint('[ApiClient] HTTP connections reset');
   }
 
@@ -135,7 +140,15 @@ class ApiClient {
           '[ApiClient] Network error (${e.type}), '
           'retry $attempt/$maxAttempts in ${ApiConfig.retryDelay.inMilliseconds}ms',
         );
-        resetConnections();
+        ClientLogService.instance.apiRetry(
+          method: e.requestOptions.method,
+          url: _safeRequestUrl(e.requestOptions),
+          requestId: _requestId(e.requestOptions),
+          attempt: attempt,
+          maxAttempts: maxAttempts,
+          error: e,
+        );
+        resetConnections(reason: 'retry_after_network_error');
         await Future<void>.delayed(ApiConfig.retryDelay);
       }
     }
@@ -145,6 +158,8 @@ class ApiClient {
 
   Future<Response<T>> _request<T>(
     Future<Response<T>> Function(Dio dio) requestFn, {
+    required String method,
+    required String path,
     required bool idempotent,
     Options? options,
     bool allowRetry = true,
@@ -158,9 +173,15 @@ class ApiClient {
     }
 
     try {
-      return await run().timeout(_effectiveOverallTimeout(options));
+      final timeout = _effectiveOverallTimeout(options);
+      return await run().timeout(timeout);
     } on TimeoutException {
-      resetConnections();
+      ClientLogService.instance.apiTimeout(
+        method: method,
+        path: path,
+        timeout: _effectiveOverallTimeout(options),
+      );
+      resetConnections(reason: 'overall_timeout');
       rethrow;
     }
   }
@@ -199,9 +220,29 @@ class ApiClient {
                 error.requestOptions.extra['sent_auth_token'] == true ||
                 _hasAuthorizationHeader(error.requestOptions);
             if (sentAuth) {
+              ClientLogService.instance.add(
+                type: 'auth_unauthorized',
+                level: 'warning',
+                message: 'Получен 401 для авторизованного запроса',
+                requestId: _requestId(error.requestOptions),
+                data: {
+                  'path': _safeRequestPath(error.requestOptions),
+                  'method': error.requestOptions.method,
+                },
+              );
               // Защита от "шторма" 401: если много запросов одновременно — callback один раз.
               _scheduleUnauthorizedCallback();
             } else {
+              ClientLogService.instance.add(
+                type: 'auth_unauthorized_without_token',
+                level: 'warning',
+                message: 'Получен 401 для запроса без Authorization',
+                requestId: _requestId(error.requestOptions),
+                data: {
+                  'path': _safeRequestPath(error.requestOptions),
+                  'method': error.requestOptions.method,
+                },
+              );
               if (kDebugMode) {
                 debugPrint(
                   '401 received without Authorization header — skipping automatic logout '
@@ -246,42 +287,165 @@ class ApiClient {
     return false;
   }
 
+  Interceptor _clientTelemetryInterceptor() {
+    return InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final requestId = _nextRequestId();
+        final startedAt = DateTime.now().millisecondsSinceEpoch;
+
+        options.extra['client_log_request_id'] = requestId;
+        options.extra['client_log_started_at'] = startedAt;
+        options.headers['X-Request-ID'] = requestId;
+        final operation = _businessOperation(options);
+        if (operation != null) {
+          options.extra['client_log_operation'] = operation;
+        }
+
+        try {
+          options.headers.addAll(await AppRuntimeInfo.instance.headers());
+        } catch (error) {
+          await ClientLogService.instance.captureNonFatal(
+            'Не удалось подготовить runtime headers',
+            error: error,
+            data: {'requestId': requestId, 'path': _safeRequestPath(options)},
+          );
+        }
+
+        ClientLogService.instance.apiRequest(
+          method: options.method,
+          url: _safeRequestUrl(options),
+          requestId: requestId,
+          operation: operation,
+        );
+
+        return handler.next(options);
+      },
+      onResponse: (response, handler) {
+        final options = response.requestOptions;
+        final requestId = _responseRequestId(response, options);
+        ClientLogService.instance.apiResponse(
+          method: options.method,
+          url: _safeRequestUrl(options),
+          requestId: requestId,
+          statusCode: response.statusCode,
+          durationMs: _durationMs(options),
+          operation: _operation(options),
+        );
+        return handler.next(response);
+      },
+      onError: (error, handler) {
+        final options = error.requestOptions;
+        final requestId = _responseRequestId(error.response, options);
+        ClientLogService.instance.apiError(
+          method: options.method,
+          url: _safeRequestUrl(options),
+          requestId: requestId,
+          statusCode: error.response?.statusCode,
+          durationMs: _durationMs(options),
+          type: error.type,
+          error: _safeErrorMessage(error),
+          operation: _operation(options),
+        );
+        return handler.next(error);
+      },
+    );
+  }
+
+  String _nextRequestId() {
+    _requestSequence = (_requestSequence + 1) % 1000000;
+    return 'req_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}_${_requestSequence.toRadixString(36)}';
+  }
+
+  String _responseRequestId(
+    Response<dynamic>? response,
+    RequestOptions options,
+  ) {
+    final value = response?.headers.value('x-request-id')?.trim();
+    if (value != null && value.isNotEmpty) return value;
+    return _requestId(options);
+  }
+
+  String _requestId(RequestOptions options) {
+    final value = options.extra['client_log_request_id'];
+    return value is String && value.isNotEmpty ? value : 'unknown';
+  }
+
+  String? _operation(RequestOptions options) {
+    final value = options.extra['client_log_operation'];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  int _durationMs(RequestOptions options) {
+    final startedAt = options.extra['client_log_started_at'];
+    if (startedAt is! int) return 0;
+    final duration = DateTime.now().millisecondsSinceEpoch - startedAt;
+    return duration < 0 ? 0 : duration;
+  }
+
+  String _safeErrorMessage(DioException error) {
+    final statusCode = error.response?.statusCode;
+    final message = error.message;
+    if (statusCode == null) {
+      return message ?? error.type.name;
+    }
+    return message == null || message.isEmpty
+        ? 'HTTP $statusCode'
+        : 'HTTP $statusCode: $message';
+  }
+
   /// Sentry интерсептор для отслеживания HTTP ошибок
   Interceptor _sentryInterceptor() {
     return InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        await _addHttpBreadcrumb(
+          level: SentryLevel.info,
+          message: 'HTTP ${options.method} ${_safeRequestPath(options)}',
+          requestOptions: options,
+        );
+        return handler.next(options);
+      },
+      onResponse: (response, handler) async {
+        final statusCode = response.statusCode;
+        if (statusCode != null && statusCode >= 400) {
+          await _addHttpBreadcrumb(
+            level: statusCode >= 500 ? SentryLevel.error : SentryLevel.warning,
+            message:
+                'HTTP ${response.requestOptions.method} ${_safeRequestPath(response.requestOptions)} -> $statusCode',
+            requestOptions: response.requestOptions,
+            statusCode: statusCode,
+          );
+        }
+        return handler.next(response);
+      },
       onError: (error, handler) async {
-        // Отправляем только серверные ошибки (5xx) и сетевые ошибки
         final statusCode = error.response?.statusCode;
-        final shouldReport =
-            statusCode == null || // Сетевая ошибка
-            statusCode >= 500; // Серверная ошибка
 
-        if (shouldReport) {
+        await _addHttpBreadcrumb(
+          level: statusCode != null && statusCode >= 500
+              ? SentryLevel.error
+              : SentryLevel.warning,
+          message:
+              'HTTP ${error.requestOptions.method} ${_safeRequestPath(error.requestOptions)} failed',
+          requestOptions: error.requestOptions,
+          statusCode: statusCode,
+          extra: {'dio_type': error.type.name},
+        );
+
+        // В Sentry отправляем только серверные ошибки. Сетевые таймауты,
+        // VPN/DPI/China routes и офлайн-сценарии остаются breadcrumbs.
+        if (statusCode != null && statusCode >= 500) {
           // Audit M3 (2026-04-26): не отправляем response body в Sentry,
           // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
           await Sentry.captureException(
             error,
             stackTrace: error.stackTrace,
             hint: Hint.withMap({
-              'type': 'http_error',
-              'url': error.requestOptions.uri.toString(),
+              'keep_http_error': true,
+              'type': 'http_5xx',
               'method': error.requestOptions.method,
+              'path': _safeRequestPath(error.requestOptions),
               'status_code': statusCode,
             }),
-          );
-
-          // Добавляем breadcrumb для контекста
-          Sentry.addBreadcrumb(
-            Breadcrumb(
-              message:
-                  'API Error: ${error.requestOptions.method} ${error.requestOptions.path}',
-              category: 'http',
-              level: SentryLevel.error,
-              data: {
-                'status_code': statusCode,
-                'url': error.requestOptions.uri.toString(),
-              },
-            ),
           );
         }
 
@@ -290,14 +454,251 @@ class ApiClient {
     );
   }
 
+  Future<void> _addHttpBreadcrumb({
+    required SentryLevel level,
+    required String message,
+    required RequestOptions requestOptions,
+    int? statusCode,
+    Map<String, dynamic>? extra,
+  }) {
+    final data = <String, dynamic>{
+      'method': requestOptions.method,
+      'path': _safeRequestPath(requestOptions),
+      if (_operation(requestOptions) != null)
+        'operation': _operation(requestOptions),
+      if (statusCode != null) 'status_code': statusCode,
+      if (extra != null) ...extra,
+    };
+
+    return Sentry.addBreadcrumb(
+      Breadcrumb(message: message, category: 'http', level: level, data: data),
+    );
+  }
+
+  String _safeRequestPath(RequestOptions options) {
+    return options.uri.path.isNotEmpty ? options.uri.path : options.path;
+  }
+
+  String _safeRequestUrl(RequestOptions options) {
+    final uri = options.uri;
+    final path = uri.path.isNotEmpty ? uri.path : options.path;
+    if (uri.queryParameters.isEmpty) return path;
+
+    final params = <String, String>{};
+    uri.queryParameters.forEach((key, value) {
+      params[key] = _isSensitiveQueryKey(key) ? '<redacted>' : value;
+    });
+
+    final query = Uri(queryParameters: params).query;
+    return query.isEmpty ? path : '$path?$query';
+  }
+
+  bool _isSensitiveQueryKey(String key) {
+    final lower = key.toLowerCase();
+    return lower.contains('token') ||
+        lower.contains('password') ||
+        lower.contains('secret') ||
+        lower == 'email' ||
+        lower == 'phone' ||
+        lower == 'message' ||
+        lower == 'comment' ||
+        lower == 'description';
+  }
+
+  String? _businessOperation(RequestOptions options) {
+    final method = options.method.toUpperCase();
+    final path = _safeRequestPath(options);
+
+    if (method == 'POST' && path == '/client/tracks') {
+      return 'Добавление треков';
+    }
+    if (method == 'POST' && path == '/photo-requests') {
+      return 'Создание запроса фотоотчета';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/photo-requests/[^/]+$')) {
+      return 'Обновление запроса фотоотчета';
+    }
+    if (method == 'POST' && path == '/track-questions') {
+      return 'Создание вопроса по треку';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/track-questions/[^/]+$')) {
+      return 'Обновление вопроса по треку';
+    }
+    if (method == 'POST' && _matches(path, r'^/client/tracks/[^/]+/return$')) {
+      return 'Оформление возврата трека';
+    }
+    if (method == 'PUT' && _matches(path, r'^/tracks/[^/]+$')) {
+      return 'Обновление информации о товаре';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/tracks/[^/]+$')) {
+      return 'Обновление заметки трека';
+    }
+    if (method == 'DELETE' && _matches(path, r'^/tracks/[^/]+$')) {
+      return 'Удаление трека';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/tracks/[^/]+/product-info-image$')) {
+      return 'Загрузка фото товара';
+    }
+    if (method == 'POST' && path == '/assemblies') {
+      return 'Создание сборки';
+    }
+    if (method == 'POST' && _matches(path, r'^/assemblies/[^/]+/tracks$')) {
+      return 'Добавление треков в сборку';
+    }
+    if (method == 'DELETE' && _matches(path, r'^/assemblies/[^/]+/tracks$')) {
+      return 'Удаление треков из сборки';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/assemblies/[^/]+$')) {
+      return 'Обновление сборки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/invoices/[^/]+/request-payment$')) {
+      return 'Запрос оплаты счета';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/invoices/[^/]+/apply-bonus$')) {
+      return 'Применение бонусных кг к счету';
+    }
+    if (method == 'POST' && path == '/payments/pally/create') {
+      return 'Создание онлайн-оплаты';
+    }
+    if (method == 'POST' && path == '/payments/usdt/create') {
+      return 'Создание USDT-оплаты';
+    }
+    if (method == 'POST' && path == '/client/purchase-blanks') {
+      return 'Создание бланка выкупа';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/purchase-blanks/[^/]+/submit$')) {
+      return 'Отправка бланка выкупа';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/purchase-blanks/[^/]+/cancel$')) {
+      return 'Отмена бланка выкупа';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/purchase-blanks/[^/]+/items$')) {
+      return 'Добавление товара в бланк выкупа';
+    }
+    if ((method == 'PUT' || method == 'DELETE') &&
+        _matches(path, r'^/client/purchase-blanks/[^/]+/items/[^/]+$')) {
+      return method == 'PUT'
+          ? 'Редактирование товара в бланке выкупа'
+          : 'Удаление товара из бланка выкупа';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/purchase-blanks/[^/]+/items/[^/]+/photos$')) {
+      return 'Загрузка фото товара в бланке выкупа';
+    }
+    if (method == 'PATCH' && path == '/client/profile') {
+      return 'Обновление профиля';
+    }
+    if (method == 'POST' && path == '/client/profile') {
+      return 'Изменение профиля';
+    }
+    if (method == 'POST' && path == '/client/problem-reports') {
+      return 'Отправка отчета о проблеме';
+    }
+    if (method == 'POST' && path == '/client/referral/link') {
+      return 'Привязка реферального кода';
+    }
+    if (method == 'POST' && _matches(path, r'^/client/chat(/.*)?$')) {
+      return 'Отправка сообщения в поддержку';
+    }
+    if (method == 'POST' && _matches(path, r'^/client/payment-chat(/.*)?$')) {
+      return 'Отправка сообщения в чат оплаты';
+    }
+    if (method == 'POST' && path == '/support/attachments') {
+      return 'Загрузка файла в чат поддержки';
+    }
+    if (method == 'POST' && path == '/client/payment-chat/attachments') {
+      return 'Загрузка файла в чат оплаты';
+    }
+    if (method == 'PATCH' && path == '/notifications') {
+      return 'Обновление уведомлений';
+    }
+    if (method == 'POST' && path == '/photos/upload') {
+      return 'Загрузка фото';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/client/sp/assemblies/[^/]+$')) {
+      return 'Обновление совместной покупки';
+    }
+    if (method == 'PATCH' && _matches(path, r'^/client/sp/tracks/[^/]+$')) {
+      return 'Обновление трека совместной покупки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/sp/assemblies/[^/]+/participant-payment$')) {
+      return 'Обновление оплаты участника совместной покупки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/sp/assemblies/[^/]+/apply-rate$')) {
+      return 'Применение курса совместной покупки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/client/sp/assemblies/[^/]+/calculate-shipping$')) {
+      return 'Расчет доставки совместной покупки';
+    }
+    if (method == 'POST' && path == '/shop/purchase-lists') {
+      return 'Создание списка совместной покупки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/shop/purchase-lists/[^/]+/items$')) {
+      return 'Добавление товара в совместную покупку';
+    }
+    if ((method == 'PATCH' || method == 'DELETE') &&
+        _matches(path, r'^/shop/purchase-lists/[^/]+/items/[^/]+$')) {
+      return method == 'PATCH'
+          ? 'Редактирование товара в совместной покупке'
+          : 'Удаление товара из совместной покупки';
+    }
+    if (method == 'POST' &&
+        _matches(path, r'^/shop/purchase-lists/[^/]+/submit$')) {
+      return 'Отправка совместной покупки';
+    }
+    if (method == 'POST' && path == '/client-codes/link-by-pin') {
+      return 'Привязка кода клиента';
+    }
+    if (method == 'POST' && path == '/devices') {
+      return 'Регистрация устройства для push';
+    }
+    if (method == 'DELETE' && path == '/devices') {
+      return 'Удаление устройства для push';
+    }
+    if (method == 'POST' && path == '/registration-requests') {
+      return 'Отправка заявки на регистрацию';
+    }
+    if (method == 'POST' && path == '/password-reset/request') {
+      return 'Запрос восстановления пароля';
+    }
+    if (method == 'POST' && path == '/password-reset/verify') {
+      return 'Проверка восстановления пароля';
+    }
+    if (method == 'POST' && path == '/password-reset/complete') {
+      return 'Завершение восстановления пароля';
+    }
+    if (method == 'POST' && path == '/register') {
+      return 'Регистрация клиента';
+    }
+    if (method == 'POST' && path == '/login') {
+      return 'Авторизация клиента';
+    }
+
+    return null;
+  }
+
+  bool _matches(String path, String pattern) {
+    return RegExp(pattern).hasMatch(path);
+  }
+
   /// Логирование запросов (только в debug)
   Interceptor _loggingInterceptor() {
     return LogInterceptor(
       request: true,
-      requestHeader: true,
-      requestBody: true,
+      requestHeader: false,
+      requestBody: false,
       responseHeader: false,
-      responseBody: true,
+      responseBody: false,
       error: true,
       logPrint: (object) => debugPrint(_sanitizeLogLine(object.toString())),
     );
@@ -368,6 +769,12 @@ class ApiClient {
     } catch (e) {
       // PlatformException может быть транзиентной (iOS Keychain до первой разблокировки,
       // после обновления приложения и т.д.).
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось прочитать токен из SecureStorage',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout reading token from SecureStorage: $e');
     }
 
@@ -385,6 +792,12 @@ class ApiClient {
       );
       return prefs.getString(_tokenKey);
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось прочитать токен из SharedPreferences',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout reading token from SharedPreferences: $e');
       return null;
     }
@@ -397,6 +810,12 @@ class ApiClient {
       );
       await prefs.setString(_tokenKey, token);
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось сохранить токен в SharedPreferences',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout saving token to SharedPreferences: $e');
     }
   }
@@ -408,6 +827,12 @@ class ApiClient {
       );
       await prefs.remove(_tokenKey);
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось очистить токен в SharedPreferences',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout clearing token from SharedPreferences: $e');
     }
   }
@@ -421,6 +846,10 @@ class ApiClient {
     // На web и desktop сохраняем в SharedPreferences (localStorage)
     if (kIsWeb || _isDesktop) {
       await _writeTokenToPrefs(token);
+      ClientLogService.instance.action(
+        'Токен сохранён',
+        data: {'storage': 'prefs'},
+      );
       debugPrint('Token saved to localStorage');
       return;
     }
@@ -433,8 +862,18 @@ class ApiClient {
       await _storage
           .write(key: _tokenKey, value: token)
           .timeout(const Duration(seconds: 5));
+      ClientLogService.instance.action(
+        'Токен сохранён',
+        data: {'storage': 'secure_storage'},
+      );
       debugPrint('Token saved to SecureStorage');
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось сохранить токен в SecureStorage',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout saving token to SecureStorage: $e');
     }
 
@@ -451,6 +890,10 @@ class ApiClient {
     // На web и desktop удаляем из SharedPreferences
     if (kIsWeb || _isDesktop) {
       await _removeTokenFromPrefs();
+      ClientLogService.instance.action(
+        'Токен очищен',
+        data: {'storage': 'prefs'},
+      );
       debugPrint('Token cleared from localStorage');
       return;
     }
@@ -458,8 +901,18 @@ class ApiClient {
     // На мобильных платформах удаляем из FlutterSecureStorage
     try {
       await _storage.delete(key: _tokenKey).timeout(const Duration(seconds: 5));
+      ClientLogService.instance.action(
+        'Токен очищен',
+        data: {'storage': 'secure_storage'},
+      );
       debugPrint('Token cleared from SecureStorage');
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось очистить токен в SecureStorage',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error/timeout clearing token from SecureStorage: $e');
     }
 
@@ -495,6 +948,8 @@ class ApiClient {
     return _request(
       (dio) =>
           dio.get<T>(path, queryParameters: queryParameters, options: options),
+      method: 'GET',
+      path: path,
       idempotent: true,
       options: options,
     );
@@ -515,6 +970,8 @@ class ApiClient {
           queryParameters: queryParameters,
           options: options,
         ),
+        method: 'POST',
+        path: path,
         idempotent: false,
         options: options,
         allowRetry: false,
@@ -528,6 +985,8 @@ class ApiClient {
         queryParameters: queryParameters,
         options: options,
       ),
+      method: 'POST',
+      path: path,
       idempotent: false,
       options: options,
     );
@@ -547,6 +1006,8 @@ class ApiClient {
         queryParameters: queryParameters,
         options: options,
       ),
+      method: 'PUT',
+      path: path,
       idempotent: false,
       options: options,
     );
@@ -566,6 +1027,8 @@ class ApiClient {
         queryParameters: queryParameters,
         options: options,
       ),
+      method: 'PATCH',
+      path: path,
       idempotent: false,
       options: options,
     );
@@ -585,6 +1048,8 @@ class ApiClient {
         queryParameters: queryParameters,
         options: options,
       ),
+      method: 'DELETE',
+      path: path,
       idempotent: false,
       options: options,
     );
@@ -615,6 +1080,8 @@ class ApiClient {
         options: uploadOptions,
         onSendProgress: onSendProgress,
       ),
+      method: 'POST',
+      path: path,
       idempotent: false,
       options: uploadOptions,
     );

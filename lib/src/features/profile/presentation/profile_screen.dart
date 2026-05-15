@@ -21,6 +21,8 @@ import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../../core/logging/client_log_service.dart';
+import '../data/problem_report_repository.dart';
 import '../data/profile_provider.dart';
 
 void _showStyledSnackBar(
@@ -104,6 +106,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // Password change state
   bool _isChangingPassword = false;
   bool _isSavingPassword = false;
+  bool _isSendingProblemReport = false;
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -228,6 +231,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       key: _companyKey,
                       child: _buildCompanySection(profile),
                     ),
+                    const SizedBox(height: 15),
+
+                    _buildProblemReportSection(profile),
                     const SizedBox(height: 15),
 
                     // Export Section
@@ -1252,6 +1258,193 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildProblemReportSection(ClientProfile profile) {
+    return _buildSectionCard(
+      title: 'Помощь',
+      children: [
+        _buildExportButton(
+          icon: Icons.bug_report_outlined,
+          label: 'Сообщить о проблеме',
+          onPressed: () => _showProblemReportSheet(profile),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showProblemReportSheet(ClientProfile profile) async {
+    ClientLogService.instance.action('Открыт экран сообщения о проблеме');
+    final controller = TextEditingController();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 25,
+                      offset: Offset(3, 4),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE1E1E7),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('Сообщить о проблеме', style: _sectionTitleStyle),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Опишите, что не работает. Мы приложим последние действия и ошибки API без паролей, токенов и чувствительных данных.',
+                        style: TextStyle(
+                          color: Color(0x992F2F2F),
+                          fontFamily: 'Gilroy',
+                          fontSize: 14,
+                          height: 18 / 14,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: controller,
+                        minLines: 4,
+                        maxLines: 7,
+                        enabled: !_isSendingProblemReport,
+                        textInputAction: TextInputAction.newline,
+                        decoration: appInputDecoration(
+                          context,
+                          hintText: 'Например: не открываются фотоотчёты',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isSendingProblemReport
+                                  ? null
+                                  : () => Navigator.pop(sheetContext),
+                              child: const Text('Отмена'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _isSendingProblemReport
+                                  ? null
+                                  : () async {
+                                      final description = controller.text
+                                          .trim();
+                                      if (description.length < 5) {
+                                        _showStyledSnackBar(
+                                          context,
+                                          'Опишите проблему подробнее',
+                                          isError: true,
+                                        );
+                                        return;
+                                      }
+
+                                      setState(
+                                        () => _isSendingProblemReport = true,
+                                      );
+                                      setSheetState(() {});
+                                      await _submitProblemReport(
+                                        profile,
+                                        description,
+                                        sheetContext,
+                                      );
+                                      if (mounted) {
+                                        setState(
+                                          () => _isSendingProblemReport = false,
+                                        );
+                                      }
+                                      if (context.mounted) {
+                                        setSheetState(() {});
+                                      }
+                                    },
+                              child: _isSendingProblemReport
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text('Отправить'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(controller.dispose);
+  }
+
+  Future<void> _submitProblemReport(
+    ClientProfile profile,
+    String description,
+    BuildContext sheetContext,
+  ) async {
+    ClientLogService.instance.action('Отправка отчёта о проблеме');
+    try {
+      final currentScreen = GoRouterState.of(context).uri.toString();
+      final id = await ref
+          .read(problemReportRepositoryProvider)
+          .send(
+            description: description,
+            profile: profile,
+            currentScreen: currentScreen,
+          );
+      if (!mounted) return;
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
+      _showStyledSnackBar(
+        context,
+        id == null ? 'Отчёт отправлен' : 'Отчёт #$id отправлен',
+      );
+    } catch (error, stackTrace) {
+      await ClientLogService.instance.captureNonFatal(
+        'Не удалось отправить отчёт о проблеме',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      _showStyledSnackBar(
+        context,
+        'Не удалось отправить отчёт: $error',
+        isError: true,
+      );
+    }
   }
 
   Widget _buildReadonlyField({required String label, required String value}) {

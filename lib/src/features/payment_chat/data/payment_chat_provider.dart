@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 
+import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
@@ -469,6 +470,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   /// Загрузить диалог
   Future<void> loadConversation() async {
     state = state.copyWith(isLoading: true, clearError: true);
+    ClientLogService.instance.action('Загрузка чата по оплате');
 
     try {
       final conversation = await _repository.getConversation();
@@ -485,7 +487,23 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       // Присоединяемся к WebSocket комнате
       _wsService.joinConversation(conversation.id);
       _wsService.sendPresence(conversation.id, true);
+      ClientLogService.instance.add(
+        type: 'payment_chat_loaded',
+        level: 'info',
+        message: 'Чат по оплате загружен',
+        data: {
+          'conversationId': conversation.id,
+          'messagesCount': messages.length,
+          'lastMessageId': lastId,
+        },
+      );
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'payment_chat_load_error',
+        level: 'warning',
+        message: 'Не удалось загрузить чат по оплате',
+        data: {'error': e.toString()},
+      );
       state = state.copyWith(
         isLoading: false,
         error: 'Не удалось загрузить чат: $e',
@@ -505,6 +523,14 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     }
 
     state = state.copyWith(isSending: true, clearError: true);
+    ClientLogService.instance.action(
+      'Отправка сообщения в чат по оплате',
+      data: {
+        'hasContent': content.trim().isNotEmpty,
+        'attachmentsCount': attachmentIds?.length ?? 0,
+        'hasMetadata': metadata != null && metadata.isNotEmpty,
+      },
+    );
 
     try {
       final message = await _repository.sendMessage(
@@ -520,8 +546,23 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         isSending: false,
         lastMessageId: message.id,
       );
+      ClientLogService.instance.add(
+        type: 'payment_chat_message_sent',
+        level: 'info',
+        message: 'Сообщение в чат по оплате отправлено',
+        data: {
+          'messageId': message.id,
+          'hasAttachments': attachmentIds != null && attachmentIds.isNotEmpty,
+        },
+      );
       return true;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'payment_chat_message_send_error',
+        level: 'warning',
+        message: 'Ошибка отправки сообщения в чат по оплате',
+        data: {'error': e.toString()},
+      );
       state = state.copyWith(
         isSending: false,
         error: 'Не удалось отправить сообщение',
@@ -536,6 +577,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     int conversationId,
   ) async {
     state = state.copyWith(isUploading: true, clearError: true);
+    ClientLogService.instance.action(
+      'Загрузка файла в чат по оплате',
+      data: {'source': 'file', 'conversationId': conversationId},
+    );
 
     try {
       final result = await _repository.uploadAttachment(file, conversationId);
@@ -546,15 +591,33 @@ class PaymentChatController extends Notifier<PaymentChatState> {
           isUploading: false,
           pendingAttachments: [...state.pendingAttachments, result],
         );
+        ClientLogService.instance.add(
+          type: 'payment_chat_attachment_uploaded',
+          level: 'info',
+          message: 'Файл в чат по оплате загружен',
+          data: {'source': 'file', 'attachmentId': result['id']},
+        );
         return result;
       }
 
+      ClientLogService.instance.add(
+        type: 'payment_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Загрузка файла в чат по оплате вернула пустой ответ',
+        data: {'source': 'file'},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
       );
       return null;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'payment_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Ошибка загрузки файла в чат по оплате',
+        data: {'source': 'file', 'error': e.toString()},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Ошибка при загрузке файла: $e',
@@ -570,6 +633,17 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     int conversationId,
   ) async {
     state = state.copyWith(isUploading: true, clearError: true);
+    ClientLogService.instance.action(
+      'Загрузка файла из bytes в чат по оплате',
+      data: {
+        'source': 'bytes',
+        'bytes': bytes.length,
+        'extension': fileName.contains('.')
+            ? fileName.split('.').last.toLowerCase()
+            : '',
+        'conversationId': conversationId,
+      },
+    );
 
     try {
       final result = await _repository.uploadAttachmentFromBytes(
@@ -584,15 +658,33 @@ class PaymentChatController extends Notifier<PaymentChatState> {
           isUploading: false,
           pendingAttachments: [...state.pendingAttachments, result],
         );
+        ClientLogService.instance.add(
+          type: 'payment_chat_attachment_uploaded',
+          level: 'info',
+          message: 'Файл из bytes в чат по оплате загружен',
+          data: {'source': 'bytes', 'attachmentId': result['id']},
+        );
         return result;
       }
 
+      ClientLogService.instance.add(
+        type: 'payment_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Загрузка файла из bytes в чат по оплате вернула пустой ответ',
+        data: {'source': 'bytes'},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Не удалось загрузить файл',
       );
       return null;
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'payment_chat_attachment_upload_error',
+        level: 'warning',
+        message: 'Ошибка загрузки файла из bytes в чат по оплате',
+        data: {'source': 'bytes', 'error': e.toString()},
+      );
       state = state.copyWith(
         isUploading: false,
         error: 'Ошибка при загрузке файла: $e',
@@ -643,6 +735,12 @@ class PaymentChatController extends Notifier<PaymentChatState> {
               : lastMessageId;
 
           state = state.copyWith(messages: allMessages, lastMessageId: lastId);
+          ClientLogService.instance.add(
+            type: 'payment_chat_poll_new_messages',
+            level: 'info',
+            message: 'Получены новые сообщения чата по оплате через polling',
+            data: {'count': uniqueNewMessages.length, 'lastMessageId': lastId},
+          );
 
           // Показать локальное уведомление для сообщений от бухгалтерии
           final isChatOpen = ref.read(isPaymentChatScreenOpenProvider);
@@ -663,6 +761,12 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         }
       }
     } catch (e) {
+      ClientLogService.instance.add(
+        type: 'payment_chat_poll_error',
+        level: 'warning',
+        message: 'Ошибка polling чата по оплате',
+        data: {'error': e.toString()},
+      );
       debugPrint('Error polling payment messages: $e');
     }
   }

@@ -1,0 +1,15 @@
+// Sentry runtime config for Xcode Archive/Run builds.
+// DART_DEFINES values are base64-encoded KEY=VALUE strings.
+//
+// Release/dist are intentionally not hardcoded here: Flutter/Xcode can change
+// FLUTTER_BUILD_NAME and FLUTTER_BUILD_NUMBER, while the Dart app derives
+// Sentry release/dist from native PackageInfo when SENTRY_RELEASE/SENTRY_DIST
+// are absent.
+//
+// To temporarily show the hidden "Verify Sentry Setup" button in Release
+// builds, append this base64 define to DART_DEFINES and remove it afterwards:
+// U0VOVFJZX1ZFUklGWV9CVVRUT049dHJ1ZQ==
+//
+// To temporarily record every replay session in Release builds, append:
+// U0VOVFJZX1JFUExBWV9TRVNTSU9OX1NBTVBMRV9SQVRFPTEuMA==
+DART_DEFINES = $(inherited),U0VOVFJZX0RTTj1odHRwczovLzE3NWEyOGZjNmIzYzllOTA3NDcxYWU5YTU5ZDc5MTJhQG80NTExMzk0MDAzMjg4MDY0LmluZ2VzdC5kZS5zZW50cnkuaW8vNDUxMTM5NDE0NDY0OTI5Ng==,U0VOVFJZX0VOVklST05NRU5UPXByb2R1Y3Rpb24=

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.14+43
+version: 1.2.15+44
 
 environment:
   sdk: ^3.10.4
@@ -84,7 +84,7 @@ dependencies:
   http_parser: ^4.1.2
 
   # Error tracking
-  sentry_flutter: ^9.0.0
+  sentry_flutter: ^9.20.0
   flutter_cache_manager: ^3.4.1
 
   # Analytics
@@ -100,6 +100,7 @@ dependencies:
   qr_flutter: ^4.1.0
 
 dev_dependencies:
+  sentry_dart_plugin: ^3.3.0
   flutter_test:
     sdk: flutter
 
@@ -220,3 +221,10 @@ flutter_native_splash:
   ios: true
   android: true
   web: false
+
+sentry:
+  upload_debug_symbols: true
+  upload_source_maps: true
+  upload_sources: true
+  project: 2a-user
+  org: 2a-logistic

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../logging/client_log_service.dart';
 import 'app_colors.dart';
 
 class AppToast {
@@ -18,6 +19,12 @@ class AppToast {
     Color? backgroundColor,
     Duration duration = const Duration(seconds: 3),
   }) {
+    ClientLogService.instance.shownMessage(
+      message,
+      isError: isError,
+      source: 'app_toast',
+    );
+
     final content = Row(
       children: [
         Container(
@@ -61,6 +68,18 @@ class AppToast {
   }
 
   static void showFromSnackBar(BuildContext context, SnackBar snackBar) {
+    final snackText = _extractText(snackBar.content);
+    final inferredError = _looksLikeError(snackText);
+    ClientLogService.instance.shownMessage(
+      snackText ?? 'SnackBar content: ${snackBar.content.runtimeType}',
+      isError: inferredError,
+      source: 'snackbar',
+      data: {
+        'contentType': snackBar.content.runtimeType.toString(),
+        'hasAction': snackBar.action != null,
+      },
+    );
+
     final action = snackBar.action;
     final content = action == null
         ? snackBar.content
@@ -75,6 +94,7 @@ class AppToast {
     showContent(
       context,
       content: content,
+      isError: inferredError,
       backgroundColor: snackBar.backgroundColor,
       duration: snackBar.duration,
     );
@@ -117,6 +137,28 @@ class AppToast {
     _timer = null;
     _entry?.remove();
     _entry = null;
+  }
+
+  static String? _extractText(Widget widget) {
+    if (widget is Text) {
+      return widget.data ?? widget.textSpan?.toPlainText();
+    }
+    if (widget is RichText) {
+      return widget.text.toPlainText();
+    }
+    return null;
+  }
+
+  static bool _looksLikeError(String? message) {
+    if (message == null) return false;
+    final value = message.toLowerCase();
+    return value.contains('ошиб') ||
+        value.contains('не удалось') ||
+        value.contains('не авториз') ||
+        value.contains('failed') ||
+        value.contains('exception') ||
+        value.contains('timeout') ||
+        value.contains('denied');
   }
 }
 

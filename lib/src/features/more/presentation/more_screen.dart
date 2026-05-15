@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/sentry_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
@@ -115,6 +116,22 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                 ),
               ],
             ),
+            if (SentryConfig.verifyButtonEnabled) ...[
+              const SizedBox(height: 24),
+              _MenuSection(
+                title: 'Диагностика',
+                items: [
+                  _MenuItem(
+                    icon: CupertinoIcons.exclamationmark_triangle,
+                    title: 'Verify Sentry Setup',
+                    subtitle: 'Отправить тестовую ошибку',
+                    onTap: () {
+                      throw StateError('Sentry verify test exception');
+                    },
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

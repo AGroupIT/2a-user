@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../core/logging/client_log_service.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
 import '../core/services/app_language_service.dart';
@@ -10,6 +11,7 @@ import '../core/services/delta_sync_provider.dart';
 import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
 import '../core/ui/demo_mode_banner.dart';
+import '../features/auth/application/sentry_context_provider.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/notifications/application/notifications_controller.dart';
 import 'router.dart';
@@ -40,6 +42,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void _setupUnauthorizedHandler() {
     final apiClient = ref.read(apiClientProvider);
     apiClient.setOnUnauthorizedCallback(() {
+      ClientLogService.instance.add(
+        type: 'auth_logout_by_401',
+        level: 'warning',
+        message: 'Запускаем выход из-за 401',
+      );
       ref.read(authProvider.notifier).logout();
     });
   }
@@ -53,6 +60,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    ClientLogService.instance.add(
+      type: 'app_lifecycle',
+      level: 'info',
+      message: 'Состояние приложения: ${state.name}',
+      data: {'state': state.name},
+    );
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -76,7 +89,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       debugPrint(
         '[App] Resumed after ${pausedFor.inSeconds}s — force WS reconnect',
       );
-      ref.read(apiClientProvider).resetConnections();
+      ClientLogService.instance.add(
+        type: 'app_resumed_refresh',
+        level: 'warning',
+        message: 'Приложение вернулось из background, пересоздаём соединения',
+        data: {'pausedForSeconds': pausedFor.inSeconds},
+      );
+      ref.read(apiClientProvider).resetConnections(reason: 'app_resumed');
       ref.read(webSocketServiceProvider).forceReconnect();
       Future.microtask(() {
         if (!mounted) return;
@@ -91,6 +110,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     // WebSocket + delta sync: watch ensures re-trigger on auth state change
     ref.watch(webSocketAutoConnectProvider);
     ref.watch(deltaSyncProvider);
+    ref.watch(sentryContextProvider);
 
     final router = ref.watch(routerProvider);
     final brandColors = ref.watch(brandColorsProvider);

@@ -18,6 +18,9 @@ WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
 MOBILE_API_BASE_URL="${MOBILE_API_BASE_URL:-$WEB_API_BASE_URL}"
 MOBILE_MEDIA_BASE_URL="${MOBILE_MEDIA_BASE_URL:-$WEB_MEDIA_BASE_URL}"
+SENTRY_DSN="${SENTRY_DSN:-https://175a28fc6b3c9e907471ae9a59d7912a@o4511394003288064.ingest.de.sentry.io/4511394144649296}"
+SENTRY_PROJECT="${SENTRY_PROJECT:-2a-user}"
+SENTRY_ORG="${SENTRY_ORG:-2a-logistic}"
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
@@ -59,6 +62,36 @@ load_coolify_token() {
   fi
 }
 
+load_sentry_auth_token() {
+  if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
+    return 0
+  fi
+
+  if command -v security >/dev/null 2>&1; then
+    local keychain_account
+    for keychain_account in "${SENTRY_KEYCHAIN_ACCOUNT:-}" "${USER:-}" "${SUDO_USER:-}" "$(stat -f %Su "$PWD" 2>/dev/null || true)"; do
+      if [ -z "$keychain_account" ]; then
+        continue
+      fi
+
+      local keychain_token
+      keychain_token=$(security find-generic-password -a "$keychain_account" -s 2a-user-sentry-auth-token -w 2>/dev/null || true)
+      if [ -n "$keychain_token" ]; then
+        export SENTRY_AUTH_TOKEN="$keychain_token"
+        return 0
+      fi
+    done
+  fi
+
+  if command -v launchctl >/dev/null 2>&1; then
+    local launchctl_token
+    launchctl_token=$(launchctl getenv SENTRY_AUTH_TOKEN 2>/dev/null || true)
+    if [ -n "$launchctl_token" ]; then
+      export SENTRY_AUTH_TOKEN="$launchctl_token"
+    fi
+  fi
+}
+
 # RuStore API
 RUSTORE_API="https://public-api.rustore.ru"
 RUSTORE_KEY_ID="2351027924"
@@ -73,6 +106,39 @@ FULL_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
 VERSION=$(echo "$FULL_VERSION" | cut -d'+' -f1)
 BUILD_NUMBER=$(echo "$FULL_VERSION" | cut -d'+' -f2)
 echo "📦 Version: $VERSION (build $BUILD_NUMBER)"
+
+SENTRY_RELEASE="${SENTRY_RELEASE:-com.twoalogistic.user@$FULL_VERSION}"
+SENTRY_DIST="${SENTRY_DIST:-$BUILD_NUMBER}"
+load_sentry_auth_token
+SENTRY_DART_DEFINES=()
+if [ -n "${SENTRY_DSN:-}" ]; then
+  SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
+  SENTRY_DART_DEFINES+=(--dart-define=SENTRY_DSN="$SENTRY_DSN")
+  SENTRY_DART_DEFINES+=(--dart-define=SENTRY_ENVIRONMENT="$SENTRY_ENVIRONMENT")
+  SENTRY_DART_DEFINES+=(--dart-define=SENTRY_RELEASE="$SENTRY_RELEASE")
+  SENTRY_DART_DEFINES+=(--dart-define=SENTRY_DIST="$SENTRY_DIST")
+  if [ -n "${SENTRY_SAMPLE_RATE:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_SAMPLE_RATE="$SENTRY_SAMPLE_RATE")
+  fi
+  if [ -n "${SENTRY_ENABLE_TRACES:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_ENABLE_TRACES="$SENTRY_ENABLE_TRACES")
+  fi
+  if [ -n "${SENTRY_TRACES_SAMPLE_RATE:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_TRACES_SAMPLE_RATE="$SENTRY_TRACES_SAMPLE_RATE")
+  fi
+  if [ -n "${SENTRY_VERIFY_BUTTON:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_VERIFY_BUTTON="$SENTRY_VERIFY_BUTTON")
+  fi
+  if [ -n "${SENTRY_REPLAY_SESSION_SAMPLE_RATE:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_REPLAY_SESSION_SAMPLE_RATE="$SENTRY_REPLAY_SESSION_SAMPLE_RATE")
+  fi
+  if [ -n "${SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE:-}" ]; then
+    SENTRY_DART_DEFINES+=(--dart-define=SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE="$SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE")
+  fi
+  echo "🧭 Sentry: enabled ($SENTRY_ENVIRONMENT, release $SENTRY_RELEASE, dist $SENTRY_DIST)"
+else
+  echo "🧭 Sentry: disabled (SENTRY_DSN is empty)"
+fi
 
 sync_coolify_shared() {
   local src="../2a-shared"
@@ -113,6 +179,26 @@ sync_coolify_shared() {
       -o -name 'AGENTS.md' -o -name 'CLAUDE.md' -o -name 'CHANGELOG.md' -o -name 'README.md' \
       -o -name 'test' -o -name 'build' -o -name '.DS_Store' \) -prune -exec rm -rf {} +
   fi
+}
+
+run_sentry_upload() {
+  local label="$1"
+  if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+    echo "🧭 Sentry: skip debug upload for ${label} (SENTRY_AUTH_TOKEN is empty)"
+    return 0
+  fi
+
+  echo "🧭 Sentry: uploading debug files/source maps for ${label}..."
+  SENTRY_PROJECT="$SENTRY_PROJECT" \
+  SENTRY_ORG="$SENTRY_ORG" \
+  SENTRY_RELEASE="$SENTRY_RELEASE" \
+  SENTRY_DIST="$SENTRY_DIST" \
+    dart run sentry_dart_plugin \
+      --sentry-define=project="$SENTRY_PROJECT" \
+      --sentry-define=org="$SENTRY_ORG" \
+      --sentry-define=release="$SENTRY_RELEASE" \
+      --sentry-define=dist="$SENTRY_DIST" \
+      --sentry-define=commits=false
 }
 
 commit_if_needed() {
@@ -254,8 +340,11 @@ if $BUILD_WEB; then
 
   echo "🌐 Building Flutter Web..."
   flutter build web --release --pwa-strategy none \
+    --source-maps \
     --dart-define=API_BASE_URL="$WEB_API_BASE_URL" \
-    --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL"
+    --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL" \
+    "${SENTRY_DART_DEFINES[@]}"
+  run_sentry_upload "web"
 
   echo "📋 Copying firebase-messaging-sw.js..."
   cp web/firebase-messaging-sw.js build/web/
@@ -278,7 +367,9 @@ if $BUILD_AAB; then
     flutter build appbundle --release --flavor rustore \
       --dart-define=APP_DISTRIBUTION=rustore \
       --dart-define=API_BASE_URL="$MOBILE_API_BASE_URL" \
-      --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL"
+      --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL" \
+      "${SENTRY_DART_DEFINES[@]}"
+    run_sentry_upload "rustore-aab"
   fi
 
   if [ ! -f "$AAB_PATH" ]; then
@@ -459,7 +550,9 @@ if $BUILD_APK; then
   flutter build apk --release --flavor direct \
     --dart-define=APP_DISTRIBUTION=direct \
     --dart-define=API_BASE_URL="$MOBILE_API_BASE_URL" \
-    --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL"
+    --dart-define=MEDIA_BASE_URL="$MOBILE_MEDIA_BASE_URL" \
+    "${SENTRY_DART_DEFINES[@]}"
+  run_sentry_upload "direct-apk"
 
   APK_PATH="build/app/outputs/flutter-apk/app-direct-release.apk"
 
