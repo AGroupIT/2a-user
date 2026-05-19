@@ -8,6 +8,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/photos_provider.dart';
 import '../domain/photo_item.dart';
@@ -167,12 +168,13 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     }
 
     if (state.error != null && state.photos.isEmpty) {
+      final errorInfo = ErrorUtils.getErrorInfo(state.error);
       return [
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'Не удалось загрузить фото: ${state.error}',
+              'Не удалось загрузить фото: ${errorInfo.message}',
               style: const TextStyle(color: Colors.red),
             ),
           ),

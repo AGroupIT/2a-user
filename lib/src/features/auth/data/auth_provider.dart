@@ -109,19 +109,25 @@ class AuthNotifier extends Notifier<AuthState> {
 
     // Гарантируем что auth state загрузится за 10 секунд максимум
     // Если что-то зависает (SecureStorage, SharedPrefs) — не блокируем UI навсегда
+    Timer? timeoutTimer;
     try {
-      await Future.any([
-        _doLoadAuthState(),
-        Future.delayed(const Duration(seconds: 10), () {
-          throw TimeoutException('Auth state loading timed out after 10s');
-        }),
-      ]);
+      final timeout = Completer<void>();
+      timeoutTimer = Timer(const Duration(seconds: 10), () {
+        if (!timeout.isCompleted) {
+          timeout.completeError(
+            TimeoutException('Auth state loading timed out after 10s'),
+          );
+        }
+      });
+      await Future.any([_doLoadAuthState(), timeout.future]);
     } catch (e) {
       debugPrint('❌ _loadAuthState timeout/error: $e');
       if (!_initialLoadDone) {
         _initialLoadDone = true;
         state = const AuthState(isLoggedIn: false, isLoading: false);
       }
+    } finally {
+      timeoutTimer?.cancel();
     }
   }
 
@@ -207,6 +213,9 @@ class AuthNotifier extends Notifier<AuthState> {
       // Это важно для корректной передачи clientCodeId при создании сборок.
       if (isLoggedIn) {
         _refreshClientDataInBackground();
+        if (userDomain != null && userDomain.isNotEmpty) {
+          unawaited(_registerForPush(userDomain));
+        }
       }
     } catch (e, stackTrace) {
       // Если что-то пошло не так при загрузке состояния — не зависаем на сплэше,
@@ -228,6 +237,7 @@ class AuthNotifier extends Notifier<AuthState> {
         final userData = response.data as Map<String, dynamic>;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
+        unawaited(cacheClientProfileData(userData));
         state = state.copyWith(clientData: userData);
         _setLogUserContextFromData(
           clientId: state.clientId,
@@ -297,6 +307,7 @@ class AuthNotifier extends Notifier<AuthState> {
         }
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
+        unawaited(cacheClientProfileData(userData));
 
         // Сбрасываем только обучение, не принятие правил.
         final showcaseService = ref.read(showcaseServiceProvider);
@@ -326,7 +337,7 @@ class AuthNotifier extends Notifier<AuthState> {
         });
 
         // Регистрируем устройство для push-уведомлений
-        _registerForPush(clientDomain);
+        unawaited(_registerForPush(clientDomain));
 
         return true;
       } else {
@@ -403,6 +414,7 @@ class AuthNotifier extends Notifier<AuthState> {
       }
       await prefs.setString(_kClientNameKey, clientName);
       await prefs.setString(_kClientDataKey, jsonEncode(userData));
+      unawaited(cacheClientProfileData(userData));
 
       // Сбрасываем только обучение, не принятие правил.
       final showcaseService = ref.read(showcaseServiceProvider);
@@ -434,7 +446,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Регистрируем устройство для push-уведомлений
       if (clientDomain.isNotEmpty) {
-        _registerForPush(clientDomain);
+        unawaited(_registerForPush(clientDomain));
       }
 
       return true;
@@ -448,6 +460,7 @@ class AuthNotifier extends Notifier<AuthState> {
   /// Регистрация устройства для push-уведомлений
   Future<void> _registerForPush(String domain) async {
     try {
+      await PushNotificationService.initializeFirebase();
       final fcmToken = await PushNotificationService.getFCMToken();
       if (fcmToken != null) {
         debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
@@ -552,6 +565,7 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.remove(_kClientIdKey);
         await prefs.remove(_kClientNameKey);
         await prefs.remove(_kClientDataKey);
+        await clearCachedClientProfile();
         debugPrint('✅ SharedPreferences cleared');
 
         // Verify it was actually removed

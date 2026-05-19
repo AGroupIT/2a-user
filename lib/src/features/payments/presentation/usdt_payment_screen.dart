@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../data/payments_provider.dart';
 import '../domain/payment_model.dart';
 import 'payment_screen.dart';
@@ -185,14 +185,16 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
     );
   }
 
-  void _copyToClipboard(String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
+  Future<void> _copyToClipboard(String text, String label) async {
+    final copied = await AppClipboard.copyText(text);
+    if (!mounted) return;
     AppToast.showFromSnackBar(
       context,
       SnackBar(
-        content: Text('$label скопирован'),
+        content: Text(copied ? '$label скопирован' : 'Не удалось скопировать'),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
+        backgroundColor: copied ? null : Colors.red.shade700,
       ),
     );
   }

@@ -100,28 +100,59 @@
   </script>
   <script>
     if ('serviceWorker' in navigator) {
-      // Force Flutter service worker to check for updates on every load
-      navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        registrations.forEach(function(reg) {
-          reg.update();
-        });
-      });
+      var logServiceWorkerWarning = function(message, error) {
+        console.warn(message, error);
+      };
+      var isLocalFlutterRun =
+        location.hostname === 'localhost' ||
+        location.hostname === '127.0.0.1' ||
+        location.hostname === '[::1]';
 
-      // Register Firebase Messaging Service Worker for push notifications
-      navigator.serviceWorker.register('/firebase-messaging-sw.js')
-        .then((registration) => {
-          console.log('Firebase Messaging SW registered:', registration.scope);
-          // Force update check
-          registration.update();
-        })
-        .catch((error) => {
-          console.error('Firebase Messaging SW registration failed:', error);
-        });
+      if (isLocalFlutterRun) {
+        navigator.serviceWorker.getRegistrations()
+          .then(function(registrations) {
+            registrations.forEach(function(reg) {
+              reg.unregister().catch(function(error) {
+                logServiceWorkerWarning('Service worker unregister failed:', error);
+              });
+            });
+          })
+          .catch(function(error) {
+            logServiceWorkerWarning('Service worker registration lookup failed:', error);
+          });
+      } else {
 
-      // When a new SW activates, reload the page to get fresh assets
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        window.location.reload();
-      });
+        // Force Flutter service worker to check for updates on every load
+        navigator.serviceWorker.getRegistrations()
+          .then(function(registrations) {
+            registrations.forEach(function(reg) {
+              reg.update().catch(function(error) {
+                logServiceWorkerWarning('Service worker update failed:', error);
+              });
+            });
+          })
+          .catch(function(error) {
+            logServiceWorkerWarning('Service worker registration lookup failed:', error);
+          });
+
+        // Register Firebase Messaging Service Worker for push notifications
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+          .then((registration) => {
+            console.log('Firebase Messaging SW registered:', registration.scope);
+            // Force update check
+            return registration.update().catch((error) => {
+              logServiceWorkerWarning('Firebase Messaging SW update failed:', error);
+            });
+          })
+          .catch((error) => {
+            console.error('Firebase Messaging SW registration failed:', error);
+          });
+
+        // When a new SW activates, reload the page to get fresh assets.
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          window.location.reload();
+        });
+      }
     }
   </script>
   <script src="flutter_bootstrap.js" async></script>

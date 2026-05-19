@@ -25,6 +25,19 @@ class ApiConfig {
     return '$_host/api';
   }
 
+  /// Резервный API-домен для случаев, когда мобильная сеть не может
+  /// установить соединение с основным доменом. Используется только после
+  /// transient network error и не меняет основной happy path.
+  static String? get fallbackBaseUrl {
+    const envUrl = String.fromEnvironment('API_FALLBACK_BASE_URL');
+    if (envUrl == 'none' || envUrl == 'disabled') return null;
+    if (envUrl.isNotEmpty) return envUrl;
+
+    const fallback = 'https://api.2a-logistic.com/api';
+    if (fallback == baseUrl) return null;
+    return fallback;
+  }
+
   /// Base URL для статических файлов (uploads)
   static String get mediaBaseUrl {
     const envUrl = String.fromEnvironment('MEDIA_BASE_URL');

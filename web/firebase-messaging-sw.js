@@ -14,32 +14,44 @@ firebase.initializeApp({
   authDomain: 'a-user.firebaseapp.com',
 });
 
-const messaging = firebase.messaging();
+try {
+  const messagingSupported =
+    typeof firebase.messaging.isSupported !== 'function' ||
+    firebase.messaging.isSupported();
 
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+  if (messagingSupported) {
+    const messaging = firebase.messaging();
 
-  const notificationTitle = payload.notification?.title || 'Новое уведомление';
-  const notificationOptions = {
-    body: payload.notification?.body || '',
-    icon: '/icons/Icon-192.png',
-    badge: '/icons/Icon-192.png',
-    tag: payload.messageId || 'default',
-    data: payload.data || {},
-    // Vibration pattern for mobile
-    vibrate: [100, 50, 100],
-    // Actions (optional)
-    actions: [
-      {
-        action: 'open',
-        title: 'Открыть',
-      },
-    ],
-  };
+    // Handle background messages
+    messaging.onBackgroundMessage((payload) => {
+      console.log('[firebase-messaging-sw.js] Received background message:', payload);
 
-  return self.registration.showNotification(notificationTitle, notificationOptions);
-});
+      const notificationTitle = payload.notification?.title || 'Новое уведомление';
+      const notificationOptions = {
+        body: payload.notification?.body || '',
+        icon: '/icons/Icon-192.png',
+        badge: '/icons/Icon-192.png',
+        tag: payload.messageId || 'default',
+        data: payload.data || {},
+        // Vibration pattern for mobile
+        vibrate: [100, 50, 100],
+        // Actions (optional)
+        actions: [
+          {
+            action: 'open',
+            title: 'Открыть',
+          },
+        ],
+      };
+
+      return self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+  } else {
+    console.warn('[firebase-messaging-sw.js] Firebase Messaging is not supported');
+  }
+} catch (error) {
+  console.warn('[firebase-messaging-sw.js] Firebase Messaging init skipped:', error);
+}
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {

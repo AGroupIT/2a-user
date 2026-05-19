@@ -73,6 +73,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   // Флаг защиты от вызова ref после disposal
   bool _isDisposed = false;
+  late final IsPaymentChatScreenOpenNotifier _screenOpenNotifier;
+  late final ChatPresenceService _chatPresenceService;
+  late final PushNotificationService _notificationService;
 
   final GlobalKey _infoBannerKey = GlobalKey();
   final GlobalKey _messagesAreaKey = GlobalKey();
@@ -81,17 +84,23 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   @override
   void initState() {
     super.initState();
+    _screenOpenNotifier = ref.read(isPaymentChatScreenOpenProvider.notifier);
+    _chatPresenceService = ref.read(chatPresenceServiceProvider);
+    _notificationService = ref.read(pushNotificationServiceProvider);
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
     // Загружаем чат и запускаем polling
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      ref.read(isPaymentChatScreenOpenProvider.notifier).set(true);
+      if (!_canUseRef) return;
+      _screenOpenNotifier.set(true);
       await ref.read(paymentChatControllerProvider.notifier).loadConversation();
+      if (!_canUseRef) return;
 
       // Если есть начальное сообщение об оплате счёта - отправляем его сразу
       if (widget.invoiceId != null && widget.initialMessage != null) {
         await _sendInitialInvoiceMessage();
+        if (!_canUseRef) return;
       } else if (widget.initialMessage != null &&
           widget.initialMessage!.isNotEmpty) {
         // Просто устанавливаем текст в поле (старое поведение)
@@ -109,13 +118,17 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     _clearNotifications();
   }
 
+  bool get _canUseRef => mounted && !_isDisposed;
+
   /// Уведомить сервер что чат открыт
   Future<void> _notifyServerChatOpened() async {
+    if (!_canUseRef) return;
     final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    await ref
-        .read(chatPresenceServiceProvider)
-        .openChat(ChatType.payment, conversationId: conversationId);
+    await _chatPresenceService.openChat(
+      ChatType.payment,
+      conversationId: conversationId,
+    );
   }
 
   void _startPolling() {
@@ -128,17 +141,16 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   }
 
   void _pollMessages() {
+    if (!_canUseRef) return;
     ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
   }
 
   Future<void> _initNotifications() async {
-    final notificationService = ref.read(pushNotificationServiceProvider);
-    await notificationService.initialize();
+    await _notificationService.initialize();
   }
 
   Future<void> _clearNotifications() async {
-    final notificationService = ref.read(pushNotificationServiceProvider);
-    await notificationService.cancelAllNotifications();
+    await _notificationService.cancelAllNotifications();
   }
 
   @override
@@ -147,8 +159,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     _pollingTimer?.cancel();
 
     try {
-      ref.read(isPaymentChatScreenOpenProvider.notifier).set(false);
-      ref.read(chatPresenceServiceProvider).closeChat(ChatType.payment);
+      _screenOpenNotifier.set(false);
+      _chatPresenceService.closeChat(ChatType.payment);
     } catch (_) {}
 
     WidgetsBinding.instance.removeObserver(this);
@@ -172,7 +184,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       _notifyServerChatOpened();
     } else if (state == AppLifecycleState.paused) {
       // Уведомляем сервер что приложение ушло в фон
-      ref.read(chatPresenceServiceProvider).onAppPaused();
+      _chatPresenceService.onAppPaused();
     }
   }
 
@@ -188,6 +200,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     String text, {
     Map<String, dynamic>? metadata,
   }) async {
+    if (!_canUseRef) return;
     if (_isSendingLocally) return;
 
     final chatState = ref.read(paymentChatControllerProvider);
@@ -215,7 +228,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             attachmentIds: attachmentIds,
           );
 
-      if (success) {
+      if (success && _canUseRef) {
         // Очищаем pending attachments
         ref
             .read(paymentChatControllerProvider.notifier)
@@ -496,6 +509,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   /// Загрузить файл из bytes на сервер (для iOS)
   Future<void> _uploadFileFromBytes(Uint8List bytes, String fileName) async {
+    if (!_canUseRef) return;
     final chatState = ref.read(paymentChatControllerProvider);
     final conversationId = chatState.conversation?.id;
 
@@ -519,7 +533,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         .read(paymentChatControllerProvider.notifier)
         .uploadFileFromBytes(bytes, fileName, conversationId);
 
-    if (result == null && mounted) {
+    if (result == null) {
+      if (!mounted || _isDisposed) return;
       _showErrorSnackbar(
         tr(context, ru: 'Ошибка при загрузке файла', zh: '文件上传失败'),
       );
@@ -565,7 +580,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),

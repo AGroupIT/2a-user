@@ -41,27 +41,37 @@ class NotificationsBellButton extends ConsumerWidget {
       message: 'Уведомления',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          backgroundColor: Colors.white,
-          barrierColor: Colors.black.withValues(alpha: 0.22),
-          useSafeArea: true,
-          isScrollControlled: true,
-          builder: (_) => DraggableScrollableSheet(
-            initialChildSize: 0.65,
-            minChildSize: 0.4,
-            maxChildSize: 0.95,
-            expand: false,
-            builder: (context, controller) => NotificationsSheet(
-              clientCode: clientCode,
-              onNavigate: (route) {
-                Navigator.of(context).pop();
-                context.push(route);
-              },
-              controller: controller,
+        onTap: () {
+          final navigator = Navigator.of(context);
+          final router = GoRouter.of(context);
+          var isSheetOpen = true;
+
+          showModalBottomSheet<void>(
+            context: context,
+            backgroundColor: Colors.white,
+            barrierColor: Colors.black.withValues(alpha: 0.22),
+            useSafeArea: true,
+            isScrollControlled: true,
+            builder: (_) => DraggableScrollableSheet(
+              initialChildSize: 0.65,
+              minChildSize: 0.4,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (_, controller) => NotificationsSheet(
+                clientCode: clientCode,
+                onNavigate: (route) {
+                  if (!isSheetOpen || !navigator.mounted) return;
+                  isSheetOpen = false;
+                  if (navigator.canPop()) {
+                    navigator.pop();
+                  }
+                  router.push(route);
+                },
+                controller: controller,
+              ),
             ),
-          ),
-        ),
+          ).whenComplete(() => isSheetOpen = false);
+        },
         child: Stack(
           clipBehavior: Clip.none,
           children: [

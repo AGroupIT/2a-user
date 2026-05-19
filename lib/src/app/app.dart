@@ -95,12 +95,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         message: 'Приложение вернулось из background, пересоздаём соединения',
         data: {'pausedForSeconds': pausedFor.inSeconds},
       );
-      ref.read(apiClientProvider).resetConnections(reason: 'app_resumed');
+      ref
+          .read(apiClientProvider)
+          .resetConnections(reason: 'app_resumed', force: true);
       ref.read(webSocketServiceProvider).forceReconnect();
       Future.microtask(() {
         if (!mounted) return;
         if (!ref.read(authProvider).isLoggedIn) return;
-        invalidateClientDataProviders(ref);
+        invalidateClientCoreProviders(ref);
       });
     }
   }

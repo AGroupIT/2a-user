@@ -30,6 +30,7 @@ final deltaSyncProvider = Provider<void>((ref) {
   // Debounce: собираем типы дельт за 500ms и обрабатываем разом
   final pendingTypes = <String>{};
   Timer? debounceTimer;
+  Timer? reconnectRefreshTimer;
 
   void scheduleFlush(String type) {
     pendingTypes.add(type);
@@ -78,9 +79,17 @@ final deltaSyncProvider = Provider<void>((ref) {
     ClientLogService.instance.add(
       type: 'websocket_reconnected',
       level: 'warning',
-      message: 'WebSocket переподключился, обновляем данные',
+      message: 'WebSocket переподключился, планируем обновление данных',
     );
-    _invalidateAll(ref);
+    reconnectRefreshTimer?.cancel();
+    reconnectRefreshTimer = Timer(const Duration(seconds: 2), () {
+      ClientLogService.instance.add(
+        type: 'websocket_reconnected_refresh',
+        level: 'warning',
+        message: 'Обновляем данные после переподключения WebSocket',
+      );
+      _invalidateAll(ref);
+    });
   });
 
   ref.onDispose(() {
@@ -89,6 +98,7 @@ final deltaSyncProvider = Provider<void>((ref) {
     dataChangedSub.cancel();
     reconnectSub.cancel();
     debounceTimer?.cancel();
+    reconnectRefreshTimer?.cancel();
   });
 });
 
@@ -167,6 +177,15 @@ void _handleDeltaType(Ref ref, String type) {
 /// Вызывается из App при возврате из background/sleep и из WS reconnect-flow.
 /// Держим это в одном месте, чтобы не расходились списки провайдеров.
 void invalidateClientDataProviders(WidgetRef ref) => _invalidateAllFor(ref);
+
+/// Лёгкое обновление после resume: сначала профиль/коды/уведомления, без
+/// одновременного старта всех списков и дайджестов.
+void invalidateClientCoreProviders(WidgetRef ref) {
+  ref.invalidate(clientProfileProvider);
+  ref.invalidate(clientStatsProvider);
+  ref.invalidate(clientCodesControllerProvider);
+  ref.read(notificationsControllerProvider.notifier).refreshDebounced();
+}
 
 void _invalidateAll(Ref ref) => _invalidateAllFor(ref);
 

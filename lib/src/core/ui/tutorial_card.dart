@@ -154,9 +154,7 @@ class _TutorialOverlayState extends ConsumerState<_TutorialOverlay>
       return;
     }
 
-    // Захватываем RenderBox ДО асинхронного разрыва
-    final targetBox = key.currentContext?.findRenderObject() as RenderBox?;
-    if (targetBox == null) {
+    if (_globalTargetRect(key) == null) {
       // Виджет ещё не смонтирован — повторяем попытку (асинхронная загрузка)
       if (retryCount < _maxRetries) {
         Future.delayed(const Duration(milliseconds: 200), () {
@@ -170,20 +168,42 @@ class _TutorialOverlayState extends ConsumerState<_TutorialOverlay>
     // Ждём завершения скролла (400ms) + небольшой запас
     Future.delayed(const Duration(milliseconds: 460), () {
       if (!mounted) return;
-      if (!targetBox.hasSize) return;
+      final targetRect = _globalTargetRect(key);
+      if (targetRect == null) return;
 
       const pad = 10.0;
-      final globalPos = targetBox.localToGlobal(Offset.zero);
-      final size = targetBox.size;
-
-      _spotlightRect = Rect.fromLTWH(
-        globalPos.dx - pad,
-        globalPos.dy - pad,
-        size.width + pad * 2,
-        size.height + pad * 2,
-      );
+      _spotlightRect = targetRect.inflate(pad);
       _markNeedsBuild();
     });
+  }
+
+  Rect? _globalTargetRect(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject == null || !renderObject.attached) return null;
+
+    if (renderObject is RenderBox) {
+      if (!renderObject.hasSize) return null;
+      return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+    }
+
+    final paintBounds = renderObject.paintBounds;
+    if (!_isUsableRect(paintBounds)) return null;
+
+    final globalBounds = MatrixUtils.transformRect(
+      renderObject.getTransformTo(null),
+      paintBounds,
+    );
+    if (!_isUsableRect(globalBounds)) return null;
+    return globalBounds;
+  }
+
+  bool _isUsableRect(Rect rect) {
+    return rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left.isFinite &&
+        rect.top.isFinite &&
+        rect.right.isFinite &&
+        rect.bottom.isFinite;
   }
 
   Future<void> _next() async {

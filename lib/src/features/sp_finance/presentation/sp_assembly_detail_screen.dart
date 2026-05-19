@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +10,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../assemblies/domain/box.dart';
 import '../data/sp_models.dart';
@@ -706,7 +706,7 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
   }
 
   /// Формирует текст для копирования и отправки участнику
-  void _copyParticipantInfo() {
+  Future<void> _copyParticipantInfo() async {
     final buffer = StringBuffer();
 
     // Итоги
@@ -742,7 +742,12 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
       'ВСЕГО: ${(totalClientPrice + totalShippingWithExpenses).toStringAsFixed(2)} ₽',
     );
 
-    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    final copied = await AppClipboard.copyText(buffer.toString());
+    if (!mounted) return;
+    if (!copied) {
+      _showStyledSnackBar(context, 'Не удалось скопировать', isError: true);
+      return;
+    }
     _showStyledSnackBar(context, 'Данные скопированы');
   }
 

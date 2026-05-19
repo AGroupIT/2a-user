@@ -3,6 +3,7 @@ package com.twoalogistic.user
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -11,6 +12,15 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.twoalogistic.user/update"
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Prevent Android's call-key fallback from hitting restricted CLOSE_SYSTEM_DIALOGS.
+        if (event.keyCode == KeyEvent.KEYCODE_CALL) {
+            return true
+        }
+
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

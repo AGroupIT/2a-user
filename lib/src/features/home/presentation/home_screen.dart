@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import '../../../core/services/update_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../../assemblies/data/assemblies_provider.dart';
 import '../../assemblies/domain/assembly_item.dart';
 import '../../auth/data/auth_provider.dart';
@@ -110,6 +112,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         clientProfile.asData?.value?.fullName ??
         authState.clientName ??
         'Клиент';
+    final shouldLoadDashboardData =
+        clientProfile.hasValue || clientProfile.hasError;
 
     if (clientCode == null) {
       return const EmptyState(
@@ -120,28 +124,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    final tracksDigestAsync = ref.watch(tracksDigestProvider(clientCode));
-    final assembliesDigestAsync = ref.watch(
-      assembliesDigestProvider(clientCode),
-    );
-    final invoicesDigestAsync = ref.watch(invoicesDigestProvider(clientCode));
-    final recentPhotosAsync = ref.watch(
-      photosRecentProvider((clientCode: clientCode, limit: 12)),
-    );
+    final AsyncValue<List<TrackItem>> tracksDigestAsync =
+        shouldLoadDashboardData
+        ? ref.watch(tracksDigestProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<List<AssemblyItem>> assembliesDigestAsync =
+        shouldLoadDashboardData
+        ? ref.watch(assembliesDigestProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<List<InvoiceItem>> invoicesDigestAsync =
+        shouldLoadDashboardData
+        ? ref.watch(invoicesDigestProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<List<PhotoItem>> recentPhotosAsync =
+        shouldLoadDashboardData
+        ? ref.watch(photosRecentProvider((clientCode: clientCode, limit: 12)))
+        : const AsyncValue.loading();
 
-    final tracksCountAsync = ref.watch(tracksCountProvider(clientCode));
-    final assembliesCountAsync = ref.watch(assembliesCountProvider(clientCode));
-    final invoicesCountAsync = ref.watch(invoicesCountProvider(clientCode));
-    final tracksWeeklyCountAsync = ref.watch(
-      tracksWeeklyCountProvider(clientCode),
-    );
-    final assembliesWeeklyCountAsync = ref.watch(
-      assembliesWeeklyCountProvider(clientCode),
-    );
-    final invoicesWeeklyCountAsync = ref.watch(
-      invoicesWeeklyCountProvider(clientCode),
-    );
-    final referralAsync = ref.watch(referralProvider);
+    final AsyncValue<int> tracksCountAsync = shouldLoadDashboardData
+        ? ref.watch(tracksCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<int> assembliesCountAsync = shouldLoadDashboardData
+        ? ref.watch(assembliesCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<int> invoicesCountAsync = shouldLoadDashboardData
+        ? ref.watch(invoicesCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<int> tracksWeeklyCountAsync = shouldLoadDashboardData
+        ? ref.watch(tracksWeeklyCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<int> assembliesWeeklyCountAsync = shouldLoadDashboardData
+        ? ref.watch(assembliesWeeklyCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<int> invoicesWeeklyCountAsync = shouldLoadDashboardData
+        ? ref.watch(invoicesWeeklyCountProvider(clientCode))
+        : const AsyncValue.loading();
+    final AsyncValue<ReferralData> referralAsync = shouldLoadDashboardData
+        ? ref.watch(referralProvider)
+        : const AsyncValue.loading();
 
     final tracksCount = tracksCountAsync.asData?.value;
     final assembliesCount = assembliesCountAsync.asData?.value;
@@ -166,6 +186,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Future<void> onRefresh() async {
       debugPrint('[Home] pull-to-refresh triggered');
       ref.invalidate(clientProfileProvider);
+      await ref.read(clientProfileProvider.future);
+      if (!mounted) return;
       ref.invalidate(tracksDigestProvider(clientCode));
       ref.invalidate(assembliesDigestProvider(clientCode));
       ref.invalidate(invoicesDigestProvider(clientCode));
@@ -178,7 +200,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.invalidate(invoicesWeeklyCountProvider(clientCode));
       ref.invalidate(referralProvider);
       await Future.wait([
-        ref.read(clientProfileProvider.future),
         ref.read(tracksDigestProvider(clientCode).future),
         ref.read(assembliesDigestProvider(clientCode).future),
         ref.read(invoicesDigestProvider(clientCode).future),
@@ -532,6 +553,9 @@ class _PromoSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = _textOrNull(agent.homeBannerImageUrl);
+    final resolvedImageUrl = imageUrl == null
+        ? null
+        : ApiConfig.getMediaUrl(imageUrl);
     final eyebrow = _textOrNull(agent.homeBannerEyebrow);
     final title = _textOrNull(agent.homeBannerTitle);
     final description = _textOrNull(agent.homeBannerDescription);
@@ -569,12 +593,19 @@ class _PromoSlider extends StatelessWidget {
                   Positioned.fill(
                     child: imageUrl == null
                         ? const ColoredBox(color: Color(0xCCFFFFFF))
-                        : CachedNetworkImage(
-                            imageUrl: ApiConfig.getMediaUrl(imageUrl),
+                        : Image.network(
+                            resolvedImageUrl!,
                             fit: BoxFit.cover,
                             alignment: Alignment.centerLeft,
-                            errorWidget: (_, _, _) =>
-                                const ColoredBox(color: Color(0xCCFFFFFF)),
+                            errorBuilder: (_, error, _) {
+                              if (kDebugMode) {
+                                debugPrint(
+                                  '[Home] Banner image failed: '
+                                  '$resolvedImageUrl $error',
+                                );
+                              }
+                              return const ColoredBox(color: Color(0xCCFFFFFF));
+                            },
                           ),
                   ),
                   ConstrainedBox(
@@ -989,8 +1020,12 @@ class _WarehouseCopyLine extends StatelessWidget {
   }
 
   Future<void> _copyValue(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: value));
+    final copied = await AppClipboard.copyText(value);
     if (!context.mounted) return;
+    if (!copied) {
+      _showStyledSnackBar(context, 'Не удалось скопировать', isError: true);
+      return;
+    }
     HapticFeedback.selectionClick();
     _showStyledSnackBar(context, 'Текст скопирован');
   }

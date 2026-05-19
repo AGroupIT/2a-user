@@ -68,18 +68,14 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
     _pollingTimer = Timer.periodic(_kPollingInterval, (_) {
       if (!mounted) return;
       debugPrint('🔔 Polling notifications...');
-      ref
-          .read(notificationsControllerProvider.notifier)
-          .refresh();
+      ref.read(notificationsControllerProvider.notifier).refresh();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final itemsAsync = ref.watch(
-      notificationsControllerProvider,
-    );
+    final itemsAsync = ref.watch(notificationsControllerProvider);
     final selectedFilter = ref.watch(_selectedFilterProvider);
 
     return SafeArea(
@@ -191,9 +187,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
       return RefreshIndicator(
         onRefresh: () async {
           debugPrint('🔔 Pull-to-refresh triggered');
-          await ref
-              .read(notificationsControllerProvider.notifier)
-              .refresh();
+          await ref.read(notificationsControllerProvider.notifier).refresh();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -231,9 +225,7 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
     return RefreshIndicator(
       onRefresh: () async {
         debugPrint('🔔 Pull-to-refresh triggered');
-        await ref
-            .read(notificationsControllerProvider.notifier)
-            .refresh();
+        await ref.read(notificationsControllerProvider.notifier).refresh();
       },
       child: ListView.separated(
         controller: widget.controller,
@@ -247,10 +239,9 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
             item: item,
             onTap: () async {
               await ref
-                  .read(
-                    notificationsControllerProvider.notifier,
-                  )
+                  .read(notificationsControllerProvider.notifier)
                   .markRead(item.id);
+              if (!mounted) return;
               final route = item.route;
               if (route == null) return;
               widget.onNavigate(route);

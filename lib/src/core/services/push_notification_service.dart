@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -75,6 +77,8 @@ class PushNotificationService {
   static bool _isInitialized = false;
   static bool _firebaseReady = false; // Firebase SDK полностью инициализирован
   static bool _fcmTokenObtained = false; // FCM токен получен
+  static bool _messagingSupported = true; // FCM доступен в текущем браузере/ОС
+  static Future<void>? _firebaseInitializationFuture;
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
@@ -85,9 +89,23 @@ class PushNotificationService {
   // Callback для обработки обновления FCM токена
   static Function(String)? onTokenRefreshed;
 
-  /// Статическая инициализация Firebase (вызывать из main).
-  /// Выполняется в фоне с таймаутом — не блокирует запуск приложения.
+  /// Статическая инициализация Firebase после восстановления/создания сессии.
+  /// Выполняется с таймаутом и не должна блокировать auth-flow.
   static Future<void> initializeFirebase() async {
+    if (_firebaseReady) return;
+    final inProgress = _firebaseInitializationFuture;
+    if (inProgress != null) return inProgress;
+
+    final future = _initializeFirebase();
+    _firebaseInitializationFuture = future;
+    try {
+      await future;
+    } finally {
+      _firebaseInitializationFuture = null;
+    }
+  }
+
+  static Future<void> _initializeFirebase() async {
     try {
       debugPrint('🔔 Starting Firebase initialization...');
 
@@ -112,7 +130,26 @@ class PushNotificationService {
 
       // Firebase Messaging поддерживается на Web, Android, iOS
       if (kIsWeb || _isMobilePlatform) {
-        _messaging = FirebaseMessaging.instance;
+        final messaging = FirebaseMessaging.instance;
+
+        if (kIsWeb) {
+          final isSupported = await messaging.isSupported().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => false,
+          );
+          if (!isSupported) {
+            _messagingSupported = false;
+            _messaging = null;
+            _firebaseReady = true;
+            debugPrint(
+              '🔔 Firebase Messaging is not supported in this browser',
+            );
+            return;
+          }
+        }
+
+        _messagingSupported = true;
+        _messaging = messaging;
         debugPrint('🔔 Firebase Messaging instance created');
 
         // Запрос разрешений
@@ -149,11 +186,21 @@ class PushNotificationService {
 
         // Token refresh — Firebase периодически обновляет FCM токен.
         // Без этого listener старый токен становится невалидным и пуши перестают приходить.
-        _messaging!.onTokenRefresh.listen((newToken) {
-          debugPrint('🔔 FCM token refreshed: ${newToken.substring(0, 20)}...');
-          _fcmTokenObtained = true;
-          onTokenRefreshed?.call(newToken);
-        });
+        _messaging!.onTokenRefresh.listen(
+          (newToken) {
+            debugPrint(
+              '🔔 FCM token refreshed: ${newToken.substring(0, 20)}...',
+            );
+            _fcmTokenObtained = true;
+            onTokenRefreshed?.call(newToken);
+          },
+          onError: (Object error) {
+            if (_isUnsupportedMessagingError(error)) {
+              _messagingSupported = false;
+            }
+            debugPrint('🔔 FCM token refresh error: $error');
+          },
+        );
 
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
@@ -177,14 +224,28 @@ class PushNotificationService {
       debugPrint('🔔 Firebase initialized');
 
       // Если токен не получен — запускаем фоновый retry
-      if (!_fcmTokenObtained) {
-        _retryGetFCMToken();
+      if (_messagingSupported && !_fcmTokenObtained) {
+        unawaited(_retryGetFCMToken());
       }
     } catch (e) {
+      if (_isUnsupportedMessagingError(e)) {
+        _messagingSupported = false;
+        _messaging = null;
+        _firebaseReady = true;
+        debugPrint('🔔 Firebase Messaging unsupported (non-fatal): $e');
+        return;
+      }
       debugPrint('🔔 Firebase init error (non-fatal): $e');
       // Запускаем retry всей инициализации
-      _retryInitializeFirebase();
+      unawaited(_retryInitializeFirebase());
     }
+  }
+
+  static bool _isUnsupportedMessagingError(Object error) {
+    final text = error.toString();
+    return text.contains('messaging/unsupported-browser') ||
+        text.contains('unsupported-browser') ||
+        text.contains('INDEXED_DB_UNSUPPORTED');
   }
 
   /// Повторные попытки инициализации Firebase (30с → 60с → ... → макс 600с)
@@ -264,12 +325,23 @@ class PushNotificationService {
   /// Получить FCM токен
   static Future<String?> getFCMToken() async {
     try {
+      if (!_messagingSupported) {
+        debugPrint('🔔 FCM Token skipped: messaging unsupported');
+        return null;
+      }
+
+      final messaging = _messaging;
+      if (messaging == null) {
+        debugPrint('🔔 FCM Token skipped: messaging not initialized');
+        return null;
+      }
+
       // Для Web нужен VAPID ключ
       String? token;
       if (kIsWeb) {
-        token = await _messaging?.getToken(vapidKey: _vapidKey);
+        token = await messaging.getToken(vapidKey: _vapidKey);
       } else {
-        token = await _messaging?.getToken();
+        token = await messaging.getToken();
       }
 
       if (token != null) {
@@ -280,6 +352,10 @@ class PushNotificationService {
 
       return token;
     } catch (e) {
+      if (_isUnsupportedMessagingError(e)) {
+        _messagingSupported = false;
+        _messaging = null;
+      }
       debugPrint('🔔 Error getting FCM token: $e');
       return null;
     }

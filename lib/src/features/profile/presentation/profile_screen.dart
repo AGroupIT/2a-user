@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:typed_data';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/utils/clipboard_helper.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/app_colors.dart';
@@ -1433,15 +1435,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         id == null ? 'Отчёт отправлен' : 'Отчёт #$id отправлен',
       );
     } catch (error, stackTrace) {
+      final cause = error is ProblemReportSendException ? error.cause : error;
+      final diagnosticsText = error is ProblemReportSendException
+          ? error.diagnostics?.toSupportText()
+          : null;
       await ClientLogService.instance.captureNonFatal(
         'Не удалось отправить отчёт о проблеме',
-        error: error,
+        error: cause,
         stackTrace: stackTrace,
+        data: {if (diagnosticsText != null) 'hasNetworkDiagnostics': true},
       );
       if (!mounted) return;
+      var copiedDiagnostics = false;
+      if (diagnosticsText != null && diagnosticsText.isNotEmpty) {
+        copiedDiagnostics = await AppClipboard.copyText(diagnosticsText);
+      }
+      if (!mounted) return;
+      final errorInfo = ErrorUtils.getErrorInfo(cause);
       _showStyledSnackBar(
         context,
-        'Не удалось отправить отчёт: $error',
+        copiedDiagnostics
+            ? '${errorInfo.message} Диагностика скопирована, отправьте её менеджеру.'
+            : errorInfo.message,
         isError: true,
       );
     }

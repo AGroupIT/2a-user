@@ -36,6 +36,13 @@ class ApiClient {
   static Future<String?>? _tokenLoadInFlight;
   static const Duration _prefsTimeout = Duration(seconds: 3);
   static int _requestSequence = 0;
+  static const Duration _minConnectionResetInterval = Duration(seconds: 8);
+  static const Duration _fallbackTtl = Duration(minutes: 5);
+
+  int _inFlightRequests = 0;
+  DateTime? _lastConnectionResetAt;
+  String? _baseUrlOverride;
+  DateTime? _fallbackActivatedAt;
 
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
@@ -50,10 +57,15 @@ class ApiClient {
     _dio = _createDio();
   }
 
+  String get activeBaseUrl => _baseUrlOverride ?? ApiConfig.baseUrl;
+
+  bool get isUsingFallbackBaseUrl =>
+      _baseUrlOverride != null && _baseUrlOverride != ApiConfig.baseUrl;
+
   Dio _createDio() {
     final dio = Dio(
       BaseOptions(
-        baseUrl: ApiConfig.baseUrl,
+        baseUrl: activeBaseUrl,
         connectTimeout: ApiConfig.connectTimeout,
         receiveTimeout: ApiConfig.receiveTimeout,
         sendTimeout: ApiConfig.sendTimeout,
@@ -89,12 +101,83 @@ class ApiClient {
   /// Используется после долгого background/sleep: мобильные сети и WebView
   /// иногда оставляют keep-alive сокет в состоянии, где запрос уже не отвечает,
   /// но Future ещё ждёт receive timeout.
-  void resetConnections({String reason = 'manual_or_retry'}) {
+  void resetConnections({
+    String reason = 'manual_or_retry',
+    bool force = false,
+  }) {
+    final now = DateTime.now();
+    final lastResetAt = _lastConnectionResetAt;
+    final resetTooRecent =
+        lastResetAt != null &&
+        now.difference(lastResetAt) < _minConnectionResetInterval;
+    if (!force && (_inFlightRequests > 1 || resetTooRecent)) {
+      ClientLogService.instance.add(
+        type: 'http_connection_reset_skipped',
+        level: 'info',
+        message: 'Пропущен сброс HTTP-соединений',
+        data: {
+          'reason': reason,
+          'inFlightRequests': _inFlightRequests,
+          if (lastResetAt != null)
+            'msSinceLastReset': now.difference(lastResetAt).inMilliseconds,
+          'activeBaseUrl': activeBaseUrl,
+        },
+      );
+      return;
+    }
+
     final oldDio = _dio;
     _dio = _createDio();
-    oldDio.close(force: true);
+    oldDio.close(force: force);
+    _lastConnectionResetAt = now;
     ClientLogService.instance.httpConnectionReset(reason: reason);
-    debugPrint('[ApiClient] HTTP connections reset');
+    debugPrint(
+      '[ApiClient] HTTP connections reset (force=$force, baseUrl=$activeBaseUrl)',
+    );
+  }
+
+  void _restorePrimaryBaseUrlIfNeeded() {
+    final activatedAt = _fallbackActivatedAt;
+    if (!isUsingFallbackBaseUrl || activatedAt == null) return;
+    if (DateTime.now().difference(activatedAt) < _fallbackTtl) return;
+
+    _baseUrlOverride = null;
+    _fallbackActivatedAt = null;
+    final oldDio = _dio;
+    _dio = _createDio();
+    oldDio.close(force: false);
+    ClientLogService.instance.add(
+      type: 'api_base_url_primary_restore',
+      level: 'info',
+      message: 'Возвращаем API на основной домен после fallback TTL',
+      data: {'baseUrl': ApiConfig.baseUrl},
+    );
+  }
+
+  bool _switchToFallbackBaseUrl(DioException error) {
+    final fallbackBaseUrl = ApiConfig.fallbackBaseUrl;
+    if (fallbackBaseUrl == null || fallbackBaseUrl == activeBaseUrl) {
+      return false;
+    }
+    if (!_isTransientNetworkError(error)) return false;
+
+    _baseUrlOverride = fallbackBaseUrl;
+    _fallbackActivatedAt = DateTime.now();
+    final oldDio = _dio;
+    _dio = _createDio();
+    oldDio.close(force: false);
+    ClientLogService.instance.add(
+      type: 'api_base_url_fallback',
+      level: 'warning',
+      message: 'Переключаем API на резервный домен после сетевой ошибки',
+      data: {
+        'from': ApiConfig.baseUrl,
+        'to': fallbackBaseUrl,
+        'dioType': error.type.name,
+        'path': error.requestOptions.path,
+      },
+    );
+    return true;
   }
 
   static bool _isTransientNetworkError(DioException e) {
@@ -148,7 +231,9 @@ class ApiClient {
           maxAttempts: maxAttempts,
           error: e,
         );
-        resetConnections(reason: 'retry_after_network_error');
+        if (!_switchToFallbackBaseUrl(e)) {
+          resetConnections(reason: 'retry_after_network_error');
+        }
         await Future<void>.delayed(ApiConfig.retryDelay);
       }
     }
@@ -164,6 +249,8 @@ class ApiClient {
     Options? options,
     bool allowRetry = true,
   }) async {
+    _restorePrimaryBaseUrlIfNeeded();
+    _inFlightRequests++;
     Future<Response<T>> run() {
       if (!allowRetry) return requestFn(_dio);
       return _withRetry(
@@ -183,6 +270,8 @@ class ApiClient {
       );
       resetConnections(reason: 'overall_timeout');
       rethrow;
+    } finally {
+      _inFlightRequests--;
     }
   }
 

@@ -23,6 +23,7 @@ import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/status_pill.dart';
 import '../../../core/ui/status_timeline_sheet.dart';
 import '../../../core/utils/error_utils.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/image_compressor.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -112,6 +113,34 @@ void _showStyledSnackBar(
       duration: const Duration(seconds: 3),
     ),
   );
+}
+
+Future<void> _copyTrackCode(
+  BuildContext context,
+  String code, {
+  bool compactToast = false,
+}) async {
+  final copied = await AppClipboard.copyText(code);
+  if (!context.mounted) return;
+  if (!copied) {
+    _showStyledSnackBar(context, 'Не удалось скопировать', isError: true);
+    return;
+  }
+
+  HapticFeedback.lightImpact();
+  if (compactToast) {
+    AppToast.showFromSnackBar(
+      context,
+      const SnackBar(
+        content: Text('Трек скопирован'),
+        duration: Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return;
+  }
+
+  _showStyledSnackBar(context, 'Трек скопирован');
 }
 
 /// Форматирует число, убирая лишние нули: 3.5 → "3.5", 5.0 → "5", 5.70 → "5.7"
@@ -5485,20 +5514,11 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             ],
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {
-                                  Clipboard.setData(
-                                    ClipboardData(text: track.code),
-                                  );
-                                  HapticFeedback.lightImpact();
-                                  AppToast.showFromSnackBar(
-                                    context,
-                                    const SnackBar(
-                                      content: Text('Трек скопирован'),
-                                      duration: Duration(seconds: 1),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                },
+                                onTap: () => _copyTrackCode(
+                                  context,
+                                  track.code,
+                                  compactToast: true,
+                                ),
                                 child: Padding(
                                   padding: const EdgeInsets.only(right: 8),
                                   child: Text(
@@ -5629,11 +5649,16 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
-  Widget _buildTrackCard(BuildContext context, DateFormat df, TrackItem track) {
+  Widget _buildTrackCard(
+    BuildContext context,
+    DateFormat df,
+    TrackItem track, {
+    bool embeddedInAssembly = false,
+  }) {
     final canSelect = track.status == 'На складе';
     final allowedByStatus =
         widget.selectedStatus == null || widget.selectedStatus == track.status;
-    final canShowCheckbox = canSelect && allowedByStatus;
+    final canShowCheckbox = !embeddedInAssembly && canSelect && allowedByStatus;
     final isSelected = widget.selectedTrackCodes.contains(track.code);
 
     final canAskQuestion =
@@ -5647,6 +5672,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         track.status == 'На складе' ||
         track.status == 'На сборке' ||
         track.status == 'Отправлен';
+    final canEditProductInfo = embeddedInAssembly || availableFillInfo;
 
     final activePhoto = track.activePhotoRequest;
     final visibleQuestions = track.questions
@@ -5714,7 +5740,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             answer: q.hasAnswer ? q.answer : null,
             createdAt: df.format(q.createdAt),
             answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
-            canCancel: q.isActive,
+            canCancel: !embeddedInAssembly && q.isActive,
             onCancel: () => widget.onCancelQuestion(track),
           ),
         );
@@ -5729,7 +5755,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             answer: null,
             createdAt: df.format(DateTime.now()),
             answeredAt: null,
-            canCancel: true,
+            canCancel: !embeddedInAssembly,
             onCancel: () => widget.onCancelQuestion(track),
           ),
         );
@@ -5737,12 +5763,12 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     }
 
     final actions = <_TrackCardAction>[
-      if (canRequestPhoto)
+      if (!embeddedInAssembly && canRequestPhoto)
         _TrackCardAction(
           label: 'Фотоотчет',
           onTap: () => widget.onPhotoRequest(track),
         ),
-      if (canAskQuestion && !hasQuestion)
+      if (!embeddedInAssembly && canAskQuestion && !hasQuestion)
         _TrackCardAction(
           label: 'Вопрос',
           onTap: () => widget.onAskQuestion(track),
@@ -5752,12 +5778,12 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           label: 'Заметка',
           onTap: () => widget.onEditComment(track),
         ),
-      if (availableFillInfo && !hasProductInfo)
+      if (canEditProductInfo && !hasProductInfo)
         _TrackCardAction(
           label: 'О товаре',
           onTap: () => widget.onEditProduct(track),
         ),
-      if (canRequestReturn)
+      if (!embeddedInAssembly && canRequestReturn)
         _TrackCardAction(
           label: 'Возврат',
           onTap: () => widget.onReturnRequest(track),
@@ -5805,7 +5831,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               questionPending: questionPending,
               hasProductInfo: hasProductInfo,
               actions: actions,
-              canDelete: track.status == 'В ожидании',
+              canDelete: !embeddedInAssembly && track.status == 'В ожидании',
+              showStatusAndMarkers: !embeddedInAssembly,
               onPhotoMarkerTap: () => _handlePhotoMarkerTap(
                 context,
                 track: track,
@@ -5820,7 +5847,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               onProductMarkerTap: () => _handleProductMarkerTap(
                 context,
                 track: track,
-                canEdit: availableFillInfo || hasProductInfo,
+                canEdit: canEditProductInfo || hasProductInfo,
               ),
               onQuestionMarkerTap: () => _handleQuestionMarkerTap(
                 context,
@@ -6097,6 +6124,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     BuildContext context,
     TrackAssembly assembly,
   ) {
+    final df = DateFormat('dd MMM yyyy', 'ru');
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -6112,7 +6140,12 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             children: [
               for (var i = 0; i < widget.tracks.length; i++) ...[
                 if (i > 0) const SizedBox(height: 20),
-                _buildAssemblyTrackRow(context, widget.tracks[i]),
+                _buildTrackCard(
+                  context,
+                  df,
+                  widget.tracks[i],
+                  embeddedInAssembly: true,
+                ),
               ],
             ],
           ),
@@ -6129,192 +6162,84 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final photos = box.photos.map((photo) => photo.url).where((url) {
       return url.trim().isNotEmpty;
     }).toList();
-    return SizedBox(
-      height: 126,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: photos.isEmpty
-                ? null
-                : () => _openAssemblyMediaViewer(context, photos),
-            child: Container(
-              width: 154,
-              height: 124,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: const Color(0xFFC4C4C4),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x1A000000),
-                    offset: Offset(3, 4),
-                    blurRadius: 25,
-                  ),
-                ],
-              ),
-              child: photos.isEmpty
-                  ? const SizedBox.shrink()
-                  : CachedNetworkImage(
-                      imageUrl: ApiConfig.getMediaUrl(photos.first),
-                      memCacheWidth: 220,
-                      memCacheHeight: 220,
-                      maxWidthDiskCache: 440,
-                      maxHeightDiskCache: 440,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      useOldImageOnUrlChange: false,
-                      filterQuality: FilterQuality.low,
-                      imageBuilder: (_, imageProvider) => DecoratedBox(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: imageProvider,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      placeholder: (_, _) => const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      errorWidget: (_, _, _) => const Center(
-                        child: Icon(Icons.broken_image_outlined, size: 22),
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: SizedBox(
-              height: 126,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _AssemblyInvoiceText(
-                    value: (box.orderNumber ?? assembly.number).trim(),
-                  ),
-                  _AssemblyPlainText(
-                    'Габариты: ${_boxDimensionsForDesign(box)}',
-                  ),
-                  _AssemblyPlainText('Вес: ${_formatDecimal(box.weight)} кг'),
-                  _AssemblyPlainText(
-                    'Объём: ${box.volume.toStringAsFixed(4)} м³',
-                  ),
-                  _AssemblyPlainText(
-                    'Плотность: ${box.density.toStringAsFixed(0)} кг/м3',
-                  ),
-                  _AssemblyPlainText(
-                    'Тариф: ${box.tariffName ?? assembly.tariffName ?? '—'}',
-                  ),
-                  _AssemblyPlainText(
-                    'Упаковка: ${_boxPackagingForDesign(box, assembly)}',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAssemblyTrackRow(BuildContext context, TrackItem track) {
-    final dateFormat = DateFormat('dd.MM.yy', 'ru');
-    final dateColor = const Color(0xFF2F2F2F).withValues(alpha: 0.5);
-    final apiProductInfo = track.productInfo;
-    final localProductInfo = widget.productInfos[track.code];
-    final productName =
-        (apiProductInfo?.name ?? localProductInfo?.name ?? '').trim().isNotEmpty
-        ? (apiProductInfo?.name ?? localProductInfo?.name ?? '').trim()
-        : 'О товаре';
-    final productQuantity =
-        apiProductInfo?.quantity ?? localProductInfo?.quantity;
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: track.code));
-              HapticFeedback.lightImpact();
-              _showStyledSnackBar(context, 'Трек скопирован');
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  track.code,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF2F2F2F),
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    height: 24 / 16,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Opacity(
-                  opacity: 0.5,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 2,
-                    children: [
-                      _TrackDateMeta(
-                        icon: CupertinoIcons.plus_circle,
-                        value: dateFormat.format(track.createdAt),
-                        color: dateColor,
-                      ),
-                      _TrackDateMeta(
-                        icon: CupertinoIcons.arrow_2_circlepath_circle,
-                        value: dateFormat.format(track.updatedAt),
-                        color: dateColor,
-                      ),
-                    ],
-                  ),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: photos.isEmpty
+              ? null
+              : () => _openAssemblyMediaViewer(context, photos),
+          child: Container(
+            width: 154,
+            height: 124,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: const Color(0xFFC4C4C4),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A000000),
+                  offset: Offset(3, 4),
+                  blurRadius: 25,
                 ),
               ],
             ),
+            child: photos.isEmpty
+                ? const SizedBox.shrink()
+                : CachedNetworkImage(
+                    imageUrl: ApiConfig.getMediaUrl(photos.first),
+                    memCacheWidth: 220,
+                    memCacheHeight: 220,
+                    maxWidthDiskCache: 440,
+                    maxHeightDiskCache: 440,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    useOldImageOnUrlChange: false,
+                    filterQuality: FilterQuality.low,
+                    imageBuilder: (_, imageProvider) => DecoratedBox(
+                      decoration: BoxDecoration(
+                        image: DecorationImage(
+                          image: imageProvider,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    placeholder: (_, _) => const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    errorWidget: (_, _, _) => const Center(
+                      child: Icon(Icons.broken_image_outlined, size: 22),
+                    ),
+                  ),
           ),
         ),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 101,
-          height: 35,
+        const SizedBox(width: 20),
+        Expanded(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                productName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF2F2F2F),
-                  fontFamily: 'Gilroy',
-                  fontSize: 14,
-                  height: 16 / 14,
-                  fontWeight: FontWeight.w400,
-                ),
+              _AssemblyInvoiceText(
+                value: (box.orderNumber ?? assembly.number).trim(),
               ),
-              Text(
-                productQuantity != null
-                    ? 'Количество: $productQuantity шт'
-                    : 'Количество: —',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF2F2F2F),
-                  fontFamily: 'Gilroy',
-                  fontSize: 12,
-                  height: 14 / 12,
-                  fontWeight: FontWeight.w400,
-                ),
+              const SizedBox(height: 3),
+              _AssemblyPlainText('Габариты: ${_boxDimensionsForDesign(box)}'),
+              const SizedBox(height: 3),
+              _AssemblyPlainText('Вес: ${_formatDecimal(box.weight)} кг'),
+              const SizedBox(height: 3),
+              _AssemblyPlainText('Объём: ${box.volume.toStringAsFixed(4)} м³'),
+              const SizedBox(height: 3),
+              _AssemblyPlainText(
+                'Плотность: ${box.density.toStringAsFixed(0)} кг/м3',
+              ),
+              const SizedBox(height: 3),
+              _AssemblyPlainText(
+                'Тариф: ${box.tariffName ?? assembly.tariffName ?? '—'}',
+              ),
+              const SizedBox(height: 3),
+              _AssemblyPlainText(
+                'Упаковка: ${_boxPackagingForDesign(box, assembly)}',
               ),
             ],
           ),
@@ -6829,6 +6754,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     required VoidCallback onPhotoMarkerTap,
     required VoidCallback onProductMarkerTap,
     required VoidCallback onQuestionMarkerTap,
+    required bool showStatusAndMarkers,
   }) {
     final dateFormat = DateFormat('dd.MM.yy', 'ru');
     final accent = context.brandPrimary;
@@ -6860,13 +6786,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         Flexible(
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              Clipboard.setData(
-                                ClipboardData(text: track.code),
-                              );
-                              HapticFeedback.lightImpact();
-                              _showStyledSnackBar(context, 'Трек скопирован');
-                            },
+                            onTap: () => _copyTrackCode(context, track.code),
                             child: Text(
                               track.code,
                               maxLines: 1,
@@ -6906,63 +6826,65 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              IntrinsicWidth(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _showTrackStatusTimeline(context, track),
-                      child: _TrackCardStatusPill(
-                        text: track.status,
-                        color: statusColor,
+              if (showStatusAndMarkers) ...[
+                const SizedBox(width: 10),
+                IntrinsicWidth(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _showTrackStatusTimeline(context, track),
+                        child: _TrackCardStatusPill(
+                          text: track.status,
+                          color: statusColor,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 24,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _TrackMarkerIcon(
-                            icon: CupertinoIcons.camera_circle,
-                            color: _trackMarkerColor(
-                              context,
-                              done: photoDone,
-                              pending: photoPending,
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 24,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _TrackMarkerIcon(
+                              icon: CupertinoIcons.camera_circle,
+                              color: _trackMarkerColor(
+                                context,
+                                done: photoDone,
+                                pending: photoPending,
+                              ),
+                              tooltip: 'Фотоотчёт',
+                              onTap: onPhotoMarkerTap,
                             ),
-                            tooltip: 'Фотоотчёт',
-                            onTap: onPhotoMarkerTap,
-                          ),
-                          const SizedBox(width: 5),
-                          _TrackMarkerIcon(
-                            icon: CupertinoIcons.info_circle,
-                            color: _trackMarkerColor(
-                              context,
-                              done: hasProductInfo,
-                              pending: false,
+                            const SizedBox(width: 5),
+                            _TrackMarkerIcon(
+                              icon: CupertinoIcons.info_circle,
+                              color: _trackMarkerColor(
+                                context,
+                                done: hasProductInfo,
+                                pending: false,
+                              ),
+                              tooltip: 'О товаре',
+                              onTap: onProductMarkerTap,
                             ),
-                            tooltip: 'О товаре',
-                            onTap: onProductMarkerTap,
-                          ),
-                          const SizedBox(width: 5),
-                          _TrackMarkerIcon(
-                            icon: CupertinoIcons.question_circle,
-                            color: _trackMarkerColor(
-                              context,
-                              done: questionDone,
-                              pending: questionPending,
+                            const SizedBox(width: 5),
+                            _TrackMarkerIcon(
+                              icon: CupertinoIcons.question_circle,
+                              color: _trackMarkerColor(
+                                context,
+                                done: questionDone,
+                                pending: questionPending,
+                              ),
+                              tooltip: 'Вопрос',
+                              onTap: onQuestionMarkerTap,
                             ),
-                            tooltip: 'Вопрос',
-                            onTap: onQuestionMarkerTap,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
           if (actions.isNotEmpty || canDelete) ...[
@@ -7428,8 +7350,7 @@ class _AssemblyPlainText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: true,
       style: const TextStyle(
         color: Color(0xFF2F2F2F),
         fontFamily: 'Gilroy',
@@ -7458,8 +7379,7 @@ class _AssemblyInvoiceText extends StatelessWidget {
           ),
         ],
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: true,
       style: const TextStyle(
         color: Color(0xFF2F2F2F),
         fontFamily: 'Gilroy',

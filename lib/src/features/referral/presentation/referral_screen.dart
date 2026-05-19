@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
@@ -9,6 +8,7 @@ import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../data/referral_provider.dart';
 
 const _textColor = Color(0xFF2F2F2F);
@@ -512,9 +512,22 @@ class _CodeCard extends StatelessWidget {
                     color: brandColor,
                     borderRadius: BorderRadius.circular(10),
                     child: InkWell(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: referralCode));
-                        onCopied();
+                      onTap: () async {
+                        final copied = await AppClipboard.copyText(
+                          referralCode,
+                        );
+                        if (!context.mounted) return;
+                        if (copied) {
+                          onCopied();
+                        } else {
+                          AppToast.showFromSnackBar(
+                            context,
+                            SnackBar(
+                              content: const Text('Не удалось скопировать'),
+                              backgroundColor: Colors.red.shade700,
+                            ),
+                          );
+                        }
                       },
                       borderRadius: BorderRadius.circular(10),
                       child: const Padding(

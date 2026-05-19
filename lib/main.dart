@@ -15,7 +15,6 @@ import 'src/core/config/sentry_config.dart';
 import 'src/core/logging/client_log_service.dart';
 import 'src/core/persistence/shared_preferences_provider.dart';
 import 'src/core/services/analytics_service.dart';
-import 'src/core/services/push_notification_service.dart';
 
 /// Запрос разрешения на отслеживание (ATT) для iOS
 Future<void> _requestTrackingPermission() async {
@@ -79,6 +78,11 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   final keepHttpError = hint.get('keep_http_error') == true;
   final exType = event.exceptions?.firstOrNull?.type ?? '';
   final exValue = event.exceptions?.firstOrNull?.value ?? '';
+
+  // Browser global handlers can only report "Script error." for cross-origin
+  // JavaScript failures without CORS details. The event has no actionable Dart
+  // stack or source context, so keep it out of Sentry issue noise.
+  if (_isOpaqueWebScriptError(event, exValue)) return null;
 
   // Сетевые сбои у клиентов ожидаемы: плохой интернет, VPN, DPI, China/RF routes.
   // Их оставляем в breadcrumbs, но не создаём отдельные issues.
@@ -162,6 +166,42 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   return event;
 }
 
+bool _isOpaqueWebScriptError(SentryEvent event, String exceptionValue) {
+  if (!kIsWeb) return false;
+
+  final message = event.message?.formatted ?? '';
+  final value = exceptionValue.trim();
+  final isScriptError =
+      value == 'Script error.' ||
+      value == 'Script error' ||
+      message.trim() == 'Script error.' ||
+      message.trim() == 'Script error';
+  if (!isScriptError) return false;
+
+  final frames = event.exceptions?.firstOrNull?.stackTrace?.frames;
+  if (frames == null || frames.isEmpty) return true;
+
+  return frames.every((frame) {
+    final location = [
+      frame.absPath,
+      frame.fileName,
+      frame.module,
+      frame.package,
+      frame.function,
+    ].whereType<String>().join(' ').toLowerCase();
+
+    final hasUnknownLocation =
+        location.isEmpty ||
+        location.contains('<unknown') ||
+        location.contains('unknown module');
+    final hasNoPosition =
+        (frame.lineNo == null || frame.lineNo == 0) &&
+        (frame.colNo == null || frame.colNo == 0);
+
+    return hasUnknownLocation || hasNoPosition;
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -174,13 +214,6 @@ void main() async {
       300; // до 300 изображений (для списков с 100+ треками)
   PaintingBinding.instance.imageCache.maximumSizeBytes =
       100 * 1024 * 1024; // 100 МБ
-
-  // Firebase инициализируется в фоне — НЕ блокирует запуск приложения.
-  // Это критично для пользователей в РФ, где провайдеры могут замедлять
-  // трафик к googleapis.com через DPI (ТСПУ).
-  PushNotificationService.initializeFirebase().catchError((e) {
-    debugPrint('Firebase init failed (non-blocking): $e');
-  });
 
   // Запрос разрешения на отслеживание (ATT) - ОБЯЗАТЕЛЬНО до AppMetrica
   await _requestTrackingPermission();
@@ -241,6 +274,7 @@ void main() async {
       options.enableAutoSessionTracking = true;
       options.enablePrintBreadcrumbs = false;
       options.anrEnabled = true;
+      options.enableTombstone = true;
       options.replay.sessionSampleRate = SentryConfig.replaySessionSampleRate;
       options.replay.onErrorSampleRate = SentryConfig.replayOnErrorSampleRate;
       options.privacy.maskAllText = true;

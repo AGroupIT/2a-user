@@ -17,6 +17,7 @@ import '../../../core/ui/status_timeline_sheet.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../photos/domain/photo_item.dart';
@@ -1402,14 +1403,22 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                                 ),
                                 const SizedBox(width: 8),
                                 GestureDetector(
-                                  onTap: () {
-                                    Clipboard.setData(
-                                      ClipboardData(text: item.invoiceNumber),
+                                  onTap: () async {
+                                    final copied = await AppClipboard.copyText(
+                                      item.invoiceNumber,
                                     );
+                                    if (!context.mounted) return;
                                     AppToast.showFromSnackBar(
                                       context,
-                                      const SnackBar(
-                                        content: Text('Номер скопирован'),
+                                      SnackBar(
+                                        content: Text(
+                                          copied
+                                              ? 'Номер скопирован'
+                                              : 'Не удалось скопировать',
+                                        ),
+                                        backgroundColor: copied
+                                            ? null
+                                            : Colors.red.shade700,
                                       ),
                                     );
                                   },

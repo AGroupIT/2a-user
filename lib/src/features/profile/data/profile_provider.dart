@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
+
+const _kClientProfileCacheKey = 'client_profile_cache_v1';
 
 enum ClientTerminal {
   lyublino,
@@ -275,22 +282,101 @@ final clientProfileProvider = FutureProvider<ClientProfile?>((ref) async {
     return null;
   }
 
-  try {
-    final response = await apiClient.get('/client/profile');
+  final cachedProfile = await _readCachedClientProfile();
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final profileData = data['data'] as Map<String, dynamic>?;
-      if (profileData != null) {
-        return ClientProfile.fromJson(profileData);
-      }
-    }
-    return null;
+  try {
+    final freshProfile = await _fetchAndCacheClientProfile(apiClient);
+    if (freshProfile != null) return freshProfile;
+    return cachedProfile;
   } on DioException catch (e) {
     debugPrint('Error loading client profile: $e');
-    return null;
+    ClientLogService.instance.add(
+      type: 'client_profile_load_error',
+      level: 'warning',
+      message: 'Не удалось загрузить профиль клиента',
+      data: {'dioType': e.type.name, 'error': e.toString()},
+    );
+    return _readCachedClientProfile();
   }
 });
+
+Future<void> cacheClientProfileData(Map<String, dynamic> profileData) {
+  if (!_hasFullAgentProfileData(profileData)) {
+    return Future<void>.value();
+  }
+  return _cacheClientProfile(profileData);
+}
+
+Future<void> clearCachedClientProfile() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kClientProfileCacheKey);
+  } catch (error, stackTrace) {
+    ClientLogService.instance.error(
+      'Не удалось очистить кэш профиля клиента',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+}
+
+Future<ClientProfile?> _fetchAndCacheClientProfile(ApiClient apiClient) async {
+  final response = await apiClient.get('/client/profile');
+  if (response.statusCode != 200 || response.data == null) return null;
+
+  final data = response.data as Map<String, dynamic>;
+  final profileData = data['data'] as Map<String, dynamic>?;
+  if (profileData == null) return null;
+
+  unawaited(_cacheClientProfile(profileData));
+  return ClientProfile.fromJson(profileData);
+}
+
+Future<void> _cacheClientProfile(Map<String, dynamic> profileData) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kClientProfileCacheKey, jsonEncode(profileData));
+  } catch (error, stackTrace) {
+    ClientLogService.instance.error(
+      'Не удалось сохранить профиль клиента в кэш',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+}
+
+Future<ClientProfile?> _readCachedClientProfile() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kClientProfileCacheKey);
+    if (raw == null || raw.isEmpty) return null;
+    final json = jsonDecode(raw);
+    if (json is! Map<String, dynamic>) return null;
+    ClientLogService.instance.add(
+      type: 'client_profile_cache_hit',
+      level: 'info',
+      message: 'Используем кэшированный профиль клиента',
+    );
+    return ClientProfile.fromJson(json);
+  } catch (error, stackTrace) {
+    ClientLogService.instance.error(
+      'Не удалось прочитать кэш профиля клиента',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return null;
+  }
+}
+
+bool _hasFullAgentProfileData(Map<String, dynamic> profileData) {
+  final agent = profileData['agent'];
+  if (agent is! Map<String, dynamic>) return false;
+
+  return agent.containsKey('colorPrimary') ||
+      agent.containsKey('colorSecondary') ||
+      agent.containsKey('logoUrl') ||
+      agent.containsKey('homeBannerImageUrl');
+}
 
 /// Провайдер для получения статистики клиента
 final clientStatsProvider = FutureProvider.family<ClientStats, String?>((
