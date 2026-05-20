@@ -141,6 +141,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     initialTrackId: int.tryParse(query['trackId'] ?? ''),
                     initialTrackCode: query['trackCode'],
                     initialAssemblyId: int.tryParse(query['assemblyId'] ?? ''),
+                    initialClientCode: query['clientCode'],
                   );
                 },
               ),
@@ -154,6 +155,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/invoices',
                 builder: (context, state) => InvoicesScreen(
                   initialInvoiceId: state.uri.queryParameters['invoiceId'],
+                  initialClientCode: state.uri.queryParameters['clientCode'],
                 ),
               ),
             ],

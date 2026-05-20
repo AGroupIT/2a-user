@@ -158,12 +158,14 @@ class TracksScreen extends ConsumerStatefulWidget {
   final int? initialTrackId;
   final String? initialTrackCode;
   final int? initialAssemblyId;
+  final String? initialClientCode;
 
   const TracksScreen({
     super.key,
     this.initialTrackId,
     this.initialTrackCode,
     this.initialAssemblyId,
+    this.initialClientCode,
   });
 
   @override
@@ -231,6 +233,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   bool _isRefreshing = false;
   DateTime? _lastLoadMoreTime;
   String? _handledInitialTargetKey;
+  String? _loadingInitialTargetKey;
+  String? _initialClientSwitchTarget;
   String? _filtersInitializedForClientCode;
 
   @override
@@ -246,8 +250,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTrackId != widget.initialTrackId ||
         oldWidget.initialTrackCode != widget.initialTrackCode ||
-        oldWidget.initialAssemblyId != widget.initialAssemblyId) {
+        oldWidget.initialAssemblyId != widget.initialAssemblyId ||
+        oldWidget.initialClientCode != widget.initialClientCode) {
       _handledInitialTargetKey = null;
+      _loadingInitialTargetKey = null;
+      _initialClientSwitchTarget = null;
       if (widget.initialAssemblyId != null) {
         _viewMode = ViewMode.groups;
       }
@@ -2789,50 +2796,229 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     ref.read(paginatedTracksProvider(clientCode)).updateFilters(params);
   }
 
-  void _maybeOpenInitialTarget(List<_GroupBucket> groups) {
+  String? _initialTargetKey() {
     final hasTarget =
         widget.initialTrackId != null ||
         (widget.initialTrackCode?.isNotEmpty ?? false) ||
         widget.initialAssemblyId != null;
-    if (!hasTarget || groups.isEmpty) return;
+    if (!hasTarget) return null;
+    return [
+      widget.initialClientCode ?? '',
+      widget.initialTrackId?.toString() ?? '',
+      widget.initialTrackCode ?? '',
+      widget.initialAssemblyId?.toString() ?? '',
+    ].join('|');
+  }
 
-    final targetKey =
-        '${widget.initialTrackId}|${widget.initialTrackCode}|${widget.initialAssemblyId}';
-    if (_handledInitialTargetKey == targetKey) return;
+  String? _clientCodeSwitchTarget(String activeCode) {
+    final requested = widget.initialClientCode?.trim();
+    if (requested == null || requested.isEmpty) return null;
+    if (requested.toUpperCase() == activeCode.toUpperCase()) return null;
 
-    _GroupBucket? bucket;
+    final codesState = ref.watch(clientCodesControllerProvider).asData?.value;
+    if (codesState == null) return null;
+    for (final code in codesState.codes) {
+      if (code.toUpperCase() == requested.toUpperCase()) return code;
+    }
+    return null;
+  }
+
+  void _scheduleInitialClientSwitch(String targetCode) {
+    if (_initialClientSwitchTarget == targetCode) return;
+    _initialClientSwitchTarget = targetCode;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await ref
+          .read(clientCodesControllerProvider.notifier)
+          .selectClient(targetCode);
+    });
+  }
+
+  Future<bool> _selectClientCodeIfAvailable(String? code) async {
+    final requested = code?.trim();
+    if (requested == null || requested.isEmpty) return false;
+
+    final codesState = ref.read(clientCodesControllerProvider).asData?.value;
+    if (codesState == null) return false;
+    String? targetCode;
+    for (final candidate in codesState.codes) {
+      if (candidate.toUpperCase() == requested.toUpperCase()) {
+        targetCode = candidate;
+        break;
+      }
+    }
+    if (targetCode == null) return false;
+
+    final activeCode = ref.read(activeClientCodeProvider);
+    if (activeCode?.toUpperCase() == targetCode.toUpperCase()) return true;
+
+    await ref
+        .read(clientCodesControllerProvider.notifier)
+        .selectClient(targetCode);
+    return true;
+  }
+
+  _GroupBucket? _findInitialBucket(List<_GroupBucket> groups) {
     if (widget.initialAssemblyId != null) {
       for (final group in groups) {
         if (group.assembly?.id == widget.initialAssemblyId) {
-          bucket = group;
-          break;
+          return group;
         }
       }
-    } else {
-      for (final group in groups) {
-        final hasTrack = group.tracks.any((track) {
-          final idMatches =
-              widget.initialTrackId != null &&
-              track.id == widget.initialTrackId;
-          final codeMatches =
-              widget.initialTrackCode != null &&
-              track.code.toLowerCase() ==
-                  widget.initialTrackCode!.toLowerCase();
-          return idMatches || codeMatches;
-        });
-        if (hasTrack) {
-          bucket = group;
-          break;
-        }
-      }
+      return null;
     }
 
-    if (bucket == null) return;
+    for (final group in groups) {
+      final hasTrack = group.tracks.any((track) {
+        final idMatches =
+            widget.initialTrackId != null && track.id == widget.initialTrackId;
+        final codeMatches =
+            widget.initialTrackCode != null &&
+            track.code.toLowerCase() == widget.initialTrackCode!.toLowerCase();
+        return idMatches || codeMatches;
+      });
+      if (hasTrack) return group;
+    }
+    return null;
+  }
+
+  void _maybeOpenInitialTarget(
+    List<_GroupBucket> groups,
+    String clientCode, {
+    required bool isLoading,
+  }) {
+    final targetKey = _initialTargetKey();
+    if (targetKey == null) return;
+    if (_handledInitialTargetKey == targetKey) return;
+
+    final bucket = _findInitialBucket(groups);
+    if (bucket == null) {
+      if (!isLoading) _loadInitialTargetFromApi(targetKey, clientCode);
+      return;
+    }
+
     _handledInitialTargetKey = targetKey;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _openDigestTrackSheet(bucket!);
+      _openDigestTrackSheet(bucket);
     });
+  }
+
+  void _loadInitialTargetFromApi(String targetKey, String clientCode) {
+    if (_loadingInitialTargetKey == targetKey) return;
+    _loadingInitialTargetKey = targetKey;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _initialTargetKey() != targetKey) return;
+      final apiService = ref.read(tracksApiServiceProvider);
+      try {
+        _GroupBucket? bucket;
+        final requestedClientCode = widget.initialClientCode?.trim();
+        final queryClientCode =
+            requestedClientCode != null && requestedClientCode.isNotEmpty
+            ? requestedClientCode
+            : null;
+
+        if (widget.initialAssemblyId != null) {
+          final tracks = await apiService.fetchTracksForDeepLink(
+            clientCode: queryClientCode,
+            assemblyId: widget.initialAssemblyId.toString(),
+          );
+          if (!mounted || _initialTargetKey() != targetKey) return;
+          bucket = _findInitialBucket(_groupTracks(tracks));
+          final resolvedClientCode = bucket != null && bucket.tracks.isNotEmpty
+              ? bucket.tracks.first.clientCode
+              : tracks.isNotEmpty
+              ? tracks.first.clientCode
+              : null;
+          if (bucket != null &&
+              resolvedClientCode != null &&
+              resolvedClientCode.toUpperCase() != clientCode.toUpperCase() &&
+              await _selectClientCodeIfAvailable(resolvedClientCode)) {
+            return;
+          }
+        } else if (widget.initialTrackId != null) {
+          final track = await apiService.getTrackById(widget.initialTrackId!);
+          if (!mounted || _initialTargetKey() != targetKey) return;
+          if (track != null) {
+            final trackClientCode = track.clientCode;
+            if (trackClientCode != null &&
+                trackClientCode.toUpperCase() != clientCode.toUpperCase() &&
+                await _selectClientCodeIfAvailable(trackClientCode)) {
+              return;
+            }
+            bucket = await _bucketForTrackDeepLink(track, trackClientCode);
+          }
+        } else if (widget.initialTrackCode?.isNotEmpty ?? false) {
+          final tracks = await apiService.fetchTracksForDeepLink(
+            clientCode: queryClientCode,
+            search: widget.initialTrackCode,
+            take: 20,
+          );
+          if (!mounted || _initialTargetKey() != targetKey) return;
+          TrackItem? matched;
+          for (final track in tracks) {
+            if (track.code.toLowerCase() ==
+                widget.initialTrackCode!.toLowerCase()) {
+              matched = track;
+              break;
+            }
+          }
+          if (matched != null) {
+            final trackClientCode = matched.clientCode;
+            if (trackClientCode != null &&
+                trackClientCode.toUpperCase() != clientCode.toUpperCase() &&
+                await _selectClientCodeIfAvailable(trackClientCode)) {
+              return;
+            }
+            bucket = await _bucketForTrackDeepLink(matched, trackClientCode);
+          }
+        }
+
+        if (!mounted || _initialTargetKey() != targetKey) return;
+        if (bucket == null) {
+          _handledInitialTargetKey = targetKey;
+          return;
+        }
+
+        _handledInitialTargetKey = targetKey;
+        _openDigestTrackSheet(bucket);
+      } catch (e) {
+        debugPrint('[TracksScreen] Failed to open initial target: $e');
+      } finally {
+        if (_loadingInitialTargetKey == targetKey) {
+          _loadingInitialTargetKey = null;
+        }
+      }
+    });
+  }
+
+  Future<_GroupBucket> _bucketForTrackDeepLink(
+    TrackItem track,
+    String? clientCode,
+  ) async {
+    final assemblyId = track.assembly?.id;
+    if (assemblyId != null) {
+      final apiService = ref.read(tracksApiServiceProvider);
+      final tracks = await apiService.fetchTracksForDeepLink(
+        clientCode: clientCode,
+        assemblyId: assemblyId.toString(),
+      );
+      if (tracks.isNotEmpty) {
+        final groups = _groupTracks(tracks);
+        _GroupBucket? group;
+        for (final bucket in groups) {
+          if (bucket.assembly?.id == assemblyId ||
+              bucket.tracks.any((item) => item.id == track.id)) {
+            group = bucket;
+            break;
+          }
+        }
+        if (group != null) return group;
+      }
+    }
+
+    return _GroupBucket(assembly: track.assembly, tracks: [track]);
   }
 
   Future<void> _openDigestTrackSheet(_GroupBucket bucket) async {
@@ -3094,6 +3280,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             'Чтобы увидеть треки, сначала выберите или добавьте код клиента.',
       );
     }
+    final switchTarget = _clientCodeSwitchTarget(clientCode);
+    if (switchTarget != null) {
+      _scheduleInitialClientSwitch(switchTarget);
+      return const Center(child: CircularProgressIndicator());
+    }
 
     // Получаем notifier и состояние пагинированного списка
     final tracksNotifier = ref.watch(paginatedTracksProvider(clientCode));
@@ -3131,7 +3322,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     final groups = tracksState.tracks.isNotEmpty
         ? _groupTracks(tracksState.tracks)
         : <_GroupBucket>[];
-    _maybeOpenInitialTarget(groups);
+    _maybeOpenInitialTarget(
+      groups,
+      clientCode,
+      isLoading: tracksState.isLoading,
+    );
     final bottomScrollPad =
         bottomPad + 16 + (_selectedTracks.isEmpty ? 0 : bulkButtonExtraPad + 8);
 

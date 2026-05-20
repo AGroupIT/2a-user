@@ -79,15 +79,33 @@ class PushNotificationService {
   static bool _fcmTokenObtained = false; // FCM токен получен
   static bool _messagingSupported = true; // FCM доступен в текущем браузере/ОС
   static Future<void>? _firebaseInitializationFuture;
+  static final List<RemoteMessage> _pendingOpenedMessages = [];
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
+  final List<String?> _pendingLocalNotificationTapPayloads = [];
 
   // Callback для обработки FCM сообщений
   static Function(RemoteMessage)? onFCMMessageReceived;
 
   // Callback для обработки открытия push-уведомления
-  static Function(RemoteMessage)? onFCMMessageOpened;
+  static FutureOr<void> Function(RemoteMessage)? _onFCMMessageOpened;
+
+  static FutureOr<void> Function(RemoteMessage)? get onFCMMessageOpened =>
+      _onFCMMessageOpened;
+
+  static set onFCMMessageOpened(
+    FutureOr<void> Function(RemoteMessage)? handler,
+  ) {
+    _onFCMMessageOpened = handler;
+    if (handler == null || _pendingOpenedMessages.isEmpty) return;
+
+    final pending = List<RemoteMessage>.from(_pendingOpenedMessages);
+    _pendingOpenedMessages.clear();
+    for (final message in pending) {
+      _dispatchOpenedMessage(message);
+    }
+  }
 
   // Callback для обработки обновления FCM токена
   static Function(String)? onTokenRefreshed;
@@ -233,7 +251,7 @@ class PushNotificationService {
             debugPrint('🔔 FCM opened app skipped: recipient mismatch');
             return;
           }
-          onFCMMessageOpened?.call(message);
+          _dispatchOpenedMessage(message);
         });
 
         final initialMessage = await _messaging!.getInitialMessage();
@@ -246,7 +264,7 @@ class PushNotificationService {
               debugPrint('🔔 FCM initial message skipped: recipient mismatch');
               return;
             }
-            onFCMMessageOpened?.call(initialMessage);
+            _dispatchOpenedMessage(initialMessage);
           });
         }
       } else {
@@ -383,6 +401,28 @@ class PushNotificationService {
     return true;
   }
 
+  static void _dispatchOpenedMessage(RemoteMessage message) {
+    final handler = onFCMMessageOpened;
+    if (handler == null) {
+      _pendingOpenedMessages.add(message);
+      if (_pendingOpenedMessages.length > 5) {
+        _pendingOpenedMessages.removeAt(0);
+      }
+      debugPrint('🔔 FCM open queued until handler is ready');
+      return;
+    }
+
+    unawaited(
+      Future<void>.sync(() => handler(message)).catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        debugPrint('🔔 FCM open handler error: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+    );
+  }
+
   /// VAPID Key для Web Push (Firebase Console → Project Settings → Cloud Messaging)
   static const String _vapidKey =
       'BN84z0kGwWRFRalLMJ-HlMPVYBp5Tu7QnsGiACoT-ODg7VkwtFV_kdDhFHapsr5BguDgeBs0E6Pe2aY2_0fMshQ';
@@ -458,17 +498,17 @@ class PushNotificationService {
   /// Инициализация локальных уведомлений
   Future<void> initialize({void Function(String? route)? onTap}) async {
     if (kIsWeb) {
-      onNotificationTap = onTap;
+      _setNotificationTapHandler(onTap);
       _isInitialized = true;
       return;
     }
 
     if (_isInitialized) {
-      onNotificationTap = onTap;
+      _setNotificationTapHandler(onTap);
       return;
     }
 
-    onNotificationTap = onTap;
+    _setNotificationTapHandler(onTap);
 
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
@@ -493,7 +533,9 @@ class PushNotificationService {
       final launchDetails = await _notifications
           .getNotificationAppLaunchDetails();
       if (launchDetails?.didNotificationLaunchApp == true) {
-        onNotificationTap?.call(launchDetails?.notificationResponse?.payload);
+        _dispatchLocalNotificationTap(
+          launchDetails?.notificationResponse?.payload,
+        );
       }
     } catch (e) {
       debugPrint('🔔 Local notifications init skipped: $e');
@@ -513,8 +555,40 @@ class PushNotificationService {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    final payload = response.payload;
-    onNotificationTap?.call(payload);
+    _dispatchLocalNotificationTap(response.payload);
+  }
+
+  void _setNotificationTapHandler(void Function(String? route)? onTap) {
+    if (onTap != null) {
+      onNotificationTap = onTap;
+    }
+    _drainPendingLocalNotificationTaps();
+  }
+
+  void _dispatchLocalNotificationTap(String? payload) {
+    final handler = onNotificationTap;
+    if (handler == null) {
+      _pendingLocalNotificationTapPayloads.add(payload);
+      if (_pendingLocalNotificationTapPayloads.length > 5) {
+        _pendingLocalNotificationTapPayloads.removeAt(0);
+      }
+      debugPrint('🔔 Local notification tap queued until handler is ready');
+      return;
+    }
+    handler(payload);
+  }
+
+  void _drainPendingLocalNotificationTaps() {
+    final handler = onNotificationTap;
+    if (handler == null || _pendingLocalNotificationTapPayloads.isEmpty) {
+      return;
+    }
+
+    final pending = List<String?>.from(_pendingLocalNotificationTapPayloads);
+    _pendingLocalNotificationTapPayloads.clear();
+    for (final payload in pending) {
+      handler(payload);
+    }
   }
 
   /// Получить настройки канала для типа уведомления

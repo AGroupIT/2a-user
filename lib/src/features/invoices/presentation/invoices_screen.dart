@@ -106,8 +106,13 @@ Future<bool> _requestInvoicePaymentStatus(
 
 class InvoicesScreen extends ConsumerStatefulWidget {
   final String? initialInvoiceId;
+  final String? initialClientCode;
 
-  const InvoicesScreen({super.key, this.initialInvoiceId});
+  const InvoicesScreen({
+    super.key,
+    this.initialInvoiceId,
+    this.initialClientCode,
+  });
 
   @override
   ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
@@ -123,6 +128,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   final GlobalKey _filtersKey = GlobalKey();
   final GlobalKey _firstInvoiceKey = GlobalKey();
   String? _handledInitialInvoiceId;
+  String? _loadingInitialInvoiceId;
+  String? _initialClientSwitchTarget;
 
   @override
   void initState() {
@@ -132,8 +139,11 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   @override
   void didUpdateWidget(covariant InvoicesScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialInvoiceId != widget.initialInvoiceId) {
+    if (oldWidget.initialInvoiceId != widget.initialInvoiceId ||
+        oldWidget.initialClientCode != widget.initialClientCode) {
       _handledInitialInvoiceId = null;
+      _loadingInitialInvoiceId = null;
+      _initialClientSwitchTarget = null;
     }
   }
 
@@ -151,6 +161,54 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     }).toList();
   }
 
+  String? _clientCodeSwitchTarget(String activeCode) {
+    final requested = widget.initialClientCode?.trim();
+    if (requested == null || requested.isEmpty) return null;
+    if (requested.toUpperCase() == activeCode.toUpperCase()) return null;
+
+    final codesState = ref.watch(clientCodesControllerProvider).asData?.value;
+    if (codesState == null) return null;
+    for (final code in codesState.codes) {
+      if (code.toUpperCase() == requested.toUpperCase()) return code;
+    }
+    return null;
+  }
+
+  void _scheduleInitialClientSwitch(String targetCode) {
+    if (_initialClientSwitchTarget == targetCode) return;
+    _initialClientSwitchTarget = targetCode;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await ref
+          .read(clientCodesControllerProvider.notifier)
+          .selectClient(targetCode);
+    });
+  }
+
+  Future<bool> _selectClientCodeIfAvailable(String? code) async {
+    final requested = code?.trim();
+    if (requested == null || requested.isEmpty) return false;
+
+    final codesState = ref.read(clientCodesControllerProvider).asData?.value;
+    if (codesState == null) return false;
+    String? targetCode;
+    for (final candidate in codesState.codes) {
+      if (candidate.toUpperCase() == requested.toUpperCase()) {
+        targetCode = candidate;
+        break;
+      }
+    }
+    if (targetCode == null) return false;
+
+    final activeCode = ref.read(activeClientCodeProvider);
+    if (activeCode?.toUpperCase() == targetCode.toUpperCase()) return true;
+
+    await ref
+        .read(clientCodesControllerProvider.notifier)
+        .selectClient(targetCode);
+    return true;
+  }
+
   void _maybeOpenInitialInvoice(List<InvoiceItem> items, String clientCode) {
     final invoiceId = widget.initialInvoiceId;
     if (invoiceId == null || invoiceId.isEmpty) return;
@@ -163,12 +221,49 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         break;
       }
     }
-    if (invoice == null) return;
+    if (invoice == null) {
+      _loadInitialInvoiceFromApi(invoiceId, clientCode);
+      return;
+    }
 
     _handledInitialInvoiceId = invoiceId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _openInvoiceDetail(invoice!, clientCode);
+    });
+  }
+
+  void _loadInitialInvoiceFromApi(String invoiceId, String clientCode) {
+    if (_loadingInitialInvoiceId == invoiceId) return;
+    _loadingInitialInvoiceId = invoiceId;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || widget.initialInvoiceId != invoiceId) return;
+      try {
+        final invoice = await ref.read(invoiceByIdProvider(invoiceId).future);
+        if (!mounted || widget.initialInvoiceId != invoiceId) return;
+
+        if (invoice == null) {
+          _handledInitialInvoiceId = invoiceId;
+          return;
+        }
+
+        final invoiceClientCode = invoice.clientCode;
+        if (invoiceClientCode != null &&
+            invoiceClientCode.toUpperCase() != clientCode.toUpperCase() &&
+            await _selectClientCodeIfAvailable(invoiceClientCode)) {
+          return;
+        }
+
+        _handledInitialInvoiceId = invoiceId;
+        _openInvoiceDetail(invoice, invoiceClientCode ?? clientCode);
+      } catch (e) {
+        debugPrint('[InvoicesScreen] Failed to open initial invoice: $e');
+      } finally {
+        if (_loadingInitialInvoiceId == invoiceId) {
+          _loadingInitialInvoiceId = null;
+        }
+      }
     });
   }
 
@@ -280,6 +375,11 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         message:
             'Чтобы увидеть счета, сначала выберите или добавьте код клиента.',
       );
+    }
+    final switchTarget = _clientCodeSwitchTarget(clientCode);
+    if (switchTarget != null) {
+      _scheduleInitialClientSwitch(switchTarget);
+      return const Center(child: CircularProgressIndicator());
     }
 
     final invoicesAsync = ref.watch(invoicesListProvider(clientCode));

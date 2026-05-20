@@ -44,13 +44,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-  Timer? _pollingTimer;
   bool _isDisposed = false;
   late final IsChatScreenOpenNotifier _screenOpenNotifier;
   late final ChatPresenceService _chatPresenceService;
   late final PushNotificationService _notificationService;
-
-  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
   // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
   bool _isSendingLocally = false;
@@ -67,8 +64,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
-    // Загружаем чат и запускаем polling
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Загружаем чат и открываем presence
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || _isDisposed) return;
       _screenOpenNotifier.set(true);
       unawaited(
@@ -76,18 +73,16 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           NotificationType.chatMessage,
         }),
       );
-      ref.read(chatControllerProvider.notifier).loadConversation();
+      await ref.read(chatControllerProvider.notifier).loadConversation();
+      if (!mounted || _isDisposed) return;
 
       // Если есть начальное сообщение - устанавливаем его в текстовое поле
       if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
         _textController.text = widget.initialMessage!;
       }
 
-      // Запускаем polling для новых сообщений
-      _startPolling();
-
       // Уведомляем сервер что чат открыт (для блокировки push-уведомлений)
-      _notifyServerChatOpened();
+      await _notifyServerChatOpened();
     });
 
     // Очищаем уведомления при открытии чата
@@ -104,19 +99,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     );
   }
 
-  void _startPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted && !_isAppInBackground) {
-        _pollMessages();
-      }
-    });
-  }
-
-  void _pollMessages() {
-    ref.read(chatControllerProvider.notifier).pollNewMessages();
-  }
-
   Future<void> _initNotifications() async {
     await _notificationService.initialize();
   }
@@ -128,7 +110,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void dispose() {
     _isDisposed = true;
-    _pollingTimer?.cancel();
 
     try {
       _screenOpenNotifier.set(false);
@@ -148,7 +129,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted || _isDisposed) return;
-    _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 
     if (state == AppLifecycleState.resumed) {
@@ -162,11 +142,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       ref.read(chatPresenceServiceProvider).onAppPaused();
     }
   }
-
-  bool get _isAppInBackground =>
-      _appLifecycleState == AppLifecycleState.paused ||
-      _appLifecycleState == AppLifecycleState.inactive ||
-      _appLifecycleState == AppLifecycleState.hidden;
 
   Future<void> _handleMessageSend(String text) async {
     if (_isSendingLocally) return;

@@ -47,10 +47,15 @@ void initializePushNotificationsHandler(
   void Function(String route)? onNavigate,
 }) {
   PushNotificationService.onFCMMessageReceived = (RemoteMessage message) {
-    _handleFCMMessage(ref, message);
+    try {
+      _handleFCMMessage(ref, message);
+    } catch (e, stackTrace) {
+      debugPrint('🔔 FCM foreground handler error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   };
   PushNotificationService.onFCMMessageOpened = (RemoteMessage message) {
-    _handleFCMMessageOpened(ref, message, onNavigate);
+    return _handleFCMMessageOpened(ref, message, onNavigate);
   };
 
   final pushService = ref.read(pushNotificationServiceProvider);
@@ -125,14 +130,25 @@ Future<void> _handleNotificationTapTarget(
 ) async {
   final notificationId = target.notificationId;
   if (notificationId != null && notificationId.isNotEmpty) {
-    await ref
-        .read(notificationsControllerProvider.notifier)
-        .markRead(notificationId);
+    unawaited(
+      ref
+          .read(notificationsControllerProvider.notifier)
+          .markRead(notificationId)
+          .catchError((Object error, StackTrace stackTrace) {
+            debugPrint('🔔 Failed to mark notification as read: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          }),
+    );
   }
 
   final route = target.route;
   if (route != null && route.isNotEmpty) {
-    onNavigate?.call(route);
+    try {
+      onNavigate?.call(route);
+    } catch (e, stackTrace) {
+      debugPrint('🔔 Notification navigation failed: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 }
 

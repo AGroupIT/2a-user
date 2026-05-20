@@ -905,6 +905,61 @@ class TracksApiService {
 
   ApiClient get _apiClient => _ref.read(apiClientProvider);
 
+  Future<TrackItem?> getTrackById(int trackId) async {
+    try {
+      final response = await _apiClient.get('/tracks/$trackId');
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final trackJson = data['data'] as Map<String, dynamic>?;
+        if (trackJson == null) return null;
+        return TrackItem.fromJson(trackJson);
+      }
+      return null;
+    } on DioException catch (e) {
+      debugPrint('Error loading track by id: $e');
+      return null;
+    }
+  }
+
+  Future<List<TrackItem>> fetchTracksForDeepLink({
+    String? clientCode,
+    String? assemblyId,
+    String? search,
+    int take = 200,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'take': take,
+        'skip': 0,
+        'sortBy': 'createdAt',
+        if (clientCode != null && clientCode.isNotEmpty)
+          'clientCode': clientCode,
+        if (assemblyId != null && assemblyId.isNotEmpty)
+          'assemblyId': assemblyId,
+        if (search != null && search.isNotEmpty) 'search': search,
+      };
+
+      final response = await _apiClient.get(
+        '/tracks',
+        queryParameters: queryParams,
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final tracksJson = data['data'] as List<dynamic>? ?? const [];
+        final tracks = tracksJson
+            .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+        return _sortTracksByCreatedAtDesc(tracks);
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint('Error loading tracks for deep link: $e');
+      return [];
+    }
+  }
+
   /// Создать запрос фотоотчета
   Future<bool> createPhotoRequest({
     required int clientId,

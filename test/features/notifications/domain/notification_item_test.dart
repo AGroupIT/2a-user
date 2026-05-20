@@ -20,9 +20,12 @@ void main() {
 
       expect(item.id, '466380');
       expect(item.type, NotificationType.trackStatus);
-      expect(item.route, '/tracks?trackId=58504');
+      expect(item.route, '/tracks?trackId=58504&trackCode=TEST16041');
       expect(NotificationItem.notificationIdFromData(data), '466380');
-      expect(NotificationItem.routeFromPushData(data), '/tracks?trackId=58504');
+      expect(
+        NotificationItem.routeFromPushData(data),
+        '/tracks?trackId=58504&trackCode=TEST16041',
+      );
     });
 
     test('builds assembly route from assembly notification data', () {
@@ -37,6 +40,28 @@ void main() {
       expect(item.id, '466381');
       expect(item.type, NotificationType.assemblyStatus);
       expect(item.route, '/tracks?assemblyId=1581');
+    });
+
+    test('keeps client code in entity routes when push data includes it', () {
+      expect(
+        NotificationItem.routeFromPushData({
+          'type': 'track_status_changed',
+          'entityId': '466380',
+          'clientCode': '2A-TEST',
+          'trackId': '58504',
+          'trackCode': 'TEST16041',
+        }),
+        '/tracks?clientCode=2A-TEST&trackId=58504&trackCode=TEST16041',
+      );
+      expect(
+        NotificationItem.routeFromPushData({
+          'type': 'invoice_status_changed',
+          'entityId': '466381',
+          'clientCode': '2A-01',
+          'invoiceId': '123',
+        }),
+        '/invoices?clientCode=2A-01&invoiceId=123',
+      );
     });
 
     test('routes support and payment chat notifications to matching chats', () {

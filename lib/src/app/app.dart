@@ -26,6 +26,7 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   DateTime? _pausedAt;
+  String? _pendingNotificationRoute;
 
   @override
   void initState() {
@@ -35,13 +36,51 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initializePushNotificationsHandler(
         ref,
-        onNavigate: (route) {
-          if (!mounted) return;
-          ref.read(routerProvider).go(route);
-        },
+        onNavigate: _handleNotificationNavigation,
       );
       _setupUnauthorizedHandler();
     });
+  }
+
+  void _handleNotificationNavigation(String route) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _navigateOrQueueNotification(route);
+    });
+  }
+
+  void _navigateOrQueueNotification(String route) {
+    final authState = ref.read(authProvider);
+    if (authState.isLoading) {
+      _pendingNotificationRoute = route;
+      debugPrint('🔔 Push navigation queued until auth is ready: $route');
+      return;
+    }
+
+    if (!authState.isLoggedIn) {
+      debugPrint('🔔 Push navigation skipped: user is not logged in');
+      _pendingNotificationRoute = null;
+      return;
+    }
+
+    _goToNotificationRoute(route);
+  }
+
+  void _goToNotificationRoute(String route) {
+    try {
+      debugPrint('🔔 Push navigation: $route');
+      ref.read(routerProvider).go(route);
+    } catch (e, stackTrace) {
+      debugPrint('🔔 Push navigation failed: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  void _flushPendingNotificationRoute() {
+    final route = _pendingNotificationRoute;
+    if (route == null) return;
+    _pendingNotificationRoute = null;
+    _navigateOrQueueNotification(route);
   }
 
   /// Настройка обработчика 401 ошибки
@@ -115,6 +154,19 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (next.isLoading) return;
+      if (!next.isLoggedIn) {
+        _pendingNotificationRoute = null;
+        return;
+      }
+      if (_pendingNotificationRoute == null) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _flushPendingNotificationRoute();
+      });
+    });
+
     // WebSocket + delta sync: watch ensures re-trigger on auth state change
     ref.watch(webSocketAutoConnectProvider);
     ref.watch(deltaSyncProvider);

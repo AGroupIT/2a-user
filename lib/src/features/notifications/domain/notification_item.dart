@@ -569,12 +569,16 @@ class NotificationItem {
       'track_number',
     ]);
     final assemblyId = _readString(data, const ['assemblyId', 'assembly_id']);
+    final clientCode = _readString(data, const ['clientCode', 'client_code']);
     final invoiceId = _readString(data, const [
       'invoiceId',
       'invoice_id',
       'invoiceNumber',
       'invoice_number',
     ]);
+    final clientCodeQuery = <String, String>{
+      if (clientCode != null) 'clientCode': clientCode,
+    };
 
     switch (type) {
       case NotificationType.trackStatus:
@@ -593,16 +597,29 @@ class NotificationItem {
             type == NotificationType.assemblyStatus ||
             rawType.contains('assembly');
         if (shouldOpenAssembly && assemblyId != null) {
-          return _route('/tracks', {'assemblyId': assemblyId});
+          return _route('/tracks', {
+            ...clientCodeQuery,
+            'assemblyId': assemblyId,
+          });
         }
         if (trackId != null) {
-          return _route('/tracks', {'trackId': trackId});
+          return _route('/tracks', {
+            ...clientCodeQuery,
+            'trackId': trackId,
+            if (trackCode != null) 'trackCode': trackCode,
+          });
         }
         if (trackCode != null) {
-          return _route('/tracks', {'trackCode': trackCode});
+          return _route('/tracks', {
+            ...clientCodeQuery,
+            'trackCode': trackCode,
+          });
         }
         if (assemblyId != null) {
-          return _route('/tracks', {'assemblyId': assemblyId});
+          return _route('/tracks', {
+            ...clientCodeQuery,
+            'assemblyId': assemblyId,
+          });
         }
         return '/tracks';
       case NotificationType.chatMessage:
@@ -626,7 +643,10 @@ class NotificationItem {
         return '/rules';
       case NotificationType.invoice:
         if (invoiceId != null) {
-          return _route('/invoices', {'invoiceId': invoiceId});
+          return _route('/invoices', {
+            ...clientCodeQuery,
+            'invoiceId': invoiceId,
+          });
         }
         return '/invoices';
     }

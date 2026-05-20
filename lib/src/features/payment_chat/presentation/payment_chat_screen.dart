@@ -65,10 +65,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-  Timer? _pollingTimer;
 
   final bool _showQuickActions = false;
-  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   bool _isInfoBannerExpanded = false;
 
   // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
@@ -93,7 +91,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
-    // Загружаем чат и запускаем polling
+    // Загружаем чат и открываем presence
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_canUseRef) return;
       _screenOpenNotifier.set(true);
@@ -115,11 +113,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         _textController.text = widget.initialMessage!;
       }
 
-      // Запускаем polling для новых сообщений
-      _startPolling();
-
       // Уведомляем сервер что чат открыт (для блокировки push-уведомлений)
-      _notifyServerChatOpened();
+      await _notifyServerChatOpened();
     });
 
     // Очищаем уведомления при открытии чата
@@ -139,20 +134,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     );
   }
 
-  void _startPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted && !_isAppInBackground) {
-        _pollMessages();
-      }
-    });
-  }
-
-  void _pollMessages() {
-    if (!_canUseRef) return;
-    ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
-  }
-
   Future<void> _initNotifications() async {
     await _notificationService.initialize();
   }
@@ -164,7 +145,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   @override
   void dispose() {
     _isDisposed = true;
-    _pollingTimer?.cancel();
 
     try {
       _screenOpenNotifier.set(false);
@@ -181,7 +161,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted || _isDisposed) return;
-    _appLifecycleState = state;
     debugPrint('App lifecycle state changed to: $state');
 
     if (state == AppLifecycleState.resumed) {
@@ -195,11 +174,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       _chatPresenceService.onAppPaused();
     }
   }
-
-  bool get _isAppInBackground =>
-      _appLifecycleState == AppLifecycleState.paused ||
-      _appLifecycleState == AppLifecycleState.inactive ||
-      _appLifecycleState == AppLifecycleState.hidden;
 
   // Флаг чтобы отправить начальное сообщение только один раз
   bool _initialMessageSent = false;
