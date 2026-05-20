@@ -398,6 +398,8 @@ class TrackQuestion {
   final String question;
   final String? answer;
   final String status; // new, in_progress, completed, cancelled
+  final String? questionType;
+  final List<String> answerPhotoUrls;
   final DateTime createdAt;
   final DateTime? answeredAt;
   final String? answeredByName;
@@ -407,6 +409,8 @@ class TrackQuestion {
     required this.question,
     this.answer,
     required this.status,
+    this.questionType,
+    this.answerPhotoUrls = const [],
     required this.createdAt,
     this.answeredAt,
     this.answeredByName,
@@ -422,8 +426,11 @@ class TrackQuestion {
         return 'Передан в работу';
       case 'assigned':
         return 'Назначен ответственный';
+      case 'answered':
       case 'completed':
         return 'Отвечен';
+      case 'closed':
+        return 'Закрыт';
       case 'cancelled':
         return 'Отменён';
       default:
@@ -431,8 +438,17 @@ class TrackQuestion {
     }
   }
 
-  bool get isActive => status != 'cancelled' && status != 'completed';
+  bool get isActive =>
+      status != 'cancelled' &&
+      status != 'completed' &&
+      status != 'answered' &&
+      status != 'closed';
   bool get hasAnswer => answer != null && answer!.isNotEmpty;
+  bool get hasResponse =>
+      hasAnswer ||
+      answerPhotoUrls.isNotEmpty ||
+      status == 'completed' ||
+      status == 'answered';
 
   factory TrackQuestion.fromJson(Map<String, dynamic> json) {
     return TrackQuestion(
@@ -440,6 +456,12 @@ class TrackQuestion {
       question: json['question'] as String? ?? '',
       answer: json['answer'] as String?,
       status: json['status'] as String? ?? 'new',
+      questionType: json['questionType'] as String?,
+      answerPhotoUrls:
+          (json['answerPhotoUrls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),

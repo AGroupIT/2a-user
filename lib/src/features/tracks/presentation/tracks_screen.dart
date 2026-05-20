@@ -40,6 +40,11 @@ import 'add_tracks_dialog.dart';
 // Alias для authStateProvider
 final authStateProvider = authProvider;
 
+const _unknownTrackQuestionType = 'unknown_track_check';
+const _clientCodeTransferQuestionType = 'client_code_transfer';
+const _unknownTrackQuestionText =
+    'Не знаю что это за трек номер, могли бы проверить и код клиента и трек номер';
+
 /// Парсит HEX цвет из строки (например "#FF5733" или "FF5733")
 Color? parseHexColor(String? hexString) {
   if (hexString == null || hexString.isEmpty) return null;
@@ -63,6 +68,13 @@ String _fileNameWithExtension(String fileName, String extension) {
   final dotIndex = fileName.lastIndexOf('.');
   final baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
   return '$baseName.$cleanExtension';
+}
+
+class _ClientCodeOption {
+  final int id;
+  final String code;
+
+  const _ClientCodeOption({required this.id, required this.code});
 }
 
 void _showStyledSnackBar(
@@ -271,6 +283,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   void _onNotifierStateChanged() {
     if (mounted) {
+      final tracks = _currentNotifier?.state.tracks ?? const <TrackItem>[];
+      _syncMapsWithServerData(tracks);
       setState(() {});
     }
   }
@@ -293,9 +307,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
   }
 
-  /// Очищает оптимистичные Map-записи для треков у которых сервер
-  /// уже подтвердил данные. Вызывается после pull-to-refresh.
-  void _syncMapsWithServerData(List<TrackItem> serverTracks) {
+  /// Очищает оптимистичные Map-записи для треков, у которых сервер
+  /// уже подтвердил данные после pull-to-refresh или silent refresh.
+  bool _syncMapsWithServerData(List<TrackItem> serverTracks) {
     bool changed = false;
     for (final track in serverTracks) {
       // Если сервер вернул photo request — оптимистика больше не нужна
@@ -323,7 +337,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         changed = true;
       }
     }
-    if (changed && mounted) setState(() {});
+    return changed;
   }
 
   Future<bool> _confirmAction(
@@ -559,9 +573,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     BuildContext context,
     TrackItem track,
   ) async {
-    final controller = TextEditingController(
-      text: _askedQuestions[track.code] ?? '',
-    );
     final result = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -593,69 +604,39 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Опишите ваш вопрос по треку',
+                    'Склад получит задачу проверить трек и код клиента',
                     style: TextStyle(
                       color: Colors.black54,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.shade200),
+                      color: const Color(0x0F000000),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0x14000000)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.amber.shade700,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
+                        Icon(Icons.lock_outline, color: context.brandPrimary),
+                        const SizedBox(width: 10),
+                        const Expanded(
                           child: Text(
-                            'Ответ на вопрос может быть только текстовым',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.amber.shade800,
-                            ),
+                            _unknownTrackQuestionText,
+                            style: TextStyle(fontSize: 14, height: 1.35),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  AppGradientInputFrame(
-                    child: TextField(
-                      controller: controller,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        hintText: 'Опишите ваш вопрос по треку…',
-                        hintStyle: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF999999),
-                          fontWeight: FontWeight.w500,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 14),
                   FilledButton(
                     onPressed: () => Navigator.of(sheetContext).pop(true),
-                    child: const Text('Задать вопрос'),
+                    child: const Text('Отправить на склад'),
                   ),
                 ],
               ),
@@ -667,12 +648,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     if (result == true) {
       if (!context.mounted) return;
       final now = DateTime.now();
-      final question = controller.text.trim();
-
-      if (question.isEmpty) {
-        _showStyledSnackBar(context, 'Введите вопрос', isError: true);
-        return;
-      }
+      const question = _unknownTrackQuestionText;
 
       // Получаем данные для API
       final auth = ref.read(authStateProvider);
@@ -717,6 +693,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         trackId: track.id!,
         trackNumber: track.code,
         question: question,
+        questionType: _unknownTrackQuestionType,
       );
 
       if (success) {
@@ -736,6 +713,157 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         });
         _showStyledSnackBar(context, 'Ошибка отправки вопроса', isError: true);
       }
+    }
+  }
+
+  List<_ClientCodeOption> _clientCodeOptionsFromAuth() {
+    final auth = ref.read(authStateProvider);
+    final rawCodes = auth.clientData?['codes'] as List<dynamic>?;
+    if (rawCodes == null) return const [];
+
+    return rawCodes
+        .whereType<Map<String, dynamic>>()
+        .map((json) {
+          final id = json['id'];
+          final code = json['code']?.toString();
+          final parsedId = id is int ? id : int.tryParse(id?.toString() ?? '');
+          if (parsedId == null || code == null || code.trim().isEmpty) {
+            return null;
+          }
+          return _ClientCodeOption(id: parsedId, code: code.trim());
+        })
+        .whereType<_ClientCodeOption>()
+        .toList(growable: false);
+  }
+
+  Future<void> _showClientCodeTransferSheet(
+    BuildContext context,
+    TrackItem track,
+  ) async {
+    final trackId = track.id;
+    if (trackId == null) {
+      _showStyledSnackBar(context, 'Ошибка: трек не найден', isError: true);
+      return;
+    }
+
+    final options = _clientCodeOptionsFromAuth()
+        .where((code) => code.id != track.clientCodeId)
+        .toList(growable: false);
+    if (options.isEmpty) {
+      _showStyledSnackBar(
+        context,
+        'Нет другого кода клиента для переноса',
+        isError: true,
+      );
+      return;
+    }
+
+    var selected = options.first;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.82,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SheetHandle(),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Перенести на другой код',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Склад получит задачу переложить трек ${track.code}. Трек изменит код только после выполнения задачи.',
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x0F000000),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: options.length,
+                            itemBuilder: (context, index) {
+                              final option = options[index];
+                              return RadioListTile<_ClientCodeOption>(
+                                value: option,
+                                groupValue: selected,
+                                activeColor: context.brandPrimary,
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setSheetState(() => selected = value);
+                                },
+                                title: Text(
+                                  option.code,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(true),
+                        child: const Text('Создать задачу складу'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final apiService = ref.read(tracksApiServiceProvider);
+    final success = await apiService.requestClientCodeTransfer(
+      trackId: trackId,
+      targetClientCodeId: selected.id,
+    );
+    if (!context.mounted) return;
+
+    if (success) {
+      _showStyledSnackBar(context, 'Задача на перенос создана');
+      _refreshTracks();
+    } else {
+      _showStyledSnackBar(
+        context,
+        'Не удалось создать задачу на перенос',
+        isError: true,
+      );
     }
   }
 
@@ -3073,6 +3201,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       photoRequestNotes: _photoRequestNotes,
       overrideComments: _overrideComments,
       onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+      onTransferClientCode: (track) =>
+          _showClientCodeTransferSheet(context, track),
       onCancelQuestion: (track) => _cancelQuestion(track),
       onEditComment: (track) => _showCommentSheet(context, track),
       onEditProduct: (track) => _showAboutProductSheet(context, track),
@@ -3412,9 +3542,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 ref.invalidate(assembliesListProvider(clientCode));
                 // Очищаем оптимистичные Map-записи для треков у которых
                 // сервер уже подтвердил данные (вопросы, фото-запросы)
-                _syncMapsWithServerData(
+                final changed = _syncMapsWithServerData(
                   ref.read(paginatedTracksProvider(clientCode)).state.tracks,
                 );
+                if (changed && mounted) setState(() {});
               } finally {
                 _isRefreshing = false;
               }
@@ -4870,6 +5001,7 @@ class _TrackGroupCard extends StatefulWidget {
   final Map<String, String> photoRequestNotes;
   final Map<String, String> overrideComments;
   final ValueChanged<TrackItem> onAskQuestion;
+  final ValueChanged<TrackItem> onTransferClientCode;
   final ValueChanged<TrackItem> onCancelQuestion;
   final ValueChanged<TrackItem> onEditComment;
   final ValueChanged<TrackItem> onEditProduct;
@@ -4909,6 +5041,7 @@ class _TrackGroupCard extends StatefulWidget {
     required this.photoRequestNotes,
     required this.overrideComments,
     required this.onAskQuestion,
+    required this.onTransferClientCode,
     required this.onCancelQuestion,
     required this.onEditComment,
     required this.onEditProduct,
@@ -5587,6 +5720,17 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               final visibleQuestions = track.questions
                   .where((q) => q.status != 'cancelled')
                   .toList();
+              final hasActiveTransferRequest = visibleQuestions.any(
+                (q) =>
+                    q.questionType == _clientCodeTransferQuestionType &&
+                    q.isActive,
+              );
+              final canTransferClientCode =
+                  widget.assembly == null &&
+                  track.assembly == null &&
+                  !hasActiveTransferRequest &&
+                  (track.statusCode == 'pending' ||
+                      track.statusCode == 'in_warehouse');
               final isPhotoRequested =
                   activePhoto != null ||
                   widget.requestedPhotoReports.contains(track.code);
@@ -5636,7 +5780,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 // Показываем все видимые вопросы (из API)
                 for (var i = 0; i < visibleQuestions.length; i++) {
                   final q = visibleQuestions[i];
-                  final statusColor = q.hasAnswer
+                  final statusColor = q.hasResponse
                       ? Colors.green
                       : q.status == 'cancelled'
                       ? Colors.red
@@ -5650,6 +5794,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       statusColor: statusColor,
                       question: q.question,
                       answer: q.hasAnswer ? q.answer : null,
+                      answerPhotoUrls: q.answerPhotoUrls,
+                      trackCode: track.code,
                       createdAt: df.format(q.createdAt),
                       answeredAt: q.answeredAt != null
                           ? df.format(q.answeredAt!)
@@ -5669,6 +5815,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       statusColor: Colors.orange,
                       question: pendingLocalQuestion,
                       answer: null,
+                      answerPhotoUrls: const [],
+                      trackCode: track.code,
                       createdAt: df.format(DateTime.now()),
                       answeredAt: null,
                       canCancel: true,
@@ -5806,6 +5954,13 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                 icon: Icons.help_outline_rounded,
                                 onPressed: () => widget.onAskQuestion(track),
                               ),
+                            if (canTransferClientCode)
+                              _ActionChipButton(
+                                label: 'Перенести',
+                                icon: Icons.swap_horiz_rounded,
+                                onPressed: () =>
+                                    widget.onTransferClientCode(track),
+                              ),
                             if (commentValue.isEmpty)
                               _ActionChipButton(
                                 label: 'Заметка',
@@ -5873,6 +6028,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final visibleQuestions = track.questions
         .where((q) => q.status != 'cancelled')
         .toList();
+    final hasActiveTransferRequest = visibleQuestions.any(
+      (q) => q.questionType == _clientCodeTransferQuestionType && q.isActive,
+    );
+    final canTransferClientCode =
+        !embeddedInAssembly &&
+        track.assembly == null &&
+        !hasActiveTransferRequest &&
+        (track.statusCode == 'pending' || track.statusCode == 'in_warehouse');
     final isPhotoRequested =
         activePhoto != null ||
         widget.requestedPhotoReports.contains(track.code);
@@ -5921,7 +6084,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     if (hasQuestion) {
       for (var i = 0; i < visibleQuestions.length; i++) {
         final q = visibleQuestions[i];
-        final statusColor = q.hasAnswer
+        final statusColor = q.hasResponse
             ? Colors.green
             : q.status == 'cancelled'
             ? Colors.red
@@ -5933,6 +6096,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             statusColor: statusColor,
             question: q.question,
             answer: q.hasAnswer ? q.answer : null,
+            answerPhotoUrls: q.answerPhotoUrls,
+            trackCode: track.code,
             createdAt: df.format(q.createdAt),
             answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
             canCancel: !embeddedInAssembly && q.isActive,
@@ -5948,6 +6113,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             statusColor: Colors.orange,
             question: pendingLocalQuestion,
             answer: null,
+            answerPhotoUrls: const [],
+            trackCode: track.code,
             createdAt: df.format(DateTime.now()),
             answeredAt: null,
             canCancel: !embeddedInAssembly,
@@ -5968,6 +6135,11 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           label: 'Вопрос',
           onTap: () => widget.onAskQuestion(track),
         ),
+      if (canTransferClientCode)
+        _TrackCardAction(
+          label: 'Перенести',
+          onTap: () => widget.onTransferClientCode(track),
+        ),
       if (commentValue.isEmpty)
         _TrackCardAction(
           label: 'Заметка',
@@ -5987,7 +6159,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
 
     final activeQuestion = track.activeQuestion;
     final questionDone =
-        activeQuestion?.hasAnswer == true ||
+        activeQuestion?.hasResponse == true ||
         activeQuestion?.status == 'completed';
     final questionPending = activeQuestion != null && !questionDone;
     final photoDone =
@@ -6848,6 +7020,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         _QuestionDetailsItem.fromQuestion(
           visibleQuestions[i],
           visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
+          track.code,
         ),
       if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty)
         _QuestionDetailsItem(
@@ -6856,6 +7029,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           statusColor: Colors.orange,
           question: pendingLocalQuestion,
           answer: null,
+          answerPhotoUrls: const [],
+          trackCode: track.code,
           createdAt: widget.questionCreatedAt[track.code] ?? DateTime.now(),
           answeredAt: null,
           canCancel: true,
@@ -7089,9 +7264,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               child: Row(
                 children: [
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
+                    child: _HorizontalScrollHint(
                       child: Row(
                         children: [
                           for (var i = 0; i < actions.length; i++) ...[
@@ -7825,6 +7998,8 @@ class _QuestionDetailsItem {
   final Color statusColor;
   final String question;
   final String? answer;
+  final List<String> answerPhotoUrls;
+  final String trackCode;
   final DateTime createdAt;
   final DateTime? answeredAt;
   final bool canCancel;
@@ -7835,6 +8010,8 @@ class _QuestionDetailsItem {
     required this.statusColor,
     required this.question,
     required this.answer,
+    required this.answerPhotoUrls,
+    required this.trackCode,
     required this.createdAt,
     required this.answeredAt,
     required this.canCancel,
@@ -7843,17 +8020,20 @@ class _QuestionDetailsItem {
   factory _QuestionDetailsItem.fromQuestion(
     TrackQuestion question,
     String title,
+    String trackCode,
   ) {
     return _QuestionDetailsItem(
       title: title,
       statusLabel: question.statusLabel,
-      statusColor: question.hasAnswer
+      statusColor: question.hasResponse
           ? const Color(0xFF27C47A)
           : question.status == 'cancelled'
           ? Colors.redAccent
           : Colors.orange,
       question: question.question,
       answer: question.hasAnswer ? question.answer : null,
+      answerPhotoUrls: question.answerPhotoUrls,
+      trackCode: trackCode,
       createdAt: question.createdAt,
       answeredAt: question.answeredAt,
       canCancel: question.isActive,
@@ -7929,6 +8109,13 @@ class _QuestionDetailsCard extends StatelessWidget {
             const SizedBox(height: 10),
             _TaskDetailBlock(title: 'Ответ', text: item.answer!.trim()),
           ],
+          if (item.answerPhotoUrls.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _QuestionAnswerPhotoGrid(
+              urls: item.answerPhotoUrls,
+              trackCode: item.trackCode,
+            ),
+          ],
           if (item.answeredAt != null) ...[
             const SizedBox(height: 10),
             _QuestionMetaPill(
@@ -8003,6 +8190,92 @@ class _QuestionMetaPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _QuestionAnswerPhotoGrid extends StatelessWidget {
+  final List<String> urls;
+  final String trackCode;
+
+  const _QuestionAnswerPhotoGrid({required this.urls, required this.trackCode});
+
+  void _open(BuildContext context, int index) {
+    final photos = urls
+        .map(
+          (url) => PhotoItem(
+            url: url,
+            date: DateTime.now(),
+            trackingNumber: trackCode,
+          ),
+        )
+        .toList();
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(
+          item: photos[index],
+          allPhotos: photos,
+          initialIndex: index,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Фото склада',
+          style: TextStyle(
+            color: Color(0xFF2F2F2F),
+            fontFamily: 'Gilroy',
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        GridView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+            childAspectRatio: 1,
+          ),
+          itemCount: urls.length,
+          itemBuilder: (context, index) {
+            return GestureDetector(
+              onTap: () => _open(context, index),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: CachedNetworkImage(
+                  imageUrl: ApiConfig.getMediaUrl(urls[index]),
+                  fit: BoxFit.cover,
+                  memCacheWidth: 180,
+                  memCacheHeight: 180,
+                  maxWidthDiskCache: 360,
+                  maxHeightDiskCache: 360,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  placeholder: (_, _) => const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  errorWidget: (_, _, _) => Container(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    child: const Icon(Icons.broken_image_outlined, size: 20),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -8088,6 +8361,134 @@ class _TrackCardActionChip extends StatelessWidget {
               fontWeight: FontWeight.w400,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HorizontalScrollHint extends StatefulWidget {
+  final Widget child;
+
+  const _HorizontalScrollHint({required this.child});
+
+  @override
+  State<_HorizontalScrollHint> createState() => _HorizontalScrollHintState();
+}
+
+class _HorizontalScrollHintState extends State<_HorizontalScrollHint> {
+  final ScrollController _controller = ScrollController();
+  bool _showLeadingHint = false;
+  bool _showTrailingHint = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_updateHints);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateHints());
+  }
+
+  @override
+  void didUpdateWidget(covariant _HorizontalScrollHint oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateHints());
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_updateHints);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _updateHints() {
+    if (!mounted || !_controller.hasClients) return;
+    final position = _controller.position;
+    if (!position.hasContentDimensions) return;
+
+    final canScroll = position.maxScrollExtent > 1;
+    final showLeading = canScroll && position.pixels > 1;
+    final showTrailing =
+        canScroll && position.pixels < position.maxScrollExtent - 1;
+
+    if (_showLeadingHint == showLeading && _showTrailingHint == showTrailing) {
+      return;
+    }
+
+    setState(() {
+      _showLeadingHint = showLeading;
+      _showTrailingHint = showTrailing;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateHints());
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        SingleChildScrollView(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: widget.child,
+        ),
+        if (_showLeadingHint)
+          Positioned.fill(
+            right: null,
+            child: _HorizontalScrollEdgeHint(
+              alignment: Alignment.centerLeft,
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              icon: CupertinoIcons.chevron_left,
+            ),
+          ),
+        if (_showTrailingHint)
+          Positioned.fill(
+            left: null,
+            child: _HorizontalScrollEdgeHint(
+              alignment: Alignment.centerRight,
+              begin: Alignment.centerRight,
+              end: Alignment.centerLeft,
+              icon: CupertinoIcons.chevron_right,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _HorizontalScrollEdgeHint extends StatelessWidget {
+  final Alignment alignment;
+  final Alignment begin;
+  final Alignment end;
+  final IconData icon;
+
+  const _HorizontalScrollEdgeHint({
+    required this.alignment,
+    required this.begin,
+    required this.end,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: 34,
+        alignment: alignment,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: begin,
+            end: end,
+            colors: const [Colors.white, Color(0x00FFFFFF)],
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 14,
+          color: context.brandPrimary.withValues(alpha: 0.75),
         ),
       ),
     );
@@ -9135,6 +9536,8 @@ class _CollapsibleQuestion extends StatefulWidget {
   final Color statusColor;
   final String question;
   final String? answer;
+  final List<String> answerPhotoUrls;
+  final String trackCode;
   final String createdAt;
   final String? answeredAt;
   final bool canCancel;
@@ -9146,6 +9549,8 @@ class _CollapsibleQuestion extends StatefulWidget {
     required this.statusColor,
     required this.question,
     this.answer,
+    this.answerPhotoUrls = const [],
+    required this.trackCode,
     required this.createdAt,
     this.answeredAt,
     this.canCancel = false,
@@ -9269,6 +9674,13 @@ class _CollapsibleQuestionState extends State<_CollapsibleQuestion>
                             title: 'Ответ',
                             text: widget.answer!.trim(),
                             muted: true,
+                          ),
+                        ],
+                        if (widget.answerPhotoUrls.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _QuestionAnswerPhotoGrid(
+                            urls: widget.answerPhotoUrls,
+                            trackCode: widget.trackCode,
                           ),
                         ],
                         if (widget.answeredAt != null) ...[

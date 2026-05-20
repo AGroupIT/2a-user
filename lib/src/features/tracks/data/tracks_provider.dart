@@ -303,6 +303,11 @@ class PaginatedTracksNotifier {
       return;
     }
 
+    if (_state.isLoading) {
+      _queueSilentRefresh(const Duration(milliseconds: 300));
+      return;
+    }
+
     final lastStartedAt = _lastSilentRefreshStartedAt;
     if (lastStartedAt != null) {
       final elapsed = DateTime.now().difference(lastStartedAt);
@@ -366,7 +371,12 @@ class PaginatedTracksNotifier {
       );
       return;
     }
-    if (_state.isLoading) return;
+    if (_state.isLoading) {
+      if (silent) {
+        _queueSilentRefresh(const Duration(milliseconds: 300));
+      }
+      return;
+    }
 
     // При silent refresh не показываем loader и не очищаем текущие данные.
     // Загружаем столько же треков, сколько уже подгружено, чтобы сохранить
@@ -1032,6 +1042,7 @@ class TracksApiService {
     required int trackId,
     required String trackNumber,
     required String question,
+    String? questionType,
   }) async {
     try {
       debugPrint(
@@ -1045,12 +1056,35 @@ class TracksApiService {
           'trackId': trackId,
           'trackNumber': trackNumber,
           'question': question,
+          if (questionType != null) 'questionType': questionType,
         },
       );
       debugPrint('Track question response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
       debugPrint('Error creating track question: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return false;
+    }
+  }
+
+  /// Создать складскую задачу на перенос трека на другой код клиента.
+  Future<bool> requestClientCodeTransfer({
+    required int trackId,
+    required int targetClientCodeId,
+  }) async {
+    try {
+      debugPrint(
+        'Requesting client code transfer: trackId=$trackId, targetClientCodeId=$targetClientCodeId',
+      );
+      final response = await _apiClient.post(
+        '/client/tracks/$trackId/client-code-transfer',
+        data: {'targetClientCodeId': targetClientCodeId},
+      );
+      debugPrint('Client code transfer response: ${response.statusCode}');
+      return response.statusCode == 200 || response.statusCode == 201;
+    } on DioException catch (e) {
+      debugPrint('Error requesting client code transfer: $e');
       debugPrint('Response data: ${e.response?.data}');
       return false;
     }
