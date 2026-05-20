@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:photo_view/photo_view.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -364,9 +365,10 @@ class _FullscreenImageViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -374,15 +376,19 @@ class _FullscreenImageViewer extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: PhotoView(
-        imageProvider: CachedNetworkImageProvider(imageUrl),
-        minScale: PhotoViewComputedScale.contained,
-        maxScale: PhotoViewComputedScale.covered * 3,
-        backgroundDecoration: const BoxDecoration(color: Colors.black),
-        loadingBuilder: (context, event) =>
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-        errorBuilder: (context, error, stackTrace) => const Center(
-          child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+      body: BlurredMediaBackdrop(
+        imageUrl: imageUrl,
+        child: PhotoView(
+          imageProvider: CachedNetworkImageProvider(imageUrl),
+          minScale: PhotoViewComputedScale.contained,
+          maxScale: PhotoViewComputedScale.covered * 3,
+          backgroundDecoration: const BoxDecoration(color: Colors.transparent),
+          loadingBuilder: (context, event) => const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+          errorBuilder: (context, error, stackTrace) => const Center(
+            child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+          ),
         ),
       ),
     );

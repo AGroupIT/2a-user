@@ -11,6 +11,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:io';
 
 import '../../../core/network/api_config.dart';
+import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
 
@@ -262,227 +263,251 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         statusBarBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
         extendBodyBehindAppBar: true,
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: hasMultiplePhotos
-                  ? PageView.builder(
-                      controller: _pageController,
-                      itemCount: widget.allPhotos!.length,
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentIndex = index;
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        final item = widget.allPhotos![index];
-                        return GestureDetector(
-                          onVerticalDragUpdate: _onVerticalDragUpdate,
-                          onVerticalDragEnd: _onVerticalDragEnd,
-                          child: Transform.translate(
-                            offset: Offset(0, _swipeDy),
-                            child: Center(
-                              child: item.isVideo
-                                  ? _VideoPlayerView(
-                                      url: ApiConfig.getMediaUrl(item.url),
-                                    )
-                                  : InteractiveViewer(
-                                      minScale: 1,
-                                      maxScale: 4,
-                                      child: CachedNetworkImage(
-                                        imageUrl: ApiConfig.getMediaUrl(
-                                          item.url,
-                                        ),
-                                        fit: BoxFit.contain,
-                                        placeholder: (_, _) => const SizedBox(
-                                          width: 32,
-                                          height: 32,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
+        body: BlurredMediaBackdrop(
+          imageUrl: _currentItem.isVideo
+              ? null
+              : ApiConfig.getMediaUrl(_currentItem.url),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: hasMultiplePhotos
+                    ? PageView.builder(
+                        controller: _pageController,
+                        itemCount: widget.allPhotos!.length,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentIndex = index;
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          final item = widget.allPhotos![index];
+                          return GestureDetector(
+                            onVerticalDragUpdate: _onVerticalDragUpdate,
+                            onVerticalDragEnd: _onVerticalDragEnd,
+                            child: Transform.translate(
+                              offset: Offset(0, _swipeDy),
+                              child: Center(
+                                child: item.isVideo
+                                    ? _VideoPlayerView(
+                                        url: ApiConfig.getMediaUrl(item.url),
+                                      )
+                                    : InteractiveViewer(
+                                        minScale: 1,
+                                        maxScale: 4,
+                                        child: CachedNetworkImage(
+                                          imageUrl: ApiConfig.getMediaUrl(
+                                            item.url,
+                                          ),
+                                          fit: BoxFit.contain,
+                                          placeholder: (_, _) => const SizedBox(
+                                            width: 32,
+                                            height: 32,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          errorWidget: (_, _, _) => const Icon(
+                                            Icons.broken_image_outlined,
+                                            color: Colors.white70,
+                                            size: 48,
                                           ),
                                         ),
-                                        errorWidget: (_, _, _) => const Icon(
-                                          Icons.broken_image_outlined,
-                                          color: Colors.white70,
-                                          size: 48,
+                                      ),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : GestureDetector(
+                        onVerticalDragUpdate: _onVerticalDragUpdate,
+                        onVerticalDragEnd: _onVerticalDragEnd,
+                        child: Transform.translate(
+                          offset: Offset(0, _swipeDy),
+                          child: Center(
+                            child: widget.item.isVideo
+                                ? _VideoPlayerView(
+                                    url: ApiConfig.getMediaUrl(widget.item.url),
+                                  )
+                                : InteractiveViewer(
+                                    minScale: 1,
+                                    maxScale: 4,
+                                    child: CachedNetworkImage(
+                                      imageUrl: ApiConfig.getMediaUrl(
+                                        widget.item.url,
+                                      ),
+                                      fit: BoxFit.contain,
+                                      placeholder: (_, _) => const SizedBox(
+                                        width: 32,
+                                        height: 32,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
                                         ),
                                       ),
-                                    ),
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  : GestureDetector(
-                      onVerticalDragUpdate: _onVerticalDragUpdate,
-                      onVerticalDragEnd: _onVerticalDragEnd,
-                      child: Transform.translate(
-                        offset: Offset(0, _swipeDy),
-                        child: Center(
-                          child: widget.item.isVideo
-                              ? _VideoPlayerView(
-                                  url: ApiConfig.getMediaUrl(widget.item.url),
-                                )
-                              : InteractiveViewer(
-                                  minScale: 1,
-                                  maxScale: 4,
-                                  child: CachedNetworkImage(
-                                    imageUrl: ApiConfig.getMediaUrl(
-                                      widget.item.url,
-                                    ),
-                                    fit: BoxFit.contain,
-                                    placeholder: (_, _) => const SizedBox(
-                                      width: 32,
-                                      height: 32,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
+                                      errorWidget: (_, _, _) => const Icon(
+                                        Icons.broken_image_outlined,
+                                        color: Colors.white70,
+                                        size: 48,
                                       ),
                                     ),
-                                    errorWidget: (_, _, _) => const Icon(
-                                      Icons.broken_image_outlined,
-                                      color: Colors.white70,
-                                      size: 48,
-                                    ),
                                   ),
-                                ),
-                        ),
-                      ),
-                    ),
-            ),
-            // Top bar
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 8,
-                  right: 8,
-                  bottom: 16,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.6),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (hasMultiplePhotos)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          '${_currentIndex + 1} / ${widget.allPhotos!.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                    if (hasMultiplePhotos) const Spacer(),
-                    IconButton(
-                      onPressed: _isDownloading ? null : _downloadMedia,
-                      icon: _isDownloading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.download_rounded,
-                              color: Colors.white,
-                            ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () => _shareMedia(context),
-                      icon: const Icon(
-                        Icons.share_rounded,
-                        color: Colors.white,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.3),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ),
-            // Bottom info
-            if (widget.item.trackingNumber != null ||
-                widget.item.assemblyNumber != null)
+              // Top bar
               Positioned(
-                bottom: 0,
+                top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
                   padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 16,
-                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                    top: MediaQuery.of(context).padding.top + 8,
+                    left: 8,
+                    right: 8,
+                    bottom: 16,
                   ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withValues(alpha: 0.6),
                         Colors.transparent,
                       ],
                     ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      if (widget.item.trackingNumber != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (hasMultiplePhotos)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '${_currentIndex + 1} / ${widget.allPhotos!.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (hasMultiplePhotos) const Spacer(),
+                      IconButton(
+                        onPressed: _isDownloading ? null : _downloadMedia,
+                        icon: _isDownloading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.download_rounded,
+                                color: Colors.white,
+                              ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () => _shareMedia(context),
+                        icon: const Icon(
+                          Icons.share_rounded,
+                          color: Colors.white,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Bottom info
+              if (widget.item.trackingNumber != null ||
+                  widget.item.assemblyNumber != null)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 16,
+                      bottom: MediaQuery.of(context).padding.bottom + 16,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.7),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (widget.item.trackingNumber != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.local_shipping_outlined,
+                                  color: Colors.white70,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Трек: ${widget.item.trackingNumber}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (widget.item.assemblyNumber != null)
+                          Row(
                             children: [
                               const Icon(
-                                Icons.local_shipping_outlined,
+                                Icons.inventory_2_outlined,
                                 color: Colors.white70,
                                 size: 18,
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'Трек: ${widget.item.trackingNumber}',
+                                'ID сборки: ${widget.item.assemblyNumber}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -491,31 +516,12 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                               ),
                             ],
                           ),
-                        ),
-                      if (widget.item.assemblyNumber != null)
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.inventory_2_outlined,
-                              color: Colors.white70,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'ID сборки: ${widget.item.assemblyNumber}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

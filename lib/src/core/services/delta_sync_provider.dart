@@ -126,8 +126,8 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(assembliesCountProvider);
       ref.invalidate(user_assemblies.assembliesListProvider);
       ref.invalidate(user_assemblies.assembliesCountProvider);
-      // SP finance assemblies (NotifierProvider — reload instead of invalidate)
-      ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
+      // SP finance assemblies (NotifierProvider — throttle WS refreshes)
+      ref.read(spAssembliesControllerProvider.notifier).refreshFromDelta();
       return;
 
     case 'invoices':
@@ -201,7 +201,7 @@ void _invalidateAllFor(dynamic ref) {
   ref.invalidate(assembliesCountProvider);
   ref.invalidate(user_assemblies.assembliesListProvider);
   ref.invalidate(user_assemblies.assembliesCountProvider);
-  ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
+  ref.read(spAssembliesControllerProvider.notifier).refreshFromDelta();
   ref.invalidate(invoicesListProvider);
   ref.invalidate(invoicesDigestProvider);
   ref.invalidate(invoicesCountProvider);

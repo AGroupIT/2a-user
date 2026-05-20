@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -20,9 +19,13 @@ import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/fullscreen_image_overlay.dart';
+import '../../../core/ui/pdf_preview_overlay.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
+import '../../notifications/application/notifications_controller.dart';
+import '../../notifications/domain/notification_item.dart';
 import '../data/chat_provider.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import '../../../core/utils/locale_text.dart';
@@ -43,6 +46,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   final _scrollController = ScrollController();
   Timer? _pollingTimer;
   bool _isDisposed = false;
+  late final IsChatScreenOpenNotifier _screenOpenNotifier;
+  late final ChatPresenceService _chatPresenceService;
+  late final PushNotificationService _notificationService;
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
@@ -55,12 +61,21 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void initState() {
     super.initState();
+    _screenOpenNotifier = ref.read(isChatScreenOpenProvider.notifier);
+    _chatPresenceService = ref.read(chatPresenceServiceProvider);
+    _notificationService = ref.read(pushNotificationServiceProvider);
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
     // Загружаем чат и запускаем polling
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(isChatScreenOpenProvider.notifier).set(true);
+      if (!mounted || _isDisposed) return;
+      _screenOpenNotifier.set(true);
+      unawaited(
+        ref.read(notificationsControllerProvider.notifier).markTypesRead({
+          NotificationType.chatMessage,
+        }),
+      );
       ref.read(chatControllerProvider.notifier).loadConversation();
 
       // Если есть начальное сообщение - устанавливаем его в текстовое поле
@@ -83,9 +98,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   Future<void> _notifyServerChatOpened() async {
     final chatState = ref.read(chatControllerProvider);
     final conversationId = chatState.conversation?.id;
-    await ref
-        .read(chatPresenceServiceProvider)
-        .openChat(ChatType.support, conversationId: conversationId);
+    await _chatPresenceService.openChat(
+      ChatType.support,
+      conversationId: conversationId,
+    );
   }
 
   void _startPolling() {
@@ -102,19 +118,22 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   }
 
   Future<void> _initNotifications() async {
-    final notificationService = ref.read(pushNotificationServiceProvider);
-    await notificationService.initialize();
+    await _notificationService.initialize();
   }
 
   Future<void> _clearNotifications() async {
-    final notificationService = ref.read(pushNotificationServiceProvider);
-    await notificationService.cancelAllNotifications();
+    await _notificationService.cancelAllNotifications();
   }
 
   @override
   void dispose() {
     _isDisposed = true;
     _pollingTimer?.cancel();
+
+    try {
+      _screenOpenNotifier.set(false);
+      unawaited(_chatPresenceService.closeChat(ChatType.support));
+    } catch (_) {}
 
     // Не используем ref в dispose() - это небезопасно
     // ref.read() выполняется асинхронно при деактивации виджета
@@ -362,12 +381,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         debugPrint('📷 [Gallery] File name: ${file.name}');
         debugPrint('📷 [Gallery] File size: ${file.size}');
 
-        // Для веб-версии используем bytes, для мобильных - path
-        final bytes = kIsWeb
-            ? file.bytes
-            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+        final bytes = await file.xFile.readAsBytes();
 
-        if (bytes == null || bytes.isEmpty) {
+        if (bytes.isEmpty) {
           debugPrint('📷 [Gallery] ERROR: could not read file bytes');
           if (mounted) {
             _showErrorSnackbar(
@@ -424,12 +440,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
 
-        // Для веб-версии используем bytes, для мобильных - path
-        final bytes =
-            file.bytes ??
-            (file.path != null ? await File(file.path!).readAsBytes() : null);
+        final bytes = await file.xFile.readAsBytes();
 
-        if (bytes == null || bytes.isEmpty) {
+        if (bytes.isEmpty) {
           if (mounted) {
             _showErrorSnackbar(
               tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
@@ -963,6 +976,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
+        final isPdf = _isPdfAttachment(
+          attachment.fileName,
+          attachment.fileType,
+        );
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
 
         if (isImage) {
@@ -1027,7 +1044,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           final docIcon = _getDocumentIcon(attachment.fileName);
           final docColor = _getDocumentColor(attachment.fileName);
           return GestureDetector(
-            onTap: () => _downloadFile(fullUrl, attachment.fileName),
+            onTap: isPdf
+                ? () => _showPdfPreview(fullUrl, attachment.fileName)
+                : () => _downloadFile(fullUrl, attachment.fileName),
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
@@ -1160,14 +1179,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   /// Показать изображение на весь экран
   void _showFullImage(String url, String fileName) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _FullScreenImageView(
-          imageUrl: url,
-          fileName: fileName,
-          onDownload: () => _downloadFile(url, fileName),
-        ),
-      ),
+    showFullscreenImageOverlay(
+      context: context,
+      imageUrl: url,
+      fileName: fileName,
+      onDownload: () => _downloadFile(url, fileName),
+    );
+  }
+
+  bool _isPdfAttachment(String fileName, String fileType) {
+    return fileType.toLowerCase() == 'application/pdf' ||
+        fileName.toLowerCase().endsWith('.pdf');
+  }
+
+  void _showPdfPreview(String url, String fileName) {
+    showPdfPreviewOverlay(
+      context: context,
+      url: url,
+      fileName: fileName,
+      onDownload: () => _downloadFile(url, fileName),
     );
   }
 
@@ -1197,6 +1227,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             behavior: SnackBarBehavior.fixed,
           ),
         );
+      }
+
+      if (kIsWeb) {
+        final opened = await launchUrl(
+          Uri.parse(url),
+          webOnlyWindowName: '_blank',
+        );
+        if (!opened) {
+          throw Exception('Could not open file URL');
+        }
+        if (!mounted) return;
+        AppToast.hide();
+        return;
       }
 
       // Получаем директорию для сохранения
@@ -1651,63 +1694,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               );
             }),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Полноэкранный просмотр изображения
-class _FullScreenImageView extends StatelessWidget {
-  final String imageUrl;
-  final String fileName;
-  final VoidCallback onDownload;
-
-  const _FullScreenImageView({
-    required this.imageUrl,
-    required this.fileName,
-    required this.onDownload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(fileName, style: const TextStyle(fontSize: 16)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded),
-            onPressed: onDownload,
-          ),
-        ],
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-            placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-            errorWidget: (context, url, error) => const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.broken_image, color: Colors.white54, size: 64),
-                  SizedBox(height: 16),
-                  Text(
-                    'Не удалось загрузить изображение',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

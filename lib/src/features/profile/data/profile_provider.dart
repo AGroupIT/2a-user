@@ -283,11 +283,15 @@ final clientProfileProvider = FutureProvider<ClientProfile?>((ref) async {
   }
 
   final cachedProfile = await _readCachedClientProfile();
+  if (cachedProfile != null) {
+    unawaited(_refreshCachedClientProfile(apiClient));
+    return cachedProfile;
+  }
 
   try {
     final freshProfile = await _fetchAndCacheClientProfile(apiClient);
     if (freshProfile != null) return freshProfile;
-    return cachedProfile;
+    return null;
   } on DioException catch (e) {
     debugPrint('Error loading client profile: $e');
     ClientLogService.instance.add(
@@ -299,6 +303,20 @@ final clientProfileProvider = FutureProvider<ClientProfile?>((ref) async {
     return _readCachedClientProfile();
   }
 });
+
+Future<void> _refreshCachedClientProfile(ApiClient apiClient) async {
+  try {
+    await _fetchAndCacheClientProfile(apiClient);
+  } on DioException catch (e) {
+    debugPrint('Background client profile refresh failed: $e');
+  } catch (e, stackTrace) {
+    ClientLogService.instance.error(
+      'Не удалось обновить кэш профиля клиента в фоне',
+      error: e,
+      stackTrace: stackTrace,
+    );
+  }
+}
 
 Future<void> cacheClientProfileData(Map<String, dynamic> profileData) {
   if (!_hasFullAgentProfileData(profileData)) {

@@ -44,6 +44,8 @@ abstract class NotificationsRepository {
   Future<void> markAsRead(List<int> ids);
 
   Future<void> markAllAsRead();
+
+  Future<void> markTypesAsRead(List<String> types);
 }
 
 final notificationsRepositoryProvider = Provider<NotificationsRepository>((
@@ -136,6 +138,17 @@ class RealNotificationsRepository implements NotificationsRepository {
       await _api.patch('/notifications', data: {'markAllAsRead': true});
     } on DioException catch (e) {
       debugPrint('Error marking all notifications as read: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> markTypesAsRead(List<String> types) async {
+    if (types.isEmpty) return;
+    try {
+      await _api.patch('/notifications', data: {'types': types});
+    } on DioException catch (e) {
+      debugPrint('Error marking notification types as read: $e');
       rethrow;
     }
   }

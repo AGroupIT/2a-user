@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/demo_data.dart';
@@ -39,8 +41,19 @@ class SpAssembliesState {
 
 /// Контроллер для списка сборок СП
 class SpAssembliesController extends Notifier<SpAssembliesState> {
+  static const _deltaRefreshCooldown = Duration(seconds: 2);
+
+  Future<void>? _loadFuture;
+  Timer? _deltaRefreshTimer;
+  DateTime? _lastLoadStartedAt;
+
   @override
   SpAssembliesState build() {
+    ref.onDispose(() {
+      _deltaRefreshTimer?.cancel();
+      _deltaRefreshTimer = null;
+    });
+
     // В демо-режиме сразу возвращаем данные, чтобы TutorialScreenWrapper рендерился с первого кадра
     if (ref.watch(demoModeProvider)) {
       return SpAssembliesState(assemblies: DemoData.spAssemblies);
@@ -50,8 +63,72 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
   }
 
   /// Загрузить список сборок
-  Future<void> loadAssemblies() async {
-    state = state.copyWith(isLoading: true, error: null);
+  Future<void> loadAssemblies({bool silent = false}) {
+    if (!silent) {
+      _deltaRefreshTimer?.cancel();
+      _deltaRefreshTimer = null;
+    }
+
+    final activeLoad = _loadFuture;
+    if (activeLoad != null) {
+      return activeLoad;
+    }
+
+    late final Future<void> loadFuture;
+    loadFuture = _loadAssembliesInternal(silent: silent).whenComplete(() {
+      if (identical(_loadFuture, loadFuture)) {
+        _loadFuture = null;
+      }
+    });
+    _loadFuture = loadFuture;
+    return loadFuture;
+  }
+
+  /// Тихое обновление после WebSocket delta: не запускает параллельные запросы
+  /// и схлопывает частые события склада в один refresh.
+  void refreshFromDelta() {
+    if (ref.read(demoModeProvider)) {
+      return;
+    }
+
+    if (_loadFuture != null) {
+      _scheduleDeltaRefresh(_deltaRefreshCooldown);
+      return;
+    }
+
+    final lastStartedAt = _lastLoadStartedAt;
+    if (lastStartedAt != null) {
+      final elapsed = DateTime.now().difference(lastStartedAt);
+      if (elapsed < _deltaRefreshCooldown) {
+        _scheduleDeltaRefresh(_deltaRefreshCooldown - elapsed);
+        return;
+      }
+    }
+
+    unawaited(loadAssemblies(silent: true));
+  }
+
+  void _scheduleDeltaRefresh(Duration delay) {
+    if (_deltaRefreshTimer != null) {
+      return;
+    }
+
+    _deltaRefreshTimer = Timer(delay, () {
+      _deltaRefreshTimer = null;
+      refreshFromDelta();
+    });
+  }
+
+  Future<void> _loadAssembliesInternal({required bool silent}) async {
+    _lastLoadStartedAt = DateTime.now();
+
+    final showLoading = !silent || state.assemblies.isEmpty;
+    if (showLoading || state.error != null) {
+      state = state.copyWith(
+        isLoading: showLoading ? true : state.isLoading,
+        error: null,
+      );
+    }
 
     // Демо-режим: возвращаем статичные данные без обращения к API
     if (ref.read(demoModeProvider)) {
@@ -68,16 +145,10 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
 
       debugPrint('✅ SP: Loaded ${assemblies.length} assemblies');
 
-      state = state.copyWith(
-        assemblies: assemblies,
-        isLoading: false,
-      );
+      state = state.copyWith(assemblies: assemblies, isLoading: false);
     } catch (e) {
       debugPrint('❌ SP: Error loading assemblies: $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -85,7 +156,10 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
   Future<void> updateAssembly(int assemblyId, SpAssemblyUpdate update) async {
     try {
       final repository = ref.read(spRepositoryProvider);
-      final updatedAssembly = await repository.updateAssembly(assemblyId, update);
+      final updatedAssembly = await repository.updateAssembly(
+        assemblyId,
+        update,
+      );
 
       // Обновляем сборку в списке
       final assemblies = state.assemblies.map((a) {
@@ -140,7 +214,11 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
   ) async {
     try {
       final repository = ref.read(spRepositoryProvider);
-      await repository.updateParticipantPayment(assemblyId, participantName, isPaid);
+      await repository.updateParticipantPayment(
+        assemblyId,
+        participantName,
+        isPaid,
+      );
 
       // Обновляем состояние локально
       final assemblies = state.assemblies.map((assembly) {
@@ -170,8 +248,8 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
 /// Провайдер контроллера списка сборок
 final spAssembliesControllerProvider =
     NotifierProvider<SpAssembliesController, SpAssembliesState>(
-  SpAssembliesController.new,
-);
+      SpAssembliesController.new,
+    );
 
 /// Состояние редактирования трека
 class SpTrackEditState {
@@ -179,17 +257,9 @@ class SpTrackEditState {
   final bool isSaving;
   final String? error;
 
-  const SpTrackEditState({
-    this.track,
-    this.isSaving = false,
-    this.error,
-  });
+  const SpTrackEditState({this.track, this.isSaving = false, this.error});
 
-  SpTrackEditState copyWith({
-    SpTrack? track,
-    bool? isSaving,
-    String? error,
-  }) {
+  SpTrackEditState copyWith({SpTrack? track, bool? isSaving, String? error}) {
     return SpTrackEditState(
       track: track ?? this.track,
       isSaving: isSaving ?? this.isSaving,
@@ -218,20 +288,14 @@ class SpTrackEditController extends Notifier<SpTrackEditState> {
       final repository = ref.read(spRepositoryProvider);
       final updatedTrack = await repository.updateTrack(trackId, update);
 
-      state = state.copyWith(
-        track: updatedTrack,
-        isSaving: false,
-      );
+      state = state.copyWith(track: updatedTrack, isSaving: false);
 
       // Обновляем трек в списке сборок
       ref.read(spAssembliesControllerProvider.notifier).loadAssemblies();
 
       return true;
     } catch (e) {
-      state = state.copyWith(
-        isSaving: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isSaving: false, error: e.toString());
       return false;
     }
   }
@@ -240,5 +304,5 @@ class SpTrackEditController extends Notifier<SpTrackEditState> {
 /// Провайдер контроллера редактирования трека
 final spTrackEditControllerProvider =
     NotifierProvider<SpTrackEditController, SpTrackEditState>(
-  SpTrackEditController.new,
-);
+      SpTrackEditController.new,
+    );

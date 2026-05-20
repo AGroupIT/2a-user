@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -113,7 +115,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         authState.clientName ??
         'Клиент';
     final shouldLoadDashboardData =
-        clientProfile.hasValue || clientProfile.hasError;
+        authState.isLoggedIn && !authState.isLoading;
 
     if (clientCode == null) {
       return const EmptyState(
@@ -186,7 +188,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Future<void> onRefresh() async {
       debugPrint('[Home] pull-to-refresh triggered');
       ref.invalidate(clientProfileProvider);
-      await ref.read(clientProfileProvider.future);
+      unawaited(
+        ref.read(clientProfileProvider.future).catchError((
+          Object error,
+          StackTrace stackTrace,
+        ) {
+          debugPrint('[Home] profile refresh failed: $error');
+          return null;
+        }),
+      );
       if (!mounted) return;
       ref.invalidate(tracksDigestProvider(clientCode));
       ref.invalidate(assembliesDigestProvider(clientCode));

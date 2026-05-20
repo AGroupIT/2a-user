@@ -125,6 +125,7 @@ class AuthNotifier extends Notifier<AuthState> {
       if (!_initialLoadDone) {
         _initialLoadDone = true;
         state = const AuthState(isLoggedIn: false, isLoading: false);
+        PushNotificationService.clearActiveClient();
       }
     } finally {
       timeoutTimer?.cancel();
@@ -164,6 +165,7 @@ class AuthNotifier extends Notifier<AuthState> {
           if (!_initialLoadDone) {
             _initialLoadDone = true;
             state = const AuthState(isLoggedIn: false, isLoading: false);
+            PushNotificationService.clearActiveClient();
           }
           return;
         }
@@ -200,8 +202,10 @@ class AuthNotifier extends Notifier<AuthState> {
         clientData: clientData,
       );
       if (isLoggedIn) {
+        PushNotificationService.setActiveClient(clientId);
         _setLogUserContextFromData(clientId: clientId, clientData: clientData);
       } else {
+        PushNotificationService.clearActiveClient();
         ClientLogService.instance.clearUserContext();
       }
 
@@ -224,6 +228,7 @@ class AuthNotifier extends Notifier<AuthState> {
       if (!_initialLoadDone) {
         _initialLoadDone = true;
         state = const AuthState(isLoggedIn: false, isLoading: false);
+        PushNotificationService.clearActiveClient();
       }
     }
   }
@@ -323,6 +328,7 @@ class AuthNotifier extends Notifier<AuthState> {
           clientName: clientName,
           clientData: userData,
         );
+        PushNotificationService.setActiveClient(clientId);
         _setLogUserContextFromData(clientId: clientId, clientData: userData);
 
         // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
@@ -431,6 +437,7 @@ class AuthNotifier extends Notifier<AuthState> {
         clientName: clientName,
         clientData: userData,
       );
+      PushNotificationService.setActiveClient(clientId);
       _setLogUserContextFromData(clientId: clientId, clientData: userData);
 
       // Invalidate все провайдеры данных чтобы новый пользователь не видел данные предыдущего
@@ -484,9 +491,11 @@ class AuthNotifier extends Notifier<AuthState> {
         }
       }
 
-      // Подписываемся на топики клиентов
-      await PushNotificationService.subscribeToTopic('clients');
-      await PushNotificationService.subscribeToTopic('domain_$domain');
+      // Клиентские push отправляются точечно по DeviceToken. Общие topic'и
+      // оставляем только как legacy cleanup, чтобы после смены аккаунта
+      // телефон не получал широкие рассылки старых подписок.
+      await PushNotificationService.unsubscribeFromTopic('clients');
+      await PushNotificationService.unsubscribeFromTopic('domain_$domain');
     } catch (e) {
       debugPrint('🔔 Error registering for push: $e');
     }
@@ -537,6 +546,7 @@ class AuthNotifier extends Notifier<AuthState> {
     _isLoggingOut = true;
     try {
       debugPrint('🚪 Starting logout process...');
+      PushNotificationService.clearActiveClient();
 
       // Отписываемся от push-уведомлений
       try {
@@ -602,6 +612,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Сначала обновляем state — при перестройке провайдеры увидят isLoggedIn: false
       state = const AuthState(isLoggedIn: false, isLoading: false);
+      PushNotificationService.clearActiveClient();
       ClientLogService.instance.clearUserContext();
 
       // Затем инвалидируем все провайдеры
@@ -614,6 +625,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Всё равно устанавливаем состояние "разлогинен" даже если была ошибка
       state = const AuthState(isLoggedIn: false, isLoading: false);
+      PushNotificationService.clearActiveClient();
       ClientLogService.instance.clearUserContext();
 
       // Invalidate providers even on error

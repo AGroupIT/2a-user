@@ -242,6 +242,7 @@ class PaginatedTracksState {
 class PaginatedTracksNotifier {
   final Ref _ref;
   static const int _pageSize = 50;
+  static const _silentRefreshCooldown = Duration(seconds: 2);
 
   PaginatedTracksState _state;
   PaginatedTracksState get state => _state;
@@ -252,6 +253,8 @@ class PaginatedTracksNotifier {
   StreamSubscription? _dataChangedSub;
   StreamSubscription? _reconnectSub;
   Timer? _debounceTimer;
+  Timer? _silentRefreshTimer;
+  DateTime? _lastSilentRefreshStartedAt;
   bool _silentRefreshInProgress = false;
 
   static const _tracksTypes = {
@@ -284,12 +287,43 @@ class PaginatedTracksNotifier {
     _dataChangedSub?.cancel();
     _reconnectSub?.cancel();
     _debounceTimer?.cancel();
+    _silentRefreshTimer?.cancel();
   }
 
   void _debouncedSilentRefresh() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      loadInitial(silent: true);
+      _scheduleSilentRefresh();
+    });
+  }
+
+  void _scheduleSilentRefresh() {
+    if (_silentRefreshInProgress) {
+      _queueSilentRefresh(_silentRefreshCooldown);
+      return;
+    }
+
+    final lastStartedAt = _lastSilentRefreshStartedAt;
+    if (lastStartedAt != null) {
+      final elapsed = DateTime.now().difference(lastStartedAt);
+      if (elapsed < _silentRefreshCooldown) {
+        _queueSilentRefresh(_silentRefreshCooldown - elapsed);
+        return;
+      }
+    }
+
+    _lastSilentRefreshStartedAt = DateTime.now();
+    unawaited(loadInitial(silent: true));
+  }
+
+  void _queueSilentRefresh(Duration delay) {
+    if (_silentRefreshTimer != null) {
+      return;
+    }
+
+    _silentRefreshTimer = Timer(delay, () {
+      _silentRefreshTimer = null;
+      _scheduleSilentRefresh();
     });
   }
 
@@ -350,6 +384,10 @@ class PaginatedTracksNotifier {
         );
         if (_state.filters != requestFilters) {
           await loadInitial(silent: true);
+          return;
+        }
+        if (_state.tracks.length > currentCount) {
+          _queueSilentRefresh(Duration.zero);
           return;
         }
         _updateState(
@@ -558,13 +596,15 @@ class _TracksResult {
 
 /// Провайдер для пагинированного списка треков
 /// Ключ - clientCode, фильтры обновляются через updateFilters
-final paginatedTracksProvider =
-    Provider.family<PaginatedTracksNotifier, String>(
-      (ref, clientCode) => PaginatedTracksNotifier(
+final paginatedTracksProvider = Provider.autoDispose
+    .family<PaginatedTracksNotifier, String>((ref, clientCode) {
+      final notifier = PaginatedTracksNotifier(
         ref,
         TracksFilterParams(clientCode: clientCode),
-      ),
-    );
+      );
+      ref.onDispose(notifier.dispose);
+      return notifier;
+    });
 
 // ==================== Legacy Providers (for compatibility) ====================
 

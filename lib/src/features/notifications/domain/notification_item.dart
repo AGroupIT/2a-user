@@ -99,6 +99,72 @@ extension NotificationTypeExtension on NotificationType {
         return '/invoices';
     }
   }
+
+  List<String> get backendTypeAliases {
+    switch (this) {
+      case NotificationType.trackStatus:
+        return const [
+          'track_status',
+          'track_created',
+          'track_update',
+          'track_status_changed',
+          'track_status_change',
+          'track_arrived_warehouse',
+          'track_shipped',
+          'track_delivered',
+        ];
+      case NotificationType.assemblyStatus:
+        return const [
+          'assembly_status',
+          'assembly_update',
+          'assembly_status_changed',
+          'assembly_status_change',
+          'track_added_to_assembly',
+        ];
+      case NotificationType.photoReportStatus:
+        return const [
+          'photo_report_status',
+          'photo_report_update',
+          'photo_report_ready',
+          'photo_request_created',
+          'photo_request_completed',
+          'photo_request_status_changed',
+          'photo_request',
+        ];
+      case NotificationType.questionStatus:
+        return const [
+          'question_status',
+          'question_answered',
+          'question_update',
+          'question_status_changed',
+        ];
+      case NotificationType.chatMessage:
+        return const ['chat_message', 'support_message', 'new_message'];
+      case NotificationType.paymentChatMessage:
+        return const ['payment_chat_message', 'payment_message'];
+      case NotificationType.news:
+        return const ['news', 'new_news', 'news_created'];
+      case NotificationType.serviceRules:
+        return const ['service_rule_created', 'service_rule', 'service_rules'];
+      case NotificationType.invoice:
+        return const [
+          'invoice',
+          'new_invoice',
+          'invoice_created',
+          'invoice_status_changed',
+          'invoice_paid',
+          'invoice_arrival',
+        ];
+    }
+  }
+}
+
+@immutable
+class NotificationTapTarget {
+  final String? route;
+  final String? notificationId;
+
+  const NotificationTapTarget({this.route, this.notificationId});
 }
 
 @immutable
@@ -206,14 +272,101 @@ class NotificationItem {
       route: route,
       relatedId:
           data['trackNumber'] as String? ??
+          data['trackCode'] as String? ??
           data['assemblyNumber'] as String? ??
           data['invoiceNumber'] as String? ??
           data['trackId']?.toString() ??
           data['assemblyId']?.toString() ??
           data['invoiceId']?.toString(),
-      oldStatus: data['oldStatus'] as String?,
-      newStatus: data['newStatus'] as String? ?? data['status'] as String?,
+      oldStatus: data['oldStatus'] as String? ?? data['old_status'] as String?,
+      newStatus:
+          data['newStatus'] as String? ??
+          data['new_status'] as String? ??
+          data['status'] as String?,
     );
+  }
+
+  /// Создать уведомление из FCM payload. Backend кладёт id записи уведомления
+  /// в `entityId`, поэтому здесь используем его как основной id.
+  factory NotificationItem.fromPushData(
+    Map<String, dynamic> data, {
+    String? title,
+    String? body,
+  }) {
+    final typeStr = _readString(data, const ['type']) ?? '';
+    final type = _parseNotificationType(typeStr);
+    final now = DateTime.now();
+
+    return NotificationItem(
+      id: notificationIdFromData(data) ?? now.microsecondsSinceEpoch.toString(),
+      type: type,
+      title: title ?? _readString(data, const ['title']) ?? 'Новое уведомление',
+      message: body ?? _readString(data, const ['message', 'body']) ?? '',
+      createdAt: now,
+      isRead: false,
+      route: _getRouteForType(type, data),
+      relatedId: _readString(data, const [
+        'trackNumber',
+        'trackCode',
+        'assemblyNumber',
+        'invoiceNumber',
+        'trackId',
+        'assemblyId',
+        'invoiceId',
+      ]),
+      oldStatus: _readString(data, const ['oldStatus', 'old_status']),
+      newStatus: _readString(data, const ['newStatus', 'new_status', 'status']),
+    );
+  }
+
+  static String? notificationIdFromData(Map<String, dynamic> data) {
+    return _readString(data, const [
+      'notificationId',
+      'notification_id',
+      'id',
+      'entityId',
+      'entity_id',
+    ]);
+  }
+
+  static String? routeFromPushData(Map<String, dynamic> data) {
+    return _getRouteForType(
+      _parseNotificationType(_readString(data, const ['type']) ?? ''),
+      data,
+    );
+  }
+
+  static String? tapPayloadFromPushData(Map<String, dynamic> data) {
+    final target = NotificationTapTarget(
+      route: routeFromPushData(data),
+      notificationId: notificationIdFromData(data),
+    );
+    if (target.route == null && target.notificationId == null) return null;
+    return jsonEncode({
+      if (target.route != null) 'route': target.route,
+      if (target.notificationId != null)
+        'notificationId': target.notificationId,
+    });
+  }
+
+  static NotificationTapTarget tapTargetFromPayload(String? payload) {
+    if (payload == null || payload.isEmpty) {
+      return const NotificationTapTarget();
+    }
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        return NotificationTapTarget(
+          route: decoded['route'] as String?,
+          notificationId: decoded['notificationId']?.toString(),
+        );
+      }
+    } catch (_) {
+      // Старые payload были просто route-строкой.
+    }
+
+    return NotificationTapTarget(route: payload);
   }
 
   /// Парсинг типа уведомления из строки API
@@ -393,10 +546,36 @@ class NotificationItem {
     NotificationType type,
     Map<String, dynamic> data,
   ) {
+    final explicitRoute = _readString(data, const ['route']);
+    if (explicitRoute != null && explicitRoute.isNotEmpty) {
+      return explicitRoute;
+    }
+
     // Nocode-дайджест → на страницу поиска с запросом NOCODE
     if (data['type'] == 'nocode_daily_digest') {
       return '/search?q=NOCODE';
     }
+    final rawType =
+        _readString(data, const [
+          'type',
+          'notification_type',
+          'template',
+        ])?.toLowerCase() ??
+        '';
+    final trackId = _readString(data, const ['trackId', 'track_id']);
+    final trackCode = _readString(data, const [
+      'trackCode',
+      'trackNumber',
+      'track_number',
+    ]);
+    final assemblyId = _readString(data, const ['assemblyId', 'assembly_id']);
+    final invoiceId = _readString(data, const [
+      'invoiceId',
+      'invoice_id',
+      'invoiceNumber',
+      'invoice_number',
+    ]);
+
     switch (type) {
       case NotificationType.trackStatus:
       case NotificationType.assemblyStatus:
@@ -410,6 +589,21 @@ class NotificationItem {
         if (isNocodeDigest) {
           return '/search-nocode';
         }
+        final shouldOpenAssembly =
+            type == NotificationType.assemblyStatus ||
+            rawType.contains('assembly');
+        if (shouldOpenAssembly && assemblyId != null) {
+          return _route('/tracks', {'assemblyId': assemblyId});
+        }
+        if (trackId != null) {
+          return _route('/tracks', {'trackId': trackId});
+        }
+        if (trackCode != null) {
+          return _route('/tracks', {'trackCode': trackCode});
+        }
+        if (assemblyId != null) {
+          return _route('/tracks', {'assemblyId': assemblyId});
+        }
         return '/tracks';
       case NotificationType.chatMessage:
         return '/support';
@@ -417,17 +611,39 @@ class NotificationItem {
         return '/payment-chat';
       case NotificationType.news:
         // /news/:slug в роутере принимает любую строку — id тоже подойдёт.
-        final newsId = data['newsId'];
+        final newsId = _readString(data, const ['newsId', 'news_id']);
         if (newsId != null) return '/news/$newsId';
         return '/news';
       case NotificationType.serviceRules:
         // PU-H1: route называется /rules (не /service-rules).
-        final ruleId = data['serviceRuleId'];
+        final ruleId = _readString(data, const [
+          'serviceRuleId',
+          'service_rule_id',
+          'ruleId',
+          'rule_id',
+        ]);
         if (ruleId != null) return '/rules/$ruleId';
         return '/rules';
       case NotificationType.invoice:
+        if (invoiceId != null) {
+          return _route('/invoices', {'invoiceId': invoiceId});
+        }
         return '/invoices';
     }
+  }
+
+  static String _route(String path, Map<String, String> queryParameters) {
+    return Uri(path: path, queryParameters: queryParameters).toString();
+  }
+
+  static String? _readString(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      final text = value.toString();
+      if (text.isNotEmpty) return text;
+    }
+    return null;
   }
 
   /// Создать уведомление об изменении статуса трека

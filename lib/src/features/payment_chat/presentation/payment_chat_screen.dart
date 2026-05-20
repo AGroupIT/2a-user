@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
@@ -19,6 +18,8 @@ import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_page_header.dart';
+import '../../../core/ui/fullscreen_image_overlay.dart';
+import '../../../core/ui/pdf_preview_overlay.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
@@ -26,6 +27,8 @@ import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
+import '../../notifications/application/notifications_controller.dart';
+import '../../notifications/domain/notification_item.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
@@ -94,6 +97,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_canUseRef) return;
       _screenOpenNotifier.set(true);
+      unawaited(
+        ref.read(notificationsControllerProvider.notifier).markTypesRead({
+          NotificationType.paymentChatMessage,
+        }),
+      );
       await ref.read(paymentChatControllerProvider.notifier).loadConversation();
       if (!_canUseRef) return;
 
@@ -402,12 +410,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
         final file = result.files.first;
         debugPrint('📷 [Gallery] File: ${file.name}, size: ${file.size}');
 
-        // Для веб-версии используем bytes, для мобильных - path
-        final bytes = kIsWeb
-            ? file.bytes
-            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+        final bytes = await file.xFile.readAsBytes();
 
-        if (bytes == null || bytes.isEmpty) {
+        if (bytes.isEmpty) {
           debugPrint('📷 [Gallery] ERROR: could not read file bytes');
           if (mounted) {
             _showErrorSnackbar(
@@ -464,12 +469,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
 
-        // Для веб-версии используем bytes, для мобильных - path
-        final bytes = kIsWeb
-            ? file.bytes
-            : (file.path != null ? await File(file.path!).readAsBytes() : null);
+        final bytes = await file.xFile.readAsBytes();
 
-        if (bytes == null || bytes.isEmpty) {
+        if (bytes.isEmpty) {
           if (mounted) {
             _showErrorSnackbar(
               tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
@@ -1221,6 +1223,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: attachments.map((attachment) {
         final isImage = attachment.fileType.startsWith('image/');
+        final isPdf = _isPdfAttachment(
+          attachment.fileName,
+          attachment.fileType,
+        );
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
 
         if (isImage) {
@@ -1285,7 +1291,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           final docIcon = _getDocumentIcon(attachment.fileName);
           final docColor = _getDocumentColor(attachment.fileName);
           return GestureDetector(
-            onTap: () => _downloadFile(fullUrl, attachment.fileName),
+            onTap: isPdf
+                ? () => _showPdfPreview(fullUrl, attachment.fileName)
+                : () => _downloadFile(fullUrl, attachment.fileName),
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
@@ -1418,14 +1426,25 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   /// Показать изображение на весь экран
   void _showFullImage(String url, String fileName) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _PaymentFullScreenImageView(
-          imageUrl: url,
-          fileName: fileName,
-          onDownload: () => _downloadFile(url, fileName),
-        ),
-      ),
+    showFullscreenImageOverlay(
+      context: context,
+      imageUrl: url,
+      fileName: fileName,
+      onDownload: () => _downloadFile(url, fileName),
+    );
+  }
+
+  bool _isPdfAttachment(String fileName, String fileType) {
+    return fileType.toLowerCase() == 'application/pdf' ||
+        fileName.toLowerCase().endsWith('.pdf');
+  }
+
+  void _showPdfPreview(String url, String fileName) {
+    showPdfPreviewOverlay(
+      context: context,
+      url: url,
+      fileName: fileName,
+      onDownload: () => _downloadFile(url, fileName),
     );
   }
 
@@ -1454,6 +1473,19 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           behavior: SnackBarBehavior.fixed,
         ),
       );
+
+      if (kIsWeb) {
+        final opened = await launchUrl(
+          Uri.parse(url),
+          webOnlyWindowName: '_blank',
+        );
+        if (!opened) {
+          throw Exception('Could not open file URL');
+        }
+        if (!mounted) return;
+        AppToast.hide();
+        return;
+      }
 
       // Получаем директорию для сохранения
       final directory = await getApplicationDocumentsDirectory();
@@ -2339,71 +2371,6 @@ class _InvoiceListTile extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Полноэкранный просмотр изображения (Payment Chat)
-class _PaymentFullScreenImageView extends StatelessWidget {
-  final String imageUrl;
-  final String fileName;
-  final VoidCallback onDownload;
-
-  const _PaymentFullScreenImageView({
-    required this.imageUrl,
-    required this.fileName,
-    required this.onDownload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(fileName, style: const TextStyle(fontSize: 16)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded),
-            onPressed: onDownload,
-          ),
-        ],
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-            placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-            errorWidget: (context, url, error) => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.broken_image,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    tr(
-                      context,
-                      ru: 'Не удалось загрузить изображение',
-                      zh: '无法加载图片',
-                    ),
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

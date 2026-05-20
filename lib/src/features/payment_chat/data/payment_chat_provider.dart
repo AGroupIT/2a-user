@@ -402,7 +402,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
                 final notificationService = ref.read(
                   pushNotificationServiceProvider,
                 );
-                notificationService.showChatMessageNotification(
+                notificationService.showPaymentChatMessageNotification(
                   senderName: message.senderName,
                   message: message.content,
                   notificationId: message.id,

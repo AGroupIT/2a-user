@@ -86,8 +86,21 @@ class PushNotificationService {
   // Callback для обработки FCM сообщений
   static Function(RemoteMessage)? onFCMMessageReceived;
 
+  // Callback для обработки открытия push-уведомления
+  static Function(RemoteMessage)? onFCMMessageOpened;
+
   // Callback для обработки обновления FCM токена
   static Function(String)? onTokenRefreshed;
+
+  static int? _activeClientId;
+
+  static void setActiveClient(int? clientId) {
+    _activeClientId = clientId;
+  }
+
+  static void clearActiveClient() {
+    _activeClientId = null;
+  }
 
   /// Статическая инициализация Firebase после восстановления/создания сессии.
   /// Выполняется с таймаутом и не должна блокировать auth-flow.
@@ -205,6 +218,10 @@ class PushNotificationService {
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
           debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
+          if (!_isMessageForActiveClient(message)) {
+            debugPrint('🔔 Foreground FCM skipped: recipient mismatch');
+            return;
+          }
           onFCMMessageReceived?.call(message);
           _showFCMNotification(message);
         });
@@ -212,8 +229,26 @@ class PushNotificationService {
         // Message opened app
         FirebaseMessaging.onMessageOpenedApp.listen((message) {
           debugPrint('🔔 FCM opened app: ${message.notification?.title}');
-          // Handle navigation based on message data
+          if (!_isMessageForActiveClient(message)) {
+            debugPrint('🔔 FCM opened app skipped: recipient mismatch');
+            return;
+          }
+          onFCMMessageOpened?.call(message);
         });
+
+        final initialMessage = await _messaging!.getInitialMessage();
+        if (initialMessage != null) {
+          Future.microtask(() {
+            debugPrint(
+              '🔔 FCM initial message: ${initialMessage.notification?.title}',
+            );
+            if (!_isMessageForActiveClient(initialMessage)) {
+              debugPrint('🔔 FCM initial message skipped: recipient mismatch');
+              return;
+            }
+            onFCMMessageOpened?.call(initialMessage);
+          });
+        }
       } else {
         debugPrint(
           '🔔 FCM not supported on this platform (Windows/Linux/macOS Desktop)',
@@ -289,10 +324,15 @@ class PushNotificationService {
 
   /// Показать локальное уведомление из FCM
   static Future<void> _showFCMNotification(RemoteMessage message) async {
+    if (kIsWeb) return;
+
     final notification = message.notification;
     if (notification == null) return;
 
-    final plugin = FlutterLocalNotificationsPlugin();
+    final service = PushNotificationService();
+    if (!_isInitialized) {
+      await service.initialize();
+    }
 
     const androidDetails = AndroidNotificationDetails(
       'fcm_channel',
@@ -309,13 +349,38 @@ class PushNotificationService {
       presentSound: true,
     );
 
-    await plugin.show(
+    await service._notifications.show(
       message.hashCode,
       notification.title,
       notification.body,
       const NotificationDetails(android: androidDetails, iOS: iosDetails),
-      payload: message.data['route'],
+      payload: NotificationItem.tapPayloadFromPushData(message.data),
     );
+  }
+
+  static bool _isMessageForActiveClient(RemoteMessage message) {
+    final activeClientId = _activeClientId;
+    final data = message.data;
+    final recipientType = data['recipientType'] ?? data['recipient_type'];
+    final rawRecipientId =
+        data['recipientId'] ?? data['recipient_id'] ?? data['clientId'];
+    final recipientId = int.tryParse(rawRecipientId?.toString() ?? '');
+
+    if (activeClientId == null) {
+      // В разлогиненном состоянии targeted push показывать нельзя. Старые
+      // broadcast payload без recipientId тоже не должны всплывать на login.
+      return false;
+    }
+
+    if (recipientType != null && recipientType.toString() != 'client') {
+      return false;
+    }
+
+    if (recipientId != null && recipientId != activeClientId) {
+      return false;
+    }
+
+    return true;
   }
 
   /// VAPID Key для Web Push (Firebase Console → Project Settings → Cloud Messaging)
@@ -392,6 +457,12 @@ class PushNotificationService {
 
   /// Инициализация локальных уведомлений
   Future<void> initialize({void Function(String? route)? onTap}) async {
+    if (kIsWeb) {
+      onNotificationTap = onTap;
+      _isInitialized = true;
+      return;
+    }
+
     if (_isInitialized) {
       onNotificationTap = onTap;
       return;
@@ -413,10 +484,21 @@ class PushNotificationService {
       iOS: iosSettings,
     );
 
-    await _notifications.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
-    );
+    try {
+      await _notifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationTapped,
+      );
+
+      final launchDetails = await _notifications
+          .getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp == true) {
+        onNotificationTap?.call(launchDetails?.notificationResponse?.payload);
+      }
+    } catch (e) {
+      debugPrint('🔔 Local notifications init skipped: $e');
+      return;
+    }
 
     // Request permissions on iOS
     if (_isIOS) {

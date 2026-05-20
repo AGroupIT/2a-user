@@ -42,10 +42,24 @@ final notificationsControllerProvider =
     >(NotificationsController.new);
 
 /// Инициализатор push уведомлений для обновления списка
-void initializePushNotificationsHandler(WidgetRef ref) {
+void initializePushNotificationsHandler(
+  WidgetRef ref, {
+  void Function(String route)? onNavigate,
+}) {
   PushNotificationService.onFCMMessageReceived = (RemoteMessage message) {
     _handleFCMMessage(ref, message);
   };
+  PushNotificationService.onFCMMessageOpened = (RemoteMessage message) {
+    _handleFCMMessageOpened(ref, message, onNavigate);
+  };
+
+  final pushService = ref.read(pushNotificationServiceProvider);
+  unawaited(
+    pushService.initialize(
+      onTap: (payload) =>
+          _handleLocalNotificationTapped(ref, payload, onNavigate),
+    ),
+  );
 }
 
 void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
@@ -60,21 +74,10 @@ void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
 
   // Пробуем создать NotificationItem из FCM данных
   try {
-    final data = message.data;
-    final notification = message.notification;
-
-    // Создаём уведомление из push данных
-    final item = NotificationItem(
-      id: data['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      type: _parseNotificationType(data['type']),
-      title: notification?.title ?? data['title'] ?? 'Новое уведомление',
-      message: notification?.body ?? data['message'] ?? '',
-      createdAt: DateTime.now(),
-      isRead: false,
-      route: data['route'],
-      relatedId: data['related_id'],
-      oldStatus: data['old_status'],
-      newStatus: data['new_status'],
+    final item = NotificationItem.fromPushData(
+      message.data,
+      title: message.notification?.title,
+      body: message.notification?.body,
     );
 
     // Добавляем в контроллер
@@ -87,65 +90,49 @@ void _handleFCMMessage(WidgetRef ref, RemoteMessage message) {
   }
 }
 
-// PU-H3: синхронизировано со списком backend-типов в lib/notifications.ts
-// и с NotificationItem._parseNotificationType. Если backend пришлёт новый
-// тип, которого здесь нет, — fallback на trackStatus (как в основном
-// парсере), а НЕ на news (раньше дефолт был news, что давало
-// «случайные» переходы на /news для незнакомых push-ов, например для
-// payment_chat_message и service_rule_created).
-NotificationType _parseNotificationType(String? type) {
-  switch (type?.toLowerCase()) {
-    case 'track_status':
-    case 'trackstatus':
-    case 'track_created':
-    case 'track_update':
-    case 'track_status_changed':
-      return NotificationType.trackStatus;
-    case 'assembly_status':
-    case 'assemblystatus':
-    case 'assembly_update':
-    case 'assembly_status_changed':
-      return NotificationType.assemblyStatus;
-    case 'photo_report_status':
-    case 'photoreportstatus':
-    case 'photo_report_update':
-    case 'photo_report_ready':
-    case 'photo_request':
-    case 'photo_request_completed':
-    case 'photo_request_status_changed':
-      return NotificationType.photoReportStatus;
-    case 'question_status':
-    case 'questionstatus':
-    case 'question_answered':
-    case 'question_update':
-    case 'question_status_changed':
-      return NotificationType.questionStatus;
-    case 'chat_message':
-    case 'chatmessage':
-    case 'support_message':
-    case 'new_message':
-      return NotificationType.chatMessage;
-    case 'payment_chat_message':
-    case 'payment_message':
-      return NotificationType.paymentChatMessage;
-    case 'news':
-    case 'news_created':
-    case 'new_news':
-      return NotificationType.news;
-    case 'service_rule_created':
-    case 'service_rule':
-    case 'service_rules':
-      return NotificationType.serviceRules;
-    case 'invoice':
-    case 'new_invoice':
-    case 'invoice_created':
-    case 'invoice_status_changed':
-    case 'invoice_paid':
-      return NotificationType.invoice;
-    default:
-      // Безопасный fallback — trackStatus, чтобы непонятный push открывал
-      // главный список треков, а не утаскивал юзера в /news.
-      return NotificationType.trackStatus;
+Future<void> _handleFCMMessageOpened(
+  WidgetRef ref,
+  RemoteMessage message,
+  void Function(String route)? onNavigate,
+) async {
+  debugPrint('🔔 FCM opened in notifications handler: ${message.data}');
+  await _handleNotificationTapTarget(
+    ref,
+    NotificationTapTarget(
+      route: NotificationItem.routeFromPushData(message.data),
+      notificationId: NotificationItem.notificationIdFromData(message.data),
+    ),
+    onNavigate,
+  );
+}
+
+Future<void> _handleLocalNotificationTapped(
+  WidgetRef ref,
+  String? payload,
+  void Function(String route)? onNavigate,
+) async {
+  await _handleNotificationTapTarget(
+    ref,
+    NotificationItem.tapTargetFromPayload(payload),
+    onNavigate,
+  );
+}
+
+Future<void> _handleNotificationTapTarget(
+  WidgetRef ref,
+  NotificationTapTarget target,
+  void Function(String route)? onNavigate,
+) async {
+  final notificationId = target.notificationId;
+  if (notificationId != null && notificationId.isNotEmpty) {
+    await ref
+        .read(notificationsControllerProvider.notifier)
+        .markRead(notificationId);
+  }
+
+  final route = target.route;
+  if (route != null && route.isNotEmpty) {
+    onNavigate?.call(route);
   }
 }
 
@@ -200,10 +187,23 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
 
   Future<void> markRead(String id) async {
     final current = state.value;
-    if (current == null) return;
+    final intId = int.tryParse(id);
+    if (intId == null) return;
+
+    if (current == null) {
+      final repo = ref.read(notificationsRepositoryProvider);
+      await repo.markAsRead([intId]);
+      refreshDebounced();
+      return;
+    }
 
     final idx = current.indexWhere((e) => e.id == id);
-    if (idx == -1) return;
+    if (idx == -1) {
+      final repo = ref.read(notificationsRepositoryProvider);
+      await repo.markAsRead([intId]);
+      refreshDebounced();
+      return;
+    }
     if (current[idx].isRead) return;
 
     // Обновляем UI сразу
@@ -215,14 +215,40 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
     // Отправляем на сервер
     try {
       final repo = ref.read(notificationsRepositoryProvider);
-      final intId = int.tryParse(id);
-      if (intId != null) {
-        await repo.markAsRead([intId]);
-      }
+      await repo.markAsRead([intId]);
     } catch (e) {
       // Если ошибка - откатываем
       state = AsyncData(current);
       _updateBadge(current);
+    }
+  }
+
+  Future<void> markTypesRead(Set<NotificationType> types) async {
+    if (types.isEmpty) return;
+    final aliases = types
+        .expand((type) => type.backendTypeAliases)
+        .toSet()
+        .toList(growable: false);
+
+    final current = state.value;
+    if (current != null) {
+      final next = <NotificationItem>[
+        for (final n in current)
+          types.contains(n.type) && !n.isRead ? n.copyWith(isRead: true) : n,
+      ];
+      state = AsyncData(next);
+      _updateBadge(next);
+    }
+
+    try {
+      final repo = ref.read(notificationsRepositoryProvider);
+      await repo.markTypesAsRead(aliases);
+      refreshDebounced();
+    } catch (e) {
+      if (current != null) {
+        state = AsyncData(current);
+        _updateBadge(current);
+      }
     }
   }
 
@@ -285,7 +311,10 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
   /// Добавить новое уведомление (например, при получении push)
   void addNotification(NotificationItem item) {
     final current = state.value ?? [];
-    final next = <NotificationItem>[item, ...current];
+    final next = <NotificationItem>[
+      item,
+      ...current.where((n) => n.id != item.id),
+    ];
     state = AsyncData(next);
     _updateBadge(next);
   }

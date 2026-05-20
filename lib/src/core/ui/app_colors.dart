@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/data/auth_provider.dart';
 import '../../features/profile/data/profile_provider.dart';
 
 /// Состояние брендовых цветов
@@ -80,6 +81,18 @@ class BrandColors {
 /// Провайдер брендовых цветов (загружаются из профиля агента)
 final brandColorsProvider = Provider<BrandColors>((ref) {
   final profileAsync = ref.watch(clientProfileProvider);
+  final authState = ref.watch(authProvider);
+
+  BrandColors fromAuthData() {
+    final agent = authState.clientData?['agent'];
+    if (agent is Map<String, dynamic>) {
+      return BrandColors.fromHex(
+        agent['colorPrimary'] as String?,
+        agent['colorSecondary'] as String?,
+      );
+    }
+    return BrandColors.defaultColors;
+  }
 
   return profileAsync.when(
     data: (profile) {
@@ -89,10 +102,10 @@ final brandColorsProvider = Provider<BrandColors>((ref) {
           profile.agent!.colorSecondary,
         );
       }
-      return BrandColors.defaultColors;
+      return fromAuthData();
     },
-    loading: () => BrandColors.defaultColors,
-    error: (_, _) => BrandColors.defaultColors,
+    loading: fromAuthData,
+    error: (_, _) => fromAuthData(),
   );
 });
 

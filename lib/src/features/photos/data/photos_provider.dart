@@ -25,10 +25,26 @@ import '../domain/photo_item.dart';
 final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
   final ws = ref.read(webSocketServiceProvider);
   Timer? debounce;
+  Timer? cooldownTimer;
+  DateTime? lastInvalidateAt;
+  const invalidateCooldown = Duration(seconds: 2);
 
   void invalidateAll(String reason) {
     debounce?.cancel();
-    debounce = Timer(const Duration(milliseconds: 250), () {
+    debounce = Timer(const Duration(milliseconds: 500), () {
+      final now = DateTime.now();
+      final last = lastInvalidateAt;
+      if (last != null) {
+        final elapsed = now.difference(last);
+        if (elapsed < invalidateCooldown) {
+          cooldownTimer ??= Timer(invalidateCooldown - elapsed, () {
+            cooldownTimer = null;
+            invalidateAll(reason);
+          });
+          return;
+        }
+      }
+      lastInvalidateAt = now;
       debugPrint('[UserPhotos] silent invalidate ($reason)');
       ClientLogService.instance.add(
         type: 'photos_realtime_invalidate',
@@ -59,6 +75,7 @@ final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
     deltaSub.cancel();
     dataChangedSub.cancel();
     debounce?.cancel();
+    cooldownTimer?.cancel();
   });
 });
 
@@ -257,6 +274,7 @@ class PaginatedPhotosState {
 
 class PaginatedPhotosNotifier {
   static const int _pageSize = 12;
+  static const _silentRefreshCooldown = Duration(seconds: 2);
   static const _photoTypes = {'photo_requests', 'tracks'};
 
   final Ref _ref;
@@ -267,6 +285,9 @@ class PaginatedPhotosNotifier {
   StreamSubscription? _deltaSub;
   StreamSubscription? _reconnectSub;
   Timer? _refreshTimer;
+  Timer? _cooldownTimer;
+  DateTime? _lastSilentRefreshStartedAt;
+  bool _silentRefreshInProgress = false;
 
   PaginatedPhotosNotifier(this._ref, String clientCode, [String? date])
     : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
@@ -285,22 +306,56 @@ class PaginatedPhotosNotifier {
   void _debouncedRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer(const Duration(milliseconds: 500), () {
-      debugPrint(
-        '[PaginatedPhotos] WS event — silent refresh for ${_state.date ?? 'all'}',
-      );
-      ClientLogService.instance.add(
-        type: 'photos_silent_refresh_scheduled',
-        level: 'info',
-        message: 'Запланировано мягкое обновление фотоотчётов',
-        data: {'date': _state.date, 'currentCount': _state.photos.length},
-      );
-      _silentRefresh();
+      _scheduleSilentRefresh();
+    });
+  }
+
+  void _scheduleSilentRefresh() {
+    if (_silentRefreshInProgress) {
+      _queueSilentRefresh(_silentRefreshCooldown);
+      return;
+    }
+
+    final lastStartedAt = _lastSilentRefreshStartedAt;
+    if (lastStartedAt != null) {
+      final elapsed = DateTime.now().difference(lastStartedAt);
+      if (elapsed < _silentRefreshCooldown) {
+        _queueSilentRefresh(_silentRefreshCooldown - elapsed);
+        return;
+      }
+    }
+
+    _lastSilentRefreshStartedAt = DateTime.now();
+    debugPrint(
+      '[PaginatedPhotos] WS event — silent refresh for ${_state.date ?? 'all'}',
+    );
+    ClientLogService.instance.add(
+      type: 'photos_silent_refresh_scheduled',
+      level: 'info',
+      message: 'Запланировано мягкое обновление фотоотчётов',
+      data: {'date': _state.date, 'currentCount': _state.photos.length},
+    );
+    unawaited(_silentRefresh());
+  }
+
+  void _queueSilentRefresh(Duration delay) {
+    if (_cooldownTimer != null) {
+      return;
+    }
+
+    _cooldownTimer = Timer(delay, () {
+      _cooldownTimer = null;
+      _scheduleSilentRefresh();
     });
   }
 
   /// Фоновое обновление без сброса скролла и пагинации.
   /// Перезагружает столько же фото, сколько уже подгружено.
   Future<void> _silentRefresh() async {
+    if (_silentRefreshInProgress) {
+      return;
+    }
+    _silentRefreshInProgress = true;
     try {
       final currentCount = _state.photos.length;
       final take = currentCount > _pageSize ? currentCount : _pageSize;
@@ -327,6 +382,10 @@ class PaginatedPhotosNotifier {
           message: 'Мягкое обновление фотоотчётов выполнено',
           data: {'date': _state.date, 'count': photos.length, 'total': total},
         );
+        if (_state.photos.length > currentCount) {
+          _queueSilentRefresh(Duration.zero);
+          return;
+        }
         _update(
           _state.copyWith(
             photos: photos,
@@ -343,6 +402,8 @@ class PaginatedPhotosNotifier {
         data: {'date': _state.date, 'error': e.toString()},
       );
       debugPrint('[PaginatedPhotos] Silent refresh error: $e');
+    } finally {
+      _silentRefreshInProgress = false;
     }
   }
 
@@ -350,6 +411,7 @@ class PaginatedPhotosNotifier {
     _deltaSub?.cancel();
     _reconnectSub?.cancel();
     _refreshTimer?.cancel();
+    _cooldownTimer?.cancel();
   }
 
   ApiClient get _apiClient => _ref.read(apiClientProvider);
@@ -420,7 +482,7 @@ class PaginatedPhotosNotifier {
         _state.copyWith(
           photos: result.photos,
           total: result.total,
-          hasMore: result.photos.length >= _pageSize,
+          hasMore: result.photos.length < result.total,
           isLoading: false,
         ),
       );
@@ -458,11 +520,12 @@ class PaginatedPhotosNotifier {
           'skip': skip,
         },
       );
+      final photos = [..._state.photos, ...result.photos];
       _update(
         _state.copyWith(
-          photos: [..._state.photos, ...result.photos],
+          photos: photos,
           total: result.total,
-          hasMore: result.photos.length >= _pageSize,
+          hasMore: photos.length < result.total,
           isLoading: false,
         ),
       );

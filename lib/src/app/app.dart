@@ -33,7 +33,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // Инициализируем обработчик push уведомлений
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      initializePushNotificationsHandler(ref);
+      initializePushNotificationsHandler(
+        ref,
+        onNavigate: (route) {
+          if (!mounted) return;
+          ref.read(routerProvider).go(route);
+        },
+      );
       _setupUnauthorizedHandler();
     });
   }
