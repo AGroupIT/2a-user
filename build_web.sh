@@ -18,7 +18,7 @@ WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
 MOBILE_API_BASE_URL="${MOBILE_API_BASE_URL:-$WEB_API_BASE_URL}"
 MOBILE_MEDIA_BASE_URL="${MOBILE_MEDIA_BASE_URL:-$WEB_MEDIA_BASE_URL}"
-SENTRY_DSN="${SENTRY_DSN:-https://175a28fc6b3c9e907471ae9a59d7912a@o4511394003288064.ingest.de.sentry.io/4511394144649296}"
+SENTRY_DSN="${SENTRY_DSN:-https://feb59cde1dc1418cbe9db4a657de22762769ea7dc40b4a90ad0a0135372672bd@k1.hawk.so/0}"
 SENTRY_PROJECT="${SENTRY_PROJECT:-2a-user}"
 SENTRY_ORG="${SENTRY_ORG:-2a-logistic}"
 
@@ -183,6 +183,11 @@ sync_coolify_shared() {
 
 run_sentry_upload() {
   local label="$1"
+  if [[ "${SENTRY_DSN:-}" == *"hawk.so"* ]]; then
+    echo "🧭 Sentry: skip debug upload for ${label} (Hawk DSN is configured)"
+    return 0
+  fi
+
   if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
     echo "🧭 Sentry: skip debug upload for ${label} (SENTRY_AUTH_TOKEN is empty)"
     return 0

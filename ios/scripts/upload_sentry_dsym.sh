@@ -93,7 +93,13 @@ fi
 
 sentry_org="${SENTRY_ORG:-2a-logistic}"
 sentry_project="${SENTRY_PROJECT:-2a-user}"
-sentry_url="${SENTRY_URL:-https://de.sentry.io}"
+sentry_url="${SENTRY_URL:-}"
+
+if [ -z "${sentry_url}" ]; then
+  log "skip, SENTRY_URL is empty; runtime errors are sent through the Sentry SDK DSN"
+  write_stamp
+  exit 0
+fi
 
 log "uploading ${upload_path} to ${sentry_org}/${sentry_project}"
 

@@ -113,7 +113,7 @@ class InvoiceItem {
   }
 
   double get packagingUsageClientTotal =>
-      packagingUsage.fold(0, (sum, row) => sum + row.clientTotalCost);
+      packagingUsage.fold(0, (sum, row) => sum + row.effectiveClientTotalCost);
 
   bool get hasDetailedPackagingUsage => packagingUsage.isNotEmpty;
 
@@ -426,6 +426,11 @@ class InvoicePackagingUsage {
   }
 
   bool get isPrimary => kind != 'addon';
+
+  double get effectiveClientTotalCost {
+    if (clientTotalCost > 0) return clientTotalCost;
+    return clientUnitCost * quantity;
+  }
 
   String quantityDisplay() {
     final value = quantity == quantity.roundToDouble()

@@ -2095,6 +2095,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   }
 
   Widget _buildPackagingUsageBlock(BuildContext context, InvoiceItem item) {
+    final total =
+        item.resolvedPackagingCostTotal ?? item.packagingUsageClientTotal;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
@@ -2113,7 +2116,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 ),
               ),
               Text(
-                '\$${item.packagingUsageClientTotal.toStringAsFixed(2)}',
+                '\$${total.toStringAsFixed(2)}',
                 style: const TextStyle(
                   color: Color(0xFF333333),
                   fontSize: 14,
@@ -2173,7 +2176,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '\$${usage.clientTotalCost.toStringAsFixed(2)}',
+                        '\$${usage.effectiveClientTotalCost.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFF333333),
                           fontSize: 13,

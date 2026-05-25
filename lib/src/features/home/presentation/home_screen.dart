@@ -30,6 +30,7 @@ import '../../profile/data/profile_provider.dart';
 import '../../referral/data/referral_provider.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
+import '../../tracks/presentation/add_tracks_dialog.dart';
 import '../../../core/ui/tutorial_card.dart';
 
 void _showStyledSnackBar(
@@ -178,10 +179,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : _weeklyBonusKg(referralData);
     final agent = clientProfile.asData?.value?.agent;
 
-    // TODO(redesign): Replace hardcoded balance values when balance backend is ready.
-    const balanceValue = '0 ₽';
-    const balanceWeekly = '+0';
-
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomContentGap = AppLayout.bottomScrollPadding(context) + 16;
 
@@ -269,15 +266,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             _GreetingBlock(fullName: clientName),
             const SizedBox(height: 15),
-            if (agent?.hasHomeBanner == true) ...[
-              _PromoSlider(agent: agent!),
-              const SizedBox(height: 15),
-            ],
             KeyedSubtree(
               key: _quickCardsKey,
               child: _StatsBlock(
-                balanceValue: balanceValue,
-                balanceWeekly: balanceWeekly,
                 bonusKgValue: _formatKg(bonusKgBalance),
                 bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
                 tracksValue: _formatCount(tracksCount),
@@ -289,9 +280,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onTracksTap: () => context.go('/tracks'),
                 onAssembliesTap: () => context.go('/tracks'),
                 onInvoicesTap: () => context.go('/invoices'),
+                onAddTracksTap: () => showAddTracksDialog(context, ref),
               ),
             ),
             const SizedBox(height: 15),
+            if (agent?.hasHomeBanner == true) ...[
+              _PromoSlider(agent: agent!),
+              const SizedBox(height: 15),
+            ],
             if (agent?.hasWarehouseContacts == true) ...[
               _WarehouseDataBlock(clientCode: clientCode, agent: agent!),
               const SizedBox(height: 15),
@@ -398,7 +394,7 @@ class _GreetingBlock extends StatelessWidget {
     final greeting = _greetingFor(DateTime.now());
     return SizedBox(
       width: double.infinity,
-      height: 74,
+      height: 69,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,7 +416,6 @@ class _GreetingBlock extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 5),
           SizedBox(
             width: double.infinity,
             height: 41,
@@ -557,8 +552,8 @@ class _PromoSlider extends StatelessWidget {
 
   static const _textColor = Color(0xFF2F2F2F);
   static const _designWidth = 400.0;
-  static const _designHeight = 132.0;
-  static const _textBlockWidth = 218.5;
+  static const _designHeight = 149.0;
+  static const _textBlockWidth = 230.0;
 
   @override
   Widget build(BuildContext context) {
@@ -654,8 +649,8 @@ class _PromoSlider extends StatelessWidget {
                                   color: _textColor,
                                   fontFamily: 'Gilroy',
                                   fontWeight: FontWeight.w500,
-                                  fontSize: 16.6 * scale,
-                                  height: 20 / 16.6,
+                                  fontSize: 18.6 * scale,
+                                  height: 23 / 18.6,
                                   letterSpacing: 0,
                                 ),
                               ),
@@ -698,8 +693,6 @@ class _PromoSlider extends StatelessWidget {
 }
 
 class _StatsBlock extends StatelessWidget {
-  final String balanceValue;
-  final String balanceWeekly;
   final String bonusKgValue;
   final String bonusKgWeekly;
   final String tracksValue;
@@ -711,10 +704,9 @@ class _StatsBlock extends StatelessWidget {
   final VoidCallback onTracksTap;
   final VoidCallback onAssembliesTap;
   final VoidCallback onInvoicesTap;
+  final VoidCallback onAddTracksTap;
 
   const _StatsBlock({
-    required this.balanceValue,
-    required this.balanceWeekly,
     required this.bonusKgValue,
     required this.bonusKgWeekly,
     required this.tracksValue,
@@ -726,68 +718,93 @@ class _StatsBlock extends StatelessWidget {
     required this.onTracksTap,
     required this.onAssembliesTap,
     required this.onInvoicesTap,
+    required this.onAddTracksTap,
   });
+
+  static const _designWidth = 400.0;
+  static const _gap = 10.0;
+  static const _topCardWidth = 142.5;
+  static const _addCardWidth = 95.0;
+  static const _bottomCardWidth = 195.0;
+  static const _cardHeight = 95.0;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : _designWidth;
+        final scale = width / _designWidth;
+        final gap = _gap * scale;
+
+        return Column(
           children: [
-            Expanded(
-              child: _StatCard(
-                title: 'Депозит',
-                value: balanceValue,
-                weeklyValue: balanceWeekly,
-                icon: Icons.account_balance_wallet_rounded,
-              ),
+            Row(
+              children: [
+                SizedBox(
+                  width: _topCardWidth * scale,
+                  child: _StatCard(
+                    title: 'Треки',
+                    value: tracksValue,
+                    weeklyValue: tracksWeekly,
+                    icon: Icons.local_shipping_rounded,
+                    scale: scale,
+                    onTap: onTracksTap,
+                  ),
+                ),
+                SizedBox(width: gap),
+                SizedBox(
+                  width: _topCardWidth * scale,
+                  child: _StatCard(
+                    title: 'Сборки',
+                    value: assembliesValue,
+                    weeklyValue: assembliesWeekly,
+                    icon: Icons.inventory_2_rounded,
+                    scale: scale,
+                    onTap: onAssembliesTap,
+                  ),
+                ),
+                SizedBox(width: gap),
+                SizedBox(
+                  width: _addCardWidth * scale,
+                  child: _AddTracksStatCard(
+                    scale: scale,
+                    onTap: onAddTracksTap,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                title: 'Бонусные КГ',
-                value: bonusKgValue,
-                weeklyValue: bonusKgWeekly,
-                icon: Icons.scale_rounded,
-              ),
+            SizedBox(height: gap),
+            Row(
+              children: [
+                SizedBox(
+                  width: _bottomCardWidth * scale,
+                  child: _StatCard(
+                    title: 'Бонусные КГ',
+                    value: bonusKgValue,
+                    weeklyValue: bonusKgWeekly,
+                    icon: Icons.scale_rounded,
+                    scale: scale,
+                  ),
+                ),
+                SizedBox(width: gap),
+                SizedBox(
+                  width: _bottomCardWidth * scale,
+                  child: _StatCard(
+                    title: 'Счета',
+                    value: invoicesValue,
+                    weeklyValue: invoicesWeekly,
+                    icon: Icons.receipt_long_rounded,
+                    scale: scale,
+                    onTap: onInvoicesTap,
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                title: 'Треки',
-                value: tracksValue,
-                weeklyValue: tracksWeekly,
-                icon: Icons.local_shipping_rounded,
-                onTap: onTracksTap,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                title: 'Сборки',
-                value: assembliesValue,
-                weeklyValue: assembliesWeekly,
-                icon: Icons.inventory_2_rounded,
-                onTap: onAssembliesTap,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                title: 'Счета',
-                value: invoicesValue,
-                weeklyValue: invoicesWeekly,
-                icon: Icons.receipt_long_rounded,
-                onTap: onInvoicesTap,
-              ),
-            ),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -797,6 +814,7 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String weeklyValue;
   final IconData icon;
+  final double scale;
   final VoidCallback? onTap;
 
   const _StatCard({
@@ -804,6 +822,7 @@ class _StatCard extends StatelessWidget {
     required this.value,
     required this.weeklyValue,
     required this.icon,
+    required this.scale,
     this.onTap,
   });
 
@@ -811,17 +830,18 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fontScale = scale.clamp(0.78, 1.08);
     final card = Container(
-      height: 90,
-      padding: const EdgeInsets.all(10),
+      height: _StatsBlock._cardHeight * scale,
+      padding: EdgeInsets.all(10 * scale),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(10 * scale),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1A000000),
-            offset: Offset(3, 4),
-            blurRadius: 25,
+            color: const Color(0x1A000000),
+            offset: Offset(3 * scale, 4 * scale),
+            blurRadius: 25 * scale,
           ),
         ],
       ),
@@ -829,61 +849,61 @@ class _StatCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: 18,
+            height: 22 * scale,
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _textColor,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w500,
+                fontSize: 17.6 * fontScale,
+                height: 22 / 17.6,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            height: 31 * scale,
             child: Row(
               children: [
                 Container(
-                  width: 18,
-                  height: 18,
+                  width: 22 * scale,
+                  height: 22 * scale,
                   decoration: BoxDecoration(
                     color: context.brandPrimary,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(3 * scale),
                   ),
                   alignment: Alignment.center,
-                  child: Icon(icon, color: Colors.white, size: 13),
+                  child: Icon(icon, color: Colors.white, size: 15 * fontScale),
                 ),
-                const SizedBox(width: 5),
+                SizedBox(width: 5 * scale),
                 Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textColor,
-                      fontFamily: 'Gilroy',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14.6,
-                      height: 18 / 14.6,
-                      letterSpacing: 0,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: _textColor,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 24.6 * fontScale,
+                        height: 31 / 24.6,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 4),
+          const Spacer(),
           SizedBox(
-            height: 31,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                maxLines: 1,
-                style: const TextStyle(
-                  color: _textColor,
-                  fontFamily: 'Gilroy',
-                  fontWeight: FontWeight.w900,
-                  fontSize: 24.6,
-                  height: 31 / 24.6,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          SizedBox(
-            height: 14,
+            height: 16 * scale,
             child: Row(
               children: [
                 Flexible(
@@ -891,26 +911,26 @@ class _StatCard extends StatelessWidget {
                     weeklyValue,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _textColor,
                       fontFamily: 'Gilroy',
                       fontWeight: FontWeight.w400,
-                      fontSize: 11.6,
-                      height: 14 / 11.6,
+                      fontSize: 13.6 * fontScale,
+                      height: 16 / 13.6,
                       letterSpacing: 0,
                     ),
                   ),
                 ),
-                const SizedBox(width: 5),
-                const Text(
+                SizedBox(width: 5 * scale),
+                Text(
                   'за неделю',
                   maxLines: 1,
                   style: TextStyle(
                     color: _textColor,
                     fontFamily: 'Gilroy',
                     fontWeight: FontWeight.w400,
-                    fontSize: 11.6,
-                    height: 14 / 11.6,
+                    fontSize: 13.6 * fontScale,
+                    height: 16 / 13.6,
                     letterSpacing: 0,
                   ),
                 ),
@@ -926,6 +946,53 @@ class _StatCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: card,
+    );
+  }
+}
+
+class _AddTracksStatCard extends StatelessWidget {
+  final double scale;
+  final VoidCallback onTap;
+
+  const _AddTracksStatCard({required this.scale, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final fontScale = scale.clamp(0.78, 1.08);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: _StatsBlock._cardHeight * scale,
+        padding: EdgeInsets.all(10 * scale),
+        decoration: BoxDecoration(
+          color: context.brandPrimary,
+          borderRadius: BorderRadius.circular(10 * scale),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0x1A000000),
+              offset: Offset(3 * scale, 4 * scale),
+              blurRadius: 25 * scale,
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Добавить\nтреки',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w700,
+              fontSize: 14.6 * fontScale,
+              height: 18 / 14.6,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -957,28 +1024,55 @@ class _WarehouseDataBlock extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Данные склада',
-            style: TextStyle(
-              color: _textColor,
-              fontFamily: 'Gilroy',
-              fontWeight: FontWeight.w600,
-              fontSize: 18,
-              height: 22 / 18,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (address.isNotEmpty) ...[
-            _WarehouseCopyLine(label: 'Адрес:', value: address),
-            if (phone.isNotEmpty) const SizedBox(height: 5),
-          ],
-          if (phone.isNotEmpty)
-            _WarehouseCopyLine(label: 'Телефон:', value: phone),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final buttons = <Widget>[
+            if (address.isNotEmpty)
+              _WarehouseCopyButton(
+                label: 'Скопировать адрес',
+                icon: CupertinoIcons.doc_on_doc,
+                value: address,
+              ),
+            if (phone.isNotEmpty)
+              _WarehouseCopyButton(
+                label: 'Скопировать телефон',
+                icon: CupertinoIcons.phone,
+                value: phone,
+              ),
+          ];
+          final buttonWidth = buttons.length <= 1 || constraints.maxWidth < 300
+              ? constraints.maxWidth
+              : (constraints.maxWidth - 10) / 2;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Данные склада',
+                style: TextStyle(
+                  color: _textColor,
+                  fontFamily: 'Gilroy',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17.6,
+                  height: 22 / 17.6,
+                  letterSpacing: 0,
+                ),
+              ),
+              if (buttons.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: buttons
+                      .map(
+                        (button) => SizedBox(width: buttonWidth, child: button),
+                      )
+                      .toList(growable: false),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -992,38 +1086,57 @@ class _WarehouseDataBlock extends StatelessWidget {
   }
 }
 
-class _WarehouseCopyLine extends StatelessWidget {
-  final String label;
+class _WarehouseCopyButton extends StatelessWidget {
   final String value;
+  final String label;
+  final IconData icon;
 
-  const _WarehouseCopyLine({required this.label, required this.value});
+  const _WarehouseCopyButton({
+    required this.label,
+    required this.icon,
+    required this.value,
+  });
 
   static const _textColor = Color(0xFF2F2F2F);
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _copyValue(context),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(
-            color: _textColor,
-            fontFamily: 'Gilroy',
-            fontSize: 14,
-            height: 16 / 14,
-            letterSpacing: 0,
+    return Material(
+      color: const Color(0xFFDFDFDF),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _copyValue(context),
+        child: Container(
+          height: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFDFDFDF), width: 0.5),
+            borderRadius: BorderRadius.circular(10),
           ),
-          children: [
-            TextSpan(
-              text: '$label ',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            TextSpan(
-              text: value,
-              style: const TextStyle(fontWeight: FontWeight.w400),
-            ),
-          ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: _textColor, size: 12),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textColor,
+                    fontFamily: 'Gilroy',
+                    fontWeight: FontWeight.w400,
+                    fontSize: 11.6,
+                    height: 14 / 11.6,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1138,64 +1251,97 @@ class _DigestTabBar extends StatelessWidget {
 
   const _DigestTabBar({required this.selected, required this.onChanged});
 
+  static const _designWidth = 400.0;
+  static const _height = 30.0;
+  static const _gap = 10.0;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 40,
+      height: _height,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            offset: const Offset(3, 4),
+            color: Color(0x1A000000),
+            offset: Offset(3, 4),
             blurRadius: 25,
           ),
         ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final width = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : _designWidth;
+          final scale = (width / _designWidth).clamp(0.0, 1.0);
+          final gap = _gap * scale;
           final buttons = _DigestTab.values
               .map(
                 (tab) => _DigestTabButton(
                   tab: tab,
                   selected: selected == tab,
+                  width: _tabWidth(tab) * scale,
+                  height: _height,
+                  scale: scale,
                   onTap: () => onChanged(tab),
                 ),
               )
               .toList(growable: false);
+          final row = Row(
+            children: [
+              for (var i = 0; i < buttons.length; i++) ...[
+                if (i > 0) SizedBox(width: gap),
+                buttons[i],
+              ],
+            ],
+          );
 
-          if (constraints.maxWidth < 360) {
+          if (constraints.maxWidth < 280) {
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              child: Row(children: buttons),
+              child: row,
             );
           }
 
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: buttons,
-          );
+          return row;
         },
       ),
     );
+  }
+
+  static double _tabWidth(_DigestTab tab) {
+    return switch (tab) {
+      _DigestTab.tracks => 80,
+      _DigestTab.assemblies => 85,
+      _DigestTab.invoices => 80,
+      _DigestTab.photos => 125,
+    };
   }
 }
 
 class _DigestTabButton extends StatelessWidget {
   final _DigestTab tab;
   final bool selected;
+  final double width;
+  final double height;
+  final double scale;
   final VoidCallback onTap;
 
   const _DigestTabButton({
     required this.tab,
     required this.selected,
+    required this.width,
+    required this.height,
+    required this.scale,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final fontScale = scale.clamp(0.78, 1.0);
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -1204,29 +1350,24 @@ class _DigestTabButton extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          width: width,
+          height: height,
+          padding: EdgeInsets.symmetric(horizontal: 10 * scale),
           decoration: BoxDecoration(
-            gradient: selected
-                ? RadialGradient(
-                    colors: [context.brandPrimary, context.brandSecondary],
-                    center: Alignment.center,
-                    radius: 0.9,
-                  )
-                : null,
-            color: selected ? null : Colors.white,
+            color: selected ? context.brandPrimary : Colors.white,
             borderRadius: BorderRadius.circular(10),
           ),
           alignment: Alignment.center,
           child: Text(
             tab.label,
             maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: selected ? Colors.white : const Color(0xFF2F2F2F),
               fontFamily: 'Gilroy',
-              fontSize: 17,
+              fontSize: 16.6 * fontScale,
               fontWeight: FontWeight.w400,
-              height: 20 / 17,
+              height: 20 / 16.6,
             ),
           ),
         ),
