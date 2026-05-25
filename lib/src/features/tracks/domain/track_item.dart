@@ -168,6 +168,8 @@ class TrackAssembly {
   // Упаковка
   final List<String> packagingTypes;
   final double? packagingCost;
+  final bool hasFragileGoods;
+  final String placePreference;
 
   // Страховка
   final bool hasInsurance;
@@ -203,6 +205,8 @@ class TrackAssembly {
     this.tariffCost,
     this.packagingTypes = const [],
     this.packagingCost,
+    this.hasFragileGoods = false,
+    this.placePreference = 'unspecified',
     this.hasInsurance = false,
     this.insuranceAmount,
     this.deliveryMethod,
@@ -275,6 +279,9 @@ class TrackAssembly {
       tariffCost: parseDouble(json['tariffCost']),
       packagingTypes: packagingTypes,
       packagingCost: parseDouble(json['packagingCost']),
+      hasFragileGoods:
+          json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
+      placePreference: json['placePreference']?.toString() ?? 'unspecified',
       hasInsurance:
           json['hasInsurance'] == true || json['hasInsurance'] == 'true',
       insuranceAmount: parseDouble(json['insuranceAmount']),

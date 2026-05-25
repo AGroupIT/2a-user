@@ -18,6 +18,7 @@ class InvoiceItem {
   final double volume;
   final String? calculationMethod;
   final List<PackagingItem> packagings;
+  final List<InvoicePackagingUsage> packagingUsage;
   final double? packagingCostTotal;
   final double? transshipmentCost;
   final double? insuranceCost;
@@ -71,6 +72,7 @@ class InvoiceItem {
     this.discountAmount,
     this.shippingCost,
     this.packagings = const [],
+    this.packagingUsage = const [],
     this.packagingCostTotal,
     this.totalCostUsd = 0,
     this.totalCostCny = 0,
@@ -97,6 +99,9 @@ class InvoiceItem {
       packagings.fold(0, (sum, packaging) => sum + packaging.cost);
 
   double? get resolvedPackagingCostTotal {
+    final usageTotal = packagingUsageClientTotal;
+    if (usageTotal > 0) return usageTotal;
+
     if (packagingCostTotal != null && packagingCostTotal! > 0) {
       return packagingCostTotal;
     }
@@ -107,9 +112,16 @@ class InvoiceItem {
     return unitCost * billablePlacesCount;
   }
 
+  double get packagingUsageClientTotal =>
+      packagingUsage.fold(0, (sum, row) => sum + row.clientTotalCost);
+
+  bool get hasDetailedPackagingUsage => packagingUsage.isNotEmpty;
+
   String get packagingNames => packagings
       .map((packaging) => packaging.name.trim())
+      .followedBy(packagingUsage.map((row) => row.name.trim()))
       .where((name) => name.isNotEmpty)
+      .toSet()
       .join(', ');
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
@@ -189,6 +201,19 @@ class InvoiceItem {
         );
       }
     }
+
+    final rawPackagingUsage = json['packagingUsage'] ?? json['packagingUsages'];
+    final packagingUsage = rawPackagingUsage is List
+        ? rawPackagingUsage
+              .whereType<Map>()
+              .map(
+                (row) => InvoicePackagingUsage.fromJson(
+                  Map<String, dynamic>.from(row),
+                ),
+              )
+              .where((row) => row.packagingTypeId > 0 && row.quantity > 0)
+              .toList()
+        : <InvoicePackagingUsage>[];
 
     int totalTracks = 0;
     int tracksWithPhoto = 0;
@@ -295,6 +320,7 @@ class InvoiceItem {
           ? _parseDouble(json['shippingCost']).let((v) => v > 0 ? v : null)
           : null,
       packagings: packagings,
+      packagingUsage: packagingUsage,
       packagingCostTotal: _parseDouble(
         json['packagingCost'],
       ).let((v) => v > 0 ? v : null),
@@ -356,4 +382,70 @@ class PackagingItem {
   final double cost;
 
   const PackagingItem({required this.name, required this.cost});
+}
+
+/// Фактический расход упаковочных материалов в счёте.
+class InvoicePackagingUsage {
+  final String id;
+  final int packagingTypeId;
+  final String name;
+  final String kind;
+  final String? source;
+  final double quantity;
+  final String unitLabel;
+  final double clientUnitCost;
+  final double clientTotalCost;
+
+  const InvoicePackagingUsage({
+    required this.id,
+    required this.packagingTypeId,
+    required this.name,
+    this.kind = 'primary',
+    this.source,
+    this.quantity = 0,
+    this.unitLabel = 'шт.',
+    this.clientUnitCost = 0,
+    this.clientTotalCost = 0,
+  });
+
+  factory InvoicePackagingUsage.fromJson(Map<String, dynamic> json) {
+    return InvoicePackagingUsage(
+      id: json['id']?.toString() ?? '',
+      packagingTypeId: _parseInt(json['packagingTypeId']),
+      name:
+          json['packagingNameRu'] as String? ??
+          json['packagingName'] as String? ??
+          'Упаковка',
+      kind: json['kind']?.toString() ?? 'primary',
+      source: json['source']?.toString(),
+      quantity: _parseDouble(json['quantity']),
+      unitLabel: json['unitLabel']?.toString() ?? 'шт.',
+      clientUnitCost: _parseDouble(json['clientUnitCost']),
+      clientTotalCost: _parseDouble(json['clientTotalCost']),
+    );
+  }
+
+  bool get isPrimary => kind != 'addon';
+
+  String quantityDisplay() {
+    final value = quantity == quantity.roundToDouble()
+        ? quantity.toInt().toString()
+        : quantity.toStringAsFixed(2);
+    return '$value $unitLabel';
+  }
+
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  static int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
 }

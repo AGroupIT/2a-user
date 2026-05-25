@@ -77,6 +77,73 @@ class _ClientCodeOption {
   const _ClientCodeOption({required this.id, required this.code});
 }
 
+class _PackagingBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _PackagingBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 void _showStyledSnackBar(
   BuildContext context,
   String message, {
@@ -1790,11 +1857,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
+    bool hasFragileGoods = false;
+    String? placePreference;
     String selectedInsurance = 'no';
     String? insuranceAmount;
 
     // Создаём контроллер ДО StatefulBuilder чтобы не терять фокус
     final insuranceAmountController = TextEditingController();
+    final createAssemblyScrollController = ScrollController();
+    int currentStep = 0;
 
     // Загружаем тарифы и типы упаковки (invalidate чтобы не получить кешированный пустой список при сбое сети)
     ref.invalidate(tariffsProvider);
@@ -1817,37 +1888,531 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.55,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (sheetContext, scrollController) {
-          return StatefulBuilder(
-            builder: (sheetContext, setSheetState) {
-              return Padding(
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            const stepTitles = ['Груз', 'Упаковка', 'Тариф', 'Итог'];
+            final primaryPackagingTypes = packagingTypes
+                .where((p) => p.isPrimary)
+                .toList();
+            final addonPackagingTypes = packagingTypes
+                .where((p) => p.isAddon)
+                .toList();
+            final primaryPackagingIds = primaryPackagingTypes
+                .map((p) => p.id)
+                .toSet();
+            PackagingType? selectedPrimaryPackaging;
+            for (final p in primaryPackagingTypes) {
+              if (selectedPackingIds.contains(p.id)) {
+                selectedPrimaryPackaging = p;
+                break;
+              }
+            }
+            final hasPrimaryPackaging = selectedPrimaryPackaging != null;
+            final selectedPackagingNames = [
+              if (selectedPrimaryPackaging != null)
+                selectedPrimaryPackaging.displayName,
+              ...addonPackagingTypes
+                  .where((p) => selectedPackingIds.contains(p.id))
+                  .map((p) => p.displayName),
+            ];
+            final hasSuitableAddonPackaging = addonPackagingTypes.any(
+              (p) =>
+                  selectedPackingIds.contains(p.id) &&
+                  p.suitableForFragileGoods,
+            );
+            final showFragileAddonRecommendation =
+                hasFragileGoods &&
+                addonPackagingTypes.isNotEmpty &&
+                !hasSuitableAddonPackaging;
+            final selectedUnsuitableFragilePackagingNames = packagingTypes
+                .where(
+                  (p) =>
+                      selectedPackingIds.contains(p.id) &&
+                      !p.suitableForFragileGoods,
+                )
+                .map((p) => p.displayName)
+                .toList();
+            final showFragilePackagingRisk =
+                hasFragileGoods &&
+                selectedUnsuitableFragilePackagingNames.isNotEmpty;
+            final canSubmit =
+                placePreference != null &&
+                hasPrimaryPackaging &&
+                selectedTariff != null &&
+                (selectedInsurance == 'no' ||
+                    (selectedInsurance == 'yes' &&
+                        insuranceAmount?.isNotEmpty == true));
+            final canContinue = switch (currentStep) {
+              0 => placePreference != null,
+              1 => hasPrimaryPackaging,
+              2 =>
+                selectedTariff != null &&
+                    (selectedInsurance == 'no' ||
+                        (selectedInsurance == 'yes' &&
+                            insuranceAmount?.isNotEmpty == true)),
+              _ => canSubmit,
+            };
+
+            void goToStep(int value) {
+              setSheetState(() => currentStep = value.clamp(0, 3).toInt());
+              if (createAssemblyScrollController.hasClients) {
+                createAssemblyScrollController.animateTo(
+                  0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                );
+              }
+            }
+
+            Widget placePreferenceChip({
+              required String value,
+              required String label,
+            }) {
+              final selected = placePreference == value;
+              return ChoiceChip(
+                selected: selected,
+                showCheckmark: selected,
+                checkmarkColor: Colors.white,
+                selectedColor: context.brandPrimary,
+                backgroundColor: Colors.white,
+                side: BorderSide(
+                  color: selected
+                      ? context.brandPrimary
+                      : context.brandPrimary.withValues(alpha: 0.36),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                labelPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                label: Text(label),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : context.brandPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+                onSelected: (_) => setSheetState(() => placePreference = value),
+              );
+            }
+
+            Widget packagingOptionTile(
+              PackagingType packaging, {
+              required bool selected,
+              required bool primary,
+            }) {
+              final warning =
+                  hasFragileGoods && !packaging.suitableForFragileGoods;
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  setSheetState(() {
+                    if (primary) {
+                      selectedPackingIds.removeWhere(
+                        primaryPackagingIds.contains,
+                      );
+                      selectedPackingIds.add(packaging.id);
+                      return;
+                    }
+                    if (selected) {
+                      selectedPackingIds.remove(packaging.id);
+                    } else {
+                      selectedPackingIds.add(packaging.id);
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? context.brandPrimary.withValues(alpha: 0.08)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: selected
+                          ? context.brandPrimary
+                          : const Color(0xFFE8EAEE),
+                      width: selected ? 1.2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        primary
+                            ? (selected
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked)
+                            : (selected
+                                  ? Icons.check_box
+                                  : Icons.check_box_outline_blank),
+                        color: selected ? context.brandPrimary : Colors.black45,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              packaging.displayName,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _PackagingBadge(
+                                  label: primary
+                                      ? 'Основная упаковка'
+                                      : 'Доп. защита',
+                                  color: primary
+                                      ? context.brandPrimary
+                                      : Colors.blue.shade700,
+                                ),
+                                if (packaging.suitableForFragileGoods)
+                                  _PackagingBadge(
+                                    label: 'Для хрупкого',
+                                    color: Colors.green.shade700,
+                                  ),
+                                if (warning)
+                                  _PackagingBadge(
+                                    label: 'Не для хрупкого',
+                                    color: Colors.red.shade700,
+                                  ),
+                              ],
+                            ),
+                            if (packaging.baseCost > 0) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                '\$${packaging.baseCost.toStringAsFixed(2)} / ${packaging.unitLabel}',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            if (warning) ...[
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Для хрупких товаров лучше выбрать более надежную упаковку.',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            Widget tariffOptionTile(Tariff tariff, {required bool selected}) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => setSheetState(() => selectedTariff = tariff),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? context.brandPrimary.withValues(alpha: 0.08)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: selected
+                          ? context.brandPrimary
+                          : const Color(0xFFE8EAEE),
+                      width: selected ? 1.2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        color: selected ? context.brandPrimary : Colors.black45,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              tariff.name,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _PackagingBadge(
+                                  label: 'Тариф доставки',
+                                  color: context.brandPrimary,
+                                ),
+                                if (tariff.requiresProductInfo)
+                                  _PackagingBadge(
+                                    label: 'Нужны данные о товаре',
+                                    color: Colors.orange.shade700,
+                                  ),
+                              ],
+                            ),
+                            if (tariff.baseCost > 0) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                '\$${tariff.baseCost.toStringAsFixed(2)} / кг',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            if (tariff.requiresProductInfo) ...[
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Для этого тарифа нужно заполнить информацию о товаре по трекам.',
+                                style: TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return SafeArea(
+              top: false,
+              child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   16,
                   0,
                   16,
                   MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
                 ),
-                child: Column(
-                  children: [
-                    const SheetHandle(),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.only(top: 12),
-                        children: [
-                          Text(
-                            'Создать сборку',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.92,
+                  ),
+                  child: SingleChildScrollView(
+                    controller: createAssemblyScrollController,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SheetHandle(),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Создать сборку',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            for (var i = 0; i < stepTitles.length; i++) ...[
+                              Expanded(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: i <= currentStep
+                                        ? context.brandPrimary.withValues(
+                                            alpha: i == currentStep
+                                                ? 0.16
+                                                : 0.08,
+                                          )
+                                        : const Color(0xFFF1F2F4),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: i == currentStep
+                                          ? context.brandPrimary.withValues(
+                                              alpha: 0.45,
+                                            )
+                                          : Colors.transparent,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${i + 1}. ${stepTitles[i]}',
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: i <= currentStep
+                                          ? context.brandPrimary
+                                          : Colors.black45,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (i != stepTitles.length - 1)
+                                const SizedBox(width: 6),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (currentStep == 0)
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF7F8FA),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFE8EAEE),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.inventory_2_outlined,
+                                      size: 18,
+                                      color: context.brandPrimary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        '1. Особенности груза',
+                                        style: TextStyle(
+                                          color: Colors.black87,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                SwitchListTile.adaptive(
+                                  contentPadding: EdgeInsets.zero,
+                                  value: hasFragileGoods,
+                                  activeColor: context.brandPrimary,
+                                  title: const Text(
+                                    'Есть хрупкие товары',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: const Text(
+                                    'Склад увидит это перед упаковкой.',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  onChanged: (value) => setSheetState(
+                                    () => hasFragileGoods = value,
+                                  ),
+                                ),
+                                const Divider(height: 18),
+                                const Text(
+                                  'Количество мест',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    placePreferenceChip(
+                                      value: 'single_if_possible',
+                                      label: 'По возможности 1 место',
+                                    ),
+                                    placePreferenceChip(
+                                      value: 'split_allowed',
+                                      label: 'Можно разделить',
+                                    ),
+                                  ],
+                                ),
+                                if (placePreference == null) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Выберите один из вариантов, чтобы склад понимал как упаковывать груз.',
+                                    style: TextStyle(
+                                      color: Colors.black45,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                                if (placePreference ==
+                                    'single_if_possible') ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.10,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: 18,
+                                          color: Colors.orange.shade800,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Expanded(
+                                          child: Text(
+                                            'Так мест может быть меньше, но материалов может потребоваться больше. Стоимость упаковки считается по фактическому расходу: коробки, мешки и доп. защита.',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
+                        const SizedBox(height: 16),
+                        if (currentStep == 2) ...[
                           const Text(
-                            'Тариф',
+                            '3. Тариф и страховка',
                             style: TextStyle(
                               color: Colors.black54,
                               fontSize: 13,
@@ -1856,212 +2421,256 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           ),
                           const SizedBox(height: 8),
                           if (tariffs.isEmpty)
-                            const Text(
-                              'Нет доступных тарифов',
-                              style: TextStyle(color: Colors.grey),
-                            )
-                          else
-                            Theme(
-                              data: Theme.of(context).copyWith(
-                                dropdownMenuTheme: DropdownMenuThemeData(
-                                  menuStyle: MenuStyle(
-                                    backgroundColor: WidgetStateProperty.all(
-                                      Colors.white,
-                                    ),
-                                  ),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F8FA),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFE8EAEE),
                                 ),
                               ),
-                              child: _CustomDropdown<int>(
-                                value: selectedTariff!.id,
-                                label: 'Тариф',
-                                items: tariffs
-                                    .map(
-                                      (t) => _DropdownItem(
-                                        value: t.id,
-                                        label: t.name,
+                              child: const Text(
+                                'Нет доступных тарифов',
+                                style: TextStyle(
+                                  color: Colors.black45,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F8FA),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFE8EAEE),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const Text(
+                                    'Тариф доставки',
+                                    style: TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Выберите один тариф для этой сборки.',
+                                    style: TextStyle(
+                                      color: Colors.black54,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  ...tariffs.map(
+                                    (t) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: tariffOptionTile(
+                                        t,
+                                        selected: selectedTariff?.id == t.id,
                                       ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) {
-                                  setSheetState(() {
-                                    selectedTariff = tariffs.firstWhere(
-                                      (t) => t.id == value,
-                                    );
-                                  });
-                                },
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           const Divider(height: 24),
-                          // ── Тип упаковки ──
-                          GestureDetector(
-                            onTap: () async {
-                              if (packagingTypes.isEmpty) return;
-                              final tempSelected = Set<int>.from(
-                                selectedPackingIds,
-                              );
-                              await showModalBottomSheet<void>(
-                                context: sheetContext,
-                                useRootNavigator: true,
-                                backgroundColor: Colors.white,
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.vertical(
-                                    top: Radius.circular(16),
+                        ],
+                        // ── Тип упаковки ──
+                        if (currentStep == 1) ...[
+                          const Text(
+                            '2. Упаковка',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF7F8FA),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFE8EAEE),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Основная упаковка',
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                builder: (ctx) => StatefulBuilder(
-                                  builder: (ctx, setModalState) => SafeArea(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Выберите один вариант. Без основной упаковки сборку создать нельзя.',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                if (primaryPackagingTypes.isEmpty)
+                                  const Text(
+                                    'Нет доступной основной упаковки',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                else
+                                  ...primaryPackagingTypes.map(
+                                    (p) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: packagingOptionTile(
+                                        p,
+                                        selected: selectedPackingIds.contains(
+                                          p.id,
+                                        ),
+                                        primary: true,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFE8EAEE),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Дополнительная защита',
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Можно выбрать несколько вариантов или оставить без доп. защиты.',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (hasFragileGoods &&
+                                    addonPackagingTypes.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: context.brandPrimary.withValues(
+                                        alpha: 0.07,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: context.brandPrimary.withValues(
+                                          alpha: 0.18,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        const SizedBox(height: 8),
-                                        Container(
-                                          width: 36,
-                                          height: 4,
-                                          decoration: BoxDecoration(
-                                            color: Colors.black12,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
+                                        Icon(
+                                          Icons.health_and_safety_outlined,
+                                          color: context.brandPrimary,
+                                          size: 18,
                                         ),
-                                        const SizedBox(height: 12),
-                                        const Text(
-                                          'Тип упаковки',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Flexible(
-                                          child: ListView(
-                                            shrinkWrap: true,
-                                            children: packagingTypes.map((p) {
-                                              final checked = tempSelected
-                                                  .contains(p.id);
-                                              return CheckboxListTile(
-                                                dense: true,
-                                                value: checked,
-                                                activeColor:
-                                                    context.brandPrimary,
-                                                title: Text(
-                                                  p.nameRu ?? p.name,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                                onChanged: (v) {
-                                                  setModalState(() {
-                                                    if (v == true) {
-                                                      tempSelected.add(p.id);
-                                                    } else {
-                                                      tempSelected.remove(p.id);
-                                                    }
-                                                  });
-                                                },
-                                              );
-                                            }).toList(),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            16,
-                                            8,
-                                            16,
-                                            12,
-                                          ),
-                                          child: SizedBox(
-                                            width: double.infinity,
-                                            child: FilledButton(
-                                              onPressed: () {
-                                                Navigator.pop(ctx);
-                                                setSheetState(() {
-                                                  selectedPackingIds.clear();
-                                                  selectedPackingIds.addAll(
-                                                    tempSelected,
-                                                  );
-                                                });
-                                              },
-                                              child: const Text('Готово'),
+                                        const SizedBox(width: 8),
+                                        const Expanded(
+                                          child: Text(
+                                            'Для хрупких товаров рекомендуем добавить дополнительную защиту даже при надежной основной упаковке. Это может немного увеличить вес и стоимость упаковки, но снижает риск повреждений в пути.',
+                                            style: TextStyle(
+                                              color: Colors.black87,
+                                              fontSize: 12,
+                                              height: 1.25,
+                                              fontWeight: FontWeight.w700,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0x0A000000),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.inventory_2_outlined,
-                                    size: 18,
-                                    color: context.brandPrimary,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: selectedPackingIds.isEmpty
-                                        ? const Text(
-                                            'Выбрать упаковку',
-                                            style: TextStyle(
-                                              color: Colors.black38,
-                                              fontSize: 14,
-                                            ),
-                                          )
-                                        : Wrap(
-                                            spacing: 4,
-                                            runSpacing: 4,
-                                            children: selectedPackingIds.map((
-                                              id,
-                                            ) {
-                                              final p = packagingTypes
-                                                  .firstWhere(
-                                                    (t) => t.id == id,
-                                                  );
-                                              return Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 3,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: context.brandPrimary
-                                                      .withOpacity(0.1),
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                ),
-                                                child: Text(
-                                                  p.nameRu ?? p.name,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: context.brandPrimary,
-                                                  ),
-                                                ),
-                                              );
-                                            }).toList(),
-                                          ),
-                                  ),
-                                  const Icon(
-                                    Icons.expand_more,
-                                    size: 18,
-                                    color: Colors.black38,
-                                  ),
                                 ],
-                              ),
+                                const SizedBox(height: 10),
+                                if (addonPackagingTypes.isEmpty)
+                                  const Text(
+                                    'Дополнительная защита недоступна',
+                                    style: TextStyle(
+                                      color: Colors.black45,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  )
+                                else
+                                  ...addonPackagingTypes.map(
+                                    (p) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: packagingOptionTile(
+                                        p,
+                                        selected: selectedPackingIds.contains(
+                                          p.id,
+                                        ),
+                                        primary: false,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          const Divider(height: 24),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.orange.shade700,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Более надежная упаковка может увеличить вес и размер, но снижает риск повреждений.',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (currentStep == 2) ...[
                           // ── Страховка ──
                           Row(
                             children: [
@@ -2104,67 +2713,232 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               },
                             ),
                           ],
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient:
-                                    selectedPackingIds.isNotEmpty &&
-                                        selectedTariff != null &&
-                                        (selectedInsurance == 'no' ||
-                                            (insuranceAmount?.isNotEmpty ==
-                                                true))
-                                    ? LinearGradient(
-                                        colors: [
-                                          context.brandPrimary,
-                                          context.brandSecondary,
-                                        ],
-                                      )
-                                    : null,
-                                color: selectedPackingIds.isEmpty
-                                    ? Colors.black12
-                                    : null,
-                                borderRadius: BorderRadius.circular(14),
+                        ],
+                        const SizedBox(height: 16),
+                        if (currentStep == 3)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: context.brandPrimary.withValues(
+                                alpha: 0.06,
                               ),
-                              child: FilledButton(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  shadowColor: Colors.transparent,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: context.brandPrimary.withValues(
+                                  alpha: 0.12,
+                                ),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  '4. Подтверждение',
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                onPressed:
-                                    selectedPackingIds.isNotEmpty &&
-                                        selectedTariff != null &&
-                                        (selectedInsurance == 'no' ||
-                                            (selectedInsurance == 'yes' &&
-                                                insuranceAmount?.isNotEmpty ==
-                                                    true))
-                                    ? () => Navigator.of(sheetContext).pop(true)
-                                    : null,
-                                child: const Text(
-                                  'Отправить на сборку',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                const SizedBox(height: 8),
+                                _SummaryLine(
+                                  label: 'Хрупкий груз',
+                                  value: hasFragileGoods ? 'Да' : 'Нет',
+                                ),
+                                _SummaryLine(
+                                  label: 'Места',
+                                  value: switch (placePreference) {
+                                    'single_if_possible' =>
+                                      'По возможности 1 место',
+                                    'split_allowed' => 'Можно разделить',
+                                    _ => 'Не выбрано',
+                                  },
+                                ),
+                                _SummaryLine(
+                                  label: 'Тариф',
+                                  value: selectedTariff?.name ?? 'Не выбран',
+                                ),
+                                _SummaryLine(
+                                  label: 'Упаковка',
+                                  value: selectedPackagingNames.isEmpty
+                                      ? 'Не выбрана'
+                                      : selectedPackagingNames.join(', '),
+                                ),
+                                if (showFragileAddonRecommendation) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.10,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.orange.withValues(
+                                          alpha: 0.24,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          color: Colors.orange.shade800,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Дополнительная защита для хрупкого груза не выбрана. Рекомендуем вернуться и добавить подходящую защиту, чтобы снизить риск повреждений при перевозке.',
+                                            style: TextStyle(
+                                              color: Colors.orange.shade900,
+                                              fontSize: 11.5,
+                                              height: 1.25,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                if (showFragilePackagingRisk) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.deepOrange.withValues(
+                                          alpha: 0.22,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.deepOrange.shade700,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Проверьте упаковку для хрупкого груза',
+                                                style: TextStyle(
+                                                  color: Colors
+                                                      .deepOrange
+                                                      .shade800,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Некоторые выбранные материалы (${selectedUnsuitableFragilePackagingNames.join(', ')}) не отмечены как подходящие для хрупких товаров. Рекомендуем вернуться и выбрать более надежную упаковку или добавить защиту. Если продолжить, вы подтверждаете, что понимаете повышенный риск повреждения груза.',
+                                                style: TextStyle(
+                                                  color: Colors
+                                                      .deepOrange
+                                                      .shade900,
+                                                  fontSize: 11.5,
+                                                  height: 1.25,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                _SummaryLine(
+                                  label: 'Страховка',
+                                  value: selectedInsurance == 'yes'
+                                      ? 'Да, ${insuranceAmount ?? ''} ¥'
+                                      : 'Нет',
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            if (currentStep > 0) ...[
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => goToStep(currentStep - 1),
+                                  child: const Text('Назад'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            Expanded(
+                              flex: currentStep > 0 ? 1 : 2,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: canContinue
+                                      ? LinearGradient(
+                                          colors: [
+                                            context.brandPrimary,
+                                            context.brandSecondary,
+                                          ],
+                                        )
+                                      : null,
+                                  color: canContinue ? null : Colors.black12,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  onPressed: canContinue
+                                      ? () {
+                                          if (currentStep < 3) {
+                                            goToStep(currentStep + 1);
+                                            return;
+                                          }
+                                          Navigator.of(sheetContext).pop(true);
+                                        }
+                                      : null,
+                                  child: Text(
+                                    currentStep < 3
+                                        ? 'Далее'
+                                        : 'Отправить на сборку',
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              );
-            },
-          );
-        },
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
 
     if (result == true) {
@@ -2434,6 +3208,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         clientCode: clientCodeId == null ? clientCode : null,
         tariffId: selectedTariff?.id,
         packagingTypeIds: selectedPackingIds.toList(),
+        hasFragileGoods: hasFragileGoods,
+        placePreference: placePreference!,
         hasInsurance: selectedInsurance == 'yes',
         insuranceAmount: selectedInsurance == 'yes' && insuranceAmount != null
             ? double.tryParse(insuranceAmount!)
@@ -5204,6 +5980,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   // Отображение тарифа, упаковки, страховки и доставки
                   if (widget.assembly!.tariffName != null ||
                       widget.assembly!.packagingTypes.isNotEmpty ||
+                      widget.assembly!.hasFragileGoods ||
+                      widget.assembly!.placePreference != 'unspecified' ||
                       widget.assembly!.hasInsurance ||
                       widget.assembly!.deliveryMethod != null) ...[
                     const SizedBox(height: 10),
@@ -5327,13 +6105,63 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                           ],
                                         ),
                                       ],
-                                      if (widget.assembly!.hasInsurance) ...[
+                                      if (widget.assembly!.hasFragileGoods ||
+                                          widget.assembly!.placePreference !=
+                                              'unspecified') ...[
                                         if (widget.assembly!.tariffName !=
                                                 null ||
                                             widget
                                                 .assembly!
                                                 .packagingTypes
                                                 .isNotEmpty)
+                                          const SizedBox(height: 8),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              Icons.inventory_2_outlined,
+                                              size: 16,
+                                              color: context.brandPrimary,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                [
+                                                  if (widget
+                                                      .assembly!
+                                                      .hasFragileGoods)
+                                                    'Хрупкий груз',
+                                                  if (widget
+                                                          .assembly!
+                                                          .placePreference ==
+                                                      'single_if_possible')
+                                                    'По возможности 1 место',
+                                                  if (widget
+                                                          .assembly!
+                                                          .placePreference ==
+                                                      'split_allowed')
+                                                    'Можно разделить',
+                                                ].join(' • '),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                      if (widget.assembly!.hasInsurance) ...[
+                                        if (widget.assembly!.tariffName !=
+                                                null ||
+                                            widget
+                                                .assembly!
+                                                .packagingTypes
+                                                .isNotEmpty ||
+                                            widget.assembly!.hasFragileGoods ||
+                                            widget.assembly!.placePreference !=
+                                                'unspecified')
                                           const SizedBox(height: 8),
                                         Row(
                                           children: [
@@ -6296,6 +7124,13 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             ),
             const SizedBox(height: 15),
             _buildAssemblyActions(context, assembly),
+            if (assembly.tariffName != null ||
+                assembly.packagingTypes.isNotEmpty ||
+                assembly.hasFragileGoods ||
+                assembly.placePreference != 'unspecified') ...[
+              const SizedBox(height: 15),
+              _buildAssemblyPackingBlock(context, assembly),
+            ],
             const SizedBox(height: 15),
             _buildAssemblyDeliveryBlock(context, assembly),
             if (assembly.boxes.isNotEmpty) ...[
@@ -6454,6 +7289,41 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               ),
             ),
           ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAssemblyPackingBlock(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) {
+    final placePreference = switch (assembly.placePreference) {
+      'single_if_possible' => 'По возможности 1 место',
+      'split_allowed' => 'Можно разделить',
+      _ => 'Не важно',
+    };
+    final lines = [
+      if (assembly.tariffName != null) 'Тариф: ${assembly.tariffName}',
+      if (assembly.packagingTypes.isNotEmpty)
+        'Упаковка: ${assembly.packagingTypes.join(', ')}',
+      if (assembly.hasFragileGoods) 'Хрупкий груз: Да',
+      if (assembly.placePreference != 'unspecified') 'Места: $placePreference',
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _AssemblySectionHeader(
+          title: 'Упаковка и тариф',
+          isExpanded: true,
+          onTap: null,
+        ),
+        const SizedBox(height: 7),
+        for (var i = 0; i < lines.length; i++) ...[
+          if (i > 0) const SizedBox(height: 5),
+          _AssemblyPlainText(lines[i]),
         ],
       ],
     );
@@ -6637,6 +7507,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
   }
 
   String _boxPackagingForDesign(Box box, TrackAssembly assembly) {
+    if (box.packagingUsages.isNotEmpty) {
+      return box.packagingUsages.map((usage) => usage.displayValue).join(', ');
+    }
     final values = box.packagingTypes.isNotEmpty
         ? box.packagingTypes
         : assembly.packagingTypes;
@@ -7500,6 +8373,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
           // Тариф и упаковка коробки (если отличаются от сборки)
           if (box.tariffName != null ||
               box.packagingTypes.isNotEmpty ||
+              box.packagingUsages.isNotEmpty ||
               box.orderNumber != null) ...[
             const SizedBox(height: 8),
             if (box.orderNumber != null && box.orderNumber!.isNotEmpty)
@@ -7511,7 +8385,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               ),
             if (box.orderNumber != null &&
                 box.orderNumber!.isNotEmpty &&
-                (box.tariffName != null || box.packagingTypes.isNotEmpty))
+                (box.tariffName != null ||
+                    box.packagingTypes.isNotEmpty ||
+                    box.packagingUsages.isNotEmpty))
               const SizedBox(height: 6),
             if (box.tariffName != null)
               _buildBoxParam(
@@ -7520,14 +8396,20 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 label: tr(context, ru: 'Тариф', zh: '费率'),
                 value: box.tariffName!,
               ),
-            if (box.tariffName != null && box.packagingTypes.isNotEmpty)
+            if (box.tariffName != null &&
+                (box.packagingTypes.isNotEmpty ||
+                    box.packagingUsages.isNotEmpty))
               const SizedBox(height: 6),
-            if (box.packagingTypes.isNotEmpty)
+            if (box.packagingTypes.isNotEmpty || box.packagingUsages.isNotEmpty)
               _buildBoxParam(
                 context,
                 icon: Icons.inventory_2_outlined,
                 label: tr(context, ru: 'Упаковка', zh: '包装'),
-                value: box.packagingTypes.join(', '),
+                value: box.packagingUsages.isNotEmpty
+                    ? box.packagingUsages
+                          .map((usage) => usage.displayValue)
+                          .join(', ')
+                    : box.packagingTypes.join(', '),
               ),
           ],
           // Фото на весах — одно большое
@@ -7667,7 +8549,7 @@ class _AssemblyStatusPill extends StatelessWidget {
 class _AssemblySectionHeader extends StatelessWidget {
   final String title;
   final bool isExpanded;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _AssemblySectionHeader({
     required this.title,
@@ -7695,13 +8577,14 @@ class _AssemblySectionHeader extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            Icon(
-              isExpanded
-                  ? CupertinoIcons.chevron_up
-                  : CupertinoIcons.chevron_down,
-              size: 16,
-              color: const Color(0xFF2F2F2F),
-            ),
+            if (onTap != null)
+              Icon(
+                isExpanded
+                    ? CupertinoIcons.chevron_up
+                    : CupertinoIcons.chevron_down,
+                size: 16,
+                color: const Color(0xFF2F2F2F),
+              ),
           ],
         ),
       ),

@@ -14,6 +14,8 @@ class AssemblyItem {
   final int tracksCount;
   final String? tariffName;
   final String? packagingName;
+  final bool hasFragileGoods;
+  final String placePreference;
   final List<Box> boxes;
   final List<StatusTimelineEntry> statusHistory;
 
@@ -29,6 +31,8 @@ class AssemblyItem {
     this.tracksCount = 0,
     this.tariffName,
     this.packagingName,
+    this.hasFragileGoods = false,
+    this.placePreference = 'unspecified',
     this.boxes = const [],
     this.statusHistory = const [],
   });
@@ -88,9 +92,23 @@ class AssemblyItem {
       tracksCount: tracksCount,
       tariffName: tariff?['name'] as String?,
       packagingName: packaging?['nameRu'] as String?,
+      hasFragileGoods:
+          json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
+      placePreference: json['placePreference']?.toString() ?? 'unspecified',
       boxes: boxes,
       statusHistory: statusHistory,
     );
+  }
+
+  String get placePreferenceLabel {
+    switch (placePreference) {
+      case 'single_if_possible':
+        return 'По возможности 1 место';
+      case 'split_allowed':
+        return 'Можно разделить';
+      default:
+        return 'Не важно';
+    }
   }
 
   /// Общее количество коробок

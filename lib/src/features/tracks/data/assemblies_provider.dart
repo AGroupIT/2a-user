@@ -26,11 +26,14 @@ class Assembly {
   final List<AssemblyTrack> tracks;
   final String? scalePhotoUrl;
   final String? comment;
-  final String? deliveryMethod; // Способ доставки: self_pickup или transport_company
+  final String?
+  deliveryMethod; // Способ доставки: self_pickup или transport_company
   final String? recipientName; // Имя получателя (для ТК)
   final String? recipientPhone; // Телефон получателя (для ТК)
   final String? recipientCity; // Город получателя (для ТК)
   final String? transportCompanyName; // Название транспортной компании
+  final bool hasFragileGoods;
+  final String placePreference;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -58,6 +61,8 @@ class Assembly {
     this.recipientPhone,
     this.recipientCity,
     this.transportCompanyName,
+    this.hasFragileGoods = false,
+    this.placePreference = 'unspecified',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -107,6 +112,9 @@ class Assembly {
       recipientPhone: json['recipientPhone'] as String?,
       recipientCity: json['recipientCity'] as String?,
       transportCompanyName: json['transportCompanyName'] as String?,
+      hasFragileGoods:
+          json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
+      placePreference: json['placePreference']?.toString() ?? 'unspecified',
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -246,6 +254,8 @@ class AssembliesApiService {
     String? name,
     int? tariffId,
     List<int>? packagingTypeIds,
+    bool hasFragileGoods = false,
+    String placePreference = 'unspecified',
     bool hasInsurance = false,
     double? insuranceAmount,
     List<int>? trackIds,
@@ -255,12 +265,16 @@ class AssembliesApiService {
         '/assemblies',
         data: {
           'clientId': clientId,
-          if (clientCodeId != null) 'clientCodeId': clientCodeId
-          else if (clientCode != null) 'clientCode': clientCode,
+          if (clientCodeId != null)
+            'clientCodeId': clientCodeId
+          else if (clientCode != null)
+            'clientCode': clientCode,
           if (name != null) 'name': name,
           if (tariffId != null) 'tariffId': tariffId,
           if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)
             'packagingTypeIds': packagingTypeIds,
+          'hasFragileGoods': hasFragileGoods,
+          'placePreference': placePreference,
           'hasInsurance': hasInsurance,
           if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
           if (trackIds != null && trackIds.isNotEmpty) 'trackIds': trackIds,
@@ -367,7 +381,8 @@ class AssembliesApiService {
           if (recipientName != null) 'recipientName': recipientName,
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (recipientCity != null) 'recipientCity': recipientCity,
-          if (transportCompanyName != null) 'transportCompanyName': transportCompanyName,
+          if (transportCompanyName != null)
+            'transportCompanyName': transportCompanyName,
         },
       );
       return response.statusCode == 200;
@@ -390,12 +405,20 @@ class PackagingType {
   final int id;
   final String name;
   final String? nameRu;
+  final String kind;
+  final bool suitableForFragileGoods;
+  final String unitLabel;
+  final double unitStep;
   final double baseCost;
 
   const PackagingType({
     required this.id,
     required this.name,
     this.nameRu,
+    this.kind = 'primary',
+    this.suitableForFragileGoods = false,
+    this.unitLabel = 'шт.',
+    this.unitStep = 1,
     this.baseCost = 0,
   });
 
@@ -404,11 +427,22 @@ class PackagingType {
       id: int.tryParse(json['id'].toString()) ?? 0,
       name: json['name'] as String? ?? json['nameRu'] as String? ?? '',
       nameRu: json['nameRu'] as String?,
+      kind: json['kind'] as String? ?? 'primary',
+      suitableForFragileGoods:
+          json['suitableForFragileGoods'] as bool? ?? false,
+      unitLabel: json['unitLabel']?.toString() ?? 'шт.',
+      unitStep: json['unitStep'] != null
+          ? double.tryParse(json['unitStep'].toString()) ?? 1
+          : 1,
       baseCost: json['baseCost'] != null
           ? double.tryParse(json['baseCost'].toString()) ?? 0
           : 0,
     );
   }
+
+  bool get isPrimary => kind != 'addon';
+  bool get isAddon => kind == 'addon';
+  String get displayName => nameRu ?? name;
 }
 
 /// Провайдер для тарифов (с поддержкой clientId)
@@ -423,7 +457,10 @@ final tariffsProvider = FutureProvider<List<Tariff>>((ref) async {
 
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
-      final tariffList = data['tariffs'] as List<dynamic>? ?? data['data'] as List<dynamic>? ?? [];
+      final tariffList =
+          data['tariffs'] as List<dynamic>? ??
+          data['data'] as List<dynamic>? ??
+          [];
 
       return tariffList
           .map((json) => Tariff.fromJson(json as Map<String, dynamic>))
@@ -446,7 +483,10 @@ final packagingTypesProvider = FutureProvider<List<PackagingType>>((ref) async {
 
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data as Map<String, dynamic>;
-      final packagingList = data['packagings'] as List<dynamic>? ?? data['data'] as List<dynamic>? ?? [];
+      final packagingList =
+          data['packagings'] as List<dynamic>? ??
+          data['data'] as List<dynamic>? ??
+          [];
 
       return packagingList
           .map((json) => PackagingType.fromJson(json as Map<String, dynamic>))

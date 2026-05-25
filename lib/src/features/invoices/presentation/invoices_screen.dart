@@ -1758,8 +1758,10 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                             '\$${item.transshipmentCost!.toStringAsFixed(2)}',
                           ),
 
-                        // Упаковка считается за все места, а не за одну коробку.
-                        if (item.resolvedPackagingCostTotal != null &&
+                        // Новый фактический расход показываем подробно.
+                        if (item.hasDetailedPackagingUsage)
+                          _buildPackagingUsageBlock(context, item)
+                        else if (item.resolvedPackagingCostTotal != null &&
                             item.resolvedPackagingCostTotal! > 0)
                           _buildInfoRow(
                             context,
@@ -2085,6 +2087,103 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
               ),
               textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPackagingUsageBlock(BuildContext context, InvoiceItem item) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Расход упаковки',
+                  style: TextStyle(
+                    color: Color(0xFF666666),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '\$${item.packagingUsageClientTotal.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Color(0xFF333333),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE8EAEE)),
+            ),
+            child: Column(
+              children: item.packagingUsage.map((usage) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: usage.isPrimary
+                              ? context.brandPrimary.withValues(alpha: 0.10)
+                              : Colors.blue.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          usage.isPrimary ? 'Основа' : 'Доп',
+                          style: TextStyle(
+                            color: usage.isPrimary
+                                ? context.brandPrimary
+                                : Colors.blue.shade700,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${usage.name} × ${usage.quantityDisplay()}',
+                          style: const TextStyle(
+                            color: Color(0xFF333333),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '\$${usage.clientTotalCost.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: Color(0xFF333333),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
           ),
         ],

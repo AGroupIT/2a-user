@@ -7,11 +7,7 @@ class BoxPhoto {
   final String url;
   final String? comment;
 
-  const BoxPhoto({
-    required this.id,
-    required this.url,
-    this.comment,
-  });
+  const BoxPhoto({required this.id, required this.url, this.comment});
 
   factory BoxPhoto.fromJson(Map<String, dynamic> json) {
     return BoxPhoto(
@@ -19,6 +15,44 @@ class BoxPhoto {
       url: json['url'] as String? ?? '',
       comment: json['comment'] as String?,
     );
+  }
+}
+
+/// Фактический расход упаковки по коробке.
+class BoxPackagingUsage {
+  final String name;
+  final double quantity;
+  final String unitLabel;
+
+  const BoxPackagingUsage({
+    required this.name,
+    this.quantity = 0,
+    this.unitLabel = 'шт.',
+  });
+
+  factory BoxPackagingUsage.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
+
+    return BoxPackagingUsage(
+      name:
+          json['packagingNameRu'] as String? ??
+          json['packagingName'] as String? ??
+          'Упаковка',
+      quantity: parseDouble(json['quantity']),
+      unitLabel: json['unitLabel']?.toString() ?? 'шт.',
+    );
+  }
+
+  String get displayValue {
+    final value = quantity == quantity.roundToDouble()
+        ? quantity.toInt().toString()
+        : quantity.toStringAsFixed(2);
+    return '$name × $value $unitLabel';
   }
 }
 
@@ -34,6 +68,7 @@ class Box {
   final String? orderNumber;
   final String? tariffName;
   final List<String> packagingTypes;
+  final List<BoxPackagingUsage> packagingUsages;
 
   const Box({
     required this.id,
@@ -46,6 +81,7 @@ class Box {
     this.orderNumber,
     this.tariffName,
     this.packagingTypes = const [],
+    this.packagingUsages = const [],
   });
 
   factory Box.fromJson(Map<String, dynamic> json) {
@@ -63,21 +99,39 @@ class Box {
       return [];
     }
 
+    final packagingUsages =
+        (json['packagingUsages'] as List<dynamic>?)
+            ?.whereType<Map>()
+            .map(
+              (item) =>
+                  BoxPackagingUsage.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .where((item) => item.quantity > 0)
+            .toList() ??
+        [];
+
     return Box(
-      id: json['id'] is int ? json['id'] as int : int.parse(json['id'].toString()),
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.parse(json['id'].toString()),
       number: json['number'] as int? ?? 1,
       height: parseDouble(json['height']),
       width: parseDouble(json['width']),
       length: parseDouble(json['length']),
       weight: parseDouble(json['weight']),
-      photos: (json['scalePhotos'] as List<dynamic>?)
+      photos:
+          (json['scalePhotos'] as List<dynamic>?)
               ?.map((p) => BoxPhoto.fromJson(p as Map<String, dynamic>))
               .toList() ??
           [],
       orderNumber: json['orderNumber'] as String?,
-      tariffName: json['tariffName'] as String? ??
+      tariffName:
+          json['tariffName'] as String? ??
           (json['tariff'] as Map<String, dynamic>?)?['name'] as String?,
-      packagingTypes: parsePackaging(json['packagingTypeNames']),
+      packagingTypes: parsePackaging(json['packagingTypeNames']).isNotEmpty
+          ? parsePackaging(json['packagingTypeNames'])
+          : packagingUsages.map((item) => item.name).toList(),
+      packagingUsages: packagingUsages,
     );
   }
 
