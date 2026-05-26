@@ -1,5 +1,6 @@
-import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'dart:async';
+
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import '../models/common/delta_event.dart';
 
@@ -9,6 +10,33 @@ enum SocketConnectionStatus {
   connecting,
   connected,
   reconnecting,
+}
+
+/// Диагностическое событие WebSocket для клиентских логов.
+class SocketDiagnosticEvent {
+  const SocketDiagnosticEvent({
+    required this.type,
+    required this.level,
+    required this.message,
+    this.status,
+    this.data,
+  });
+
+  final String type;
+  final String level;
+  final String message;
+  final SocketConnectionStatus? status;
+  final Map<String, dynamic>? data;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'type': type,
+      'level': level,
+      'message': message,
+      if (status != null) 'status': status!.name,
+      if (data != null && data!.isNotEmpty) 'data': data,
+    };
+  }
 }
 
 /// Сервис для управления WebSocket подключением
@@ -92,15 +120,24 @@ class WebSocketService {
   final _reconnectedController = StreamController<void>.broadcast();
   Stream<void> get reconnected => _reconnectedController.stream;
 
+  final _diagnosticController =
+      StreamController<SocketDiagnosticEvent>.broadcast();
+  Stream<SocketDiagnosticEvent> get diagnostics => _diagnosticController.stream;
+
   bool _wasConnected = false;
   DateTime? _disconnectedAt;
+  DateTime? _connectStateStartedAt;
+  String? _lastConnectionError;
 
   // Heartbeat & force reconnect
   String? _lastConnectedUrl;
   Timer? _heartbeatTimer;
+  Timer? _connectWatchdogTimer;
   bool _isForceReconnecting = false;
   static const _heartbeatInterval = Duration(seconds: 30);
   static const _forceReconnectAfter = Duration(seconds: 120);
+  static const _connectTimeout = Duration(seconds: 20);
+  static const _staleConnectingAfter = Duration(seconds: 25);
 
   SocketConnectionStatus _currentStatus = SocketConnectionStatus.disconnected;
   SocketConnectionStatus get currentStatus => _currentStatus;
@@ -128,6 +165,102 @@ class WebSocketService {
     return null;
   }
 
+  void _emitDiagnostic({
+    required String type,
+    required String level,
+    required String message,
+    Map<String, dynamic>? data,
+  }) {
+    if (_diagnosticController.isClosed) return;
+    _diagnosticController.add(
+      SocketDiagnosticEvent(
+        type: type,
+        level: level,
+        message: message,
+        status: _currentStatus,
+        data: {
+          if (_lastConnectedUrl != null) 'serverUrl': _lastConnectedUrl,
+          if (_lastConnectionError != null)
+            'lastConnectionError': _lastConnectionError,
+          if (_connectStateStartedAt != null)
+            'connectStateAgeMs': DateTime.now()
+                .difference(_connectStateStartedAt!)
+                .inMilliseconds,
+          if (data != null) ...data,
+        },
+      ),
+    );
+  }
+
+  void _emitReconnectedIfDisconnectedLongEnough(String source) {
+    final disconnectedAt = _disconnectedAt;
+    _disconnectedAt = null;
+
+    if (disconnectedAt == null) {
+      print(
+        'WebSocket $source without disconnect timestamp — skipping refetch',
+      );
+      return;
+    }
+
+    final disconnectDuration = DateTime.now().difference(disconnectedAt);
+    if (disconnectDuration.inSeconds >= 5) {
+      print(
+        'WebSocket $source after ${disconnectDuration.inSeconds}s — triggering full refetch',
+      );
+      if (!_reconnectedController.isClosed) {
+        _reconnectedController.add(null);
+      }
+    } else {
+      print(
+        'WebSocket $source after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)',
+      );
+    }
+  }
+
+  bool _isConnectingState(SocketConnectionStatus status) {
+    return status == SocketConnectionStatus.connecting ||
+        status == SocketConnectionStatus.reconnecting;
+  }
+
+  bool _isConnectStateStale() {
+    if (!_isConnectingState(_currentStatus)) return false;
+    final startedAt = _connectStateStartedAt;
+    if (startedAt == null) return true;
+    return DateTime.now().difference(startedAt) >= _staleConnectingAfter;
+  }
+
+  void _startConnectWatchdog() {
+    _connectWatchdogTimer?.cancel();
+    _connectWatchdogTimer = Timer(_connectTimeout, () {
+      if (_socket?.connected == true) return;
+      if (!_isConnectingState(_currentStatus)) return;
+      _emitDiagnostic(
+        type: 'connect_timeout',
+        level: 'warning',
+        message: 'WebSocket connection attempt timed out',
+        data: {'timeoutMs': _connectTimeout.inMilliseconds},
+      );
+      unawaited(_forceReconnect(reason: 'connect_timeout'));
+    });
+  }
+
+  void _destroySocketForReconnect(String reason) {
+    _connectWatchdogTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _socket?.disconnect();
+    _socket?.dispose();
+    _socket = null;
+    _disconnectedAt ??= DateTime.now();
+    _updateStatus(SocketConnectionStatus.disconnected);
+    _emitDiagnostic(
+      type: 'socket_destroyed_for_reconnect',
+      level: 'warning',
+      message: 'WebSocket socket destroyed before reconnect',
+      data: {'reason': reason},
+    );
+  }
+
   /// Подключиться к WebSocket серверу.
   /// [serverUrl] — если передан, переопределяет URL, указанный при создании сервиса.
   /// Это позволяет использовать актуальный хост (EU или HK) в момент соединения,
@@ -140,17 +273,33 @@ class WebSocketService {
       if (_socket!.connected == true) return;
       if (_currentStatus == SocketConnectionStatus.connecting ||
           _currentStatus == SocketConnectionStatus.reconnecting) {
-        return;
+        if (!_isConnectStateStale()) return;
+        print('[WS] Stale ${_currentStatus.name} state — rebuilding socket');
+        _emitDiagnostic(
+          type: 'stale_connect_state',
+          level: 'warning',
+          message: 'WebSocket connect state is stale',
+          data: {'status': _currentStatus.name},
+        );
+        _destroySocketForReconnect('stale_${_currentStatus.name}');
+      } else {
+        // Если socket есть, но он не подключён и мы не "connecting/reconnecting",
+        // то это "подвисшее" состояние — чистим и создаём новый.
+        await disconnect();
       }
-      // Если socket есть, но он не подключён и мы не "connecting/reconnecting",
-      // то это "подвисшее" состояние — чистим и создаём новый.
-      await disconnect();
     }
 
     _token = token;
     final url = serverUrl ?? _serverUrl;
     _lastConnectedUrl = url;
+    _lastConnectionError = null;
     _updateStatus(SocketConnectionStatus.connecting);
+    _emitDiagnostic(
+      type: 'connect_start',
+      level: 'info',
+      message: 'WebSocket connection attempt started',
+      data: {'serverUrl': url},
+    );
 
     _socket = IO.io(
       url,
@@ -161,11 +310,13 @@ class WebSocketService {
           .setReconnectionDelay(2000)
           .setReconnectionDelayMax(30000)
           .setReconnectionAttempts(999999999)
+          .setTimeout(_connectTimeout.inMilliseconds)
           .setAuth({'token': token})
           .build(),
     );
 
     _setupListeners();
+    _startConnectWatchdog();
     _startHeartbeat();
   }
 
@@ -174,79 +325,98 @@ class WebSocketService {
 
     _socket!.onConnect((_) {
       print('WebSocket connected');
+      _connectWatchdogTimer?.cancel();
+      _lastConnectionError = null;
       final wasDisconnected = _wasConnected;
       _wasConnected = true;
       _updateStatus(SocketConnectionStatus.connected);
+      _emitDiagnostic(
+        type: 'connected',
+        level: 'info',
+        message: 'WebSocket connected',
+      );
       // If we were previously connected and got disconnected, fire reconnect
       // Only if disconnected for more than 5 seconds (avoids Bluetooth scanner reconnects)
       if (wasDisconnected) {
-        final disconnectDuration = _disconnectedAt != null
-            ? DateTime.now().difference(_disconnectedAt!)
-            : const Duration(seconds: 999);
-        _disconnectedAt = null;
-        if (disconnectDuration.inSeconds >= 5) {
-          print(
-            'WebSocket reconnected after ${disconnectDuration.inSeconds}s — triggering full refetch',
-          );
-          if (!_reconnectedController.isClosed) {
-            _reconnectedController.add(null);
-          }
-        } else {
-          print(
-            'WebSocket reconnected after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)',
-          );
-        }
+        _emitReconnectedIfDisconnectedLongEnough('reconnected');
       }
     });
 
-    _socket!.onDisconnect((_) {
+    _socket!.onDisconnect((reason) {
       print('WebSocket disconnected');
+      _connectWatchdogTimer?.cancel();
       _disconnectedAt = DateTime.now();
       _updateStatus(SocketConnectionStatus.disconnected);
+      _emitDiagnostic(
+        type: 'disconnected',
+        level: 'warning',
+        message: 'WebSocket disconnected',
+        data: {'reason': reason?.toString() ?? 'unknown'},
+      );
     });
 
     _socket!.onReconnect((_) {
       print('WebSocket reconnected');
+      _connectWatchdogTimer?.cancel();
+      _lastConnectionError = null;
       _updateStatus(SocketConnectionStatus.connected);
+      _emitDiagnostic(
+        type: 'reconnected',
+        level: 'warning',
+        message: 'WebSocket reconnected',
+      );
       // Fire reconnect event only if disconnected long enough (>= 5s)
-      final disconnectDuration = _disconnectedAt != null
-          ? DateTime.now().difference(_disconnectedAt!)
-          : const Duration(seconds: 999);
-      _disconnectedAt = null;
-      if (disconnectDuration.inSeconds >= 5) {
-        print(
-          'WebSocket onReconnect after ${disconnectDuration.inSeconds}s — triggering full refetch',
-        );
-        if (!_reconnectedController.isClosed) {
-          _reconnectedController.add(null);
-        }
-      } else {
-        print(
-          'WebSocket onReconnect after ${disconnectDuration.inMilliseconds}ms — skipping refetch (too short)',
-        );
-      }
+      _emitReconnectedIfDisconnectedLongEnough('onReconnect');
     });
 
-    _socket!.on('reconnecting', (_) {
+    _socket!.on('reconnecting', (attempt) {
       print('WebSocket reconnecting...');
       _updateStatus(SocketConnectionStatus.reconnecting);
+      _startConnectWatchdog();
+      _emitDiagnostic(
+        type: 'reconnecting',
+        level: 'warning',
+        message: 'WebSocket reconnecting',
+        data: {'attempt': attempt?.toString() ?? 'unknown'},
+      );
     });
 
     _socket!.onConnectError((error) {
       print('WebSocket connection error: $error');
+      _lastConnectionError = error?.toString();
+      _emitDiagnostic(
+        type: 'connect_error',
+        level: 'warning',
+        message: 'WebSocket connection error',
+        data: {'error': error?.toString() ?? 'unknown'},
+      );
     });
 
     _socket!.onError((error) {
       print('WebSocket error: $error');
+      _lastConnectionError = error?.toString();
+      _emitDiagnostic(
+        type: 'error',
+        level: 'warning',
+        message: 'WebSocket error',
+        data: {'error': error?.toString() ?? 'unknown'},
+      );
     });
 
     _socket!.on('reconnect_failed', (_) {
       print('[WS] All reconnection attempts exhausted — force reconnecting');
-      _forceReconnect();
+      _forceReconnect(reason: 'reconnect_failed');
     });
 
     _socket!.on('reconnect_error', (error) {
       print('[WS] Reconnect error: $error');
+      _lastConnectionError = error?.toString();
+      _emitDiagnostic(
+        type: 'reconnect_error',
+        level: 'warning',
+        message: 'WebSocket reconnect error',
+        data: {'error': error?.toString() ?? 'unknown'},
+      );
     });
 
     // Chat events
@@ -388,6 +558,20 @@ class WebSocketService {
 
     final socketConnected = _socket?.connected ?? false;
 
+    if (!socketConnected && _isConnectStateStale() && _token != null) {
+      print(
+        '[WS Health] ${_currentStatus.name} for too long — force reconnecting',
+      );
+      _emitDiagnostic(
+        type: 'stale_connect_healthcheck',
+        level: 'warning',
+        message: 'WebSocket connect/reconnect state is stale',
+        data: {'status': _currentStatus.name},
+      );
+      _forceReconnect(reason: 'stale_${_currentStatus.name}_healthcheck');
+      return;
+    }
+
     // Статус connected, но сокет на самом деле мёртв
     if (!socketConnected &&
         _currentStatus == SocketConnectionStatus.connected) {
@@ -412,7 +596,7 @@ class WebSocketService {
         print(
           '[WS Health] Disconnected for ${disconnectedFor.inSeconds}s — force reconnecting',
         );
-        _forceReconnect();
+        _forceReconnect(reason: 'disconnected_healthcheck');
       }
     }
   }
@@ -420,29 +604,38 @@ class WebSocketService {
   /// Полное пересоздание сокета (когда socket.io reconnect зависает).
   /// Приватная реализация — вызывается из внутренних health-check и
   /// reconnect_failed handler. Для внешнего использования см. [forceReconnect].
-  Future<void> _forceReconnect() async {
+  Future<void> _forceReconnect({String reason = 'manual'}) async {
     if (_isForceReconnecting) return;
-    if (_currentStatus == SocketConnectionStatus.connecting) return;
     _isForceReconnecting = true;
 
     try {
       final token = _token;
       final url = _lastConnectedUrl;
-      if (token == null) return;
+      if (token == null) {
+        _isForceReconnecting = false;
+        return;
+      }
 
-      print('[WS] Force reconnect: destroying old socket');
-      _heartbeatTimer?.cancel();
-      _socket?.disconnect();
-      _socket?.dispose();
-      _socket = null;
-      // НЕ сбрасываем _wasConnected и _disconnectedAt,
-      // чтобы onConnect при новом подключении вызвал reconnected stream
-      _updateStatus(SocketConnectionStatus.disconnected);
+      print('[WS] Force reconnect: destroying old socket (reason=$reason)');
+      _emitDiagnostic(
+        type: 'force_reconnect_start',
+        level: 'warning',
+        message: 'WebSocket force reconnect started',
+        data: {'reason': reason},
+      );
+      _destroySocketForReconnect(reason);
 
       _isForceReconnecting = false;
       await connect(token, serverUrl: url);
     } catch (e) {
       print('[WS] Force reconnect error: $e');
+      _lastConnectionError = e.toString();
+      _emitDiagnostic(
+        type: 'force_reconnect_error',
+        level: 'warning',
+        message: 'WebSocket force reconnect failed',
+        data: {'reason': reason, 'error': e.toString()},
+      );
       _isForceReconnecting = false;
       // Heartbeat перезапустится при следующем connect()
     }
@@ -453,7 +646,8 @@ class WebSocketService {
   /// TCP-соединения умирают в background, но dart:io этого не знает.
   /// После успешного reconnect стрим [reconnected] эмитит событие,
   /// что триггерит `loadTasks`/`loadAssemblies` в провайдерах.
-  Future<void> forceReconnect() => _forceReconnect();
+  Future<void> forceReconnect({String reason = 'manual'}) =>
+      _forceReconnect(reason: reason);
 
   /// Присоединиться к комнате разговора
   void joinConversation(int conversationId) {
@@ -500,6 +694,13 @@ class WebSocketService {
   }
 
   void _updateStatus(SocketConnectionStatus status) {
+    if (_currentStatus != status) {
+      _connectStateStartedAt = _isConnectingState(status)
+          ? DateTime.now()
+          : null;
+    } else if (_isConnectingState(status)) {
+      _connectStateStartedAt ??= DateTime.now();
+    }
     _currentStatus = status;
     if (!_connectionStatusController.isClosed) {
       _connectionStatusController.add(status);
@@ -508,6 +709,7 @@ class WebSocketService {
 
   /// Отключиться от WebSocket сервера
   Future<void> disconnect() async {
+    _connectWatchdogTimer?.cancel();
     _heartbeatTimer?.cancel();
     _isForceReconnecting = false;
     _socket?.disconnect();
@@ -515,11 +717,14 @@ class WebSocketService {
     _socket = null;
     _wasConnected = false;
     _disconnectedAt = null;
+    _connectStateStartedAt = null;
+    _lastConnectionError = null;
     _updateStatus(SocketConnectionStatus.disconnected);
   }
 
   /// Освободить ресурсы
   void dispose() {
+    _connectWatchdogTimer?.cancel();
     _heartbeatTimer?.cancel();
     disconnect();
     _connectionStatusController.close();
@@ -539,6 +744,7 @@ class WebSocketService {
     _deltaController.close();
     _deltaBatchController.close();
     _reconnectedController.close();
+    _diagnosticController.close();
   }
 
   /// Проверить статус подключения
