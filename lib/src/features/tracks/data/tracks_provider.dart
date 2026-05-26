@@ -9,6 +9,7 @@ import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/websocket_provider.dart';
+import '../../shell/application/shell_branch_provider.dart';
 import '../domain/track_item.dart';
 
 // ==================== Status Model ====================
@@ -256,6 +257,7 @@ class PaginatedTracksNotifier {
   Timer? _silentRefreshTimer;
   DateTime? _lastSilentRefreshStartedAt;
   bool _silentRefreshInProgress = false;
+  bool _isRealtimeRefreshEnabled = false;
 
   static const _tracksTypes = {
     'tracks',
@@ -266,18 +268,6 @@ class PaginatedTracksNotifier {
 
   PaginatedTracksNotifier(this._ref, TracksFilterParams initialFilters)
     : _state = PaginatedTracksState(filters: initialFilters) {
-    // Delta/data_changed sync is handled silently to preserve scroll and pagination.
-    final wsService = _ref.read(webSocketServiceProvider);
-    _deltaSub = wsService.deltas
-        .where((delta) => _tracksTypes.contains(delta.type))
-        .listen((_) => _debouncedSilentRefresh());
-    _dataChangedSub = wsService.dataChanged
-        .where((event) => _tracksTypes.contains(event['type']))
-        .listen((_) => _debouncedSilentRefresh());
-    _reconnectSub = wsService.reconnected.listen(
-      (_) => _debouncedSilentRefresh(),
-    );
-
     // Загружаем начальные данные при создании
     loadInitial();
   }
@@ -290,7 +280,54 @@ class PaginatedTracksNotifier {
     _silentRefreshTimer?.cancel();
   }
 
+  void setRealtimeRefreshEnabled(bool enabled) {
+    if (_isRealtimeRefreshEnabled == enabled) return;
+    _isRealtimeRefreshEnabled = enabled;
+
+    if (enabled) {
+      _subscribeRealtimeRefresh();
+      if (_state.tracks.isNotEmpty) {
+        _debouncedSilentRefresh();
+      }
+      return;
+    }
+
+    _cancelRealtimeRefresh();
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _silentRefreshTimer?.cancel();
+    _silentRefreshTimer = null;
+  }
+
+  void _subscribeRealtimeRefresh() {
+    if (_deltaSub != null || _dataChangedSub != null || _reconnectSub != null) {
+      return;
+    }
+
+    // Delta/data_changed sync is handled silently to preserve scroll and pagination.
+    final wsService = _ref.read(webSocketServiceProvider);
+    _deltaSub = wsService.deltas
+        .where((delta) => _tracksTypes.contains(delta.type))
+        .listen((_) => _debouncedSilentRefresh());
+    _dataChangedSub = wsService.dataChanged
+        .where((event) => _tracksTypes.contains(event['type']))
+        .listen((_) => _debouncedSilentRefresh());
+    _reconnectSub = wsService.reconnected.listen(
+      (_) => _debouncedSilentRefresh(),
+    );
+  }
+
+  void _cancelRealtimeRefresh() {
+    unawaited(_deltaSub?.cancel());
+    unawaited(_dataChangedSub?.cancel());
+    unawaited(_reconnectSub?.cancel());
+    _deltaSub = null;
+    _dataChangedSub = null;
+    _reconnectSub = null;
+  }
+
   void _debouncedSilentRefresh() {
+    if (!_isRealtimeRefreshEnabled) return;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
       _scheduleSilentRefresh();
@@ -298,6 +335,7 @@ class PaginatedTracksNotifier {
   }
 
   void _scheduleSilentRefresh() {
+    if (!_isRealtimeRefreshEnabled) return;
     if (_silentRefreshInProgress) {
       _queueSilentRefresh(_silentRefreshCooldown);
       return;
@@ -611,6 +649,13 @@ final paginatedTracksProvider = Provider.autoDispose
       final notifier = PaginatedTracksNotifier(
         ref,
         TracksFilterParams(clientCode: clientCode),
+      );
+      ref.listen<int>(
+        activeShellBranchIndexProvider,
+        (_, index) => notifier.setRealtimeRefreshEnabled(
+          index == ShellBranchIndex.tracks,
+        ),
+        fireImmediately: true,
       );
       ref.onDispose(notifier.dispose);
       return notifier;

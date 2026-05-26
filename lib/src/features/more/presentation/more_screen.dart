@@ -4,10 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/sentry_config.dart';
+import '../../../core/logging/client_log_service.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/network_diagnostics.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/utils/clipboard_helper.dart';
+import '../../clients/application/client_codes_controller.dart';
 
 class MoreScreen extends ConsumerStatefulWidget {
   const MoreScreen({super.key});
@@ -20,6 +25,49 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   final GlobalKey _newsRulesKey = GlobalKey();
   final GlobalKey _supportKey = GlobalKey();
   final GlobalKey _profileKey = GlobalKey();
+  bool _networkDiagnosticsRunning = false;
+
+  Future<void> _runNetworkDiagnostics() async {
+    if (_networkDiagnosticsRunning) return;
+    setState(() => _networkDiagnosticsRunning = true);
+    ClientLogService.instance.action('Запуск диагностики сети');
+
+    try {
+      final report = await NetworkDiagnosticsService(
+        ref.read(apiClientProvider),
+      ).collect(clientCode: ref.read(activeClientCodeProvider));
+      final copied = await AppClipboard.copyText(report.toSupportText());
+      if (!mounted) return;
+      _showSnackBar(
+        copied
+            ? 'Диагностика сети скопирована. Отправьте её менеджеру.'
+            : 'Диагностика сети собрана, но не скопирована автоматически.',
+      );
+    } catch (error, stackTrace) {
+      await ClientLogService.instance.captureNonFatal(
+        'Не удалось собрать диагностику сети',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      _showSnackBar('Не удалось собрать диагностику сети', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _networkDiagnosticsRunning = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : context.brandPrimary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,11 +164,19 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                 ),
               ],
             ),
-            if (SentryConfig.verifyButtonEnabled) ...[
-              const SizedBox(height: 24),
-              _MenuSection(
-                title: 'Диагностика',
-                items: [
+            const SizedBox(height: 24),
+            _MenuSection(
+              title: 'Диагностика',
+              items: [
+                _MenuItem(
+                  icon: CupertinoIcons.wifi,
+                  title: 'Диагностика сети',
+                  subtitle: _networkDiagnosticsRunning
+                      ? 'Проверяем соединение...'
+                      : 'Скопировать отчёт для поддержки',
+                  onTap: _runNetworkDiagnostics,
+                ),
+                if (SentryConfig.verifyButtonEnabled)
                   _MenuItem(
                     icon: CupertinoIcons.exclamationmark_triangle,
                     title: 'Verify Sentry Setup',
@@ -129,9 +185,8 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                       throw StateError('Sentry verify test exception');
                     },
                   ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ],
         ),
       ),

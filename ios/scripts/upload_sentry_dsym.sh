@@ -91,9 +91,9 @@ if [ -z "${sentry_cli}" ]; then
   exit 0
 fi
 
-sentry_org="${SENTRY_ORG:-2a-logistic}"
+sentry_org="${SENTRY_ORG:-sentry}"
 sentry_project="${SENTRY_PROJECT:-2a-user}"
-sentry_url="${SENTRY_URL:-}"
+sentry_url="${SENTRY_URL:-https://sentry.cp.2a-logistic.com}"
 
 if [ -z "${sentry_url}" ]; then
   log "skip, SENTRY_URL is empty; runtime errors are sent through the Sentry SDK DSN"

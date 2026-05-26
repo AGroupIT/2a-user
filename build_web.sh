@@ -18,9 +18,10 @@ WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
 MOBILE_API_BASE_URL="${MOBILE_API_BASE_URL:-$WEB_API_BASE_URL}"
 MOBILE_MEDIA_BASE_URL="${MOBILE_MEDIA_BASE_URL:-$WEB_MEDIA_BASE_URL}"
-SENTRY_DSN="${SENTRY_DSN:-https://feb59cde1dc1418cbe9db4a657de22762769ea7dc40b4a90ad0a0135372672bd@k1.hawk.so/0}"
+SENTRY_URL="${SENTRY_URL:-https://sentry.cp.2a-logistic.com}"
+SENTRY_DSN="${SENTRY_DSN:-https://98a0571e1550242f4574ec83627361b8@sentry.cp.2a-logistic.com/2}"
 SENTRY_PROJECT="${SENTRY_PROJECT:-2a-user}"
-SENTRY_ORG="${SENTRY_ORG:-2a-logistic}"
+SENTRY_ORG="${SENTRY_ORG:-sentry}"
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 
@@ -194,11 +195,13 @@ run_sentry_upload() {
   fi
 
   echo "🧭 Sentry: uploading debug files/source maps for ${label}..."
+  SENTRY_URL="$SENTRY_URL" \
   SENTRY_PROJECT="$SENTRY_PROJECT" \
   SENTRY_ORG="$SENTRY_ORG" \
   SENTRY_RELEASE="$SENTRY_RELEASE" \
   SENTRY_DIST="$SENTRY_DIST" \
     dart run sentry_dart_plugin \
+      --sentry-define=url="$SENTRY_URL" \
       --sentry-define=project="$SENTRY_PROJECT" \
       --sentry-define=org="$SENTRY_ORG" \
       --sentry-define=release="$SENTRY_RELEASE" \

@@ -10,6 +10,7 @@ import '../../../app/widgets/app_scaffold.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../application/shell_branch_provider.dart';
 import '../../more/presentation/more_sheet.dart';
 
 /// Notifier to hide/show bottom navigation bar (e.g. when a modal is open)
@@ -43,6 +44,7 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = navigationShell.currentIndex;
+    _syncActiveShellBranch(context, ref, currentIndex);
     final title = _titles[currentIndex.clamp(0, _titles.length - 1)];
     final statusTop = MediaQuery.paddingOf(context).top;
     final theme = Theme.of(context);
@@ -152,6 +154,20 @@ class AppShell extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _syncActiveShellBranch(
+    BuildContext context,
+    WidgetRef ref,
+    int currentIndex,
+  ) {
+    if (ref.read(activeShellBranchIndexProvider) == currentIndex) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      if (ref.read(activeShellBranchIndexProvider) == currentIndex) return;
+      ref.read(activeShellBranchIndexProvider.notifier).setIndex(currentIndex);
+    });
   }
 }
 

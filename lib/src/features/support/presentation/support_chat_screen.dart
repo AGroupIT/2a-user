@@ -26,6 +26,7 @@ import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../notifications/domain/notification_item.dart';
+import '../../shell/application/shell_branch_provider.dart';
 import '../data/chat_provider.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import '../../../core/utils/locale_text.dart';
@@ -48,6 +49,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   late final IsChatScreenOpenNotifier _screenOpenNotifier;
   late final ChatPresenceService _chatPresenceService;
   late final PushNotificationService _notificationService;
+  late final ChatController _chatController;
 
   // Локальный флаг защиты от двойной отправки (синхронный, выставляется раньше isSending в контроллере)
   bool _isSendingLocally = false;
@@ -61,19 +63,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     _screenOpenNotifier = ref.read(isChatScreenOpenProvider.notifier);
     _chatPresenceService = ref.read(chatPresenceServiceProvider);
     _notificationService = ref.read(pushNotificationServiceProvider);
+    _chatController = ref.read(chatControllerProvider.notifier);
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
     // Загружаем чат и открываем presence
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || _isDisposed) return;
-      _screenOpenNotifier.set(true);
-      unawaited(
-        ref.read(notificationsControllerProvider.notifier).markTypesRead({
-          NotificationType.chatMessage,
-        }),
-      );
-      await ref.read(chatControllerProvider.notifier).loadConversation();
+      final isActive =
+          ref.read(activeShellBranchIndexProvider) == ShellBranchIndex.support;
+      _screenOpenNotifier.set(isActive);
+      _chatController.setRealtimeActive(isActive);
+      if (isActive) {
+        unawaited(
+          ref.read(notificationsControllerProvider.notifier).markTypesRead({
+            NotificationType.chatMessage,
+          }),
+        );
+      }
+      await _chatController.loadConversation();
       if (!mounted || _isDisposed) return;
 
       // Если есть начальное сообщение - устанавливаем его в текстовое поле
@@ -82,7 +90,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       }
 
       // Уведомляем сервер что чат открыт (для блокировки push-уведомлений)
-      await _notifyServerChatOpened();
+      if (isActive) {
+        await _notifyServerChatOpened();
+      }
     });
 
     // Очищаем уведомления при открытии чата
@@ -107,12 +117,32 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     await _notificationService.cancelAllNotifications();
   }
 
+  void _setScreenActive(bool isActive) {
+    if (_isDisposed) return;
+    _screenOpenNotifier.set(isActive);
+    _chatController.setRealtimeActive(isActive);
+
+    if (isActive) {
+      unawaited(
+        ref.read(notificationsControllerProvider.notifier).markTypesRead({
+          NotificationType.chatMessage,
+        }),
+      );
+      unawaited(_clearNotifications());
+      unawaited(_notifyServerChatOpened());
+      return;
+    }
+
+    unawaited(_chatPresenceService.closeChat(ChatType.support));
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
 
     try {
       _screenOpenNotifier.set(false);
+      _chatController.setRealtimeActive(false);
       unawaited(_chatPresenceService.closeChat(ChatType.support));
     } catch (_) {}
 
@@ -129,12 +159,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted || _isDisposed) return;
+    if (ref.read(activeShellBranchIndexProvider) != ShellBranchIndex.support) {
+      return;
+    }
     debugPrint('App lifecycle state changed to: $state');
 
     if (state == AppLifecycleState.resumed) {
       _clearNotifications();
       // Обновляем сообщения при возврате в приложение
-      ref.read(chatControllerProvider.notifier).pollNewMessages();
+      _chatController.pollNewMessages();
       // Уведомляем сервер что чат снова открыт
       _notifyServerChatOpened();
     } else if (state == AppLifecycleState.paused) {
@@ -527,6 +560,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(activeShellBranchIndexProvider, (previous, next) {
+      if (previous == next) return;
+      _setScreenActive(next == ShellBranchIndex.support);
+    });
+
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final shellBottomInset = AppLayout.bottomBarObstruction(context) + 8;
     final keyboardBottomInset = keyboardInset + 8;

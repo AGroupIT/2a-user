@@ -44,8 +44,12 @@ class SentryConfig {
     defaultValue: '1.0',
   );
 
-  /// Включен ли Sentry (только release/profile-сборки с DSN).
-  static bool get enabled => dsn.isNotEmpty && kReleaseMode;
+  /// Включен ли Sentry.
+  ///
+  /// В debug разрешаем только ручную проверку через скрытую verify-кнопку,
+  /// чтобы не собирать шумные события при обычной разработке.
+  static bool get enabled =>
+      dsn.isNotEmpty && (kReleaseMode || verifyButtonEnabled);
 
   /// Окружение (production, staging, development)
   static String get environment {

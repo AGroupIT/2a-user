@@ -9,6 +9,7 @@ import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/websocket_provider.dart';
+import '../../shell/application/shell_branch_provider.dart';
 import '../domain/photo_item.dart';
 
 /// DS-H2/P7: realtime-мост для photos.
@@ -23,6 +24,12 @@ import '../domain/photo_item.dart';
 /// Подключается в `photos_screen.dart` через `ref.watch(photosRealtimeBridgeProvider);`,
 /// чтобы он жил вместе с экраном (autoDispose снимает подписки при выходе).
 final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
+  final isPhotosTabActive =
+      ref.watch(activeShellBranchIndexProvider) == ShellBranchIndex.photos;
+  if (!isPhotosTabActive) {
+    return;
+  }
+
   final ws = ref.read(webSocketServiceProvider);
   Timer? debounce;
   Timer? cooldownTimer;
@@ -288,9 +295,35 @@ class PaginatedPhotosNotifier {
   Timer? _cooldownTimer;
   DateTime? _lastSilentRefreshStartedAt;
   bool _silentRefreshInProgress = false;
+  bool _isRealtimeRefreshEnabled = false;
 
   PaginatedPhotosNotifier(this._ref, String clientCode, [String? date])
     : _state = PaginatedPhotosState(clientCode: clientCode, date: date) {
+    loadInitial();
+  }
+
+  void setRealtimeRefreshEnabled(bool enabled) {
+    if (_isRealtimeRefreshEnabled == enabled) return;
+    _isRealtimeRefreshEnabled = enabled;
+
+    if (enabled) {
+      _subscribeRealtimeRefresh();
+      if (_state.photos.isNotEmpty) {
+        _debouncedRefresh();
+      }
+      return;
+    }
+
+    _cancelRealtimeRefresh();
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    _cooldownTimer?.cancel();
+    _cooldownTimer = null;
+  }
+
+  void _subscribeRealtimeRefresh() {
+    if (_deltaSub != null || _reconnectSub != null) return;
+
     // Delta sync is the primary update mechanism.
     // data_changed broadcast is not used to avoid full page reloads
     // that reset scroll position and pagination.
@@ -299,11 +332,17 @@ class PaginatedPhotosNotifier {
         .where((delta) => _photoTypes.contains(delta.type))
         .listen((_) => _debouncedRefresh());
     _reconnectSub = wsService.reconnected.listen((_) => _debouncedRefresh());
+  }
 
-    loadInitial();
+  void _cancelRealtimeRefresh() {
+    unawaited(_deltaSub?.cancel());
+    unawaited(_reconnectSub?.cancel());
+    _deltaSub = null;
+    _reconnectSub = null;
   }
 
   void _debouncedRefresh() {
+    if (!_isRealtimeRefreshEnabled) return;
     _refreshTimer?.cancel();
     _refreshTimer = Timer(const Duration(milliseconds: 500), () {
       _scheduleSilentRefresh();
@@ -311,6 +350,7 @@ class PaginatedPhotosNotifier {
   }
 
   void _scheduleSilentRefresh() {
+    if (!_isRealtimeRefreshEnabled) return;
     if (_silentRefreshInProgress) {
       _queueSilentRefresh(_silentRefreshCooldown);
       return;
@@ -408,8 +448,7 @@ class PaginatedPhotosNotifier {
   }
 
   void dispose() {
-    _deltaSub?.cancel();
-    _reconnectSub?.cancel();
+    _cancelRealtimeRefresh();
     _refreshTimer?.cancel();
     _cooldownTimer?.cancel();
   }
@@ -572,6 +611,13 @@ class PaginatedPhotosNotifier {
 final paginatedPhotosProvider = Provider.autoDispose
     .family<PaginatedPhotosNotifier, String>((ref, clientCode) {
       final notifier = PaginatedPhotosNotifier(ref, clientCode);
+      ref.listen<int>(
+        activeShellBranchIndexProvider,
+        (_, index) => notifier.setRealtimeRefreshEnabled(
+          index == ShellBranchIndex.photos,
+        ),
+        fireImmediately: true,
+      );
       ref.onDispose(() => notifier.dispose());
       return notifier;
     });
@@ -585,6 +631,13 @@ final paginatedPhotosByDateProvider = Provider.autoDispose
         ref,
         params.clientCode,
         params.date,
+      );
+      ref.listen<int>(
+        activeShellBranchIndexProvider,
+        (_, index) => notifier.setRealtimeRefreshEnabled(
+          index == ShellBranchIndex.photos,
+        ),
+        fireImmediately: true,
       );
       ref.onDispose(() => notifier.dispose());
       return notifier;

@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/core/services/delta_sync_provider.dart';
 import 'package:twoalogisticcabineuser/src/core/services/websocket_provider.dart';
+import 'package:twoalogisticcabineuser/src/features/invoices/data/invoices_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/photos/data/photos_provider.dart';
+import 'package:twoalogisticcabineuser/src/features/shell/application/shell_branch_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/tracks/data/tracks_provider.dart';
 
 void main() {
@@ -70,6 +73,9 @@ void main() {
         );
         addTearDown(container.dispose);
         addTearDown(ws.dispose);
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.photos);
 
         final provider = paginatedPhotosProvider('2A-TEST');
         final subscription = container.listen<PaginatedPhotosNotifier>(
@@ -98,6 +104,133 @@ void main() {
 
         expect(notifier.state.photos.length, 24);
         expect(notifier.state.hasMore, isFalse);
+      },
+    );
+
+    test(
+      'tracks ignore websocket refresh while shell branch is inactive',
+      () async {
+        final apiClient = _TracksCountingApiClient();
+        final ws = _FakeWebSocketService();
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(apiClient),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+        );
+        addTearDown(container.dispose);
+        addTearDown(ws.dispose);
+
+        final provider = paginatedTracksProvider('2A-TEST');
+        final subscription = container.listen<PaginatedTracksNotifier>(
+          provider,
+          (_, _) {},
+          fireImmediately: true,
+        );
+        addTearDown(subscription.close);
+
+        final notifier = container.read(provider);
+        await _waitUntil(() => notifier.state.tracks.length == 50);
+        expect(apiClient.tracksRequests, 1);
+
+        ws.emitDelta('tracks');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        expect(apiClient.tracksRequests, 1);
+
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.tracks);
+        await _waitUntil(() => apiClient.tracksRequests == 2);
+
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.home);
+        ws.emitDelta('tracks');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+
+        expect(apiClient.tracksRequests, 2);
+      },
+    );
+
+    test(
+      'photos ignore websocket refresh while shell branch is inactive',
+      () async {
+        final apiClient = _PhotosCountingApiClient();
+        final ws = _FakeWebSocketService();
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(apiClient),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+        );
+        addTearDown(container.dispose);
+        addTearDown(ws.dispose);
+
+        final provider = paginatedPhotosProvider('2A-TEST');
+        final subscription = container.listen<PaginatedPhotosNotifier>(
+          provider,
+          (_, _) {},
+          fireImmediately: true,
+        );
+        addTearDown(subscription.close);
+
+        final notifier = container.read(provider);
+        await _waitUntil(() => notifier.state.photos.length == 12);
+        expect(apiClient.photosRequests, 1);
+
+        ws.emitDelta('photo_requests');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        expect(apiClient.photosRequests, 1);
+
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.photos);
+        await _waitUntil(() => apiClient.photosRequests == 2);
+
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.home);
+        ws.emitDelta('photo_requests');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+
+        expect(apiClient.photosRequests, 2);
+      },
+    );
+
+    test(
+      'invoice list ignores delta invalidation while shell branch is inactive',
+      () async {
+        final apiClient = _InvoicesCountingApiClient();
+        final ws = _FakeWebSocketService();
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(apiClient),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+        );
+        addTearDown(container.dispose);
+        addTearDown(ws.dispose);
+
+        container.read(deltaSyncProvider);
+        final provider = invoicesListProvider('2A-TEST');
+        final subscription = container.listen(
+          provider,
+          (_, _) {},
+          fireImmediately: true,
+        );
+        addTearDown(subscription.close);
+
+        await _waitUntil(() => apiClient.invoiceListRequests == 1);
+
+        ws.emitDelta('invoices');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        expect(apiClient.invoiceListRequests, 1);
+
+        container
+            .read(activeShellBranchIndexProvider.notifier)
+            .setIndex(ShellBranchIndex.invoices);
+        ws.emitDelta('invoices');
+        await _waitUntil(() => apiClient.invoiceListRequests == 2);
       },
     );
   });
@@ -223,6 +356,60 @@ class _PhotosRaceApiClient extends ApiClient {
   }
 }
 
+class _TracksCountingApiClient extends ApiClient {
+  int tracksRequests = 0;
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    if (path != '/tracks') {
+      throw StateError('Unexpected path: $path');
+    }
+
+    tracksRequests += 1;
+    return _response<T>(path, _tracksPayload(1, 50, total: 50));
+  }
+}
+
+class _PhotosCountingApiClient extends ApiClient {
+  int photosRequests = 0;
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    if (path != '/photos') {
+      throw StateError('Unexpected path: $path');
+    }
+
+    photosRequests += 1;
+    return _response<T>(path, _photosPayload(1, 12, total: 12));
+  }
+}
+
+class _InvoicesCountingApiClient extends ApiClient {
+  int invoiceListRequests = 0;
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    if (path != '/invoices') {
+      throw StateError('Unexpected path: $path');
+    }
+
+    invoiceListRequests += 1;
+    return _response<T>(path, _invoicesPayload());
+  }
+}
+
 class _FakeWebSocketService extends WebSocketService {
   _FakeWebSocketService() : super(serverUrl: 'http://localhost');
 
@@ -314,5 +501,24 @@ Map<String, dynamic> _photosPayload(
         },
     ],
     'total': total,
+  };
+}
+
+Map<String, dynamic> _invoicesPayload() {
+  return {
+    'data': [
+      {
+        'id': 'INV-1',
+        'invoiceNumber': 'INV-1',
+        'status': 'unpaid',
+        'clientCode': '2A-TEST',
+        'totalCostUsd': 10,
+        'totalCostCny': 0,
+        'totalCostRub': 0,
+        'createdAt': DateTime(2026).toIso8601String(),
+        'updatedAt': DateTime(2026).toIso8601String(),
+      },
+    ],
+    'total': 1,
   };
 }

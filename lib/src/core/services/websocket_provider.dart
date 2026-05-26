@@ -8,16 +8,71 @@ import '../network/api_config.dart';
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   // WebSocket is proxied through nginx at /socket.io/ path
-  final wsUrl = ApiConfig.baseUrl.replaceAll('/api', '');
+  final apiClient = ref.read(apiClientProvider);
+  final wsUrl = _socketUrlFromApiBase(apiClient.activeBaseUrl);
 
   final service = WebSocketService(serverUrl: wsUrl);
 
+  ClientLogService.instance.add(
+    type: 'websocket_config',
+    level: 'info',
+    message: 'Настроен WebSocket host 2a-user',
+    data: {
+      'wsUrl': wsUrl,
+      'primaryBaseUrl': ApiConfig.baseUrl,
+      'activeBaseUrl': apiClient.activeBaseUrl,
+      'fallbackBaseUrl': ApiConfig.fallbackBaseUrl,
+      'fallbackEnabled': ApiConfig.fallbackBaseUrl != null,
+    },
+  );
+
+  final statusSub = service.connectionStatus.listen((status) {
+    ClientLogService.instance.add(
+      type: 'websocket_status',
+      level: status == SocketConnectionStatus.connected ? 'info' : 'warning',
+      message: 'WebSocket status: ${status.name}',
+      data: {
+        'status': status.name,
+        'wsUrl': wsUrl,
+        'activeBaseUrl': apiClient.activeBaseUrl,
+        'fallbackEnabled': ApiConfig.fallbackBaseUrl != null,
+      },
+    );
+  });
+
+  final diagnosticsSub = service.diagnostics.listen((event) {
+    ClientLogService.instance.add(
+      type: 'websocket_${event.type}',
+      level: event.level,
+      message: event.message,
+      data: {
+        ...?event.data,
+        if (event.status != null) 'status': event.status!.name,
+        'wsUrl': wsUrl,
+        'activeBaseUrl': apiClient.activeBaseUrl,
+        'fallbackEnabled': ApiConfig.fallbackBaseUrl != null,
+      },
+    );
+  });
+
   ref.onDispose(() {
+    statusSub.cancel();
+    diagnosticsSub.cancel();
     service.dispose();
   });
 
   return service;
 });
+
+String _socketUrlFromApiBase(String apiBaseUrl) {
+  if (apiBaseUrl.endsWith('/api')) {
+    return apiBaseUrl.substring(0, apiBaseUrl.length - 4);
+  }
+  if (apiBaseUrl.endsWith('/api/')) {
+    return apiBaseUrl.substring(0, apiBaseUrl.length - 5);
+  }
+  return apiBaseUrl;
+}
 
 final webSocketConnectionStatusProvider =
     StreamProvider<SocketConnectionStatus>((ref) {
@@ -54,7 +109,10 @@ final webSocketAutoConnectProvider = Provider<void>((ref) {
             message: 'Пробуем подключить WebSocket',
             data: {'status': service.currentStatus.name},
           );
-          await service.connect(token);
+          await service.connect(
+            token,
+            serverUrl: _socketUrlFromApiBase(apiClient.activeBaseUrl),
+          );
           ClientLogService.instance.add(
             type: 'websocket_connect_success',
             level: 'info',

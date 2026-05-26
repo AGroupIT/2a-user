@@ -9,8 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/agent_domain_resolver.dart';
-import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_background.dart';
 import '../data/auth_provider.dart';
+import 'auth_visuals.dart';
 
 /// Этапы восстановления пароля
 enum ResetStep {
@@ -151,6 +152,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         data: {'phone': phone, 'domain': domain},
       );
 
+      if (!mounted) return;
+
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
         setState(() {
@@ -172,6 +175,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
+      if (!mounted) return;
       _showError('Не удалось отправить запрос');
       setState(() => _isLoading = false);
     }
@@ -189,6 +193,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   void _startCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
       if (_secondsLeft > 0) {
         setState(() => _secondsLeft--);
       } else {
@@ -209,6 +214,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         '/password-reset/verify',
         data: {'checkId': _checkId},
       );
+
+      if (!mounted) return;
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -253,6 +260,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         data: {'resetToken': _resetToken, 'newPassword': password},
       );
 
+      if (!mounted) return;
+
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
         final token = data['token'] as String?;
@@ -266,7 +275,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               .read(authProvider.notifier)
               .loginWithData(token: token, userData: userData);
 
-          if (success && mounted) {
+          if (!mounted) return;
+
+          if (success) {
             // Перенаправляем в приложение
             context.go('/');
             return;
@@ -284,6 +295,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
+      if (!mounted) return;
       _showError('Не удалось установить пароль');
       setState(() => _isLoading = false);
     }
@@ -295,6 +307,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     final uri = Uri.parse('tel:$_callPhone');
     if (await canLaunchUrl(uri)) {
+      if (!mounted) return;
       await launchUrl(uri);
     }
   }
@@ -312,148 +325,137 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final topPadding = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            topPadding + 40,
-            24,
-            bottomPadding + 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Back button
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: () {
-                    if (_currentStep == ResetStep.enterPhone ||
-                        _currentStep == ResetStep.success) {
-                      context.pop();
-                    } else {
-                      _cancelTimers();
-                      setState(() => _currentStep = ResetStep.enterPhone);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x0A000000),
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          const AppBackground(),
+          GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                topPadding + 28,
+                24,
+                bottomPadding + 24,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_currentStep == ResetStep.enterPhone ||
+                            _currentStep == ResetStep.success) {
+                          context.pop();
+                        } else {
+                          _cancelTimers();
+                          setState(() => _currentStep = ResetStep.enterPhone);
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
                         ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.arrow_back_ios_rounded,
-                          size: 16,
-                          color: Color(0xFF666666),
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Назад',
-                          style: TextStyle(
-                            color: Color(0xFF666666),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.78),
                           ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x0A000000),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
                         ),
-                      ],
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.arrow_back_ios_rounded,
+                              size: 16,
+                              color: Color(0xFF666666),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Назад',
+                              style: TextStyle(
+                                color: Color(0xFF666666),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+                  AuthHeroHeader(
+                    icon: _getHeroIcon(),
+                    title: _getTitle(),
+                    subtitle: _getSubtitle(),
+                    trustItems: _getTrustItems(),
+                  ),
+                  const SizedBox(height: 28),
 
-              // Icon
-              Center(child: _buildIcon()),
-              const SizedBox(height: 24),
-
-              // Title
-              Text(
-                _getTitle(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
+                  AuthFormCard(child: _buildContent()),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                _getSubtitle(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF666666),
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Form card
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 24,
-                      offset: Offset(0, 10),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(20),
-                child: _buildContent(),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildIcon() {
-    IconData icon;
-    Color color;
-
+  IconData _getHeroIcon() {
     switch (_currentStep) {
       case ResetStep.enterPhone:
-        icon = Icons.lock_reset_rounded;
-        color = context.brandPrimary;
+        return Icons.lock_reset_rounded;
       case ResetStep.waitingCall:
-        icon = Icons.phone_callback_rounded;
-        color = Colors.blue;
+        return Icons.phone_callback_rounded;
       case ResetStep.enterPassword:
-        icon = Icons.key_rounded;
-        color = Colors.purple;
+        return Icons.key_rounded;
       case ResetStep.success:
-        icon = Icons.check_circle_rounded;
-        color = Colors.green;
+        return Icons.check_circle_rounded;
     }
+  }
 
-    return Container(
-      width: 80,
-      height: 80,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Icon(icon, size: 40, color: color),
-    );
+  List<AuthTrustItem> _getTrustItems() {
+    switch (_currentStep) {
+      case ResetStep.enterPhone:
+        return const [
+          AuthTrustItem(icon: Icons.call_rounded, label: 'Без SMS'),
+          AuthTrustItem(icon: Icons.timer_rounded, label: '5 минут'),
+          AuthTrustItem(icon: Icons.verified_rounded, label: 'Безопасно'),
+        ];
+      case ResetStep.waitingCall:
+        return const [
+          AuthTrustItem(
+            icon: Icons.phone_callback_rounded,
+            label: 'Звонок бесплатный',
+          ),
+          AuthTrustItem(
+            icon: Icons.sync_rounded,
+            label: 'Проверка автоматически',
+          ),
+        ];
+      case ResetStep.enterPassword:
+        return const [
+          AuthTrustItem(icon: Icons.key_rounded, label: 'Новый пароль'),
+          AuthTrustItem(icon: Icons.lock_rounded, label: 'Защищённый вход'),
+        ];
+      case ResetStep.success:
+        return const [
+          AuthTrustItem(icon: Icons.check_circle_rounded, label: 'Готово'),
+          AuthTrustItem(icon: Icons.login_rounded, label: 'Можно войти'),
+        ];
+    }
   }
 
   String _getTitle() {
@@ -498,6 +500,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget _buildPhoneStep() {
     final hasPhoneError = _phoneError != null;
     final hasDomainError = _domainError != null;
+    final accent = AuthVisuals.primary(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -538,9 +541,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ),
               prefixIcon: Icon(
                 Icons.business_rounded,
-                color: hasDomainError
-                    ? Colors.red.shade400
-                    : const Color(0xFF999999),
+                color: hasDomainError ? Colors.red.shade400 : accent,
                 size: 20,
               ),
               border: InputBorder.none,
@@ -596,9 +597,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ),
               prefixIcon: Icon(
                 Icons.phone_rounded,
-                color: hasPhoneError
-                    ? Colors.red.shade400
-                    : const Color(0xFF999999),
+                color: hasPhoneError ? Colors.red.shade400 : accent,
                 size: 20,
               ),
               border: InputBorder.none,
@@ -621,8 +620,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F5),
+            color: accent.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: accent.withValues(alpha: 0.12)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -683,6 +683,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         const SizedBox(height: 24),
         FilledButton(
           onPressed: _isLoading ? null : _requestReset,
+          style: AuthVisuals.primaryButtonStyle(context),
           child: _isLoading
               ? const SizedBox(
                   height: 20,
@@ -704,6 +705,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget _buildCallStep() {
     final minutes = _secondsLeft ~/ 60;
     final seconds = _secondsLeft % 60;
+    final accent = AuthVisuals.primary(context);
 
     return Column(
       children: [
@@ -711,9 +713,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.blue.shade50,
+            color: accent.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.blue.shade200),
+            border: Border.all(color: accent.withValues(alpha: 0.2)),
           ),
           child: Column(
             children: [
@@ -724,10 +726,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               const SizedBox(height: 8),
               Text(
                 _callPhonePretty ?? _callPhone ?? '',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: Colors.blue,
+                  color: accent,
                 ),
               ),
               const SizedBox(height: 12),
@@ -735,12 +737,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _makeCall,
+                  style: AuthVisuals.outlinedButtonStyle(context),
                   icon: const Icon(Icons.phone),
                   label: const Text('Позвонить'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.blue,
-                    side: const BorderSide(color: Colors.blue),
-                  ),
                 ),
               ),
             ],
@@ -861,6 +860,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   Widget _buildPasswordStep() {
+    final accent = AuthVisuals.primary(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -888,11 +889,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 color: Color(0xFFAAAAAA),
                 fontSize: 14,
               ),
-              prefixIcon: const Icon(
-                Icons.lock_rounded,
-                color: Color(0xFF999999),
-                size: 20,
-              ),
+              prefixIcon: Icon(Icons.lock_rounded, color: accent, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -935,11 +932,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 color: Color(0xFFAAAAAA),
                 fontSize: 14,
               ),
-              prefixIcon: const Icon(
-                Icons.lock_rounded,
-                color: Color(0xFF999999),
-                size: 20,
-              ),
+              prefixIcon: Icon(Icons.lock_rounded, color: accent, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscureConfirm ? Icons.visibility_off : Icons.visibility,
@@ -960,6 +953,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
         FilledButton(
           onPressed: _isLoading ? null : _setNewPassword,
+          style: AuthVisuals.primaryButtonStyle(context),
           child: _isLoading
               ? const SizedBox(
                   height: 20,
@@ -1029,6 +1023,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         const SizedBox(height: 24),
         FilledButton(
           onPressed: () => context.go('/login'),
+          style: AuthVisuals.primaryButtonStyle(context),
           child: const Text(
             'Войти',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
@@ -1039,13 +1034,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   Widget _buildStep(String number, String text) {
+    final accent = AuthVisuals.primary(context);
+
     return Row(
       children: [
         Container(
           width: 20,
           height: 20,
           decoration: BoxDecoration(
-            color: context.brandPrimary.withValues(alpha: 0.1),
+            color: accent.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -1054,7 +1051,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: context.brandPrimary,
+                color: accent,
               ),
             ),
           ),

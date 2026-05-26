@@ -4,13 +4,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/sentry_config.dart';
+import '../../../core/logging/client_log_service.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/network_diagnostics.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/clipboard_helper.dart';
+import '../../clients/application/client_codes_controller.dart';
 
-class MoreSheet extends ConsumerWidget {
+class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
+
+  @override
+  ConsumerState<MoreSheet> createState() => _MoreSheetState();
+}
+
+class _MoreSheetState extends ConsumerState<MoreSheet> {
+  bool _networkDiagnosticsRunning = false;
 
   void _go(BuildContext context, String route) {
     Navigator.of(context).pop();
@@ -21,8 +33,63 @@ class MoreSheet extends ConsumerWidget {
     }
   }
 
+  Future<void> _runNetworkDiagnostics() async {
+    if (_networkDiagnosticsRunning) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final brandColor = context.brandPrimary;
+
+    setState(() => _networkDiagnosticsRunning = true);
+    ClientLogService.instance.action('Запуск диагностики сети');
+
+    try {
+      final report = await NetworkDiagnosticsService(
+        ref.read(apiClientProvider),
+      ).collect(clientCode: ref.read(activeClientCodeProvider));
+      final copied = await AppClipboard.copyText(report.toSupportText());
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            copied
+                ? 'Диагностика сети скопирована. Отправьте её менеджеру.'
+                : 'Диагностика сети собрана, но не скопирована автоматически.',
+          ),
+          backgroundColor: brandColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      await ClientLogService.instance.captureNonFatal(
+        'Не удалось собрать диагностику сети',
+        error: error,
+        stackTrace: stackTrace,
+      );
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Не удалось собрать диагностику сети'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _networkDiagnosticsRunning = false);
+      }
+    }
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return SafeArea(
@@ -106,6 +173,28 @@ class MoreSheet extends ConsumerWidget {
                     onTap: () => _go(context, '/support'),
                   ),
 
+                  // ── Диагностика ───────────────────────────────
+                  const _SectionLabel(text: 'Диагностика'),
+                  _MenuItem(
+                    icon: Icons.wifi_rounded,
+                    title: _networkDiagnosticsRunning
+                        ? 'Диагностика выполняется...'
+                        : 'Диагностика сети',
+                    iconColor: const Color(0xFF2196F3),
+                    onTap: _runNetworkDiagnostics,
+                  ),
+                  if (SentryConfig.verifyButtonEnabled) ...[
+                    const SizedBox(height: 8),
+                    _MenuItem(
+                      icon: Icons.bug_report_rounded,
+                      title: 'Verify Sentry Setup',
+                      iconColor: Colors.redAccent,
+                      onTap: () {
+                        throw StateError('Sentry verify test exception');
+                      },
+                    ),
+                  ],
+
                   // ── Полезные материалы ────────────────────────
                   const _SectionLabel(text: 'Полезные материалы'),
                   _MenuItem(
@@ -167,17 +256,6 @@ class MoreSheet extends ConsumerWidget {
                       );
                     },
                   ),
-                  if (SentryConfig.verifyButtonEnabled) ...[
-                    const _SectionLabel(text: 'Диагностика'),
-                    _MenuItem(
-                      icon: Icons.bug_report_rounded,
-                      title: 'Verify Sentry Setup',
-                      iconColor: Colors.redAccent,
-                      onTap: () {
-                        throw StateError('Sentry verify test exception');
-                      },
-                    ),
-                  ],
                 ],
               ),
             ),

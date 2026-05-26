@@ -25,18 +25,12 @@ class ApiConfig {
     return '$_host/api';
   }
 
-  /// Резервный API-домен для случаев, когда мобильная сеть не может
-  /// установить соединение с основным доменом. Используется только после
-  /// transient network error и не меняет основной happy path.
-  static String? get fallbackBaseUrl {
-    const envUrl = String.fromEnvironment('API_FALLBACK_BASE_URL');
-    if (envUrl == 'none' || envUrl == 'disabled') return null;
-    if (envUrl.isNotEmpty) return envUrl;
-
-    const fallback = 'https://api.2a-logistic.com/api';
-    if (fallback == baseUrl) return null;
-    return fallback;
-  }
+  /// 2a-user не использует резервный API-домен.
+  ///
+  /// `https://api.2a-logistic.com/api` — это China/HK-прокси для 2a-admin,
+  /// поэтому клиентское приложение не должно автоматически переключаться на
+  /// него при мобильных сетевых ошибках.
+  static String? get fallbackBaseUrl => null;
 
   /// Base URL для статических файлов (uploads)
   static String get mediaBaseUrl {
@@ -73,6 +67,73 @@ class ApiConfig {
     }
 
     return '$mediaBaseUrl/$cleanPath';
+  }
+
+  /// Формирует URL уменьшенного thumbnail для карточек и списков.
+  ///
+  /// Оригинальный URL сохраняется для полноэкранного просмотра/скачивания,
+  /// а превью идут через /api/uploads/thumb/{size}/..., чтобы не тянуть
+  /// тяжёлые фото в маленькие плитки на web/iOS/Android.
+  static String getMediaThumbnailUrl(String path, {int size = 360}) {
+    final mediaUrl = getMediaUrl(path);
+    if (mediaUrl.isEmpty) return '';
+    if (!supportsMediaThumbnail(mediaUrl)) return mediaUrl;
+
+    const uploadsMarker = '/api/uploads/';
+    final uploadsIndex = mediaUrl.indexOf(uploadsMarker);
+    if (uploadsIndex == -1 || mediaUrl.contains('/api/uploads/thumb/')) {
+      return mediaUrl;
+    }
+
+    final normalizedSize = _normalizeThumbnailSize(size);
+    final prefix = mediaUrl.substring(0, uploadsIndex + uploadsMarker.length);
+    final relativePath = mediaUrl.substring(
+      uploadsIndex + uploadsMarker.length,
+    );
+    if (relativePath.isEmpty || relativePath.startsWith('thumb/')) {
+      return mediaUrl;
+    }
+
+    return '${prefix}thumb/$normalizedSize/$relativePath';
+  }
+
+  static bool supportsMediaThumbnail(String path) {
+    final cleanPath = _stripUrlQueryAndFragment(path).toLowerCase();
+    final extensionIndex = cleanPath.lastIndexOf('.');
+    if (extensionIndex == -1 || extensionIndex == cleanPath.length - 1) {
+      return false;
+    }
+
+    final extension = cleanPath.substring(extensionIndex + 1);
+    return const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension);
+  }
+
+  static int _normalizeThumbnailSize(int size) {
+    const supportedSizes = [160, 240, 360, 480, 720, 960];
+    if (size <= 0) return 360;
+
+    var closest = supportedSizes.first;
+    var closestDistance = (size - closest).abs();
+    for (final supportedSize in supportedSizes.skip(1)) {
+      final distance = (size - supportedSize).abs();
+      if (distance < closestDistance) {
+        closest = supportedSize;
+        closestDistance = distance;
+      }
+    }
+    return closest;
+  }
+
+  static String _stripUrlQueryAndFragment(String url) {
+    final queryIndex = url.indexOf('?');
+    final fragmentIndex = url.indexOf('#');
+    final cutPoints = [
+      if (queryIndex != -1) queryIndex,
+      if (fragmentIndex != -1) fragmentIndex,
+    ];
+    if (cutPoints.isEmpty) return url;
+    cutPoints.sort();
+    return url.substring(0, cutPoints.first);
   }
 
   /// Таймауты для запросов.

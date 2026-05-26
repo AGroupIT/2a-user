@@ -288,6 +288,7 @@ class ChatController extends Notifier<ChatState> {
   StreamSubscription<Map<String, dynamic>>? _messageEditedSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
   Timer? _fallbackPollingTimer;
+  bool _isRealtimeActive = false;
 
   @override
   ChatState build() {
@@ -317,6 +318,10 @@ class ChatController extends Notifier<ChatState> {
       webSocketConnectionStatusProvider,
       (previous, next) {
         next.whenData((status) {
+          if (!_isRealtimeActive) {
+            _fallbackPollingTimer?.cancel();
+            return;
+          }
           if (status == SocketConnectionStatus.connected) {
             // WebSocket подключен - отменяем fallback polling
             _fallbackPollingTimer?.cancel();
@@ -336,6 +341,7 @@ class ChatController extends Notifier<ChatState> {
     // Слушаем новые сообщения (отменяем предыдущую подписку при reconnect)
     _messageSubscription?.cancel();
     _messageSubscription = _wsService.messages.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final message = ChatMessage.fromJson(data);
 
@@ -375,6 +381,7 @@ class ChatController extends Notifier<ChatState> {
     // Слушаем редактирование сообщений (отменяем предыдущую подписку при reconnect)
     _messageEditedSubscription?.cancel();
     _messageEditedSubscription = _wsService.messageEdited.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final editedMessage = ChatMessage.fromJson(data);
         if (state.conversation != null &&
@@ -392,6 +399,7 @@ class ChatController extends Notifier<ChatState> {
     // Слушаем удаление сообщений
     _messageDeletedSubscription?.cancel();
     _messageDeletedSubscription = _wsService.messageDeleted.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final msgId = data['id'] as int?;
         final convId = data['conversationId'] as int?;
@@ -408,12 +416,45 @@ class ChatController extends Notifier<ChatState> {
 
   /// Fallback polling если WebSocket не работает
   void _startFallbackPolling() {
+    if (!_isRealtimeActive) return;
     _fallbackPollingTimer?.cancel();
     _fallbackPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isRealtimeActive) {
+        _fallbackPollingTimer?.cancel();
+        return;
+      }
       if (_wsService.currentStatus != SocketConnectionStatus.connected) {
         pollNewMessages();
       }
     });
+  }
+
+  /// Включает/выключает realtime-активность чата без уничтожения состояния.
+  ///
+  /// Support tab живёт в StatefulShellRoute.indexedStack, поэтому dispose()
+  /// не вызывается при уходе на главную/другую вкладку. Этот флаг гасит
+  /// polling, presence и обработку WS-событий до возврата на вкладку.
+  void setRealtimeActive(bool active) {
+    if (_isRealtimeActive == active) return;
+    _isRealtimeActive = active;
+
+    if (!active) {
+      _fallbackPollingTimer?.cancel();
+      if (state.conversation != null) {
+        _wsService.leaveConversation(state.conversation!.id);
+        _wsService.sendPresence(state.conversation!.id, false);
+      }
+      return;
+    }
+
+    if (state.conversation != null) {
+      _wsService.joinConversation(state.conversation!.id);
+      _wsService.sendPresence(state.conversation!.id, true);
+      if (_wsService.currentStatus != SocketConnectionStatus.connected) {
+        _startFallbackPolling();
+      }
+      unawaited(pollNewMessages());
+    }
   }
 
   /// Загрузить диалог
@@ -433,9 +474,11 @@ class ChatController extends Notifier<ChatState> {
         lastMessageId: lastId,
       );
 
-      // Присоединяемся к WebSocket комнате
-      _wsService.joinConversation(conversation.id);
-      _wsService.sendPresence(conversation.id, true);
+      // Присоединяемся к WebSocket комнате только пока вкладка активна.
+      if (_isRealtimeActive) {
+        _wsService.joinConversation(conversation.id);
+        _wsService.sendPresence(conversation.id, true);
+      }
       ClientLogService.instance.add(
         type: 'support_chat_loaded',
         level: 'info',
@@ -637,6 +680,7 @@ class ChatController extends Notifier<ChatState> {
 
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
+    if (!_isRealtimeActive) return;
     if (state.conversation == null) return;
 
     // Если нет сообщений, загружаем с нуля

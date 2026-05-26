@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +12,7 @@ import '../../../core/network/api_config.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/services/update_service.dart';
+import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -781,7 +781,7 @@ class _StatsBlock extends StatelessWidget {
                 SizedBox(
                   width: _bottomCardWidth * scale,
                   child: _StatCard(
-                    title: 'Бонусные КГ',
+                    title: 'Бонусные кг',
                     value: bonusKgValue,
                     weeklyValue: bonusKgWeekly,
                     icon: Icons.scale_rounded,
@@ -1129,8 +1129,8 @@ class _WarehouseCopyButton extends StatelessWidget {
                     color: _textColor,
                     fontFamily: 'Gilroy',
                     fontWeight: FontWeight.w400,
-                    fontSize: 11.6,
-                    height: 14 / 11.6,
+                    fontSize: 14,
+                    height: 14 / 14,
                     letterSpacing: 0,
                   ),
                 ),
@@ -1257,62 +1257,38 @@ class _DigestTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: _height,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            offset: Offset(3, 4),
-            blurRadius: 25,
-          ),
-        ],
-      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth.isFinite
               ? constraints.maxWidth
               : _designWidth;
-          final scale = (width / _designWidth).clamp(0.0, 1.0);
-          final gap = _gap * scale;
-          final buttons = _DigestTab.values
-              .map(
-                (tab) => _DigestTabButton(
-                  tab: tab,
-                  selected: selected == tab,
-                  width: _tabWidth(tab) * scale,
-                  height: _height,
-                  scale: scale,
-                  onTap: () => onChanged(tab),
-                ),
-              )
-              .toList(growable: false);
-          final row = Row(
+          final scale = (width / _designWidth).clamp(0.78, 1.0);
+
+          return Row(
             children: [
-              for (var i = 0; i < buttons.length; i++) ...[
-                if (i > 0) SizedBox(width: gap),
-                buttons[i],
+              for (var i = 0; i < _DigestTab.values.length; i++) ...[
+                if (i > 0) const SizedBox(width: _gap),
+                Flexible(
+                  flex: _tabFlex(_DigestTab.values[i]),
+                  child: _DigestTabButton(
+                    tab: _DigestTab.values[i],
+                    selected: selected == _DigestTab.values[i],
+                    height: _height,
+                    scale: scale,
+                    onTap: () => onChanged(_DigestTab.values[i]),
+                  ),
+                ),
               ],
             ],
           );
-
-          if (constraints.maxWidth < 280) {
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: row,
-            );
-          }
-
-          return row;
         },
       ),
     );
   }
 
-  static double _tabWidth(_DigestTab tab) {
+  static int _tabFlex(_DigestTab tab) {
     return switch (tab) {
       _DigestTab.tracks => 80,
       _DigestTab.assemblies => 85,
@@ -1325,7 +1301,6 @@ class _DigestTabBar extends StatelessWidget {
 class _DigestTabButton extends StatelessWidget {
   final _DigestTab tab;
   final bool selected;
-  final double width;
   final double height;
   final double scale;
   final VoidCallback onTap;
@@ -1333,7 +1308,6 @@ class _DigestTabButton extends StatelessWidget {
   const _DigestTabButton({
     required this.tab,
     required this.selected,
-    required this.width,
     required this.height,
     required this.scale,
     required this.onTap,
@@ -1350,7 +1324,7 @@ class _DigestTabButton extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          width: width,
+          width: double.infinity,
           height: height,
           padding: EdgeInsets.symmetric(horizontal: 10 * scale),
           decoration: BoxDecoration(
@@ -1885,8 +1859,9 @@ class _PhotoThumb extends StatelessWidget {
                         ),
                       )
                     else
-                      CachedNetworkImage(
-                        imageUrl: ApiConfig.getMediaUrl(item.url),
+                      AppCachedMediaImage(
+                        url: item.url,
+                        thumbnailSize: 360,
                         maxHeightDiskCache: 400,
                         maxWidthDiskCache: 400,
                         memCacheHeight: 200,

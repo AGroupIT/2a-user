@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
@@ -8,7 +11,6 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'dart:io';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
@@ -92,6 +94,10 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     super.initState();
     _currentIndex = widget.initialIndex ?? 0;
     _pageController = PageController(initialPage: _currentIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _precacheAdjacentImages();
+    });
   }
 
   @override
@@ -105,6 +111,29 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       return widget.allPhotos![_currentIndex];
     }
     return widget.item;
+  }
+
+  void _precacheAdjacentImages() {
+    final items = widget.allPhotos != null && widget.allPhotos!.isNotEmpty
+        ? widget.allPhotos!
+        : <PhotoItem>[widget.item];
+    if (items.length < 2) return;
+
+    for (final index in <int>{_currentIndex - 1, _currentIndex + 1}) {
+      if (index < 0 || index >= items.length) continue;
+      final item = items[index];
+      if (item.isVideo) continue;
+
+      final fullUrl = ApiConfig.getMediaUrl(item.url);
+      if (fullUrl.isEmpty) continue;
+
+      unawaited(
+        precacheImage(
+          CachedNetworkImageProvider(fullUrl),
+          context,
+        ).catchError((_) {}),
+      );
+    }
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails details) {
@@ -280,6 +309,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                           setState(() {
                             _currentIndex = index;
                           });
+                          _precacheAdjacentImages();
                         },
                         itemBuilder: (context, index) {
                           final item = widget.allPhotos![index];

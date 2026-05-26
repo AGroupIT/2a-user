@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/services/agent_domain_resolver.dart';
+import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../tariffs/data/tariffs_provider.dart';
 import '../data/auth_provider.dart';
+import 'auth_visuals.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -170,171 +173,161 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final topPadding = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            topPadding + 40,
-            24,
-            bottomPadding + 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Logo
-              Center(
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    gradient: context.brandGradient,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.local_shipping_rounded,
-                      color: Colors.white,
-                      size: 42,
-                    ),
-                  ),
-                ),
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          const AppBackground(),
+          GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                topPadding + 28,
+                24,
+                bottomPadding + 24,
               ),
-              const SizedBox(height: 24),
-
-              // Title
-              const Text(
-                'Вход в личный кабинет',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 32),
-
-              // Form card
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 24,
-                      offset: Offset(0, 10),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildTextField(
-                      controller: _domainCtrl,
-                      label: 'Домен партнёра',
-                      hint: 'example-company',
-                      prefixIcon: Icons.business_rounded,
-                      keyboardType: TextInputType.url,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _loginCtrl,
-                      label: 'Email или телефон',
-                      hint: 'user@example.com',
-                      prefixIcon: Icons.person_rounded,
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _passwordCtrl,
-                      label: 'Пароль',
-                      hint: '••••••••',
-                      prefixIcon: Icons.lock_rounded,
-                      obscureText: _obscurePassword,
-                      keyboardType: TextInputType.text,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _login(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          color: const Color(0xFF999999),
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const AuthHeroHeader(
+                    icon: Icons.local_shipping_rounded,
+                    title: 'Вход в личный кабинет',
+                    subtitle:
+                        'Следите за грузами, сборками, счетами и фотоотчётами в одном защищённом кабинете.',
+                    trustItems: [
+                      AuthTrustItem(icon: Icons.route_rounded, label: 'Треки'),
+                      AuthTrustItem(
+                        icon: Icons.inventory_2_rounded,
+                        label: 'Сборки',
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => context.push('/forgot-password'),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      AuthTrustItem(
+                        icon: Icons.support_agent_rounded,
+                        label: 'Поддержка',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+
+                  AuthFormCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildTextField(
+                          controller: _domainCtrl,
+                          label: 'Домен партнёра',
+                          hint: 'example-company',
+                          prefixIcon: Icons.business_rounded,
+                          keyboardType: TextInputType.url,
                         ),
-                        child: Text(
-                          'Забыли пароль?',
-                          style: TextStyle(
-                            color: context.brandPrimary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _loginCtrl,
+                          label: 'Email или телефон',
+                          hint: 'user@example.com',
+                          prefixIcon: Icons.person_rounded,
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _passwordCtrl,
+                          label: 'Пароль',
+                          hint: '••••••••',
+                          prefixIcon: Icons.lock_rounded,
+                          obscureText: _obscurePassword,
+                          keyboardType: TextInputType.text,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _login(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              color: const Color(0xFF999999),
+                              size: 20,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _isLoading ? null : _login,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Войти',
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => context.push('/forgot-password'),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              'Забыли пароль?',
                               style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
+                                color: AuthVisuals.primary(context),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
                               ),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: _isLoading ? null : _login,
+                                style: AuthVisuals.primaryButtonStyle(context),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Войти',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => context.push('/register'),
+                                style: AuthVisuals.outlinedButtonStyle(context),
+                                child: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Зарегистрироваться',
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Registration link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Нет аккаунта? ',
-                    style: TextStyle(color: Color(0xFF666666)),
                   ),
-                  GestureDetector(
-                    onTap: () => context.push('/register'),
-                    child: Text(
-                      'Подать заявку',
-                      style: TextStyle(
-                        color: context.brandPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+
+                  const SizedBox(height: 24),
+                  const _PublicTariffsPreview(),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -351,6 +344,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     TextInputAction? textInputAction,
     void Function(String)? onSubmitted,
   }) {
+    final accent = AuthVisuals.primary(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -365,7 +360,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE0E0E0)),
+            color: Colors.white.withValues(alpha: 0.78),
+            border: Border.all(color: accent.withValues(alpha: 0.16)),
             borderRadius: BorderRadius.circular(12),
           ),
           child: TextField(
@@ -383,7 +379,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               prefixIcon: Icon(
                 prefixIcon,
-                color: const Color(0xFF999999),
+                color: accent.withValues(alpha: 0.72),
                 size: 20,
               ),
               suffixIcon: suffixIcon,
@@ -397,5 +393,173 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       ],
     );
+  }
+}
+
+class _PublicTariffsPreview extends ConsumerWidget {
+  const _PublicTariffsPreview();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tariffsAsync = ref.watch(publicDefaultTariffsProvider);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: tariffsAsync.when(
+        loading: () => const SizedBox(
+          height: 88,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        error: (_, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PublicTariffsHeader(accent: AuthVisuals.primary(context)),
+            const SizedBox(height: 12),
+            Text(
+              'Не удалось загрузить тарифы доставки.',
+              style: TextStyle(
+                color: AppColors.textSecondary.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ),
+        data: (tariffs) {
+          if (tariffs.isEmpty) return const SizedBox.shrink();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PublicTariffsHeader(accent: AuthVisuals.primary(context)),
+              const SizedBox(height: 14),
+              for (var i = 0; i < tariffs.length; i++) ...[
+                _PublicTariffRow(tariff: tariffs[i]),
+                if (i != tariffs.length - 1)
+                  Divider(
+                    height: 18,
+                    color: const Color(0xFF2F2F2F).withValues(alpha: 0.08),
+                  ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PublicTariffsHeader extends StatelessWidget {
+  final Color accent;
+
+  const _PublicTariffsHeader({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.price_change_rounded, color: accent, size: 20),
+        ),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Тарифы доставки',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF2F2F2F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PublicTariffRow extends StatelessWidget {
+  final UserDeliveryTariff tariff;
+
+  const _PublicTariffRow({required this.tariff});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AuthVisuals.primary(context);
+    final price = _priceFrom(tariff);
+    final priceText = price > 0 ? 'от \$${_fmt(price)}/кг' : 'цена от —';
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            tariff.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF2F2F2F),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            priceText,
+            style: TextStyle(
+              color: accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static double _priceFrom(UserDeliveryTariff tariff) {
+    final tierPrices = tariff.weightTiers
+        .map((tier) => tier.pricePerKg)
+        .where((price) => price > 0)
+        .toList();
+    if (tierPrices.isEmpty) return tariff.baseCost;
+    tierPrices.sort();
+    return tierPrices.first;
+  }
+
+  static String _fmt(double value) {
+    final rounded = value.toStringAsFixed(2);
+    return rounded.endsWith('00')
+        ? value.toStringAsFixed(0)
+        : rounded.replaceFirst(RegExp(r'0$'), '');
   }
 }

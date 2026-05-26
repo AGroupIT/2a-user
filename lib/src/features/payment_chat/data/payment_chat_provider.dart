@@ -340,6 +340,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   Timer? _fallbackPollingTimer;
 
   bool _isDisposed = false;
+  bool _isRealtimeActive = false;
 
   @override
   PaymentChatState build() {
@@ -371,6 +372,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       webSocketConnectionStatusProvider,
       (previous, next) {
         next.whenData((status) {
+          if (!_isRealtimeActive) {
+            _fallbackPollingTimer?.cancel();
+            return;
+          }
           if (status == SocketConnectionStatus.connected) {
             _fallbackPollingTimer?.cancel();
           } else if (status == SocketConnectionStatus.disconnected) {
@@ -383,6 +388,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     // Слушаем новые сообщения (отменяем предыдущую подписку при reconnect)
     _messageSubscription?.cancel();
     _messageSubscription = _wsService.messages.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final message = ChatMessage.fromJson(data);
 
@@ -419,6 +425,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     // Слушаем редактирование сообщений (отменяем предыдущую подписку при reconnect)
     _messageEditedSubscription?.cancel();
     _messageEditedSubscription = _wsService.messageEdited.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final editedMessage = ChatMessage.fromJson(data);
         if (state.conversation != null &&
@@ -436,6 +443,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     // Слушаем удаление сообщений
     _messageDeletedSubscription?.cancel();
     _messageDeletedSubscription = _wsService.messageDeleted.listen((data) {
+      if (!_isRealtimeActive) return;
       try {
         final deletedId = data['id'] as int?;
         final convId = data['conversationId'] as int?;
@@ -455,9 +463,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   /// Fallback polling если WebSocket не работает
   void _startFallbackPolling() {
+    if (!_isRealtimeActive) return;
     _fallbackPollingTimer?.cancel();
     _fallbackPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_isDisposed) {
+      if (_isDisposed || !_isRealtimeActive) {
         _fallbackPollingTimer?.cancel();
         return;
       }
@@ -465,6 +474,33 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         pollNewMessages();
       }
     });
+  }
+
+  /// Включает/выключает realtime-активность чата без уничтожения истории.
+  ///
+  /// Payment chat открыт отдельным root-route, но provider не autoDispose,
+  /// поэтому после выхода со страницы нужно явно гасить polling и presence.
+  void setRealtimeActive(bool active) {
+    if (_isDisposed || _isRealtimeActive == active) return;
+    _isRealtimeActive = active;
+
+    if (!active) {
+      _fallbackPollingTimer?.cancel();
+      if (state.conversation != null) {
+        _wsService.leaveConversation(state.conversation!.id);
+        _wsService.sendPresence(state.conversation!.id, false);
+      }
+      return;
+    }
+
+    if (state.conversation != null) {
+      _wsService.joinConversation(state.conversation!.id);
+      _wsService.sendPresence(state.conversation!.id, true);
+      if (_wsService.currentStatus != SocketConnectionStatus.connected) {
+        _startFallbackPolling();
+      }
+      unawaited(pollNewMessages());
+    }
   }
 
   /// Загрузить диалог
@@ -484,9 +520,11 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         lastMessageId: lastId,
       );
 
-      // Присоединяемся к WebSocket комнате
-      _wsService.joinConversation(conversation.id);
-      _wsService.sendPresence(conversation.id, true);
+      // Присоединяемся к WebSocket комнате только пока экран активен.
+      if (_isRealtimeActive) {
+        _wsService.joinConversation(conversation.id);
+        _wsService.sendPresence(conversation.id, true);
+      }
       ClientLogService.instance.add(
         type: 'payment_chat_loaded',
         level: 'info',
@@ -712,7 +750,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
-    if (_isDisposed || state.conversation == null) return;
+    if (_isDisposed || !_isRealtimeActive || state.conversation == null) return;
 
     final lastMessageId = state.lastMessageId ?? 0;
 

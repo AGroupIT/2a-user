@@ -46,6 +46,7 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     required String email,
     required String password,
     required String confirmPassword,
+    required String phoneVerificationToken,
     String? agentCode,
     String? referralCode,
   }) async {
@@ -60,6 +61,7 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
           'email': email.trim().toLowerCase(),
           'password': password,
           'confirmPassword': confirmPassword,
+          'phoneVerificationToken': phoneVerificationToken,
           if (agentCode != null && agentCode.trim().isNotEmpty)
             'agentCode': agentCode.trim(),
           if (referralCode != null && referralCode.isNotEmpty)

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -112,6 +113,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       data: {'state': state.name},
     );
 
+    // На Flutter Web `resumed` может приходить от смены вкладки/фокуса окна.
+    // Не применяем mobile/iOS reconnect-логику, иначе web получает лишние
+    // force reconnect + full refetch без реального ухода приложения в background.
+    if (kIsWeb) return;
+
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       ref.read(chatPresenceServiceProvider).onAppPaused();
@@ -143,7 +149,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       ref
           .read(apiClientProvider)
           .resetConnections(reason: 'app_resumed', force: true);
-      ref.read(webSocketServiceProvider).forceReconnect();
+      ref.read(webSocketServiceProvider).forceReconnect(reason: 'app_resumed');
       Future.microtask(() {
         if (!mounted) return;
         if (!ref.read(authProvider).isLoggedIn) return;

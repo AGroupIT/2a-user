@@ -77,6 +77,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   late final IsPaymentChatScreenOpenNotifier _screenOpenNotifier;
   late final ChatPresenceService _chatPresenceService;
   late final PushNotificationService _notificationService;
+  late final PaymentChatController _paymentChatController;
 
   final GlobalKey _infoBannerKey = GlobalKey();
   final GlobalKey _messagesAreaKey = GlobalKey();
@@ -88,6 +89,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     _screenOpenNotifier = ref.read(isPaymentChatScreenOpenProvider.notifier);
     _chatPresenceService = ref.read(chatPresenceServiceProvider);
     _notificationService = ref.read(pushNotificationServiceProvider);
+    _paymentChatController = ref.read(paymentChatControllerProvider.notifier);
+    _paymentChatController.setRealtimeActive(true);
     WidgetsBinding.instance.addObserver(this);
     _initNotifications();
 
@@ -100,7 +103,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           NotificationType.paymentChatMessage,
         }),
       );
-      await ref.read(paymentChatControllerProvider.notifier).loadConversation();
+      await _paymentChatController.loadConversation();
       if (!_canUseRef) return;
 
       // Если есть начальное сообщение об оплате счёта - отправляем его сразу
@@ -148,6 +151,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
     try {
       _screenOpenNotifier.set(false);
+      _paymentChatController.setRealtimeActive(false);
       _chatPresenceService.closeChat(ChatType.payment);
     } catch (_) {}
 
@@ -166,7 +170,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     if (state == AppLifecycleState.resumed) {
       _clearNotifications();
       // Обновляем сообщения при возврате в приложение
-      ref.read(paymentChatControllerProvider.notifier).pollNewMessages();
+      _paymentChatController.pollNewMessages();
       // Уведомляем сервер что чат снова открыт
       _notifyServerChatOpened();
     } else if (state == AppLifecycleState.paused) {

@@ -8,6 +8,7 @@ import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/photos/data/photos_provider.dart';
 import '../../features/profile/data/profile_provider.dart';
 import '../../features/rules/data/rules_provider.dart';
+import '../../features/shell/application/shell_branch_provider.dart';
 import '../../features/tariffs/data/tariffs_provider.dart';
 import '../../features/assemblies/data/assemblies_provider.dart'
     as user_assemblies;
@@ -131,7 +132,9 @@ void _handleDeltaType(Ref ref, String type) {
       return;
 
     case 'invoices':
-      ref.invalidate(invoicesListProvider);
+      if (_isShellBranchActive(ref, ShellBranchIndex.invoices)) {
+        ref.invalidate(invoicesListProvider);
+      }
       ref.invalidate(invoicesDigestProvider);
       ref.invalidate(invoicesCountProvider);
       // Инвалидируем детальные провайдеры (family) — нужно для мгновенного
@@ -202,7 +205,9 @@ void _invalidateAllFor(dynamic ref) {
   ref.invalidate(user_assemblies.assembliesListProvider);
   ref.invalidate(user_assemblies.assembliesCountProvider);
   ref.read(spAssembliesControllerProvider.notifier).refreshFromDelta();
-  ref.invalidate(invoicesListProvider);
+  if (_isShellBranchActive(ref, ShellBranchIndex.invoices)) {
+    ref.invalidate(invoicesListProvider);
+  }
   ref.invalidate(invoicesDigestProvider);
   ref.invalidate(invoicesCountProvider);
   ref.invalidate(newsListProvider);
@@ -213,4 +218,14 @@ void _invalidateAllFor(dynamic ref) {
   ref.invalidate(photosDaysProvider);
   ref.invalidate(photosByDateProvider);
   ref.invalidate(photosSearchProvider);
+}
+
+bool _isShellBranchActive(dynamic ref, int branchIndex) {
+  try {
+    return ref.read(activeShellBranchIndexProvider) == branchIndex;
+  } catch (_) {
+    // На случай ранних bootstrap/test-контекстов без shell provider:
+    // лучше обновить данные, чем случайно оставить активный экран stale.
+    return true;
+  }
 }

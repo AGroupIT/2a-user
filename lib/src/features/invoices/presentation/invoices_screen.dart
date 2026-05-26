@@ -23,6 +23,7 @@ import '../../clients/application/client_codes_controller.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../referral/data/referral_provider.dart';
+import '../../shell/application/shell_branch_provider.dart';
 import '../data/invoices_provider.dart';
 import '../domain/invoice_item.dart';
 
@@ -367,6 +368,15 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(activeShellBranchIndexProvider, (previous, next) {
+      if (previous == next || next != ShellBranchIndex.invoices) return;
+      final activeCode = ref.read(activeClientCodeProvider);
+      if (activeCode != null) {
+        ref.invalidate(invoicesListProvider(activeCode));
+      }
+      ref.invalidate(invoiceStatusesProvider);
+    });
+
     final clientCode = ref.watch(activeClientCodeProvider);
     if (clientCode == null) {
       return const EmptyState(

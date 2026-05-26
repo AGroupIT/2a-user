@@ -8,10 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phone_form_field/phone_form_field.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
@@ -3400,8 +3400,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             final isUrl =
                                 path.startsWith('http') || path.startsWith('/');
                             imageWidget = isUrl
-                                ? CachedNetworkImage(
-                                    imageUrl: ApiConfig.getMediaUrl(path),
+                                ? AppCachedMediaImage(
+                                    url: path,
+                                    thumbnailSize: 480,
                                     memCacheWidth: 320,
                                     memCacheHeight: 240,
                                     maxWidthDiskCache: 640,
@@ -7424,8 +7425,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             ),
             child: photos.isEmpty
                 ? const SizedBox.shrink()
-                : CachedNetworkImage(
-                    imageUrl: ApiConfig.getMediaUrl(photos.first),
+                : AppCachedMediaImage(
+                    url: photos.first,
+                    thumbnailSize: 480,
                     memCacheWidth: 220,
                     memCacheHeight: 220,
                     maxWidthDiskCache: 440,
@@ -7766,37 +7768,48 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              CachedNetworkImage(
-                                imageUrl: fullUrl,
-                                memCacheWidth: 160,
-                                memCacheHeight: 160,
-                                maxWidthDiskCache: 320,
-                                maxHeightDiskCache: 320,
-                                fadeInDuration: Duration.zero,
-                                fadeOutDuration: Duration.zero,
-                                useOldImageOnUrlChange: false,
-                                filterQuality: FilterQuality.low,
-                                imageBuilder: (_, imageProvider) =>
-                                    DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        image: DecorationImage(
-                                          image: imageProvider,
-                                          fit: BoxFit.cover,
+                              if (isVideo)
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Colors.black.withValues(alpha: 0.45),
+                                        Colors.black.withValues(alpha: 0.18),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else
+                                AppCachedMediaImage(
+                                  url: mediaUrls[index],
+                                  thumbnailSize: 360,
+                                  memCacheWidth: 160,
+                                  memCacheHeight: 160,
+                                  maxWidthDiskCache: 320,
+                                  maxHeightDiskCache: 320,
+                                  imageBuilder: (_, imageProvider) =>
+                                      DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          image: DecorationImage(
+                                            image: imageProvider,
+                                            fit: BoxFit.cover,
+                                          ),
                                         ),
                                       ),
+                                  placeholder: (_, _) => const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                                placeholder: (_, _) => const Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                  ),
+                                  errorWidget: (_, _, _) => const Center(
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      size: 20,
+                                    ),
                                   ),
                                 ),
-                                errorWidget: (_, _, _) => const Center(
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
                               if (isVideo)
                                 Center(
                                   child: Container(
@@ -8439,8 +8452,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   color: Colors.black.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: CachedNetworkImage(
-                  imageUrl: ApiConfig.getMediaUrl(box.photos.first.url),
+                child: AppCachedMediaImage(
+                  url: box.photos.first.url,
+                  thumbnailSize: 720,
                   memCacheWidth: 360,
                   memCacheHeight: 240,
                   maxWidthDiskCache: 720,
@@ -9137,8 +9151,9 @@ class _QuestionAnswerPhotoGrid extends StatelessWidget {
               onTap: () => _open(context, index),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: CachedNetworkImage(
-                  imageUrl: ApiConfig.getMediaUrl(urls[index]),
+                child: AppCachedMediaImage(
+                  url: urls[index],
+                  thumbnailSize: 360,
                   fit: BoxFit.cover,
                   memCacheWidth: 180,
                   memCacheHeight: 180,
@@ -9449,8 +9464,9 @@ class _TrackProductPreview extends StatelessWidget {
                 ],
               ),
               child: hasImage
-                  ? CachedNetworkImage(
-                      imageUrl: ApiConfig.getMediaUrl(imageUrls.first),
+                  ? AppCachedMediaImage(
+                      url: imageUrls.first,
+                      thumbnailSize: 480,
                       memCacheWidth: 220,
                       memCacheHeight: 220,
                       maxWidthDiskCache: 440,
@@ -9566,32 +9582,46 @@ class _TrackPhotoGrid extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        CachedNetworkImage(
-                          imageUrl: ApiConfig.getMediaUrl(visibleUrls[i]),
-                          memCacheWidth: 180,
-                          memCacheHeight: 180,
-                          maxWidthDiskCache: 360,
-                          maxHeightDiskCache: 360,
-                          fadeInDuration: Duration.zero,
-                          fadeOutDuration: Duration.zero,
-                          useOldImageOnUrlChange: false,
-                          filterQuality: FilterQuality.low,
-                          imageBuilder: (context, imageProvider) =>
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  image: DecorationImage(
-                                    image: imageProvider,
-                                    fit: BoxFit.cover,
+                        if (_isVideoUrl(ApiConfig.getMediaUrl(visibleUrls[i])))
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.45),
+                                  Colors.black.withValues(alpha: 0.18),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          AppCachedMediaImage(
+                            url: visibleUrls[i],
+                            thumbnailSize: 360,
+                            memCacheWidth: 180,
+                            memCacheHeight: 180,
+                            maxWidthDiskCache: 360,
+                            maxHeightDiskCache: 360,
+                            imageBuilder: (context, imageProvider) =>
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    image: DecorationImage(
+                                      image: imageProvider,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
+                            placeholder: (_, _) => const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            errorWidget: (_, _, _) => const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 20,
                               ),
-                          placeholder: (_, _) => const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
                           ),
-                          errorWidget: (_, _, _) => const Center(
-                            child: Icon(Icons.broken_image_outlined, size: 20),
-                          ),
-                        ),
                         if (_isVideoUrl(ApiConfig.getMediaUrl(visibleUrls[i])))
                           Center(
                             child: Container(
@@ -10379,8 +10409,9 @@ class _ProductInfoInline extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: CachedNetworkImage(
-                imageUrl: ApiConfig.getMediaUrl(imageUrls.first),
+              child: AppCachedMediaImage(
+                url: imageUrls.first,
+                thumbnailSize: 480,
                 memCacheWidth: 320,
                 memCacheHeight: 240,
                 maxWidthDiskCache: 640,

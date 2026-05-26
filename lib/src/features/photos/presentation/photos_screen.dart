@@ -1,9 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
@@ -414,8 +413,6 @@ class _PhotoThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = ApiConfig.getMediaUrl(item.url);
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Material(
@@ -446,8 +443,9 @@ class _PhotoThumbnail extends StatelessWidget {
                       ),
                     )
                   else
-                    CachedNetworkImage(
-                      imageUrl: imageUrl,
+                    AppCachedMediaImage(
+                      url: item.url,
+                      thumbnailSize: 360,
                       memCacheWidth: 180,
                       memCacheHeight: 180,
                       maxWidthDiskCache: 360,

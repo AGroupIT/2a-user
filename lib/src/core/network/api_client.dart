@@ -55,6 +55,17 @@ class ApiClient {
 
   ApiClient() {
     _dio = _createDio();
+    ClientLogService.instance.add(
+      type: 'api_base_url_config',
+      level: 'info',
+      message: 'Настроен API host 2a-user',
+      data: {
+        'primaryBaseUrl': ApiConfig.baseUrl,
+        'activeBaseUrl': activeBaseUrl,
+        'fallbackBaseUrl': ApiConfig.fallbackBaseUrl,
+        'fallbackEnabled': ApiConfig.fallbackBaseUrl != null,
+      },
+    );
   }
 
   String get activeBaseUrl => _baseUrlOverride ?? ApiConfig.baseUrl;
@@ -130,7 +141,11 @@ class ApiClient {
     _dio = _createDio();
     oldDio.close(force: force);
     _lastConnectionResetAt = now;
-    ClientLogService.instance.httpConnectionReset(reason: reason);
+    ClientLogService.instance.httpConnectionReset(
+      reason: reason,
+      activeBaseUrl: activeBaseUrl,
+      fallbackBaseUrl: ApiConfig.fallbackBaseUrl,
+    );
     debugPrint(
       '[ApiClient] HTTP connections reset (force=$force, baseUrl=$activeBaseUrl)',
     );

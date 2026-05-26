@@ -249,13 +249,22 @@ class ClientLogService {
     );
   }
 
-  void httpConnectionReset({String? reason}) {
+  void httpConnectionReset({
+    String? reason,
+    String? activeBaseUrl,
+    String? fallbackBaseUrl,
+  }) {
     add(
       type: 'http_connection_reset',
       level: 'warning',
       message: 'Сброшены HTTP-соединения',
       route: _currentScreen,
-      data: {if (reason != null) 'reason': reason},
+      data: {
+        if (reason != null) 'reason': reason,
+        if (activeBaseUrl != null) 'activeBaseUrl': activeBaseUrl,
+        if (fallbackBaseUrl != null) 'fallbackBaseUrl': fallbackBaseUrl,
+        'fallbackEnabled': fallbackBaseUrl != null,
+      },
     );
   }
 

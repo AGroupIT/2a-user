@@ -2,7 +2,7 @@ FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 ARG API_BASE_URL=https://prod-api.cp.2a-logistic.com/api
 ARG MEDIA_BASE_URL=https://prod-api.cp.2a-logistic.com
-ARG SENTRY_DSN=https://feb59cde1dc1418cbe9db4a657de22762769ea7dc40b4a90ad0a0135372672bd@k1.hawk.so/0
+ARG SENTRY_DSN=https://98a0571e1550242f4574ec83627361b8@sentry.cp.2a-logistic.com/2
 ARG SENTRY_ENVIRONMENT=production
 ARG SENTRY_RELEASE=
 ARG SENTRY_DIST=

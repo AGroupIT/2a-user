@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -54,6 +55,7 @@ class UpdateService {
   /// Check for update and return [UpdateInfo] if available.
   static Future<UpdateInfo?> checkForUpdate() async {
     try {
+      if (kIsWeb) return null;
       if (!Platform.isAndroid && !Platform.isIOS) return null;
       if (Platform.isAndroid && _distribution == 'rustore') return null;
 
@@ -214,6 +216,7 @@ class UpdateService {
 
   /// Install the downloaded update.
   static Future<void> installUpdate(String filePath) async {
+    if (kIsWeb) return;
     if (Platform.isAndroid) {
       await _installAndroid(filePath);
     }

@@ -202,7 +202,23 @@ bool _isOpaqueWebScriptError(SentryEvent event, String exceptionValue) {
   });
 }
 
-void main() async {
+Future<void> main() async {
+  await runZonedGuarded<Future<void>>(_bootstrapApp, _handleUncaughtZoneError);
+}
+
+void _handleUncaughtZoneError(Object error, StackTrace stackTrace) {
+  ClientLogService.instance.error(
+    'Uncaught zone error',
+    error: error,
+    stackTrace: stackTrace,
+  );
+
+  if (Sentry.isEnabled) {
+    unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+  }
+}
+
+Future<void> _bootstrapApp() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (kReleaseMode) {
