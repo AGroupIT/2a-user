@@ -24,6 +24,7 @@ import '../../../core/ui/pdf_preview_overlay.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/utils/file_download_helper.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../notifications/domain/notification_item.dart';
 import '../../shell/application/shell_branch_provider.dart';
@@ -1003,51 +1004,60 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: CachedNetworkImage(
-                  imageUrl: fullUrl,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 360,
-                  memCacheHeight: 360,
-                  maxWidthDiskCache: 720,
-                  maxHeightDiskCache: 720,
-                  fadeInDuration: Duration.zero,
-                  fadeOutDuration: Duration.zero,
-                  useOldImageOnUrlChange: false,
-                  filterQuality: FilterQuality.low,
-                  placeholder: (context, url) => Container(
-                    width: 150,
-                    height: 150,
-                    color: isMe
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : Colors.grey.withValues(alpha: 0.2),
-                    child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    width: 150,
-                    height: 100,
-                    color: isMe
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : Colors.grey.withValues(alpha: 0.2),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.broken_image,
-                          color: isMe ? Colors.white70 : Colors.black45,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: fullUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 360,
+                      memCacheHeight: 360,
+                      maxWidthDiskCache: 720,
+                      maxHeightDiskCache: 720,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      useOldImageOnUrlChange: false,
+                      filterQuality: FilterQuality.low,
+                      placeholder: (context, url) => Container(
+                        width: 150,
+                        height: 150,
+                        color: isMe
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Colors.grey.withValues(alpha: 0.2),
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Ошибка загрузки',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isMe ? Colors.white70 : Colors.black45,
-                          ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        width: 150,
+                        height: 100,
+                        color: isMe
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Colors.grey.withValues(alpha: 0.2),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.broken_image,
+                              color: isMe ? Colors.white70 : Colors.black45,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ошибка загрузки',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isMe ? Colors.white70 : Colors.black45,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    _buildImageDownloadButton(
+                      onPressed: () =>
+                          _downloadFile(fullUrl, attachment.fileName),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1125,6 +1135,27 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           );
         }
       }).toList(),
+    );
+  }
+
+  Widget _buildImageDownloadButton({required VoidCallback onPressed}) {
+    return Positioned(
+      top: 6,
+      right: 6,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: const CircleBorder(),
+        child: IconButton(
+          tooltip: tr(context, ru: 'Скачать', zh: '下载'),
+          visualDensity: VisualDensity.compact,
+          iconSize: 18,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          padding: EdgeInsets.zero,
+          color: Colors.white,
+          onPressed: onPressed,
+          icon: const Icon(Icons.download_rounded),
+        ),
+      ),
     );
   }
 
@@ -1243,15 +1274,37 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
       }
 
       if (kIsWeb) {
-        final opened = await launchUrl(
-          Uri.parse(url),
-          webOnlyWindowName: '_blank',
+        final response = await Dio().get<List<int>>(
+          url,
+          options: Options(responseType: ResponseType.bytes),
         );
-        if (!opened) {
-          throw Exception('Could not open file URL');
+        final bytes = response.data;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('Empty file response');
+        }
+        final saved = await downloadFile(
+          bytes: Uint8List.fromList(bytes),
+          fileName: fileName,
+        );
+        if (!saved) {
+          throw Exception('Could not save file');
         }
         if (!mounted) return;
         AppToast.hide();
+        AppToast.showFromSnackBar(
+          context,
+          SnackBar(
+            content: Text(
+              tr(
+                context,
+                ru: 'Файл сохранён: $fileName',
+                zh: '文件已保存：$fileName',
+              ),
+            ),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.fixed,
+          ),
+        );
         return;
       }
 
