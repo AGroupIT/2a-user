@@ -3927,6 +3927,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   }
 
   Future<void> _openDigestTrackSheet(_GroupBucket bucket) async {
+    if (!mounted) return;
+
+    final trackStatuses =
+        ref.read(trackStatusesProvider).asData?.value ?? const <TrackStatus>[];
+    final assemblyStatuses =
+        ref.read(assemblyStatusesProvider).asData?.value ??
+        const <TrackStatus>[];
+
     await showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -3947,7 +3955,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             child: ListView(
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              children: [const SheetHandle(), _buildTrackGroupCard(bucket)],
+              children: [
+                const SheetHandle(),
+                _buildTrackGroupCard(
+                  bucket,
+                  trackStatuses: trackStatuses,
+                  assemblyStatuses: assemblyStatuses,
+                ),
+              ],
             ),
           );
         },
@@ -3959,13 +3974,20 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     _GroupBucket group, {
     GlobalKey? tutorialActionsKey,
     GlobalKey? tutorialAssemblyKey,
+    List<TrackStatus>? trackStatuses,
+    List<TrackStatus>? assemblyStatuses,
   }) {
     return _TrackGroupCard(
       assembly: group.assembly,
       tracks: group.tracks,
-      trackStatuses: ref.read(trackStatusesProvider).asData?.value ?? const [],
+      trackStatuses:
+          trackStatuses ??
+          ref.read(trackStatusesProvider).asData?.value ??
+          const [],
       assemblyStatuses:
-          ref.read(assemblyStatusesProvider).asData?.value ?? const [],
+          assemblyStatuses ??
+          ref.read(assemblyStatusesProvider).asData?.value ??
+          const [],
       selectedTrackCodes: _selectedTracks,
       selectedStatus: _selectedStatus,
       onToggle: _toggleTrack,

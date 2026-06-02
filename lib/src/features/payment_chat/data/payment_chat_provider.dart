@@ -332,8 +332,9 @@ class PaymentChatState {
 
 /// Контроллер чата по оплате
 class PaymentChatController extends Notifier<PaymentChatState> {
-  late final PaymentChatRepository _repository;
-  late final WebSocketService _wsService;
+  PaymentChatRepository get _repository =>
+      ref.read(paymentChatRepositoryProvider);
+  late WebSocketService _wsService;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageEditedSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
@@ -345,7 +346,6 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   @override
   PaymentChatState build() {
     _isDisposed = false;
-    _repository = ref.read(paymentChatRepositoryProvider);
     _wsService = ref.watch(webSocketServiceProvider);
     _listenToWebSocket();
 

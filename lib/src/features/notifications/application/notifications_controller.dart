@@ -182,11 +182,14 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
       page: 1,
       limit: 50,
     );
+    if (!ref.mounted) return page.items;
     _updateBadge(page.items, backendUnread: page.unreadCount);
     return page.items;
   }
 
   void _updateBadge(List<NotificationItem> items, {int? backendUnread}) {
+    if (!ref.mounted) return;
+
     // PU-M13: предпочитаем unreadCount из backend, fallback на локальный
     // подсчёт, если функция вызвана не из fetch (например, после markRead).
     final unreadCount = backendUnread ?? items.where((n) => !n.isRead).length;
@@ -292,6 +295,7 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
   }
 
   Future<void> refresh() async {
+    if (!ref.mounted) return;
     if (_clientCode == null) return;
     if (_isRefreshing) return;
 
@@ -304,9 +308,11 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
         page: 1,
         limit: 50,
       );
+      if (!ref.mounted) return;
       _updateBadge(page.items, backendUnread: page.unreadCount);
       state = AsyncData(page.items);
     } catch (error, stackTrace) {
+      if (!ref.mounted) return;
       if (previous == null) {
         state = AsyncError(error, stackTrace);
       } else {
@@ -320,6 +326,7 @@ class NotificationsController extends AsyncNotifier<List<NotificationItem>> {
   void refreshDebounced() {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 700), () {
+      if (!ref.mounted) return;
       unawaited(refresh());
     });
   }

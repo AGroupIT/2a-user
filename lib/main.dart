@@ -79,10 +79,25 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   final exType = event.exceptions?.firstOrNull?.type ?? '';
   final exValue = event.exceptions?.firstOrNull?.value ?? '';
 
+  final frames = event.exceptions?.firstOrNull?.stackTrace?.frames;
+  final joinedFrames = frames == null
+      ? ''
+      : frames
+            .map(
+              (f) =>
+                  '${f.package ?? ''}:${f.fileName ?? ''}:${f.function ?? ''}',
+            )
+            .join('\n');
+
   // Browser global handlers can only report "Script error." for cross-origin
   // JavaScript failures without CORS details. The event has no actionable Dart
   // stack or source context, so keep it out of Sentry issue noise.
   if (_isOpaqueWebScriptError(event, exValue)) return null;
+  if (_isFlutterWebEngineNoise(exType, exValue, joinedFrames)) return null;
+  if (_isFlutterTextInputSelectionNoise(exType, exValue, joinedFrames)) {
+    return null;
+  }
+  if (_isFlutterCacheDatabaseNoise(exType, exValue, joinedFrames)) return null;
 
   // Сетевые сбои у клиентов ожидаемы: плохой интернет, VPN, DPI, China/RF routes.
   // Их оставляем в breadcrumbs, но не создаём отдельные issues.
@@ -99,6 +114,7 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
     'TimeoutException',
     'WebSocketException',
     'DioException',
+    'HTTPClientError',
     'OSError',
   };
   if (!keepHttpError && networkErrors.contains(exType)) return null;
@@ -107,16 +123,6 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   // Обычно приходят из FileImage._loadAsync для превью фото из кеша.
   const fileErrors = {'PathNotFoundException', 'FileSystemException'};
   if (fileErrors.contains(exType)) return null;
-
-  final frames = event.exceptions?.firstOrNull?.stackTrace?.frames;
-  final joinedFrames = frames == null
-      ? ''
-      : frames
-            .map(
-              (f) =>
-                  '${f.package ?? ''}:${f.fileName ?? ''}:${f.function ?? ''}',
-            )
-            .join('\n');
 
   const noisyStackMarkers = [
     '_HttpParser',
@@ -193,13 +199,64 @@ bool _isOpaqueWebScriptError(SentryEvent event, String exceptionValue) {
     final hasUnknownLocation =
         location.isEmpty ||
         location.contains('<unknown') ||
-        location.contains('unknown module');
+        location.contains('unknown module') ||
+        location.contains('http://') ||
+        location.contains('https://');
     final hasNoPosition =
         (frame.lineNo == null || frame.lineNo == 0) &&
         (frame.colNo == null || frame.colNo == 0);
 
     return hasUnknownLocation || hasNoPosition;
   });
+}
+
+bool _isFlutterWebEngineNoise(
+  String exceptionType,
+  String exceptionValue,
+  String joinedFrames,
+) {
+  if (!kIsWeb) return false;
+
+  final value = exceptionValue.trim();
+  final normalized = '$exceptionType\n$value\n$joinedFrames'.toLowerCase();
+
+  if (exceptionType == 'LateInitializationError' &&
+      value == "Field '' has not been initialized." &&
+      (normalized.contains('offscanvas') ||
+          normalized.contains('offscreen_canvas') ||
+          normalized.contains('clipboard') ||
+          normalized.contains('font_fallback') ||
+          normalized.contains('fontfallback'))) {
+    return true;
+  }
+
+  return exceptionType == 'NoSuchMethodError' &&
+      value.contains('Null check operator used on a null value') &&
+      (normalized.contains('canvaskit') ||
+          normalized.contains('offscanvas') ||
+          normalized.contains('offscreen_canvas'));
+}
+
+bool _isFlutterTextInputSelectionNoise(
+  String exceptionType,
+  String exceptionValue,
+  String joinedFrames,
+) {
+  final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames';
+  return normalized.contains('invalid selection start') &&
+      normalized.contains('TextInputChannel');
+}
+
+bool _isFlutterCacheDatabaseNoise(
+  String exceptionType,
+  String exceptionValue,
+  String joinedFrames,
+) {
+  final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames';
+  return (normalized.contains('SqfliteDatabaseException') ||
+          normalized.contains('DatabaseException')) &&
+      normalized.contains('cacheObject') &&
+      normalized.contains('unable to open database file');
 }
 
 Future<void> main() async {

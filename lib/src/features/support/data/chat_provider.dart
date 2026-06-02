@@ -282,8 +282,8 @@ class ChatState {
 
 /// Контроллер чата
 class ChatController extends Notifier<ChatState> {
-  late final ChatRepository _repository;
-  late final WebSocketService _wsService;
+  ChatRepository get _repository => ref.read(chatRepositoryProvider);
+  late WebSocketService _wsService;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageEditedSubscription;
   StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
@@ -292,7 +292,6 @@ class ChatController extends Notifier<ChatState> {
 
   @override
   ChatState build() {
-    _repository = ref.read(chatRepositoryProvider);
     _wsService = ref.watch(webSocketServiceProvider);
     _listenToWebSocket();
 

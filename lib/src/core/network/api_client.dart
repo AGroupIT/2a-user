@@ -654,7 +654,9 @@ class ApiClient {
 
         // В Sentry отправляем только серверные ошибки. Сетевые таймауты,
         // VPN/DPI/China routes и офлайн-сценарии остаются breadcrumbs.
-        if (statusCode != null && statusCode >= 500) {
+        if (statusCode != null &&
+            statusCode >= 500 &&
+            !_isLowPriorityHttpError(error.requestOptions)) {
           // Audit M3 (2026-04-26): не отправляем response body в Sentry,
           // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
           await Sentry.captureException(
@@ -698,6 +700,11 @@ class ApiClient {
 
   String _safeRequestPath(RequestOptions options) {
     return options.uri.path.isNotEmpty ? options.uri.path : options.path;
+  }
+
+  bool _isLowPriorityHttpError(RequestOptions options) {
+    final path = _safeRequestPath(options);
+    return path == '/api/client/chat-presence';
   }
 
   String _safeRequestUrl(RequestOptions options) {

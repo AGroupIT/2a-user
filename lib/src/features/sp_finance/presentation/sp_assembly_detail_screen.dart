@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_page_header.dart';
@@ -93,10 +94,54 @@ class _SpAssemblyDetailScreenState
     final state = ref.watch(spAssembliesControllerProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
-    final assembly = state.assemblies.firstWhere(
+    final assembly = _firstWhereOrNull<SpAssembly>(
+      state.assemblies,
       (a) => a.id == widget.assemblyId,
-      orElse: () => throw Exception('Assembly not found'),
     );
+    if (assembly == null) {
+      return Scaffold(
+        body: Stack(
+          children: [
+            const AppBackground(),
+            SafeArea(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  topPad * 0.7 + 16,
+                  16,
+                  bottomPad,
+                ),
+                children: [
+                  const AppPageHeader(
+                    title: 'Сборка не найдена',
+                    showBack: true,
+                  ),
+                  const SizedBox(height: 24),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline_rounded),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Сборка больше не найдена. Обновите список СП и попробуйте открыть её снова.',
+                              style: SpFinanceUi.bodyStyle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return TutorialScreenWrapper(
       screenKey: 'sp_assembly_detail',
@@ -171,6 +216,13 @@ class _SpAssemblyDetailScreenState
         ],
       ),
     );
+  }
+
+  T? _firstWhereOrNull<T>(Iterable<T> items, bool Function(T item) test) {
+    for (final item in items) {
+      if (test(item)) return item;
+    }
+    return null;
   }
 
   @override

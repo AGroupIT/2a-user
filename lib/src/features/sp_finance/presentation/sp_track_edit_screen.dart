@@ -100,6 +100,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
   SpTrack? _track;
   SpAssembly? _assembly;
   bool _isLoading = false;
+  String? _missingTrackMessage;
 
   @override
   void initState() {
@@ -129,33 +130,39 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
 
   void _loadTrack() {
     final state = ref.read(spAssembliesControllerProvider);
-    final assembly = state.assemblies.firstWhere(
+    final assembly = _firstWhereOrNull<SpAssembly>(
+      state.assemblies,
       (a) => a.id == widget.assemblyId,
-      orElse: () => throw Exception('Assembly not found'),
     );
+    if (assembly == null) {
+      _missingTrackMessage = 'Сборка больше не найдена. Обновите список СП.';
+      return;
+    }
 
-    final track = assembly.tracks.firstWhere(
+    final track = _firstWhereOrNull<SpTrack>(
+      assembly.tracks,
       (t) => t.id == widget.trackId,
-      orElse: () => throw Exception('Track not found'),
     );
+    if (track == null) {
+      _missingTrackMessage = 'Трек больше не найден. Обновите сборку.';
+      return;
+    }
 
-    setState(() {
-      _track = track;
-      _assembly = assembly;
-      _participantController.text = track.spParticipantName ?? '';
-      _supplierPriceController.text =
-          track.supplierPriceYuan?.toStringAsFixed(2) ?? '';
-      _purchasePriceController.text =
-          track.purchasePriceYuan?.toStringAsFixed(2) ?? '';
-      _purchaseRateController.text =
-          track.purchaseRate?.toStringAsFixed(4) ?? '';
-      _clientPriceController.text =
-          track.clientPriceYuan?.toStringAsFixed(2) ?? '';
-      _netWeightController.text = track.netWeightKg?.toStringAsFixed(3) ?? '';
-      _additionalExpensesController.text =
-          track.additionalExpensesRub?.toStringAsFixed(2) ?? '';
-      _noteController.text = track.note ?? '';
-    });
+    _missingTrackMessage = null;
+    _track = track;
+    _assembly = assembly;
+    _participantController.text = track.spParticipantName ?? '';
+    _supplierPriceController.text =
+        track.supplierPriceYuan?.toStringAsFixed(2) ?? '';
+    _purchasePriceController.text =
+        track.purchasePriceYuan?.toStringAsFixed(2) ?? '';
+    _purchaseRateController.text = track.purchaseRate?.toStringAsFixed(4) ?? '';
+    _clientPriceController.text =
+        track.clientPriceYuan?.toStringAsFixed(2) ?? '';
+    _netWeightController.text = track.netWeightKg?.toStringAsFixed(3) ?? '';
+    _additionalExpensesController.text =
+        track.additionalExpensesRub?.toStringAsFixed(2) ?? '';
+    _noteController.text = track.note ?? '';
   }
 
   /// Рассчитывает стоимость доставки для трека автоматически
@@ -408,7 +415,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
         ),
       ],
       child: _track == null
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildMissingTrackState(context, topPad, bottomPad)
           : ListView(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -698,6 +705,47 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 const SizedBox(height: 16),
               ],
             ),
+    );
+  }
+
+  T? _firstWhereOrNull<T>(Iterable<T> items, bool Function(T item) test) {
+    for (final item in items) {
+      if (test(item)) return item;
+    }
+    return null;
+  }
+
+  Widget _buildMissingTrackState(
+    BuildContext context,
+    double topPad,
+    double bottomPad,
+  ) {
+    final message =
+        _missingTrackMessage ??
+        'Данные трека загружаются. Если экран не обновится, вернитесь назад и откройте сборку снова.';
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad + 16),
+      children: [
+        const AppPageHeader(title: 'Трек не найден', showBack: true),
+        const SizedBox(height: 24),
+        _buildCard(
+          title: 'Нет актуальных данных',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message, style: SpFinanceUi.bodyStyle),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('Вернуться к сборке'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

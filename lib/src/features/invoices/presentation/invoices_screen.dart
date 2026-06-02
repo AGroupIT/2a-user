@@ -72,35 +72,36 @@ Future<bool> _requestInvoicePaymentStatus(
   WidgetRef ref,
   InvoiceItem item,
 ) async {
-  try {
-    await requestInvoicePayment(ref.read(apiClientProvider), item.id);
-    final activeCode = ref.read(activeClientCodeProvider);
+  final apiClient = ref.read(apiClientProvider);
+  final activeCode = ref.read(activeClientCodeProvider);
+
+  void invalidateInvoiceData() {
     if (activeCode != null) {
       ref.invalidate(invoicesListProvider(activeCode));
       ref.invalidate(invoicesDigestProvider(activeCode));
       ref.invalidate(invoicesCountProvider(activeCode));
     }
     ref.invalidate(invoiceByIdProvider(item.id));
+  }
+
+  try {
+    await requestInvoicePayment(apiClient, item.id);
+    if (context.mounted) {
+      invalidateInvoiceData();
+    }
     return true;
   } catch (_) {
-    final activeCode = ref.read(activeClientCodeProvider);
-    if (activeCode != null) {
-      ref.invalidate(invoicesListProvider(activeCode));
-      ref.invalidate(invoicesDigestProvider(activeCode));
-      ref.invalidate(invoicesCountProvider(activeCode));
-    }
-    ref.invalidate(invoiceByIdProvider(item.id));
+    if (!context.mounted) return false;
 
-    if (context.mounted) {
-      AppToast.showFromSnackBar(
-        context,
-        SnackBar(
-          content: const Text('Не удалось отправить счёт в обработку'),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.fixed,
-        ),
-      );
-    }
+    invalidateInvoiceData();
+    AppToast.showFromSnackBar(
+      context,
+      SnackBar(
+        content: const Text('Не удалось отправить счёт в обработку'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.fixed,
+      ),
+    );
     return false;
   }
 }
