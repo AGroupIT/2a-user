@@ -189,24 +189,74 @@ run_sentry_upload() {
     return 0
   fi
 
+  if [[ "${SENTRY_UPLOAD_SKIP:-}" =~ ^(1|true|yes)$ ]]; then
+    echo "🧭 Sentry: skip debug upload for ${label} (SENTRY_UPLOAD_SKIP=${SENTRY_UPLOAD_SKIP})"
+    return 0
+  fi
+
   if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
     echo "🧭 Sentry: skip debug upload for ${label} (SENTRY_AUTH_TOKEN is empty)"
     return 0
   fi
 
-  echo "🧭 Sentry: uploading debug files/source maps for ${label}..."
-  SENTRY_URL="$SENTRY_URL" \
-  SENTRY_PROJECT="$SENTRY_PROJECT" \
-  SENTRY_ORG="$SENTRY_ORG" \
-  SENTRY_RELEASE="$SENTRY_RELEASE" \
-  SENTRY_DIST="$SENTRY_DIST" \
-    dart run sentry_dart_plugin \
-      --sentry-define=url="$SENTRY_URL" \
-      --sentry-define=project="$SENTRY_PROJECT" \
-      --sentry-define=org="$SENTRY_ORG" \
-      --sentry-define=release="$SENTRY_RELEASE" \
-      --sentry-define=dist="$SENTRY_DIST" \
-      --sentry-define=commits=false
+  local max_attempts="${SENTRY_UPLOAD_RETRIES:-2}"
+  if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || [ "$max_attempts" -lt 1 ]; then
+    max_attempts=1
+  fi
+
+  local attempt exit_code=0
+  for attempt in $(seq 1 "$max_attempts"); do
+    if [ "$max_attempts" -gt 1 ]; then
+      echo "🧭 Sentry: uploading debug files/source maps for ${label} (attempt ${attempt}/${max_attempts})..."
+    else
+      echo "🧭 Sentry: uploading debug files/source maps for ${label}..."
+    fi
+
+    local errexit_was_on=0
+    case "$-" in
+      *e*) errexit_was_on=1 ;;
+    esac
+
+    set +e
+    SENTRY_URL="$SENTRY_URL" \
+    SENTRY_PROJECT="$SENTRY_PROJECT" \
+    SENTRY_ORG="$SENTRY_ORG" \
+    SENTRY_RELEASE="$SENTRY_RELEASE" \
+    SENTRY_DIST="$SENTRY_DIST" \
+      dart run sentry_dart_plugin \
+        --sentry-define=url="$SENTRY_URL" \
+        --sentry-define=project="$SENTRY_PROJECT" \
+        --sentry-define=org="$SENTRY_ORG" \
+        --sentry-define=release="$SENTRY_RELEASE" \
+        --sentry-define=dist="$SENTRY_DIST" \
+        --sentry-define=commits=false
+    exit_code=$?
+
+    if [ "$errexit_was_on" -eq 1 ]; then
+      set -e
+    else
+      set +e
+    fi
+
+    if [ "$exit_code" -eq 0 ]; then
+      return 0
+    fi
+
+    echo "⚠️  Sentry debug upload failed for ${label} (exit ${exit_code})."
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      echo "   Retrying in 10 seconds..."
+      sleep 10
+    fi
+  done
+
+  if [[ "${SENTRY_UPLOAD_STRICT:-}" =~ ^(1|true|yes)$ ]]; then
+    echo "❌ Sentry debug upload failed and SENTRY_UPLOAD_STRICT=${SENTRY_UPLOAD_STRICT}; aborting."
+    return "$exit_code"
+  fi
+
+  echo "⚠️  Continuing without Sentry debug upload for ${label}."
+  echo "   Set SENTRY_UPLOAD_STRICT=1 to make this step mandatory, or SENTRY_UPLOAD_SKIP=1 to skip it explicitly."
+  return 0
 }
 
 commit_if_needed() {
