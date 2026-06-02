@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/demo_mode_provider.dart';
 import 'app_colors.dart';
 
-/// Persistent top banner shown while demo mode is active.
+/// Persistent top banner shown while training mode is active.
 /// Styled like the app's floating SnackBar notifications.
 class DemoModeBanner extends ConsumerWidget {
   const DemoModeBanner({super.key});
@@ -57,7 +57,7 @@ class DemoModeBanner extends ConsumerWidget {
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Режим обучения — показаны тестовые данные.',
+                'Режим обучения.',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 13,

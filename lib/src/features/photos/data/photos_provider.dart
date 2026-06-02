@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/data/demo_data.dart';
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
@@ -89,25 +89,24 @@ final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
 /// Провайдер для получения общего количества фото по коду клиента
 final photosTotalCountProvider = FutureProvider.autoDispose.family<int, String>(
   (ref, clientCode) async {
-    if (ref.watch(demoModeProvider)) return DemoData.photosCount;
+    if (ref.watch(demoModeProvider)) return 0;
     final apiClient = ref.read(apiClientProvider);
 
     try {
-      final response = await apiClient.get(
-        '/photos',
-        queryParameters: {
-          'clientCode': clientCode,
-          'source': 'photoRequest', // Только фото из запросов фотоотчётов
-          'take': 1,
-        },
+      final queryParams = {
+        'clientCode': clientCode,
+        'source': 'photoRequest', // Только фото из запросов фотоотчётов
+        'take': 1,
+      };
+      final data = await StaleDataCache.getJson(
+        ref: ref,
+        cacheKey: StaleDataCache.buildKey('photos_total_count', queryParams),
+        label: 'количество фотоотчётов',
+        request: () => apiClient.get('/photos', queryParameters: queryParams),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final total = data['total'] as int? ?? 0;
-        return total;
-      }
-      return 0;
+      final total = data['total'] as int? ?? 0;
+      return total;
     } catch (e) {
       debugPrint('Error loading photos count: $e');
       return 0;
@@ -122,30 +121,29 @@ final photosRecentProvider = FutureProvider.autoDispose
       params,
     ) async {
       if (ref.watch(demoModeProvider)) {
-        return DemoData.photos.take(params.limit).toList();
+        return const <PhotoItem>[];
       }
       final apiClient = ref.read(apiClientProvider);
 
       try {
-        final response = await apiClient.get(
-          '/photos',
-          queryParameters: {
-            'clientCode': params.clientCode,
-            'source': 'photoRequest', // Только фото из запросов фотоотчётов
-            'take': params.limit,
-          },
+        final queryParams = {
+          'clientCode': params.clientCode,
+          'source': 'photoRequest', // Только фото из запросов фотоотчётов
+          'take': params.limit,
+        };
+        final data = await StaleDataCache.getJson(
+          ref: ref,
+          cacheKey: StaleDataCache.buildKey('photos_recent', queryParams),
+          label: 'последние фотоотчёты',
+          request: () => apiClient.get('/photos', queryParameters: queryParams),
         );
 
-        if (response.statusCode == 200 && response.data != null) {
-          final data = response.data as Map<String, dynamic>;
-          final photosJson = data['data'] as List<dynamic>? ?? [];
+        final photosJson = data['data'] as List<dynamic>? ?? [];
 
-          return photosJson
-              .map((json) => PhotoItem.fromJson(json as Map<String, dynamic>))
-              .toList();
-        }
-        return [];
-      } on DioException catch (e) {
+        return photosJson
+            .map((json) => PhotoItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
         debugPrint('Error loading recent photos: $e');
         return [];
       }
@@ -159,13 +157,7 @@ final photosDaysProvider = FutureProvider.autoDispose
     ) async {
       if (ref.watch(demoModeProvider)) {
         // Дни, в которые есть демо-фотографии за нужный месяц
-        return DemoData.photos
-            .where(
-              (p) => p.date.month == params.month && p.date.year == params.year,
-            )
-            .map((p) => p.date.day.toString())
-            .toSet()
-            .toList();
+        return const <String>[];
       }
       final apiClient = ref.read(apiClientProvider);
 
@@ -199,40 +191,30 @@ final photosByDateProvider = FutureProvider.autoDispose
       params,
     ) async {
       if (ref.watch(demoModeProvider)) {
-        final d = DateTime.tryParse(params.date);
-        if (d == null) return DemoData.photos;
-        return DemoData.photos
-            .where(
-              (p) =>
-                  p.date.year == d.year &&
-                  p.date.month == d.month &&
-                  p.date.day == d.day,
-            )
-            .toList();
+        return const <PhotoItem>[];
       }
       final apiClient = ref.read(apiClientProvider);
 
       try {
-        final response = await apiClient.get(
-          '/photos',
-          queryParameters: {
-            'clientCode': params.clientCode,
-            'source': 'photoRequest', // Только фото из запросов фотоотчётов
-            'date': params.date,
-            'take': 100,
-          },
+        final queryParams = {
+          'clientCode': params.clientCode,
+          'source': 'photoRequest', // Только фото из запросов фотоотчётов
+          'date': params.date,
+          'take': 100,
+        };
+        final data = await StaleDataCache.getJson(
+          ref: ref,
+          cacheKey: StaleDataCache.buildKey('photos_by_date', queryParams),
+          label: 'фотоотчёты',
+          request: () => apiClient.get('/photos', queryParameters: queryParams),
         );
 
-        if (response.statusCode == 200 && response.data != null) {
-          final data = response.data as Map<String, dynamic>;
-          final photosJson = data['data'] as List<dynamic>? ?? [];
+        final photosJson = data['data'] as List<dynamic>? ?? [];
 
-          return photosJson
-              .map((json) => PhotoItem.fromJson(json as Map<String, dynamic>))
-              .toList();
-        }
-        return [];
-      } on DioException catch (e) {
+        return photosJson
+            .map((json) => PhotoItem.fromJson(json as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
         debugPrint('Error loading photos by date: $e');
         return [];
       }
@@ -470,21 +452,10 @@ class PaginatedPhotosNotifier {
 
   Future<void> loadInitial() async {
     if (_ref.read(demoModeProvider)) {
-      final d = _state.date == null ? null : DateTime.tryParse(_state.date!);
-      final demoPhotos = d == null
-          ? DemoData.photos
-          : DemoData.photos
-                .where(
-                  (p) =>
-                      p.date.year == d.year &&
-                      p.date.month == d.month &&
-                      p.date.day == d.day,
-                )
-                .toList();
       _update(
         _state.copyWith(
-          photos: demoPhotos,
-          total: demoPhotos.length,
+          photos: const <PhotoItem>[],
+          total: 0,
           hasMore: false,
           isLoading: false,
         ),
@@ -582,29 +553,26 @@ class PaginatedPhotosNotifier {
   Future<({List<PhotoItem> photos, int total})> _fetch({
     required int skip,
   }) async {
-    final apiClient = _apiClient;
-
-    final response = await apiClient.get(
-      '/photos',
-      queryParameters: {
-        'clientCode': _state.clientCode,
-        'source': 'photoRequest',
-        if (_state.date != null) 'date': _state.date,
-        'take': _pageSize,
-        'skip': skip,
-      },
+    final queryParams = {
+      'clientCode': _state.clientCode,
+      'source': 'photoRequest',
+      if (_state.date != null) 'date': _state.date,
+      'take': _pageSize,
+      'skip': skip,
+    };
+    final data = await StaleDataCache.getJson(
+      ref: _ref,
+      cacheKey: StaleDataCache.buildKey('photos_paginated', queryParams),
+      label: 'фотоотчёты',
+      request: () => _apiClient.get('/photos', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final json = data['data'] as List<dynamic>? ?? [];
-      final total = data['total'] as int? ?? 0;
-      final photos = json
-          .map((j) => PhotoItem.fromJson(j as Map<String, dynamic>))
-          .toList();
-      return (photos: photos, total: total);
-    }
-    throw Exception('Failed to load photos');
+    final json = data['data'] as List<dynamic>? ?? [];
+    final total = data['total'] as int? ?? 0;
+    final photos = json
+        .map((j) => PhotoItem.fromJson(j as Map<String, dynamic>))
+        .toList();
+    return (photos: photos, total: total);
   }
 }
 

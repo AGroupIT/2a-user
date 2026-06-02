@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.17+46
+version: 1.2.18+48
 
 environment:
   sdk: ^3.10.4
@@ -99,6 +99,9 @@ dependencies:
 
   # QR code generation for USDT payments
   qr_flutter: ^4.1.0
+  http: ^1.6.0
+  cupertino_http: ^3.0.2
+  cronet_http: ^1.6.0
 
 dev_dependencies:
   sentry_dart_plugin: ^3.3.0

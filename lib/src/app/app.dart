@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../core/cache/stale_data_cache.dart';
 import '../core/logging/client_log_service.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
@@ -11,10 +12,12 @@ import '../core/services/chat_presence_service.dart';
 import '../core/services/delta_sync_provider.dart';
 import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
+import '../core/ui/app_toast.dart';
 import '../core/ui/demo_mode_banner.dart';
 import '../features/auth/application/sentry_context_provider.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/notifications/application/notifications_controller.dart';
+import '../features/profile/data/problem_report_repository.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
 
@@ -28,6 +31,7 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   DateTime? _pausedAt;
   String? _pendingNotificationRoute;
+  bool _problemReportFlushScheduled = false;
 
   @override
   void initState() {
@@ -153,9 +157,35 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       Future.microtask(() {
         if (!mounted) return;
         if (!ref.read(authProvider).isLoggedIn) return;
+        _scheduleProblemReportQueueFlush(reason: 'app_resumed');
         invalidateClientCoreProviders(ref);
       });
     }
+  }
+
+  void _scheduleProblemReportQueueFlush({required String reason}) {
+    if (_problemReportFlushScheduled) return;
+    _problemReportFlushScheduled = true;
+    Future<void>.delayed(const Duration(seconds: 2), () async {
+      try {
+        if (!mounted) return;
+        if (!ref.read(authProvider).isLoggedIn) return;
+        final sent = await ref
+            .read(problemReportRepositoryProvider)
+            .flushQueuedReports();
+        if (!mounted) return;
+        if (sent > 0) {
+          ClientLogService.instance.add(
+            type: 'problem_report_queue_flushed',
+            level: 'info',
+            message: 'Отправлена локальная очередь отчётов о проблеме',
+            data: {'sent': sent, 'reason': reason},
+          );
+        }
+      } finally {
+        _problemReportFlushScheduled = false;
+      }
+    });
   }
 
   @override
@@ -166,10 +196,26 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _pendingNotificationRoute = null;
         return;
       }
+      _scheduleProblemReportQueueFlush(reason: 'auth_logged_in');
       if (_pendingNotificationRoute == null) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _flushPendingNotificationRoute();
+      });
+    });
+
+    ref.listen<StaleDataNotice?>(staleDataNoticeProvider, (previous, next) {
+      if (next == null) return;
+      if (previous?.createdAt == next.createdAt) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        AppToast.show(
+          context,
+          next.message,
+          icon: Icons.sync_problem_rounded,
+          backgroundColor: const Color(0xFFF59E0B),
+          duration: const Duration(seconds: 6),
+        );
       });
     });
 

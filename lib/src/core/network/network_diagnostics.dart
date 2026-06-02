@@ -104,55 +104,83 @@ class NetworkDiagnosticsService {
   final ApiClient _api;
 
   Future<NetworkDiagnosticReport> collect({String? clientCode}) async {
+    _api.resetConnections(reason: 'network_diagnostics_start', force: true);
     final token = await _api.getToken();
     final runtimeHeaders = await AppRuntimeInfo.instance.headers();
     final activeBaseUrl = _api.activeBaseUrl;
     final fallbackBaseUrl = ApiConfig.fallbackBaseUrl;
 
-    final checks = <Future<NetworkDiagnosticCheck>>[
+    final result = <NetworkDiagnosticCheck>[];
+    Future<NetworkDiagnosticCheck> runCheck(
+      Future<NetworkDiagnosticCheck> future,
+    ) async {
+      final check = await future;
+      result.add(check);
+      return check;
+    }
+
+    final primaryHealth = await runCheck(
       _check(
         name: 'primary_health',
         baseUrl: ApiConfig.baseUrl,
         path: '/health',
         runtimeHeaders: runtimeHeaders,
       ),
-      if (activeBaseUrl != ApiConfig.baseUrl)
+    );
+
+    NetworkDiagnosticCheck? activeHealth;
+    if (activeBaseUrl != ApiConfig.baseUrl) {
+      activeHealth = await runCheck(
         _check(
           name: 'active_health',
           baseUrl: activeBaseUrl,
           path: '/health',
           runtimeHeaders: runtimeHeaders,
         ),
-      if (fallbackBaseUrl != null && fallbackBaseUrl != activeBaseUrl)
+      );
+    }
+
+    if (fallbackBaseUrl != null && fallbackBaseUrl != activeBaseUrl) {
+      await runCheck(
         _check(
           name: 'fallback_health',
           baseUrl: fallbackBaseUrl,
           path: '/health',
           runtimeHeaders: runtimeHeaders,
         ),
-      _check(
-        name: 'active_profile',
-        baseUrl: activeBaseUrl,
-        path: '/client/profile',
-        token: token,
-        runtimeHeaders: runtimeHeaders,
-      ),
-      if (clientCode != null && clientCode.isNotEmpty)
+      );
+    }
+
+    final activeHealthOk = activeHealth?.ok ?? primaryHealth.ok;
+    if (activeHealthOk) {
+      await runCheck(
         _check(
-          name: 'active_photos_take_1',
+          name: 'active_profile',
           baseUrl: activeBaseUrl,
-          path: '/photos',
+          path: '/client/profile',
           token: token,
           runtimeHeaders: runtimeHeaders,
-          queryParameters: {
-            'clientCode': clientCode,
-            'source': 'photoRequest',
-            'take': 1,
-          },
         ),
-    ];
+      );
 
-    final result = await Future.wait(checks);
+      if (clientCode != null && clientCode.isNotEmpty) {
+        await runCheck(
+          _check(
+            name: 'active_photos_take_1',
+            baseUrl: activeBaseUrl,
+            path: '/photos',
+            token: token,
+            runtimeHeaders: runtimeHeaders,
+            queryParameters: {
+              'clientCode': clientCode,
+              'source': 'photoRequest',
+              'take': 1,
+            },
+          ),
+        );
+      }
+    }
+
     ClientLogService.instance.add(
       type: 'network_diagnostics',
       level: result.any((check) => !check.ok) ? 'warning' : 'info',

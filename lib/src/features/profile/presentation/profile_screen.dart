@@ -1421,7 +1421,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ClientLogService.instance.action('Отправка отчёта о проблеме');
     try {
       final currentScreen = GoRouterState.of(context).uri.toString();
-      final id = await ref
+      final result = await ref
           .read(problemReportRepositoryProvider)
           .send(
             description: description,
@@ -1432,7 +1432,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (sheetContext.mounted) Navigator.pop(sheetContext);
       _showStyledSnackBar(
         context,
-        id == null ? 'Отчёт отправлен' : 'Отчёт #$id отправлен',
+        result.queued
+            ? 'Связь нестабильна. Отчёт сохранён и отправится автоматически.'
+            : result.id == null
+            ? 'Отчёт отправлен'
+            : 'Отчёт #${result.id} отправлен',
       );
     } catch (error, stackTrace) {
       final cause = error is ProblemReportSendException ? error.cause : error;

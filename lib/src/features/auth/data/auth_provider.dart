@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/platform_helper.dart';
@@ -575,6 +576,7 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.remove(_kClientIdKey);
         await prefs.remove(_kClientNameKey);
         await prefs.remove(_kClientDataKey);
+        await StaleDataCache.clearAll();
         await clearCachedClientProfile();
         debugPrint('✅ SharedPreferences cleared');
 

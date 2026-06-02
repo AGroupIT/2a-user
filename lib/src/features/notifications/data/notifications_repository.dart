@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/notification_item.dart';
 
@@ -76,47 +77,43 @@ class RealNotificationsRepository implements NotificationsRepository {
     int limit = 50,
   }) async {
     try {
-      final response = await _api.get(
-        '/notifications',
-        queryParameters: {'page': page, 'limit': limit},
+      final queryParams = {'page': page, 'limit': limit};
+      final data = await StaleDataCache.getJson(
+        ref: _ref,
+        cacheKey: StaleDataCache.buildKey('notifications_page', {
+          'clientCode': clientCode,
+          ...queryParams,
+        }),
+        label: 'уведомления',
+        request: () => _api.get('/notifications', queryParameters: queryParams),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final notificationsJson = data['notifications'] as List<dynamic>? ?? [];
-        final items = notificationsJson
-            .map(
-              (json) => NotificationItem.fromJson(json as Map<String, dynamic>),
-            )
-            .toList();
+      final notificationsJson = data['notifications'] as List<dynamic>? ?? [];
+      final items = notificationsJson
+          .map(
+            (json) => NotificationItem.fromJson(json as Map<String, dynamic>),
+          )
+          .toList();
 
-        // unreadCount пишется backend'ом по полному скоупу пользователя,
-        // не по странице — поэтому badge корректен даже при pagination.
-        final unreadCount = (data['unreadCount'] as num?)?.toInt() ?? 0;
-        final paginationRaw = data['pagination'];
-        final pagination = paginationRaw is Map<String, dynamic>
-            ? paginationRaw
-            : const <String, dynamic>{};
-        final total = (pagination['total'] as num?)?.toInt() ?? items.length;
-        final returnedPage = (pagination['page'] as num?)?.toInt() ?? page;
-        final returnedLimit = (pagination['limit'] as num?)?.toInt() ?? limit;
+      // unreadCount пишется backend'ом по полному скоупу пользователя,
+      // не по странице — поэтому badge корректен даже при pagination.
+      final unreadCount = (data['unreadCount'] as num?)?.toInt() ?? 0;
+      final paginationRaw = data['pagination'];
+      final pagination = paginationRaw is Map<String, dynamic>
+          ? paginationRaw
+          : const <String, dynamic>{};
+      final total = (pagination['total'] as num?)?.toInt() ?? items.length;
+      final returnedPage = (pagination['page'] as num?)?.toInt() ?? page;
+      final returnedLimit = (pagination['limit'] as num?)?.toInt() ?? limit;
 
-        return NotificationsPage(
-          items: items,
-          total: total,
-          unreadCount: unreadCount,
-          page: returnedPage,
-          limit: returnedLimit,
-        );
-      }
       return NotificationsPage(
-        items: const [],
-        total: 0,
-        unreadCount: 0,
-        page: page,
-        limit: limit,
+        items: items,
+        total: total,
+        unreadCount: unreadCount,
+        page: returnedPage,
+        limit: returnedLimit,
       );
-    } on DioException catch (e) {
+    } catch (e) {
       debugPrint('Error loading notifications page: $e');
       rethrow;
     }

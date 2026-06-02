@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,8 +6,6 @@ import '../../../core/config/sentry_config.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_diagnostics.dart';
-import '../../../core/services/demo_mode_provider.dart';
-import '../../../core/services/showcase_service.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/clipboard_helper.dart';
@@ -214,47 +211,6 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                     title: 'Тарифы',
                     iconColor: const Color(0xFFFF9800),
                     onTap: () => _go(context, '/tariffs'),
-                  ),
-
-                  // ── Настройки ─────────────────────────────────
-                  const _SectionLabel(text: 'Настройки'),
-                  _MenuItem(
-                    icon: Icons.school_rounded,
-                    title: 'Пройти обучение',
-                    iconColor: const Color(0xFF607D8B),
-                    onTap: () async {
-                      // Захватываем context-зависимые объекты ДО async-разрыва
-                      final nav = Navigator.of(context);
-                      final router = GoRouter.of(context);
-                      final brandColor = context.brandPrimary;
-
-                      final svc = ref.read(showcaseServiceProvider);
-                      await svc.resetAllBlocks();
-                      await svc.resetAllTutorials();
-                      for (final block in ShowcaseBlock.values) {
-                        ref.invalidate(showcaseBlockProvider(block));
-                      }
-                      ref
-                          .read(showcaseTutorialResetProvider.notifier)
-                          .trigger();
-                      ref.read(demoModeProvider.notifier).enable();
-
-                      if (!context.mounted) return;
-                      nav.pop();
-                      router.go('/');
-                      AppToast.showFromSnackBar(
-                        context,
-                        SnackBar(
-                          content: const Text('Обучение запущено заново'),
-                          backgroundColor: brandColor,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    },
                   ),
                 ],
               ),

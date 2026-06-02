@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
@@ -215,7 +214,7 @@ final assembliesCountProvider = FutureProvider.family<int, String>((
   ref,
   clientCode,
 ) async {
-  if (ref.watch(demoModeProvider)) return DemoData.assembliesCount;
+  if (ref.watch(demoModeProvider)) return 0;
   final apiClient = ref.read(apiClientProvider);
 
   try {

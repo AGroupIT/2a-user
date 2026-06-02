@@ -25,12 +25,18 @@ class ApiConfig {
     return '$_host/api';
   }
 
-  /// 2a-user не использует резервный API-домен.
+  /// Резервный API-домен для аварийного mobile fallback.
   ///
-  /// `https://api.2a-logistic.com/api` — это China/HK-прокси для 2a-admin,
-  /// поэтому клиентское приложение не должно автоматически переключаться на
-  /// него при мобильных сетевых ошибках.
-  static String? get fallbackBaseUrl => null;
+  /// По умолчанию используем legacy-домен на том же backend, потому он уже
+  /// публично отвечает клиентам и не переводит 2a-user на admin/HK route.
+  /// Если нужен другой маршрут для полевого теста, его можно задать сборкой:
+  ///
+  /// `--dart-define=FALLBACK_API_BASE_URL=https://api.2a-logistic.com/api`
+  static String? get fallbackBaseUrl {
+    const envUrl = String.fromEnvironment('FALLBACK_API_BASE_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    return '$_legacyHost/api';
+  }
 
   /// Base URL для статических файлов (uploads)
   static String get mediaBaseUrl {

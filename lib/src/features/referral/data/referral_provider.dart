@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
+import '../../auth/data/auth_provider.dart';
 
 // ============================================================
 // Модели
@@ -91,8 +93,7 @@ class ReferralData {
     final settings = json['settings'] as Map<String, dynamic>?;
     return ReferralData(
       referralCode: json['referralCode'] as String?,
-      referralKgBalance:
-          (json['referralKgBalance'] as num?)?.toDouble() ?? 0.0,
+      referralKgBalance: (json['referralKgBalance'] as num?)?.toDouble() ?? 0.0,
       maxBonusPercent:
           (settings?['maxBonusPercent'] as num?)?.toDouble() ?? 15.0,
       referredByName: json['referredBy'] != null
@@ -100,7 +101,7 @@ class ReferralData {
           : null,
       referredByCode: json['referredBy'] != null
           ? (json['referredBy'] as Map<String, dynamic>)['referralCode']
-              as String?
+                as String?
           : null,
       referrals: (json['referrals'] as List<dynamic>? ?? [])
           .map((e) => ReferralEntry.fromJson(e as Map<String, dynamic>))
@@ -119,15 +120,19 @@ class ReferralData {
 final referralProvider = FutureProvider<ReferralData>((ref) async {
   if (ref.watch(demoModeProvider)) {
     return const ReferralData(
-      referralCode: 'DEMO2025',
-      referralKgBalance: 3.5,
+      referralKgBalance: 0,
       referrals: [],
       transactions: [],
     );
   }
   final api = ref.read(apiClientProvider);
-  final response = await api.get('/client/referral');
-  final data = (response.data as Map<String, dynamic>)['data']
-      as Map<String, dynamic>;
+  final clientId = ref.watch(authProvider).clientId?.toString() ?? 'unknown';
+  final responseData = await StaleDataCache.getJson(
+    ref: ref,
+    cacheKey: StaleDataCache.buildKey('referral', {'clientId': clientId}),
+    label: 'бонусные кг',
+    request: () => api.get('/client/referral'),
+  );
+  final data = responseData['data'] as Map<String, dynamic>;
   return ReferralData.fromJson(data);
 });

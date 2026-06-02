@@ -8,8 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/services/update_service.dart';
 import '../../../core/ui/app_cached_media_image.dart';
@@ -87,22 +87,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       barrierDismissible: false,
       builder: (context) => const _TermsAcceptanceDialog(),
     );
-
-    // После принятия правил — предлагаем пройти обучение
-    await _showOnboardingOfferIfNeeded();
-  }
-
-  /// Показать предложение пройти обучение (однократно)
-  Future<void> _showOnboardingOfferIfNeeded() async {
-    if (!mounted) return;
-    final showcaseService = ref.read(showcaseServiceProvider);
-    if (showcaseService.hasSeenOnboardingOffer) return;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const _OnboardingOfferDialog(),
-    );
   }
 
   @override
@@ -165,6 +149,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final AsyncValue<ReferralData> referralAsync = shouldLoadDashboardData
         ? ref.watch(referralProvider)
         : const AsyncValue.loading();
+    final staleNotice = ref.watch(staleDataNoticeProvider);
 
     final tracksCount = tracksCountAsync.asData?.value;
     final assembliesCount = assembliesCountAsync.asData?.value;
@@ -184,6 +169,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     Future<void> onRefresh() async {
       debugPrint('[Home] pull-to-refresh triggered');
+      ref.read(staleDataNoticeProvider.notifier).clear();
       ref.invalidate(clientProfileProvider);
       unawaited(
         ref.read(clientProfileProvider.future).catchError((
@@ -266,6 +252,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             _GreetingBlock(fullName: clientName),
             const SizedBox(height: 15),
+            if (staleNotice != null) ...[
+              _StaleDataBanner(
+                message: staleNotice.message,
+                onRefresh: () => unawaited(onRefresh()),
+                onDismiss: () =>
+                    ref.read(staleDataNoticeProvider.notifier).clear(),
+              ),
+              const SizedBox(height: 15),
+            ],
             KeyedSubtree(
               key: _quickCardsKey,
               child: _StatsBlock(
@@ -374,6 +369,100 @@ String _formatKg(double? value) {
 String _formatDeltaKg(double? value) {
   if (value == null) return '–';
   return '+${_formatKg(value)}';
+}
+
+class _StaleDataBanner extends StatelessWidget {
+  const _StaleDataBanner({
+    required this.message,
+    required this.onRefresh,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onRefresh;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    const warning = Color(0xFFF59E0B);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: warning.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.sync_problem_rounded, color: warning, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Данные могут быть не свежими',
+                    style: TextStyle(
+                      color: Color(0xFF7C2D12),
+                      fontFamily: 'Gilroy',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      color: Color(0xFF9A3412),
+                      fontFamily: 'Gilroy',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.25,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: onRefresh,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF9A3412),
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text(
+                      'Обновить',
+                      style: TextStyle(
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: onDismiss,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Color(0xFF9A3412),
+                size: 20,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _GreetingBlock extends StatelessWidget {
@@ -1898,127 +1987,6 @@ class _PhotoThumb extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Диалог предложения пройти обучение
-class _OnboardingOfferDialog extends ConsumerWidget {
-  const _OnboardingOfferDialog();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return PopScope(
-      canPop: false,
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          constraints: const BoxConstraints(maxWidth: 500),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 30,
-                offset: const Offset(0, 15),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Иконка
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: context.brandPrimary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Icon(
-                    Icons.school_rounded,
-                    size: 48,
-                    color: context.brandPrimary,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Заголовок
-                const Text(
-                  'Пройти обучение?',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-
-                // Описание
-                Text(
-                  'Мы покажем, как пользоваться приложением: отслеживать треки, работать со счетами и многое другое.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey.shade600,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 28),
-
-                // Кнопка "Да"
-                FilledButton(
-                  onPressed: () async {
-                    final svc = ref.read(showcaseServiceProvider);
-                    await svc.markOnboardingOffered();
-                    ref.read(demoModeProvider.notifier).enable();
-                    if (context.mounted) {
-                      Navigator.of(context).pop(true);
-                    }
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: context.brandPrimary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Да, пройти обучение',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Кнопка "Нет"
-                TextButton(
-                  onPressed: () async {
-                    final svc = ref.read(showcaseServiceProvider);
-                    await svc.markOnboardingOffered();
-                    if (context.mounted) {
-                      Navigator.of(context).pop(false);
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey.shade600,
-                    minimumSize: const Size(double.infinity, 48),
-                  ),
-                  child: const Text(
-                    'Нет, пропустить',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
             ),
           ),
         ),

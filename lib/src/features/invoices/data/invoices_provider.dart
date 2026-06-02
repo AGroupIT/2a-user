@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/data/demo_data.dart';
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../domain/invoice_item.dart';
@@ -42,27 +42,24 @@ final invoiceStatusesProvider = FutureProvider<List<InvoiceStatus>>((
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/statuses',
-      queryParameters: {'type': 'invoice'},
+    const queryParams = {'type': 'invoice'};
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('invoice_statuses', queryParams),
+      label: 'статусы счетов',
+      request: () => apiClient.get('/statuses', queryParameters: queryParams),
     );
 
-    debugPrint('Invoice statuses response: ${response.data}');
+    // API возвращает 'data', а не 'statuses'
+    final statusesJson = data['data'] as List<dynamic>? ?? [];
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      // API возвращает 'data', а не 'statuses'
-      final statusesJson = data['data'] as List<dynamic>? ?? [];
+    final statuses = statusesJson
+        .map((json) => InvoiceStatus.fromJson(json as Map<String, dynamic>))
+        .toList();
 
-      final statuses = statusesJson
-          .map((json) => InvoiceStatus.fromJson(json as Map<String, dynamic>))
-          .toList();
-
-      debugPrint('Parsed invoice statuses: ${statuses.length}');
-      return statuses;
-    }
-    return [];
-  } on DioException catch (e) {
+    debugPrint('Parsed invoice statuses: ${statuses.length}');
+    return statuses;
+  } catch (e) {
     debugPrint('Error loading invoice statuses: $e');
     return [];
   }
@@ -84,25 +81,24 @@ final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((
   ref,
   clientCode,
 ) async {
-  if (ref.watch(demoModeProvider)) return DemoData.invoices;
+  if (ref.watch(demoModeProvider)) return const <InvoiceItem>[];
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/invoices',
-      queryParameters: {'clientCode': clientCode, 'take': 100},
+    final queryParams = {'clientCode': clientCode, 'take': 100};
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('invoices_list', queryParams),
+      label: 'счета',
+      request: () => apiClient.get('/invoices', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final invoicesJson = data['data'] as List<dynamic>? ?? [];
+    final invoicesJson = data['data'] as List<dynamic>? ?? [];
 
-      return invoicesJson
-          .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
-          .toList();
-    }
-    return [];
-  } on DioException catch (e) {
+    return invoicesJson
+        .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
+        .toList();
+  } catch (e) {
     debugPrint('Error loading invoices: $e');
     return [];
   }
@@ -111,29 +107,28 @@ final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((
 /// Провайдер для дайджеста счетов (последние 10, сортировка по updatedAt)
 final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>(
   (ref, clientCode) async {
-    if (ref.watch(demoModeProvider)) return DemoData.invoices;
+    if (ref.watch(demoModeProvider)) return const <InvoiceItem>[];
     final apiClient = ref.read(apiClientProvider);
 
     try {
-      final response = await apiClient.get(
-        '/invoices',
-        queryParameters: {
-          'clientCode': clientCode,
-          'take': 10,
-          'sortBy': 'updatedAt',
-        },
+      final queryParams = {
+        'clientCode': clientCode,
+        'take': 10,
+        'sortBy': 'updatedAt',
+      };
+      final data = await StaleDataCache.getJson(
+        ref: ref,
+        cacheKey: StaleDataCache.buildKey('invoices_digest', queryParams),
+        label: 'последние счета',
+        request: () => apiClient.get('/invoices', queryParameters: queryParams),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final invoicesJson = data['data'] as List<dynamic>? ?? [];
+      final invoicesJson = data['data'] as List<dynamic>? ?? [];
 
-        return invoicesJson
-            .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
-            .toList();
-      }
-      return [];
-    } on DioException catch (e) {
+      return invoicesJson
+          .map((json) => InvoiceItem.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
       debugPrint('Error loading invoices digest: $e');
       return [];
     }
@@ -202,25 +197,24 @@ final invoicesCountProvider = FutureProvider.family<int, String>((
   ref,
   clientCode,
 ) async {
-  if (ref.watch(demoModeProvider)) return DemoData.invoicesCount;
+  if (ref.watch(demoModeProvider)) return 0;
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/invoices',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 1,
-        'status': 'unpaid',
-      },
+    final queryParams = {
+      'clientCode': clientCode,
+      'take': 1,
+      'status': 'unpaid',
+    };
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('invoices_count', queryParams),
+      label: 'количество счетов',
+      request: () => apiClient.get('/invoices', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      return data['total'] as int? ?? 0;
-    }
-    return 0;
-  } on DioException catch (e) {
+    return data['total'] as int? ?? 0;
+  } catch (e) {
     debugPrint('Error loading invoices count: $e');
     return 0;
   }
@@ -232,34 +226,28 @@ final invoicesWeeklyCountProvider = FutureProvider.family<int, String>((
   clientCode,
 ) async {
   final weekStart = DateTime.now().subtract(const Duration(days: 7));
-  if (ref.watch(demoModeProvider)) {
-    return DemoData.invoices
-        .where(
-          (invoice) =>
-              invoice.createdAt != null &&
-              !invoice.createdAt!.isBefore(weekStart),
-        )
-        .length;
-  }
+  if (ref.watch(demoModeProvider)) return 0;
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/invoices',
-      queryParameters: {
+    final queryParams = {
+      'clientCode': clientCode,
+      'take': 1,
+      'dateFrom': weekStart.toUtc().toIso8601String(),
+      'sortBy': 'createdAt',
+    };
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('invoices_weekly_count', {
         'clientCode': clientCode,
-        'take': 1,
-        'dateFrom': weekStart.toUtc().toIso8601String(),
-        'sortBy': 'createdAt',
-      },
+        'dateFromDay': weekStart.toUtc().toIso8601String().substring(0, 10),
+      }),
+      label: 'счета за неделю',
+      request: () => apiClient.get('/invoices', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      return data['total'] as int? ?? 0;
-    }
-    return 0;
-  } on DioException catch (e) {
+    return data['total'] as int? ?? 0;
+  } catch (e) {
     debugPrint('Error loading weekly invoices count: $e');
     return 0;
   }
@@ -270,9 +258,7 @@ final invoiceByIdProvider = FutureProvider.family<InvoiceItem?, String>((
   ref,
   id,
 ) async {
-  if (ref.watch(demoModeProvider)) {
-    return DemoData.invoices.where((i) => i.id == id).firstOrNull;
-  }
+  if (ref.watch(demoModeProvider)) return null;
   final apiClient = ref.read(apiClientProvider);
 
   try {

@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:twoalogisticcabineuser/src/core/persistence/shared_preferences_provider.dart';
 import 'package:twoalogisticcabineuser/src/app/app.dart';
 
@@ -19,6 +21,7 @@ void main() {
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(_BootApiClient()),
         ],
         child: const App(),
       ),
@@ -28,4 +31,31 @@ void main() {
     // App should render something - MaterialApp should be present
     expect(find.byType(MaterialApp), findsOneWidget);
   });
+}
+
+class _BootApiClient extends ApiClient {
+  @override
+  bool get hasToken => false;
+
+  @override
+  Future<bool> hasTokenAsync() async => false;
+
+  @override
+  Future<String?> getToken() async => null;
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    final data = path == '/public/tariffs'
+        ? <String, dynamic>{'tariffs': const <dynamic>[]}
+        : <String, dynamic>{};
+    return Response<T>(
+      data: data as T,
+      requestOptions: RequestOptions(path: path),
+      statusCode: 200,
+    );
+  }
 }

@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 
-import '../../../core/data/demo_data.dart';
+import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/websocket_provider.dart';
@@ -54,24 +54,21 @@ class TrackStatus {
 }
 
 /// Провайдер для получения статусов из БД по типу сущности.
-final statusesByTypeProvider = FutureProvider.family<List<TrackStatus>, String>((
-  ref,
-  type,
-) async {
-  final apiClient = ref.read(apiClientProvider);
+final statusesByTypeProvider = FutureProvider.family<List<TrackStatus>, String>(
+  (ref, type) async {
+    final apiClient = ref.read(apiClientProvider);
 
-  try {
-    final response = await apiClient.get(
-      '/statuses',
-      queryParameters: {'type': type, 'activeOnly': 'true'},
-    );
+    try {
+      final data = await StaleDataCache.getJson(
+        ref: ref,
+        cacheKey: StaleDataCache.buildKey('track_statuses', {'type': type}),
+        label: 'статусы',
+        request: () => apiClient.get(
+          '/statuses',
+          queryParameters: {'type': type, 'activeOnly': 'true'},
+        ),
+      );
 
-    debugPrint(
-      'statusesByTypeProvider($type): statusCode=${response.statusCode}, data=${response.data}',
-    );
-
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
       final statusesJson = data['data'] as List<dynamic>? ?? [];
 
       debugPrint(
@@ -81,13 +78,12 @@ final statusesByTypeProvider = FutureProvider.family<List<TrackStatus>, String>(
       return statusesJson
           .map((json) => TrackStatus.fromJson(json as Map<String, dynamic>))
           .toList();
+    } catch (e) {
+      debugPrint('Error loading $type statuses: $e');
+      return [];
     }
-    return [];
-  } on DioException catch (e) {
-    debugPrint('Error loading $type statuses: $e');
-    return [];
-  }
-});
+  },
+);
 
 /// Провайдер для получения статусов треков из БД
 final trackStatusesProvider = statusesByTypeProvider('track');
@@ -400,8 +396,8 @@ class PaginatedTracksNotifier {
     if (_ref.read(demoModeProvider)) {
       _updateState(
         _state.copyWith(
-          tracks: DemoData.tracks,
-          total: DemoData.tracksCount,
+          tracks: const <TrackItem>[],
+          total: 0,
           hasMore: false,
           isLoading: false,
           clearError: true,
@@ -609,29 +605,26 @@ class PaginatedTracksNotifier {
 
     debugPrint('Fetching tracks: $queryParams');
 
-    final response = await _apiClient.get(
-      '/tracks',
-      queryParameters: queryParams,
+    final data = await StaleDataCache.getJson(
+      ref: _ref,
+      cacheKey: StaleDataCache.buildKey('tracks_paginated', queryParams),
+      label: 'треки',
+      request: () => _apiClient.get('/tracks', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final tracksJson = data['data'] as List<dynamic>? ?? [];
-      final total = data['total'] as int? ?? 0;
+    final tracksJson = data['data'] as List<dynamic>? ?? [];
+    final total = data['total'] as int? ?? 0;
 
-      final tracks = tracksJson
-          .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
-          .toList();
+    final tracks = tracksJson
+        .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+        .toList();
 
-      debugPrint('Fetched ${tracks.length} tracks, total: $total');
+    debugPrint('Fetched ${tracks.length} tracks, total: $total');
 
-      return _TracksResult(
-        tracks: _sortTracksDesc(tracks, requestFilters.sortBy),
-        total: total,
-      );
-    }
-
-    throw Exception('Failed to load tracks');
+    return _TracksResult(
+      tracks: _sortTracksDesc(tracks, requestFilters.sortBy),
+      total: total,
+    );
   }
 }
 
@@ -729,23 +722,21 @@ final tracksListProvider =
           queryParams['assemblyId'] = params.assemblyId;
         }
 
-        final response = await apiClient.get(
-          '/tracks',
-          queryParameters: queryParams,
+        final data = await StaleDataCache.getJson(
+          ref: ref,
+          cacheKey: StaleDataCache.buildKey('tracks_list', queryParams),
+          label: 'треки',
+          request: () => apiClient.get('/tracks', queryParameters: queryParams),
         );
 
-        if (response.statusCode == 200 && response.data != null) {
-          final data = response.data as Map<String, dynamic>;
-          final tracksJson = data['data'] as List<dynamic>? ?? [];
+        final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-          final tracks = tracksJson
-              .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
-              .toList();
+        final tracks = tracksJson
+            .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+            .toList();
 
-          return _sortTracksByCreatedAtDesc(tracks);
-        }
-        return [];
-      } on DioException catch (e) {
+        return _sortTracksByCreatedAtDesc(tracks);
+      } catch (e) {
         debugPrint('Error loading tracks: $e');
         return [];
       }
@@ -757,27 +748,26 @@ final tracksSimpleListProvider = FutureProvider.family<List<TrackItem>, String>(
     final apiClient = ref.read(apiClientProvider);
 
     try {
-      final response = await apiClient.get(
-        '/tracks',
-        queryParameters: {
-          'clientCode': clientCode,
-          'take': 100,
-          'sortBy': 'createdAt',
-        },
+      final queryParams = {
+        'clientCode': clientCode,
+        'take': 100,
+        'sortBy': 'createdAt',
+      };
+      final data = await StaleDataCache.getJson(
+        ref: ref,
+        cacheKey: StaleDataCache.buildKey('tracks_simple_list', queryParams),
+        label: 'треки',
+        request: () => apiClient.get('/tracks', queryParameters: queryParams),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final tracksJson = data['data'] as List<dynamic>? ?? [];
+      final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-        final tracks = tracksJson
-            .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
-            .toList();
+      final tracks = tracksJson
+          .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+          .toList();
 
-        return _sortTracksByCreatedAtDesc(tracks);
-      }
-      return [];
-    } on DioException catch (e) {
+      return _sortTracksByCreatedAtDesc(tracks);
+    } catch (e) {
       debugPrint('Error loading tracks: $e');
       return [];
     }
@@ -789,31 +779,30 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
   ref,
   clientCode,
 ) async {
-  if (ref.watch(demoModeProvider)) return DemoData.tracks.take(10).toList();
+  if (ref.watch(demoModeProvider)) return const <TrackItem>[];
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/tracks',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 10,
-        'sortBy': 'createdAt',
-      },
+    final queryParams = {
+      'clientCode': clientCode,
+      'take': 10,
+      'sortBy': 'createdAt',
+    };
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('tracks_digest', queryParams),
+      label: 'последние треки',
+      request: () => apiClient.get('/tracks', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final tracksJson = data['data'] as List<dynamic>? ?? [];
+    final tracksJson = data['data'] as List<dynamic>? ?? [];
 
-      final tracks = tracksJson
-          .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
-          .toList();
+    final tracks = tracksJson
+        .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
+        .toList();
 
-      return _sortTracksByCreatedAtDesc(tracks);
-    }
-    return [];
-  } on DioException catch (e) {
+    return _sortTracksByCreatedAtDesc(tracks);
+  } catch (e) {
     debugPrint('Error loading tracks digest: $e');
     return [];
   }
@@ -861,25 +850,24 @@ final tracksCountProvider = FutureProvider.family<int, String>((
   ref,
   clientCode,
 ) async {
-  if (ref.watch(demoModeProvider)) return DemoData.tracksCount;
+  if (ref.watch(demoModeProvider)) return 0;
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/tracks',
-      queryParameters: {
-        'clientCode': clientCode,
-        'take': 1,
-        'statuses': 'pending,in_warehouse,in_assembly',
-      },
+    final queryParams = {
+      'clientCode': clientCode,
+      'take': 1,
+      'statuses': 'pending,in_warehouse,in_assembly',
+    };
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('tracks_count', queryParams),
+      label: 'количество треков',
+      request: () => apiClient.get('/tracks', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      return data['total'] as int? ?? 0;
-    }
-    return 0;
-  } on DioException catch (e) {
+    return data['total'] as int? ?? 0;
+  } catch (e) {
     debugPrint('Error loading tracks count: $e');
     return 0;
   }
@@ -891,30 +879,28 @@ final tracksWeeklyCountProvider = FutureProvider.family<int, String>((
   clientCode,
 ) async {
   final weekStart = _weekStart();
-  if (ref.watch(demoModeProvider)) {
-    return DemoData.tracks
-        .where((track) => !track.createdAt.isBefore(weekStart))
-        .length;
-  }
+  if (ref.watch(demoModeProvider)) return 0;
   final apiClient = ref.read(apiClientProvider);
 
   try {
-    final response = await apiClient.get(
-      '/tracks',
-      queryParameters: {
+    final queryParams = {
+      'clientCode': clientCode,
+      'take': 1,
+      'dateFrom': weekStart.toUtc().toIso8601String(),
+      'sortBy': 'createdAt',
+    };
+    final data = await StaleDataCache.getJson(
+      ref: ref,
+      cacheKey: StaleDataCache.buildKey('tracks_weekly_count', {
         'clientCode': clientCode,
-        'take': 1,
-        'dateFrom': weekStart.toUtc().toIso8601String(),
-        'sortBy': 'createdAt',
-      },
+        'dateFromDay': weekStart.toUtc().toIso8601String().substring(0, 10),
+      }),
+      label: 'треки за неделю',
+      request: () => apiClient.get('/tracks', queryParameters: queryParams),
     );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      return data['total'] as int? ?? 0;
-    }
-    return 0;
-  } on DioException catch (e) {
+    return data['total'] as int? ?? 0;
+  } catch (e) {
     debugPrint('Error loading weekly tracks count: $e');
     return 0;
   }

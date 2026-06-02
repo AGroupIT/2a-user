@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/data/demo_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import 'sp_models.dart';
@@ -54,9 +53,8 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
       _deltaRefreshTimer = null;
     });
 
-    // В демо-режиме сразу возвращаем данные, чтобы TutorialScreenWrapper рендерился с первого кадра
     if (ref.watch(demoModeProvider)) {
-      return SpAssembliesState(assemblies: DemoData.spAssemblies);
+      return const SpAssembliesState();
     }
     // В обычном режиме данные загружаются через loadAssemblies() из initState экрана
     return const SpAssembliesState();
@@ -130,12 +128,8 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
       );
     }
 
-    // Демо-режим: возвращаем статичные данные без обращения к API
     if (ref.read(demoModeProvider)) {
-      state = state.copyWith(
-        assemblies: DemoData.spAssemblies,
-        isLoading: false,
-      );
+      state = state.copyWith(assemblies: const [], isLoading: false);
       return;
     }
 
