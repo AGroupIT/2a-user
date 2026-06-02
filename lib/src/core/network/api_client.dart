@@ -13,7 +13,7 @@ import '../config/sentry_config.dart';
 import '../logging/client_log_service.dart';
 import '../services/runtime/app_runtime_info.dart';
 import 'api_config.dart';
-import 'native_http_fallback.dart';
+import 'native_http_adapter.dart';
 
 /// Callback для обработки 401 ошибки (unauthorized)
 typedef OnUnauthorizedCallback = void Function();
@@ -26,7 +26,6 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 /// Клиент для работы с API
 class ApiClient {
   late Dio _dio;
-  late final NativeHttpFallback _nativeHttpFallback;
   // На мобильных платформах используем FlutterSecureStorage с правильными настройками
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(),
@@ -42,7 +41,6 @@ class ApiClient {
   static const Duration _minConnectionResetInterval = Duration(seconds: 8);
   static const Duration _fallbackTtl = Duration(minutes: 5);
   static const int _maxConcurrentGetRequests = 3;
-  static const Duration _nativeGetFallbackTimeout = Duration(seconds: 12);
 
   int _inFlightRequests = 0;
   int _activeGetRequests = 0;
@@ -61,7 +59,6 @@ class ApiClient {
   }
 
   ApiClient() {
-    _nativeHttpFallback = NativeHttpFallback(tokenProvider: getToken);
     _dio = _createDio();
     ClientLogService.instance.add(
       type: 'api_base_url_config',
@@ -97,6 +94,11 @@ class ApiClient {
     // подход в клиентское приложение.
     if (kIsWeb) {
       dio.transformer = SyncTransformer();
+    }
+
+    final nativeAdapter = createNativeHttpAdapter();
+    if (nativeAdapter != null) {
+      dio.httpClientAdapter = nativeAdapter;
     }
 
     // Добавляем интерсепторы
@@ -148,7 +150,6 @@ class ApiClient {
     final oldDio = _dio;
     _dio = _createDio();
     oldDio.close(force: force);
-    _nativeHttpFallback.close();
     _lastConnectionResetAt = now;
     ClientLogService.instance.httpConnectionReset(
       reason: reason,
@@ -191,7 +192,6 @@ class ApiClient {
     final oldDio = _dio;
     _dio = _createDio();
     oldDio.close(force: true);
-    _nativeHttpFallback.close();
     _lastConnectionResetAt = DateTime.now();
     ClientLogService.instance.add(
       type: 'api_base_url_fallback',
@@ -348,63 +348,6 @@ class ApiClient {
     if (!next.isCompleted) {
       scheduleMicrotask(next.complete);
     }
-  }
-
-  Future<Response<T>?> _tryNativeGetFallback<T>({
-    required String path,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    required Object sourceError,
-  }) async {
-    if (!_nativeHttpFallback.isAvailable) return null;
-
-    ClientLogService.instance.add(
-      type: 'native_http_fallback_start',
-      level: 'warning',
-      message: 'Dio GET не прошёл, пробуем platform-native HTTP stack',
-      data: {
-        'path': path,
-        'sourceError': sourceError.runtimeType.toString(),
-        'activeBaseUrl': activeBaseUrl,
-        'fallbackBaseUrl': ApiConfig.fallbackBaseUrl,
-      },
-    );
-
-    DioException? lastNetworkError;
-    for (final baseUrl in _nativeFallbackBaseUrls()) {
-      try {
-        return await _nativeHttpFallback.get<T>(
-          baseUrl: baseUrl,
-          path: path,
-          queryParameters: queryParameters,
-          options: options,
-          timeout: _nativeGetFallbackTimeout,
-        );
-      } on DioException catch (error) {
-        lastNetworkError = error;
-        if (error.response != null || !_isTransientNetworkError(error)) {
-          rethrow;
-        }
-      }
-    }
-
-    if (lastNetworkError != null) {
-      throw lastNetworkError;
-    }
-    return null;
-  }
-
-  List<String> _nativeFallbackBaseUrls() {
-    final result = <String>[];
-    void add(String? value) {
-      if (value == null || value.isEmpty) return;
-      if (!result.contains(value)) result.add(value);
-    }
-
-    add(activeBaseUrl);
-    add(ApiConfig.fallbackBaseUrl);
-    add(ApiConfig.baseUrl);
-    return result;
   }
 
   /// Интерсептор для добавления токена авторизации
@@ -1173,41 +1116,20 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return _runWithGetSlot(path, () async {
-      try {
-        return await _request(
-          (dio) => dio.get<T>(
-            path,
-            queryParameters: queryParameters,
-            options: options,
-          ),
-          method: 'GET',
-          path: path,
-          idempotent: true,
-          options: options,
-        );
-      } on DioException catch (error) {
-        if (_isTransientNetworkError(error)) {
-          final nativeResponse = await _tryNativeGetFallback<T>(
-            path: path,
-            queryParameters: queryParameters,
-            options: options,
-            sourceError: error,
-          );
-          if (nativeResponse != null) return nativeResponse;
-        }
-        rethrow;
-      } on TimeoutException catch (error) {
-        final nativeResponse = await _tryNativeGetFallback<T>(
-          path: path,
+    return _runWithGetSlot(
+      path,
+      () => _request(
+        (dio) => dio.get<T>(
+          path,
           queryParameters: queryParameters,
           options: options,
-          sourceError: error,
-        );
-        if (nativeResponse != null) return nativeResponse;
-        rethrow;
-      }
-    });
+        ),
+        method: 'GET',
+        path: path,
+        idempotent: true,
+        options: options,
+      ),
+    );
   }
 
   /// POST запрос
