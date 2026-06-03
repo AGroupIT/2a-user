@@ -10,11 +10,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
-import '../../../core/ui/app_input_decoration.dart';
 import '../data/registration_provider.dart';
 import 'auth_visuals.dart';
 
 enum _PhoneVerificationStatus { idle, waiting, verified }
+
+enum _RegistrationStep { contacts, password, codes }
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -36,6 +37,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureConfirm = true;
   bool _isPhoneVerificationLoading = false;
   bool _isPhoneVerificationChecking = false;
+  _RegistrationStep _currentStep = _RegistrationStep.contacts;
 
   _PhoneVerificationStatus _phoneVerificationStatus =
       _PhoneVerificationStatus.idle;
@@ -281,36 +283,75 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _submit() async {
+  bool _validateContactsStep() {
     if (_nameCtrl.text.trim().isEmpty) {
       _showError('Введите ваше ФИО');
-      return;
+      return false;
     }
     final phoneError = _validatePhone();
     if (phoneError != null) {
       _showError(phoneError);
-      return;
+      return false;
     }
     final phoneForApi = _normalizePhoneForApi()!;
     if (_confirmedPhoneVerificationToken == null ||
         _verifiedPhone != phoneForApi) {
       _showError('Подтвердите номер телефона');
-      return;
+      return false;
     }
     if (_emailCtrl.text.trim().isEmpty) {
       _showError('Введите email');
-      return;
+      return false;
     }
+    return true;
+  }
+
+  bool _validatePasswordStep() {
     if (_passwordCtrl.text.isEmpty) {
       _showError('Введите пароль');
-      return;
+      return false;
     }
     if (_passwordCtrl.text.length < 6) {
       _showError('Пароль должен быть не менее 6 символов');
-      return;
+      return false;
     }
     if (_passwordCtrl.text != _confirmPasswordCtrl.text) {
       _showError('Пароли не совпадают');
+      return false;
+    }
+    return true;
+  }
+
+  void _goToPasswordStep() {
+    if (!_validateContactsStep()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _currentStep = _RegistrationStep.password);
+  }
+
+  void _goToCodesStep() {
+    if (!_validatePasswordStep()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _currentStep = _RegistrationStep.codes);
+  }
+
+  void _goToPreviousStep() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _currentStep = switch (_currentStep) {
+        _RegistrationStep.contacts => _RegistrationStep.contacts,
+        _RegistrationStep.password => _RegistrationStep.contacts,
+        _RegistrationStep.codes => _RegistrationStep.password,
+      };
+    });
+  }
+
+  Future<void> _submit() async {
+    if (!_validateContactsStep()) {
+      setState(() => _currentStep = _RegistrationStep.contacts);
+      return;
+    }
+    if (!_validatePasswordStep()) {
+      setState(() => _currentStep = _RegistrationStep.password);
       return;
     }
 
@@ -348,9 +389,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final state = ref.watch(registrationProvider);
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const AppBackground(),
@@ -359,76 +402,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
                 24,
-                topPadding + 20,
+                topPadding + 28,
                 24,
-                bottomPadding + 24,
+                bottomPadding + keyboardInset + 24,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: () => context.go('/login'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x0A000000),
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.arrow_back_ios_rounded,
-                              size: 16,
-                              color: Color(0xFF2F2F2F),
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'Назад',
-                              style: TextStyle(
-                                color: Color(0xFF2F2F2F),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
                   const AuthHeroHeader(
                     icon: Icons.how_to_reg_rounded,
                     title: 'Станьте клиентом',
                     subtitle:
-                        'Оставьте заявку, подтвердите телефон звонком и получите личный код клиента для работы с грузами.',
-                    trustItems: [
-                      AuthTrustItem(
-                        icon: Icons.verified_user_rounded,
-                        label: 'Проверка телефона',
-                      ),
-                      AuthTrustItem(
-                        icon: Icons.badge_rounded,
-                        label: 'Код клиента',
-                      ),
-                      AuthTrustItem(
-                        icon: Icons.payments_rounded,
-                        label: 'Тарифы',
-                      ),
-                    ],
+                        'Зарегистрируйтесь, подтвердите телефон и сразу начинайте пользоваться нашим складом для работы с грузами.',
                   ),
                   const SizedBox(height: 24),
 
@@ -436,99 +421,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildTextField(
-                          controller: _nameCtrl,
-                          label: 'ФИО *',
-                          hint: 'Иванов Иван Иванович',
-                          prefixIcon: Icons.person_rounded,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _phoneCtrl,
-                          label: 'Телефон *',
-                          hint: '+7 (999) 123-45-67',
-                          prefixIcon: Icons.phone_rounded,
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [_PhoneInputFormatter()],
-                        ),
-                        const SizedBox(height: 10),
-                        _buildPhoneVerificationSection(state),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _emailCtrl,
-                          label: 'Email *',
-                          hint: 'example@mail.com',
-                          prefixIcon: Icons.email_rounded,
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildPasswordField(
-                          controller: _passwordCtrl,
-                          label: 'Пароль *',
-                          hint: 'Не менее 6 символов',
-                          obscure: _obscurePassword,
-                          onToggle: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildPasswordField(
-                          controller: _confirmPasswordCtrl,
-                          label: 'Подтвердите пароль *',
-                          hint: 'Повторите пароль',
-                          obscure: _obscureConfirm,
-                          onToggle: () => setState(
-                            () => _obscureConfirm = !_obscureConfirm,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _agentCodeCtrl,
-                          label: 'Код агента',
-                          hint: 'Код агента',
-                          prefixIcon: Icons.badge_rounded,
-                          textCapitalization: TextCapitalization.characters,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Если кода нет, оставьте поле пустым.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.25,
-                            color: AppColors.textSecondary.withValues(
-                              alpha: 0.9,
-                            ),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _referralCodeCtrl,
-                          label: 'Реферальный код (необязательно)',
-                          hint: 'ABC123',
-                          prefixIcon: Icons.card_giftcard_rounded,
-                          textCapitalization: TextCapitalization.characters,
-                        ),
-                        const SizedBox(height: 24),
-                        FilledButton(
-                          onPressed: state.isLoading ? null : _submit,
-                          style: AuthVisuals.primaryButtonStyle(context),
-                          child: state.isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Зарегистрироваться',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
+                        _buildStepProgress(),
+                        const SizedBox(height: 20),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 320),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: _stepTransition,
+                          child: _buildCurrentStep(state),
                         ),
                       ],
                     ),
@@ -558,6 +458,366 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStepProgress() {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStepChip(
+            step: _RegistrationStep.contacts,
+            label: 'Контакты',
+            icon: Icons.person_pin_rounded,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStepChip(
+            step: _RegistrationStep.password,
+            label: 'Пароль',
+            icon: Icons.lock_rounded,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStepChip(
+            step: _RegistrationStep.codes,
+            label: 'Коды',
+            icon: Icons.card_giftcard_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepChip({
+    required _RegistrationStep step,
+    required String label,
+    required IconData icon,
+  }) {
+    final accent = AuthVisuals.primary(context);
+    final isActive = step == _currentStep;
+    final isDone = step.index < _currentStep.index;
+    final foreground = isActive || isDone
+        ? accent
+        : AppColors.textSecondary.withValues(alpha: 0.86);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+      decoration: BoxDecoration(
+        color: isActive
+            ? accent.withValues(alpha: 0.12)
+            : isDone
+            ? accent.withValues(alpha: 0.07)
+            : Colors.white.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isActive
+              ? accent.withValues(alpha: 0.28)
+              : isDone
+              ? accent.withValues(alpha: 0.16)
+              : const Color(0xFF2F2F2F).withValues(alpha: 0.08),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isDone ? Icons.check_rounded : icon,
+            color: foreground,
+            size: 15,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentStep(RegistrationState state) {
+    return switch (_currentStep) {
+      _RegistrationStep.contacts => _buildContactsStep(state),
+      _RegistrationStep.password => _buildPasswordStep(state),
+      _RegistrationStep.codes => _buildCodesStep(state),
+    };
+  }
+
+  Widget _buildContactsStep(RegistrationState state) {
+    return Column(
+      key: const ValueKey('contacts-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepTitle(
+          icon: Icons.person_pin_rounded,
+          title: 'Контактные данные',
+          subtitle: 'Сначала подтвердим, кто вы и куда отправлять уведомления.',
+        ),
+        const SizedBox(height: 18),
+        _buildTextField(
+          controller: _nameCtrl,
+          label: 'ФИО *',
+          hint: 'Иванов Иван Иванович',
+          prefixIcon: Icons.person_rounded,
+        ),
+        const SizedBox(height: 16),
+        _buildTextField(
+          controller: _phoneCtrl,
+          label: 'Телефон *',
+          hint: '+7 (999) 123-45-67',
+          prefixIcon: Icons.phone_rounded,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [_PhoneInputFormatter()],
+        ),
+        const SizedBox(height: 10),
+        _buildPhoneVerificationSection(state),
+        const SizedBox(height: 16),
+        _buildTextField(
+          controller: _emailCtrl,
+          label: 'Email *',
+          hint: 'example@mail.com',
+          prefixIcon: Icons.email_rounded,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          onPressed: state.isLoading ? null : _goToPasswordStep,
+          style: AuthVisuals.primaryButtonStyle(context),
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: const Text(
+            'Продолжить',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordStep(RegistrationState state) {
+    return Column(
+      key: const ValueKey('password-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepTitle(
+          icon: Icons.lock_rounded,
+          title: 'Защита аккаунта',
+          subtitle: 'Придумайте пароль для входа в личный кабинет.',
+        ),
+        const SizedBox(height: 18),
+        _buildPasswordField(
+          controller: _passwordCtrl,
+          label: 'Пароль *',
+          hint: 'Не менее 6 символов',
+          obscure: _obscurePassword,
+          onToggle: () => setState(() => _obscurePassword = !_obscurePassword),
+        ),
+        const SizedBox(height: 16),
+        _buildPasswordField(
+          controller: _confirmPasswordCtrl,
+          label: 'Подтвердите пароль *',
+          hint: 'Повторите пароль',
+          obscure: _obscureConfirm,
+          onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: OutlinedButton.icon(
+                onPressed: state.isLoading ? null : _goToPreviousStep,
+                style: AuthVisuals.outlinedButtonStyle(context),
+                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Назад',
+                    maxLines: 1,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: state.isLoading ? null : _goToCodesStep,
+                style: AuthVisuals.primaryButtonStyle(context),
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Text(
+                  'Продолжить',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCodesStep(RegistrationState state) {
+    return Column(
+      key: const ValueKey('codes-step'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildStepTitle(
+          icon: Icons.card_giftcard_rounded,
+          title: 'Коды и привязка',
+          subtitle: 'Если кодов нет — просто оставьте поля пустыми.',
+        ),
+        const SizedBox(height: 18),
+        _buildTextField(
+          controller: _agentCodeCtrl,
+          label: 'Код агента',
+          hint: 'Код агента',
+          prefixIcon: Icons.badge_rounded,
+          textCapitalization: TextCapitalization.characters,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Если кода нет, оставьте поле пустым.',
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.25,
+            color: AppColors.textSecondary.withValues(alpha: 0.9),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildTextField(
+          controller: _referralCodeCtrl,
+          label: 'Реферальный код (необязательно)',
+          hint: 'ABC123',
+          prefixIcon: Icons.card_giftcard_rounded,
+          textCapitalization: TextCapitalization.characters,
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: OutlinedButton.icon(
+                onPressed: state.isLoading ? null : _goToPreviousStep,
+                style: AuthVisuals.outlinedButtonStyle(context),
+                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Назад',
+                    maxLines: 1,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: state.isLoading ? null : _submit,
+                style: AuthVisuals.primaryButtonStyle(context),
+                icon: state.isLoading
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.how_to_reg_rounded, size: 18),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Зарегистрироваться',
+                    maxLines: 1,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepTitle({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final accent = AuthVisuals.primary(context);
+
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: accent, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFF2F2F2F),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: AppColors.textSecondary.withValues(alpha: 0.9),
+                  fontSize: 12,
+                  height: 1.25,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stepTransition(Widget child, Animation<double> animation) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return FadeTransition(
+      opacity: curved,
+      child: SizeTransition(
+        sizeFactor: curved,
+        axisAlignment: -1,
+        child: child,
       ),
     );
   }
@@ -734,22 +994,35 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          inputFormatters: inputFormatters,
-          maxLines: maxLines,
-          textCapitalization: textCapitalization,
-          decoration: appInputDecoration(
-            context,
-            hintText: hint,
-            radius: 12,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            border: Border.all(color: accent.withValues(alpha: 0.16)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            maxLines: maxLines,
+            textCapitalization: textCapitalization,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 14,
+              ),
+              prefixIcon: Icon(
+                prefixIcon,
+                color: accent.withValues(alpha: 0.72),
+                size: 20,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
-            hintStyle: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
-            prefixIcon: Icon(prefixIcon, color: accent, size: 20),
           ),
         ),
       ],
@@ -777,28 +1050,41 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          obscureText: obscure,
-          decoration: appInputDecoration(
-            context,
-            hintText: hint,
-            radius: 12,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-            hintStyle: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
-            prefixIcon: Icon(Icons.lock_rounded, color: accent, size: 20),
-            suffixIcon: IconButton(
-              icon: Icon(
-                obscure
-                    ? Icons.visibility_off_rounded
-                    : Icons.visibility_rounded,
-                color: const Color(0xFF999999),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            border: Border.all(color: accent.withValues(alpha: 0.16)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontSize: 14,
+              ),
+              prefixIcon: Icon(
+                Icons.lock_rounded,
+                color: accent.withValues(alpha: 0.72),
                 size: 20,
               ),
-              onPressed: onToggle,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  obscure
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  color: const Color(0xFF999999),
+                  size: 20,
+                ),
+                onPressed: onToggle,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
         ),

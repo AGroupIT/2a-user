@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Нужен доступ к камере для фото товаров</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID используется для быстрого входа в личный кабинет</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Нужен доступ для сохранения фотографий в галерею</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -94,8 +94,17 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
       String errorMessage;
       if (e.response?.statusCode == 409) {
         final msg = e.response?.data?['error'] as String?;
-        errorMessage =
-            msg ?? 'Пользователь с такими данными уже зарегистрирован';
+        if (msg?.toLowerCase().contains('телефон') == true) {
+          errorMessage =
+              'Аккаунт с этим телефоном уже зарегистрирован. Авторизуйтесь, чтобы войти.';
+        } else if (msg?.toLowerCase().contains('email') == true) {
+          errorMessage =
+              'Аккаунт с этим email уже зарегистрирован. Авторизуйтесь, чтобы войти.';
+        } else {
+          errorMessage =
+              msg ??
+              'Пользователь с такими данными уже зарегистрирован. Авторизуйтесь, чтобы войти.';
+        }
       } else if (e.response?.statusCode == 400) {
         final msg = e.response?.data?['error'] as String?;
         errorMessage = msg ?? 'Проверьте введённые данные';

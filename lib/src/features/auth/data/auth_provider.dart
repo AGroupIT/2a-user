@@ -260,6 +260,7 @@ class AuthNotifier extends Notifier<AuthState> {
     required String email,
     required String domain,
     required String password,
+    Future<void> Function(Map<String, dynamic> userData)? beforeComplete,
   }) async {
     _initialLoadDone =
         true; // Предотвращаем перезапись state от _loadAuthState()
@@ -314,6 +315,14 @@ class AuthNotifier extends Notifier<AuthState> {
         await prefs.setString(_kClientNameKey, clientName);
         await prefs.setString(_kClientDataKey, jsonEncode(userData));
         unawaited(cacheClientProfileData(userData));
+
+        if (beforeComplete != null) {
+          try {
+            await beforeComplete(userData);
+          } catch (e) {
+            debugPrint('⚠️ Password login beforeComplete hook failed: $e');
+          }
+        }
 
         // Сбрасываем только обучение, не принятие правил.
         final showcaseService = ref.read(showcaseServiceProvider);

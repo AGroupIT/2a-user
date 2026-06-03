@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:typed_data';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/clipboard_helper.dart';
@@ -19,6 +21,7 @@ import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
+import '../../auth/data/passkey_auth_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../invoices/data/invoices_provider.dart';
@@ -108,6 +111,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // Password change state
   bool _isChangingPassword = false;
   bool _isSavingPassword = false;
+  bool _isLoadingPasskeyStatus = true;
+  bool _isBindingPasskey = false;
+  bool _isUnlinkingPasskey = false;
+  PasskeyStatus? _passkeyStatus;
   bool _isSendingProblemReport = false;
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -119,6 +126,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_loadPasskeyStatus());
+    });
   }
 
   @override
@@ -814,8 +825,80 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          _buildPasskeyBindingButton(),
         ],
       ),
+    );
+  }
+
+  Widget _buildPasskeyBindingButton() {
+    final hasPasskey = _passkeyStatus?.enabled == true;
+    final isBusy =
+        _isLoadingPasskeyStatus || _isBindingPasskey || _isUnlinkingPasskey;
+    final actionColor = hasPasskey
+        ? const Color(0xFFE53935)
+        : context.brandPrimary;
+    final label = _isLoadingPasskeyStatus
+        ? 'Проверяем быстрый вход...'
+        : hasPasskey
+        ? 'Отвязать Face ID / отпечаток'
+        : 'Привязать Face ID / отпечаток';
+    final description = hasPasskey
+        ? 'Быстрый вход уже подключён. После отвязки следующий вход нужно будет выполнить с паролем.'
+        : 'После привязки можно будет входить без домена партнёра и пароля.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: isBusy || _isSavingPassword
+                ? null
+                : hasPasskey
+                ? _confirmAndUnlinkPasskey
+                : _bindPasskey,
+            icon: isBusy
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: actionColor,
+                    ),
+                  )
+                : Icon(
+                    hasPasskey
+                        ? Icons.link_off_rounded
+                        : Icons.fingerprint_rounded,
+                    size: 20,
+                  ),
+            label: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: actionColor,
+              side: BorderSide(color: actionColor.withValues(alpha: 0.32)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          description,
+          style: TextStyle(
+            color: AppColors.textSecondary.withValues(alpha: 0.88),
+            fontSize: 12,
+            height: 1.25,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 
@@ -908,6 +991,142 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         String errorMsg = e.toString().replaceAll('Exception: ', '');
         _showStyledSnackBar(context, errorMsg, isError: true);
       }
+    }
+  }
+
+  Future<void> _loadPasskeyStatus({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() => _isLoadingPasskeyStatus = true);
+    }
+
+    final passkeyService = ref.read(passkeyAuthServiceProvider);
+    try {
+      final status = await passkeyService.getCurrentUserPasskeyStatus();
+      if (!mounted) return;
+
+      setState(() {
+        _passkeyStatus = status;
+        _isLoadingPasskeyStatus = false;
+      });
+    } catch (error) {
+      debugPrint('⚠️ Failed to load passkey status: $error');
+      if (!mounted) return;
+
+      setState(() => _isLoadingPasskeyStatus = false);
+    }
+  }
+
+  Future<void> _bindPasskey() async {
+    if (_isBindingPasskey) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isBindingPasskey = true);
+
+    final passkeyService = ref.read(passkeyAuthServiceProvider);
+
+    try {
+      final available = await passkeyService.isAvailable();
+      if (!mounted) return;
+
+      if (!available) {
+        setState(() => _isBindingPasskey = false);
+        _showStyledSnackBar(
+          context,
+          'Это устройство не поддерживает быстрый вход',
+          isError: true,
+        );
+        return;
+      }
+
+      await passkeyService.registerCurrentUserPasskey();
+      if (!mounted) return;
+
+      setState(() {
+        _isBindingPasskey = false;
+        _passkeyStatus = PasskeyStatus(
+          enabled: true,
+          count: (_passkeyStatus?.count ?? 0) > 0 ? _passkeyStatus!.count : 1,
+          createdAt: DateTime.now(),
+        );
+      });
+      unawaited(_loadPasskeyStatus(showLoading: false));
+      _showStyledSnackBar(
+        context,
+        'Быстрый вход по Face ID / отпечатку подключён',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isBindingPasskey = false);
+      _showStyledSnackBar(
+        context,
+        passkeyService.humanRegistrationMessage(error),
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _confirmAndUnlinkPasskey() async {
+    if (_isUnlinkingPasskey) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Отвязать быстрый вход?'),
+          content: const Text(
+            'Face ID / отпечаток больше нельзя будет использовать для входа в этот аккаунт. Войти снова можно будет по домену партнёра и паролю.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+              ),
+              child: const Text('Отвязать'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+    await _unlinkPasskey();
+  }
+
+  Future<void> _unlinkPasskey() async {
+    if (_isUnlinkingPasskey) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isUnlinkingPasskey = true);
+
+    final passkeyService = ref.read(passkeyAuthServiceProvider);
+
+    try {
+      await passkeyService.unlinkCurrentUserPasskeys();
+      if (!mounted) return;
+
+      setState(() {
+        _isUnlinkingPasskey = false;
+        _passkeyStatus = const PasskeyStatus(enabled: false, count: 0);
+      });
+      _showStyledSnackBar(context, 'Быстрый вход отвязан');
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isUnlinkingPasskey = false);
+      _showStyledSnackBar(
+        context,
+        passkeyService.humanUnlinkMessage(error),
+        isError: true,
+      );
     }
   }
 

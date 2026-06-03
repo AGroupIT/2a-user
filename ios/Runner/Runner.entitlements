@@ -4,5 +4,12 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:prod-api.cp.2a-logistic.com</string>
+		<string>applinks:prod-api.cp.2a-logistic.com?mode=developer</string>
+		<string>webcredentials:prod-api.cp.2a-logistic.com</string>
+		<string>webcredentials:prod-api.cp.2a-logistic.com?mode=developer</string>
+	</array>
 </dict>
 </plist>

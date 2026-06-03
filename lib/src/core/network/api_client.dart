@@ -854,6 +854,9 @@ class ApiClient {
     if (method == 'POST' && path == '/login') {
       return 'Авторизация клиента';
     }
+    if (method == 'POST' && path.startsWith('/client/passkeys/')) {
+      return 'Авторизация клиента через passkey';
+    }
 
     return null;
   }
