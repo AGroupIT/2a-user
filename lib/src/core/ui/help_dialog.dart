@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import 'sheet_handle.dart';
 
@@ -7,7 +8,7 @@ Future<void> showHelpDialog(
   required String title,
   required Widget content,
 }) {
-  return showModalBottomSheet<void>(
+  return showBlurredModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
@@ -15,17 +16,20 @@ Future<void> showHelpDialog(
     builder: (context) {
       final bottomPadding = MediaQuery.paddingOf(context).bottom;
       return Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+        ),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SheetHandle(),
-              Padding(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHandle(),
+            Flexible(
+              child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottomPadding),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,8 +58,8 @@ Future<void> showHelpDialog(
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     },

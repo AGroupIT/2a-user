@@ -97,6 +97,7 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   if (_isFlutterTextInputSelectionNoise(exType, exValue, joinedFrames)) {
     return null;
   }
+  if (_isFlutterNoticesAssetNoise(exType, exValue, joinedFrames)) return null;
   if (_isFlutterCacheDatabaseNoise(exType, exValue, joinedFrames)) return null;
 
   // Сетевые сбои у клиентов ожидаемы: плохой интернет, VPN, DPI, China/RF routes.
@@ -245,6 +246,18 @@ bool _isFlutterTextInputSelectionNoise(
   final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames';
   return normalized.contains('invalid selection start') &&
       normalized.contains('TextInputChannel');
+}
+
+bool _isFlutterNoticesAssetNoise(
+  String exceptionType,
+  String exceptionValue,
+  String joinedFrames,
+) {
+  if (!kIsWeb) return false;
+  final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames';
+  return normalized.contains('Unable to load asset: "NOTICES"') &&
+      (normalized.contains('process_text.dart') ||
+          normalized.contains('DefaultProcessTextService'));
 }
 
 bool _isFlutterCacheDatabaseNoise(

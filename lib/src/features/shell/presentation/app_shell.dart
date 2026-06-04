@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../app/widgets/app_scaffold.dart';
 import '../../../core/logging/client_log_service.dart';
@@ -193,7 +194,7 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
     (
       icon: CupertinoIcons.photo_on_rectangle,
       selectedIcon: CupertinoIcons.photo_fill_on_rectangle_fill,
-      label: 'Фотоотчёты',
+      label: 'Фото',
     ),
     (
       icon: CupertinoIcons.cube,
@@ -271,79 +272,65 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
         alignment: Alignment.bottomCenter,
         child: _BottomNavSurface(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth;
-                final buttonSize = contentWidth >= 300
-                    ? 50.0
-                    : contentWidth / _items.length;
-                final iconSize = 34 * (buttonSize / 50);
-                final gap = _items.length > 1
-                    ? (contentWidth - buttonSize * _items.length) /
-                          (_items.length - 1)
-                    : 0.0;
                 final selectedIndex = widget.currentIndex.clamp(
                   0,
                   _items.length - 1,
                 );
-                final selectedLeft = selectedIndex * (buttonSize + gap);
+                const gap = 6.0;
+                final buttonSize =
+                    ((contentWidth - gap * (_items.length - 1)) / _items.length)
+                        .clamp(42.0, 50.0);
 
-                return Stack(
-                  alignment: Alignment.centerLeft,
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeInOutCubic,
-                      left: selectedLeft,
-                      top: 5,
-                      child: _ActiveNavBackground(size: buttonSize),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: List.generate(_items.length, (index) {
-                        final item = _items[index];
-                        final isSelected = index == widget.currentIndex;
+                    for (var index = 0; index < _items.length; index++)
+                      Builder(
+                        builder: (context) {
+                          final item = _items[index];
+                          final isSelected = index == selectedIndex;
 
-                        return _BottomNavButton(
-                          icon: isSelected ? item.selectedIcon : item.icon,
-                          label: item.label,
-                          isSelected: isSelected,
-                          size: buttonSize,
-                          iconSize: iconSize,
-                          horizontalPadding: 7 * (buttonSize / 50),
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            ClientLogService.instance.action(
-                              'Нажата нижняя навигация',
-                              data: {
-                                'tab': item.label,
-                                'index': index,
-                                'selected': isSelected,
-                              },
-                            );
-                            if (index == _items.length - 1) {
+                          return _BottomNavButton(
+                            icon: isSelected ? item.selectedIcon : item.icon,
+                            label: item.label,
+                            isSelected: isSelected,
+                            size: buttonSize,
+                            onTap: () {
+                              HapticFeedback.lightImpact();
                               ClientLogService.instance.action(
-                                'Открыто меню Ещё',
-                                data: {'source': 'bottom_navigation'},
+                                'Нажата нижняя навигация',
+                                data: {
+                                  'tab': item.label,
+                                  'index': index,
+                                  'selected': isSelected,
+                                },
                               );
-                              showModalBottomSheet<void>(
-                                context: context,
-                                backgroundColor: Colors.white,
-                                barrierColor: Colors.black.withValues(
-                                  alpha: 0.22,
-                                ),
-                                useSafeArea: true,
-                                isScrollControlled: true,
-                                builder: (_) => const MoreSheet(),
-                              );
-                            } else {
-                              widget.onTap(index);
-                            }
-                          },
-                        );
-                      }),
-                    ),
+                              if (index == _items.length - 1) {
+                                ClientLogService.instance.action(
+                                  'Открыто меню Ещё',
+                                  data: {'source': 'bottom_navigation'},
+                                );
+                                showBlurredModalBottomSheet<void>(
+                                  context: context,
+                                  backgroundColor: Colors.transparent,
+                                  barrierColor: Colors.black.withValues(
+                                    alpha: 0.22,
+                                  ),
+                                  useSafeArea: true,
+                                  isScrollControlled: true,
+                                  builder: (_) => const MoreSheet(),
+                                );
+                              } else {
+                                widget.onTap(index);
+                              }
+                            },
+                          );
+                        },
+                      ),
                   ],
                 );
               },
@@ -363,84 +350,39 @@ class _BottomNavSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 60,
+      height: 68,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 25,
-            offset: const Offset(3, 4),
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 28,
+            spreadRadius: -10,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withValues(alpha: 0.97),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.99),
+                  const Color(0xFFF8FAFC).withValues(alpha: 0.96),
+                ],
+              ),
             ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.44),
-                        Colors.white.withValues(alpha: 0.10),
-                        Colors.white.withValues(alpha: 0.24),
-                      ],
-                      stops: const [0, 0.52, 1],
-                    ),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.36),
-                    ),
-                  ),
-                ),
-                child,
-              ],
-            ),
+            child: child,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ActiveNavBackground extends StatelessWidget {
-  final double size;
-
-  const _ActiveNavBackground({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: context.brandGradient,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: context.brandPrimary.withValues(alpha: 0.22),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
     );
   }
@@ -451,8 +393,6 @@ class _BottomNavButton extends StatelessWidget {
   final String label;
   final bool isSelected;
   final double size;
-  final double iconSize;
-  final double horizontalPadding;
   final VoidCallback onTap;
 
   const _BottomNavButton({
@@ -460,8 +400,6 @@ class _BottomNavButton extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.size,
-    required this.iconSize,
-    required this.horizontalPadding,
     required this.onTap,
   });
 
@@ -473,97 +411,51 @@ class _BottomNavButton extends StatelessWidget {
       label: label,
       child: Tooltip(
         message: label,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (!isSelected) const _InactiveNavGlass(),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: Center(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(scale: animation, child: child),
-                      ),
-                      child: Icon(
-                        icon,
-                        key: ValueKey('${icon.codePoint}-$isSelected'),
-                        size: iconSize,
-                        color: isSelected ? Colors.white : context.brandPrimary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InactiveNavGlass extends StatelessWidget {
-  const _InactiveNavGlass();
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.28),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.black.withValues(alpha: 0)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.34),
-                blurRadius: 12,
-                offset: const Offset(-6, -6),
-              ),
-            ],
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.58),
-                  Colors.white.withValues(alpha: 0.18),
-                  Colors.white.withValues(alpha: 0.04),
-                ],
-                stops: const [0, 0.52, 1],
-              ),
-            ),
-            child: DecoratedBox(
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: BorderRadius.circular(17),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(17),
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: size,
+              height: size,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                gradient: RadialGradient(
-                  center: const Alignment(-0.65, -0.75),
-                  radius: 1.15,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.38),
-                    Colors.white.withValues(alpha: 0.06),
-                    Colors.transparent,
-                  ],
-                  stops: const [0, 0.48, 1],
+                gradient: isSelected ? context.brandGradient : null,
+                color: isSelected ? null : Colors.white.withValues(alpha: 0.34),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : Colors.black.withValues(alpha: 0.035),
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: context.brandPrimary.withValues(alpha: 0.18),
+                          blurRadius: 12,
+                          spreadRadius: -5,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(scale: animation, child: child),
+                ),
+                child: Icon(
+                  icon,
+                  key: ValueKey('${icon.codePoint}-$isSelected'),
+                  size: isSelected ? 25 : 23,
+                  color: isSelected ? Colors.white : context.brandPrimary,
                 ),
               ),
             ),

@@ -3,24 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/tariffs_provider.dart';
-
-const _tariffsTextColor = Color(0xFF2F2F2F);
-const _tariffsMutedTextColor = Color(0x992F2F2F);
-const _tariffsDividerColor = Color(0x142F2F2F);
-
-BoxDecoration _tariffsCardDecoration({Color color = Colors.white}) {
-  return BoxDecoration(
-    color: color,
-    borderRadius: BorderRadius.circular(10),
-    boxShadow: const [
-      BoxShadow(color: Color(0x1A000000), offset: Offset(3, 4), blurRadius: 25),
-    ],
-  );
-}
+import 'tariffs_ui.dart';
 
 class TariffsScreen extends ConsumerStatefulWidget {
   const TariffsScreen({super.key});
@@ -75,12 +61,20 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
       );
     }
 
+    List<Widget> baseHeader() {
+      return const [
+        TariffsPageHeader(),
+        SizedBox(height: 12),
+        TariffsHeroCard(),
+        SizedBox(height: 14),
+      ];
+    }
+
     return tariffsAsync.when(
       loading: () => buildFrame(
-        children: const [
-          AppPageHeader(title: 'Тарифы', showBack: true),
-          SizedBox(height: 15),
-          _TariffsStateCard(
+        children: [
+          ...baseHeader(),
+          const TariffsStateCard(
             icon: Icons.price_change_rounded,
             title: 'Загружаем тарифы',
             message: 'Получаем актуальные тарифы доставки и услуг.',
@@ -90,9 +84,8 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
       ),
       error: (e, _) => buildFrame(
         children: [
-          const AppPageHeader(title: 'Тарифы', showBack: true),
-          const SizedBox(height: 15),
-          _TariffsStateCard(
+          ...baseHeader(),
+          TariffsStateCard(
             icon: Icons.error_outline_rounded,
             title: 'Не удалось загрузить тарифы',
             message: 'Проверьте соединение и попробуйте ещё раз.',
@@ -110,10 +103,9 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
 
         if (isEmpty) {
           return buildFrame(
-            children: const [
-              AppPageHeader(title: 'Тарифы', showBack: true),
-              SizedBox(height: 15),
-              _TariffsStateCard(
+            children: [
+              ...baseHeader(),
+              const TariffsStateCard(
                 icon: Icons.price_change_outlined,
                 title: 'Тарифы не настроены',
                 message:
@@ -150,17 +142,8 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
           ],
           child: buildFrame(
             children: [
-              const AppPageHeader(title: 'Тарифы', showBack: true),
-              const SizedBox(height: 15),
+              ...baseHeader(),
               if (data.deliveryTariffs.isNotEmpty) ...[
-                KeyedSubtree(
-                  key: _tariffsListKey,
-                  child: const _SectionHeader(
-                    icon: Icons.local_shipping_rounded,
-                    title: 'Доставка',
-                  ),
-                ),
-                const SizedBox(height: 10),
                 for (var i = 0; i < data.deliveryTariffs.length; i++) ...[
                   if (i == 0)
                     KeyedSubtree(
@@ -172,35 +155,34 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
                   else
                     _DeliveryTariffCard(tariff: data.deliveryTariffs[i]),
                   if (i != data.deliveryTariffs.length - 1)
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
                 ],
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
               ],
               if (data.packagingTypes.isNotEmpty) ...[
                 KeyedSubtree(
                   key: _packagingKey,
-                  child: const _SectionHeader(
+                  child: const _SectionTitle(
                     icon: Icons.inventory_2_rounded,
                     title: 'Упаковка',
+                    subtitle: 'Дополнительная защита товара при перевозке.',
                   ),
                 ),
                 const SizedBox(height: 10),
                 _PackagingCard(types: data.packagingTypes),
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
               ],
               if (data.photoCoefficients.isNotEmpty) ...[
-                const _SectionHeader(
+                const _SectionTitle(
                   icon: Icons.photo_camera_rounded,
                   title: 'Фотоотчёт',
-                ),
-                const SizedBox(height: 10),
-                _TariffNote(
-                  text:
-                      'Коэффициент применяется к стоимости фотоотчёта в зависимости от количества фотографий.',
+                  subtitle: 'Коэффициент зависит от количества фотографий.',
                 ),
                 const SizedBox(height: 10),
                 _PhotoReportCard(coefficients: data.photoCoefficients),
               ],
+              const SizedBox(height: 12),
+              const _TariffInfoNote(),
             ],
           ),
         );
@@ -209,180 +191,52 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
   }
 }
 
-class _TariffsStateCard extends StatelessWidget {
+class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final String title;
-  final String? message;
-  final bool isLoading;
-  final bool isError;
-  final String? actionLabel;
-  final VoidCallback? onAction;
+  final String subtitle;
 
-  const _TariffsStateCard({
+  const _SectionTitle({
     required this.icon,
     required this.title,
-    this.message,
-    this.isLoading = false,
-    this.isError = false,
-    this.actionLabel,
-    this.onAction,
+    required this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = isError ? const Color(0xFFE53935) : context.brandPrimary;
-    return Container(
-      decoration: _tariffsCardDecoration(),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: accent,
-                      ),
-                    )
-                  : Icon(icon, color: accent, size: 22),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _tariffsTextColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    height: 20 / 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (message != null && message!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    message!,
-                    style: const TextStyle(
-                      color: _tariffsMutedTextColor,
-                      fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      height: 16 / 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-                if (actionLabel != null && onAction != null) ...[
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: onAction,
-                    icon: Icon(
-                      Icons.refresh_rounded,
-                      size: 18,
-                      color: context.brandPrimary,
-                    ),
-                    label: Text(
-                      actionLabel!,
-                      style: TextStyle(
-                        color: context.brandPrimary,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final IconData icon;
-  final String title;
-
-  const _SectionHeader({required this.icon, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 34,
-          height: 34,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
-            color: context.brandPrimary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+            color: context.brandPrimary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Icon(icon, color: context.brandPrimary, size: 18),
+          child: Icon(icon, color: context.brandPrimary, size: 22),
         ),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(
-            color: _tariffsTextColor,
-            fontFamily: 'Gilroy',
-            fontSize: 18,
-            height: 22 / 18,
-            fontWeight: FontWeight.w600,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TariffsUi.sectionTitleStyle),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 17 / 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TariffNote extends StatelessWidget {
-  final String text;
-
-  const _TariffNote({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: _tariffsCardDecoration(
-        color: context.brandPrimary.withValues(alpha: 0.06),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: context.brandPrimary,
-            size: 18,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: _tariffsTextColor,
-                fontFamily: 'Gilroy',
-                fontSize: 13,
-                height: 16 / 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -392,128 +246,195 @@ class _DeliveryTariffCard extends StatelessWidget {
 
   const _DeliveryTariffCard({required this.tariff});
 
-  String _fmt(double v) =>
-      v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+  @override
+  Widget build(BuildContext context) {
+    final price = _mainPrice(tariff);
+    final hasTiers = tariff.weightTiers.isNotEmpty;
+    final hasAllowed = tariff.allowedItems?.trim().isNotEmpty == true;
+    final hasProhibited = tariff.prohibitedItems?.trim().isNotEmpty == true;
+
+    return Container(
+      decoration: TariffsUi.cardDecoration(),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tariff.name,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 18,
+                        height: 22 / 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.15,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        _SmallPill(
+                          icon: tariff.requiresProductInfo
+                              ? Icons.assignment_outlined
+                              : Icons.assignment_turned_in_outlined,
+                          label: tariff.requiresProductInfo
+                              ? 'Нужны данные о товаре'
+                              : 'Без данных о товаре',
+                          color: tariff.requiresProductInfo
+                              ? context.brandPrimary
+                              : const Color(0xFF2EAD63),
+                        ),
+                        if (hasTiers)
+                          _SmallPill(
+                            icon: Icons.scale_rounded,
+                            label: 'Есть диапазоны веса',
+                            color: const Color(0xFF3F7AE0),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              _MainPriceBadge(price: price),
+            ],
+          ),
+          if (hasTiers) ...[
+            const SizedBox(height: 14),
+            _WeightTiersBlock(tiers: tariff.weightTiers),
+          ],
+          if (hasAllowed || hasProhibited) ...[
+            const SizedBox(height: 12),
+            if (hasAllowed)
+              _RulesTextBlock(
+                icon: Icons.check_circle_outline_rounded,
+                title: 'Разрешено',
+                text: tariff.allowedItems!.trim(),
+                color: const Color(0xFF2EAD63),
+              ),
+            if (hasAllowed && hasProhibited) const SizedBox(height: 8),
+            if (hasProhibited)
+              _RulesTextBlock(
+                icon: Icons.cancel_outlined,
+                title: 'Запрещено',
+                text: tariff.prohibitedItems!.trim(),
+                color: const Color(0xFFE53935),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static double _mainPrice(UserDeliveryTariff tariff) {
+    final prices = <double>[
+      if (tariff.baseCost > 0) tariff.baseCost,
+      ...tariff.weightTiers
+          .map((tier) => tier.pricePerKg)
+          .where((price) => price > 0),
+    ];
+    if (prices.isEmpty) return tariff.baseCost;
+    return prices.reduce((a, b) => a < b ? a : b);
+  }
+}
+
+class _MainPriceBadge extends StatelessWidget {
+  final double price;
+
+  const _MainPriceBadge({required this.price});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: _tariffsCardDecoration(),
-      clipBehavior: Clip.antiAlias,
+      constraints: const BoxConstraints(minWidth: 86),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.18),
+            blurRadius: 18,
+            spreadRadius: -10,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        tariff.name,
-                        style: const TextStyle(
-                          color: _tariffsTextColor,
-                          fontFamily: 'Gilroy',
-                          fontSize: 17,
-                          height: 21 / 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    _PricePill(text: '\$${_fmt(tariff.baseCost)} / кг'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _ProductInfoPill(
-                  requiresProductInfo: tariff.requiresProductInfo,
-                ),
-              ],
+          Text(
+            '\$${_fmt(price)}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontSize: 22,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.3,
             ),
           ),
-          if (tariff.weightTiers.isNotEmpty) ...[
-            const Divider(height: 1, color: _tariffsDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: _TableHeader(left: 'Вес (кг)', right: 'Цена за кг'),
+          const SizedBox(height: 4),
+          const Text(
+            'за кг',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xE6FFFFFF),
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              height: 1,
+              fontWeight: FontWeight.w800,
             ),
-            for (final tier in tariff.weightTiers)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
-                child: _ValueRow(
-                  label: tier.maxWeight != null
-                      ? '${_fmt(tier.minWeight)} – ${_fmt(tier.maxWeight!)} кг'
-                      : 'от ${_fmt(tier.minWeight)} кг',
-                  value: '\$${_fmt(tier.pricePerKg)}',
-                ),
-              ),
-            const SizedBox(height: 10),
-          ],
-          if (tariff.allowedItems?.trim().isNotEmpty == true) ...[
-            const Divider(height: 1, color: _tariffsDividerColor),
-            _TextBlock(
-              icon: Icons.check_circle_outline_rounded,
-              title: 'Разрешено',
-              text: tariff.allowedItems!.trim(),
-              color: const Color(0xFF2EAD63),
-            ),
-          ],
-          if (tariff.prohibitedItems?.trim().isNotEmpty == true) ...[
-            const Divider(height: 1, color: _tariffsDividerColor),
-            _TextBlock(
-              icon: Icons.cancel_outlined,
-              title: 'Запрещено',
-              text: tariff.prohibitedItems!.trim(),
-              color: const Color(0xFFE53935),
-            ),
-          ],
-          const SizedBox(height: 10),
+          ),
         ],
       ),
     );
   }
 }
 
-class _ProductInfoPill extends StatelessWidget {
-  final bool requiresProductInfo;
+class _SmallPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
 
-  const _ProductInfoPill({required this.requiresProductInfo});
+  const _SmallPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final color = requiresProductInfo
-        ? context.brandPrimary
-        : const Color(0xFF2EAD63);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            requiresProductInfo
-                ? Icons.assignment_outlined
-                : Icons.assignment_turned_in_outlined,
-            size: 14,
-            color: color,
-          ),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              requiresProductInfo ? 'Нужны данные о товаре' : 'Данные не нужны',
-              style: TextStyle(
-                color: color,
-                fontFamily: 'Gilroy',
-                fontSize: 12,
-                height: 14 / 12,
-                fontWeight: FontWeight.w600,
-              ),
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              height: 1,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -522,66 +443,236 @@ class _ProductInfoPill extends StatelessWidget {
   }
 }
 
-class _PricePill extends StatelessWidget {
-  final String text;
+class _WeightTiersBlock extends StatelessWidget {
+  final List<UserWeightTier> tiers;
 
-  const _PricePill({required this.text});
+  const _WeightTiersBlock({required this.tiers});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: context.brandPrimary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: context.brandPrimary,
-          fontFamily: 'Gilroy',
-          fontSize: 13,
-          height: 16 / 13,
-          fontWeight: FontWeight.w700,
-        ),
+      decoration: TariffsUi.softDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.scale_rounded, color: context.brandPrimary, size: 18),
+              const SizedBox(width: 7),
+              const Expanded(
+                child: Text(
+                  'Весовые диапазоны',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 17 / 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < tiers.length; i++) ...[
+            _ValueRow(
+              label: tiers[i].maxWeight != null
+                  ? '${_fmt(tiers[i].minWeight)} – ${_fmt(tiers[i].maxWeight!)} кг'
+                  : 'от ${_fmt(tiers[i].minWeight)} кг',
+              value: '\$${_fmt(tiers[i].pricePerKg)} / кг',
+            ),
+            if (i != tiers.length - 1) const SizedBox(height: 8),
+          ],
+        ],
       ),
     );
   }
 }
 
-class _TableHeader extends StatelessWidget {
-  final String left;
-  final String right;
+class _RulesTextBlock extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String text;
+  final Color color;
 
-  const _TableHeader({required this.left, required this.right});
+  const _RulesTextBlock({
+    required this.icon,
+    required this.title,
+    required this.text,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            left,
+    return Container(
+      width: double.infinity,
+      decoration: TariffsUi.softDecoration(
+        color: color.withValues(alpha: 0.06),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 7),
+              Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 16 / 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            text,
             style: const TextStyle(
-              color: _tariffsMutedTextColor,
+              color: AppColors.textPrimary,
               fontFamily: 'Gilroy',
-              fontSize: 12,
-              height: 14 / 12,
-              fontWeight: FontWeight.w500,
+              fontSize: 13,
+              height: 17 / 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-        Text(
-          right,
-          style: const TextStyle(
-            color: _tariffsMutedTextColor,
-            fontFamily: 'Gilroy',
-            fontSize: 12,
-            height: 14 / 12,
-            fontWeight: FontWeight.w500,
+        ],
+      ),
+    );
+  }
+}
+
+class _PackagingCard extends StatelessWidget {
+  final List<UserPackagingType> types;
+
+  const _PackagingCard({required this.types});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: TariffsUi.cardDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          for (var i = 0; i < types.length; i++) ...[
+            _ServicePriceRow(
+              icon: Icons.inventory_2_rounded,
+              title: types[i].name,
+              price: '\$${_fmt(types[i].baseCost)}',
+            ),
+            if (i < types.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoReportCard extends StatelessWidget {
+  final List<UserPhotoCoefficient> coefficients;
+
+  const _PhotoReportCard({required this.coefficients});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: TariffsUi.cardDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          for (var i = 0; i < coefficients.length; i++) ...[
+            _ServicePriceRow(
+              icon: Icons.photo_camera_rounded,
+              title: coefficients[i].rangeLabel,
+              price: '×${coefficients[i].coefficient.toStringAsFixed(2)}',
+              priceLabel: 'коэф.',
+            ),
+            if (i < coefficients.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ServicePriceRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String price;
+  final String? priceLabel;
+
+  const _ServicePriceRow({
+    required this.icon,
+    required this.title,
+    required this.price,
+    this.priceLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: TariffsUi.softDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: context.brandPrimary, size: 20),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 14,
+                height: 18 / 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                price,
+                style: TextStyle(
+                  color: context.brandPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 16,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (priceLabel != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  priceLabel!,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 11,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -600,11 +691,11 @@ class _ValueRow extends StatelessWidget {
           child: Text(
             label,
             style: const TextStyle(
-              color: _tariffsTextColor,
+              color: AppColors.textPrimary,
               fontFamily: 'Gilroy',
-              fontSize: 14,
-              height: 18 / 14,
-              fontWeight: FontWeight.w500,
+              fontSize: 13.5,
+              height: 18 / 13.5,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -614,9 +705,9 @@ class _ValueRow extends StatelessWidget {
           style: TextStyle(
             color: context.brandPrimary,
             fontFamily: 'Gilroy',
-            fontSize: 14,
-            height: 18 / 14,
-            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+            height: 18 / 13.5,
+            fontWeight: FontWeight.w900,
           ),
         ),
       ],
@@ -624,51 +715,43 @@ class _ValueRow extends StatelessWidget {
   }
 }
 
-class _TextBlock extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String text;
-  final Color color;
-
-  const _TextBlock({
-    required this.icon,
-    required this.title,
-    required this.text,
-    required this.color,
-  });
+class _TariffInfoNote extends StatelessWidget {
+  const _TariffInfoNote();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
+    return Container(
+      decoration: TariffsUi.cardDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.06),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 15, color: color),
-              const SizedBox(width: 6),
-              Text(
-                title,
-                style: TextStyle(
-                  color: color,
-                  fontFamily: 'Gilroy',
-                  fontSize: 13,
-                  height: 16 / 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.info_outline_rounded,
+              color: context.brandPrimary,
+              size: 20,
+            ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            text,
-            style: const TextStyle(
-              color: _tariffsTextColor,
-              fontFamily: 'Gilroy',
-              fontSize: 13,
-              height: 17 / 13,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Итоговая стоимость может отличаться: менеджер учитывает фактический вес, упаковку и дополнительные услуги.',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                height: 17 / 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -677,66 +760,10 @@ class _TextBlock extends StatelessWidget {
   }
 }
 
-class _PackagingCard extends StatelessWidget {
-  final List<UserPackagingType> types;
-
-  const _PackagingCard({required this.types});
-
-  String _fmt(double v) =>
-      v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: _tariffsCardDecoration(),
-      child: Column(
-        children: [
-          for (var i = 0; i < types.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              child: _ValueRow(
-                label: types[i].name,
-                value: '\$${_fmt(types[i].baseCost)}',
-              ),
-            ),
-            if (i < types.length - 1)
-              const Divider(height: 1, indent: 16, endIndent: 16),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PhotoReportCard extends StatelessWidget {
-  final List<UserPhotoCoefficient> coefficients;
-
-  const _PhotoReportCard({required this.coefficients});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: _tariffsCardDecoration(),
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: _TableHeader(left: 'Кол-во фото', right: 'Коэффициент'),
-          ),
-          const Divider(height: 1, color: _tariffsDividerColor),
-          for (var i = 0; i < coefficients.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: _ValueRow(
-                label: coefficients[i].rangeLabel,
-                value: '×${coefficients[i].coefficient.toStringAsFixed(2)}',
-              ),
-            ),
-            if (i < coefficients.length - 1)
-              const Divider(height: 1, indent: 16, endIndent: 16),
-          ],
-        ],
-      ),
-    );
-  }
+String _fmt(double value) {
+  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+  return value
+      .toStringAsFixed(2)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
 }

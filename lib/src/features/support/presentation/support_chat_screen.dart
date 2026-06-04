@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
@@ -12,12 +11,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/fullscreen_image_overlay.dart';
 import '../../../core/ui/pdf_preview_overlay.dart';
@@ -30,6 +29,7 @@ import '../../notifications/domain/notification_item.dart';
 import '../../shell/application/shell_branch_provider.dart';
 import '../data/chat_provider.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/locale_text.dart';
 
 class SupportChatScreen extends ConsumerStatefulWidget {
@@ -44,7 +44,6 @@ class SupportChatScreen extends ConsumerStatefulWidget {
 class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     with WidgetsBindingObserver {
   final _textController = TextEditingController();
-  final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   bool _isDisposed = false;
   late final IsChatScreenOpenNotifier _screenOpenNotifier;
@@ -152,7 +151,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
-    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -223,120 +221,25 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
   void _showAttachmentPicker() {
     FocusScope.of(context).unfocus();
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    showBlurredModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       isScrollControlled: true,
       useRootNavigator: true,
-      builder: (context) => Container(
-        margin: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          AppLayout.bottomBarObstruction(context) + 16,
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E2E),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              tr(context, ru: 'Прикрепить файл', zh: '附加文件'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.camera_alt, color: Colors.blue),
-              ),
-              title: Text(
-                tr(context, ru: 'Камера', zh: '相机'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(context, ru: 'Сделать фото', zh: '拍照'),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImageFromCamera();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.photo_library, color: Colors.green),
-              ),
-              title: Text(
-                tr(context, ru: 'Галерея', zh: '相册'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(context, ru: 'Выбрать изображение', zh: '选择图片'),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImageFromGallery();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.insert_drive_file,
-                  color: Colors.orange,
-                ),
-              ),
-              title: Text(
-                tr(context, ru: 'Документ', zh: '文档'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(
-                  context,
-                  ru: 'PDF, Word, Excel и другие',
-                  zh: 'PDF、Word、Excel等',
-                ),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickDocumentFile();
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+      builder: (sheetContext) => _SupportAttachmentPickerSheet(
+        onCamera: () {
+          Navigator.pop(sheetContext);
+          _pickImageFromCamera();
+        },
+        onGallery: () {
+          Navigator.pop(sheetContext);
+          _pickImageFromGallery();
+        },
+        onDocument: () {
+          Navigator.pop(sheetContext);
+          _pickDocumentFile();
+        },
       ),
     );
   }
@@ -567,8 +470,8 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     });
 
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final shellBottomInset = AppLayout.bottomBarObstruction(context) + 8;
-    final keyboardBottomInset = keyboardInset + 8;
+    final shellBottomInset = AppLayout.bottomBarObstruction(context) + 18;
+    final keyboardBottomInset = keyboardInset + 10;
     final composerBottomInset = keyboardBottomInset > shellBottomInset
         ? keyboardBottomInset
         : shellBottomInset;
@@ -614,7 +517,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             ),
           ],
         ),
-        bottomNavigationBar: Padding(
+        bottomNavigationBar: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           padding: EdgeInsets.only(bottom: composerBottomInset),
           child: _buildInputField(),
         ),
@@ -672,7 +577,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     return ListView.builder(
       controller: _scrollController,
       reverse: true,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        AppLayout.topBarTotalHeight(context) + 8,
+        16,
+        10,
+      ),
       itemCount: messages.length,
       addAutomaticKeepAlives: false,
       addSemanticIndexes: false,
@@ -691,7 +601,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     final authorName = message.senderName;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
@@ -706,10 +616,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             ),
             child: Text(
               authorName,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.black.withValues(alpha: 0.6),
+              style: const TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 12.2,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
@@ -723,20 +634,28 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             children: [
               if (!isMe) ...[
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [context.brandPrimary, context.brandSecondary],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.16),
+                        blurRadius: 14,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.support_agent_rounded,
                     color: Colors.white,
-                    size: 18,
+                    size: 17,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -745,11 +664,11 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               Flexible(
                 child: Container(
                   constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    maxWidth: MediaQuery.of(context).size.width * 0.74,
                   ),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 15,
+                    vertical: 11,
                   ),
                   decoration: BoxDecoration(
                     gradient: isMe
@@ -764,16 +683,22 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                         : null,
                     color: isMe ? null : Colors.white,
                     borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: Radius.circular(isMe ? 20 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 20),
+                      topLeft: const Radius.circular(22),
+                      topRight: const Radius.circular(22),
+                      bottomLeft: Radius.circular(isMe ? 22 : 6),
+                      bottomRight: Radius.circular(isMe ? 6 : 22),
                     ),
+                    border: isMe
+                        ? null
+                        : Border.all(
+                            color: Colors.black.withValues(alpha: 0.035),
+                          ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: 0.055),
+                        blurRadius: 22,
+                        spreadRadius: -14,
+                        offset: const Offset(0, 12),
                       ),
                     ],
                   ),
@@ -869,7 +794,9 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                           Text(
                             dateFormat.format(message.createdAt.toLocal()),
                             style: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 11,
+                              fontWeight: FontWeight.w600,
                               color: isMe ? Colors.white70 : Colors.black45,
                             ),
                           ),
@@ -883,23 +810,27 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               if (isMe) ...[
                 const SizedBox(width: 8),
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.black.withValues(alpha: 0.035),
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: 0.055),
+                        blurRadius: 14,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                   child: Icon(
                     Icons.person_rounded,
                     color: context.brandPrimary,
-                    size: 18,
+                    size: 17,
                   ),
                 ),
               ],
@@ -995,69 +926,73 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           attachment.fileType,
         );
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
+        final previewSize = (MediaQuery.sizeOf(context).width * 0.56)
+            .clamp(190.0, 230.0)
+            .toDouble();
+        final previewBg = isMe
+            ? Colors.white.withValues(alpha: 0.16)
+            : const Color(0xFFF8FAFC);
 
         if (isImage) {
           return GestureDetector(
             onTap: () => _showFullImage(fullUrl, attachment.fileName),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    CachedNetworkImage(
-                      imageUrl: fullUrl,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 360,
-                      memCacheHeight: 360,
-                      maxWidthDiskCache: 720,
-                      maxHeightDiskCache: 720,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      useOldImageOnUrlChange: false,
-                      filterQuality: FilterQuality.low,
-                      placeholder: (context, url) => Container(
-                        width: 150,
-                        height: 150,
-                        color: isMe
-                            ? Colors.white.withValues(alpha: 0.2)
-                            : Colors.grey.withValues(alpha: 0.2),
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  width: previewSize,
+                  height: previewSize,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(color: previewBg),
+                      CachedNetworkImage(
+                        imageUrl: fullUrl,
+                        width: previewSize,
+                        height: previewSize,
+                        fit: BoxFit.contain,
+                        memCacheWidth: 420,
+                        memCacheHeight: 420,
+                        maxWidthDiskCache: 900,
+                        maxHeightDiskCache: 900,
+                        fadeInDuration: Duration.zero,
+                        fadeOutDuration: Duration.zero,
+                        useOldImageOnUrlChange: false,
+                        filterQuality: FilterQuality.medium,
+                        placeholder: (context, url) => ColoredBox(
+                          color: previewBg,
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 150,
-                        height: 100,
-                        color: isMe
-                            ? Colors.white.withValues(alpha: 0.2)
-                            : Colors.grey.withValues(alpha: 0.2),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.broken_image,
-                              color: isMe ? Colors.white70 : Colors.black45,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Ошибка загрузки',
-                              style: TextStyle(
-                                fontSize: 12,
+                        errorWidget: (context, url, error) => ColoredBox(
+                          color: previewBg,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.broken_image,
                                 color: isMe ? Colors.white70 : Colors.black45,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                'Ошибка загрузки',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isMe ? Colors.white70 : Colors.black45,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    _buildImageDownloadButton(
-                      onPressed: () =>
-                          _downloadFile(fullUrl, attachment.fileName),
-                    ),
-                  ],
+                      _buildImageDownloadButton(
+                        onPressed: () =>
+                            _downloadFile(fullUrl, attachment.fileName),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1273,51 +1208,22 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
         );
       }
 
-      if (kIsWeb) {
-        final response = await Dio().get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = response.data;
-        if (bytes == null || bytes.isEmpty) {
-          throw Exception('Empty file response');
-        }
-        final saved = await downloadFile(
-          bytes: Uint8List.fromList(bytes),
-          fileName: fileName,
-        );
-        if (!saved) {
-          throw Exception('Could not save file');
-        }
-        if (!mounted) return;
-        AppToast.hide();
-        AppToast.showFromSnackBar(
-          context,
-          SnackBar(
-            content: Text(
-              tr(
-                context,
-                ru: 'Файл сохранён: $fileName',
-                zh: '文件已保存：$fileName',
-              ),
-            ),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.fixed,
-          ),
-        );
-        return;
+      final response = await Dio().get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = response.data;
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('Empty file response');
       }
-
-      // Получаем директорию для сохранения
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$fileName';
-
-      // Скачиваем файл
-      final dio = Dio();
-      await dio.download(url, filePath);
-
+      final saved = await downloadFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: fileName,
+      );
+      if (!saved) {
+        throw Exception('Could not save file');
+      }
       if (!mounted) return;
-
       AppToast.hide();
       AppToast.showFromSnackBar(
         context,
@@ -1327,14 +1233,6 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
           ),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.fixed,
-          action: SnackBarAction(
-            label: tr(context, ru: 'Открыть', zh: '打开'),
-            textColor: Colors.white,
-            onPressed: () {
-              // Открываем файл
-              launchUrl(Uri.file(filePath));
-            },
-          ),
         ),
       );
     } catch (e) {
@@ -1407,203 +1305,124 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
 
     return Padding(
       key: _inputAreaKey,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 25,
-              offset: const Offset(3, 4),
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 28,
+              spreadRadius: -14,
+              offset: const Offset(0, 16),
+            ),
+            BoxShadow(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              blurRadius: 22,
+              spreadRadius: -16,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-            child: Stack(
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+          ),
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                if (pendingAttachments.isNotEmpty || isUploading)
+                  _buildPendingAttachments(
+                    context,
+                    pendingAttachments,
+                    isUploading,
                   ),
-                ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.44),
-                          Colors.white.withValues(alpha: 0.10),
-                          Colors.white.withValues(alpha: 0.24),
-                        ],
-                        stops: const [0, 0.52, 1],
-                      ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _SupportComposerButton(
+                      icon: Icons.attach_file_rounded,
+                      onTap: _showAttachmentPicker,
+                      tooltip: tr(context, ru: 'Прикрепить', zh: '附加'),
                     ),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.36),
-                    ),
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 12,
-                        bottom: 12,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (pendingAttachments.isNotEmpty || isUploading)
-                            _buildPendingAttachments(
-                              context,
-                              pendingAttachments,
-                              isUploading,
-                            ),
-                          Row(
-                            children: [
-                              GestureDetector(
-                                onTap: _showAttachmentPicker,
-                                child: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        context.brandPrimary,
-                                        context.brandSecondary,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Icon(
-                                    Icons.attach_file_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: AppOutlinedInputFrame(
+                          radius: 20,
+                          borderWidth: 1.2,
+                          focusedBorderWidth: 1.6,
+                          fillColor: const Color(0xFFF8FAFC),
+                          borderColor: const Color(0xFFE1E5ED),
+                          focusedBorderColor: context.brandPrimary,
+                          builder: (context, focusNode) {
+                            return TextField(
+                              controller: _textController,
+                              focusNode: focusNode,
+                              minLines: 1,
+                              maxLines: 4,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: tr(
+                                  context,
+                                  ru: 'Введите сообщение...',
+                                  zh: '输入消息...',
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF8F8F8),
-                                    borderRadius: BorderRadius.circular(22),
-                                  ),
-                                  child: TextField(
-                                    controller: _textController,
-                                    focusNode: _focusNode,
-                                    minLines: 1,
-                                    maxLines: 5,
-                                    textInputAction: TextInputAction.newline,
-                                    decoration: InputDecoration(
-                                      hintText: tr(
-                                        context,
-                                        ru: 'Введите ваше сообщение...',
-                                        zh: '输入您的消息...',
-                                      ),
-                                      hintStyle: const TextStyle(
-                                        color: Colors.black38,
-                                        fontSize: 15,
-                                      ),
-                                      border: InputBorder.none,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 12,
-                                          ),
-                                    ),
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      color: Colors.black87,
-                                    ),
-                                    textCapitalization:
-                                        TextCapitalization.sentences,
-                                  ),
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFB0B4BE),
+                                  fontFamily: 'Gilroy',
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
                                 ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                                isDense: true,
                               ),
-                              const SizedBox(width: 12),
-                              Builder(
-                                builder: (context) {
-                                  final isSending = ref.watch(
-                                    chatControllerProvider.select(
-                                      (s) => s.isSending,
-                                    ),
-                                  );
-                                  final sendDisabled =
-                                      isSending ||
-                                      isUploading ||
-                                      _isSendingLocally;
-                                  return GestureDetector(
-                                    onTap: sendDisabled
-                                        ? null
-                                        : () => _handleMessageSend(
-                                            _textController.text,
-                                          ),
-                                    child: Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: sendDisabled
-                                              ? [
-                                                  Colors.grey,
-                                                  Colors.grey.shade400,
-                                                ]
-                                              : [
-                                                  context.brandPrimary,
-                                                  context.brandSecondary,
-                                                ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: sendDisabled
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                      Color
-                                                    >(Colors.white),
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.send_rounded,
-                                              color: Colors.white,
-                                              size: 20,
-                                            ),
-                                    ),
-                                  );
-                                },
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.25,
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
                               ),
-                            ],
-                          ),
-                        ],
+                              textCapitalization: TextCapitalization.sentences,
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Builder(
+                      builder: (context) {
+                        final isSending = ref.watch(
+                          chatControllerProvider.select((s) => s.isSending),
+                        );
+                        final sendDisabled =
+                            isSending || isUploading || _isSendingLocally;
+                        return _SupportComposerButton(
+                          icon: Icons.send_rounded,
+                          isLoading: sendDisabled,
+                          isDisabled: sendDisabled,
+                          onTap: sendDisabled
+                              ? null
+                              : () => _handleMessageSend(_textController.text),
+                          tooltip: tr(context, ru: 'Отправить', zh: '发送'),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1620,7 +1439,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
     bool isUploading,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -1628,12 +1447,12 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
             // Показываем загружаемый файл
             if (isUploading)
               Container(
-                width: 80,
-                height: 80,
+                width: 72,
+                height: 72,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF0F0F0),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Center(
                   child: SizedBox(
@@ -1657,19 +1476,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               final isImage = fileType.startsWith('image/');
 
               return Container(
-                width: 80,
-                height: 80,
+                width: 72,
+                height: 72,
                 margin: const EdgeInsets.only(right: 8),
                 child: Stack(
                   children: [
                     // Превью файла
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                       child: isImage
                           ? CachedNetworkImage(
                               imageUrl: ApiConfig.getMediaUrl(url),
-                              width: 80,
-                              height: 80,
+                              width: 72,
+                              height: 72,
                               fit: BoxFit.cover,
                               memCacheWidth: 160,
                               memCacheHeight: 160,
@@ -1693,13 +1512,13 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                               ),
                             )
                           : Container(
-                              width: 80,
-                              height: 80,
+                              width: 72,
+                              height: 72,
                               decoration: BoxDecoration(
                                 color: _getDocumentColor(
                                   fileName,
                                 ).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(16),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1760,6 +1579,318 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
               );
             }),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SupportComposerButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+  final bool isLoading;
+  final bool isDisabled;
+
+  const _SupportComposerButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.isLoading = false,
+    this.isDisabled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null && !isDisabled;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: enabled
+                    ? [context.brandPrimary, context.brandSecondary]
+                    : [const Color(0xFFB8BDC8), const Color(0xFFD5D8DF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: enabled
+                  ? [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.18),
+                        blurRadius: 16,
+                        spreadRadius: -10,
+                        offset: const Offset(0, 9),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: isLoading
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(icon, color: Colors.white, size: 21),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SupportAttachmentPickerSheet extends StatelessWidget {
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback onDocument;
+
+  const _SupportAttachmentPickerSheet({
+    required this.onCamera,
+    required this.onGallery,
+    required this.onDocument,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          AppLayout.bottomBarObstruction(context) + 16,
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 30,
+                spreadRadius: -16,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD7DAE1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: context.brandGradient,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.brandPrimary.withValues(alpha: 0.18),
+                      blurRadius: 20,
+                      spreadRadius: -12,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(17),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.attach_file_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tr(context, ru: 'Прикрепить файл', zh: '附加文件'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Gilroy',
+                              fontSize: 20,
+                              height: 1.05,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            tr(
+                              context,
+                              ru: 'Фото, скриншот или документ к обращению',
+                              zh: '为请求添加照片、截图或文档',
+                            ),
+                            style: const TextStyle(
+                              color: Color(0xE6FFFFFF),
+                              fontFamily: 'Gilroy',
+                              fontSize: 12.8,
+                              height: 1.15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SupportAttachmentOptionTile(
+                icon: Icons.camera_alt_rounded,
+                title: tr(context, ru: 'Камера', zh: '相机'),
+                subtitle: tr(context, ru: 'Сделать фото сейчас', zh: '立即拍照'),
+                color: Colors.blue,
+                onTap: onCamera,
+              ),
+              const SizedBox(height: 8),
+              _SupportAttachmentOptionTile(
+                icon: Icons.photo_library_rounded,
+                title: tr(context, ru: 'Галерея', zh: '相册'),
+                subtitle: tr(
+                  context,
+                  ru: 'Выбрать готовое изображение',
+                  zh: '选择现有图片',
+                ),
+                color: Colors.green,
+                onTap: onGallery,
+              ),
+              const SizedBox(height: 8),
+              _SupportAttachmentOptionTile(
+                icon: Icons.insert_drive_file_rounded,
+                title: tr(context, ru: 'Документ', zh: '文档'),
+                subtitle: tr(
+                  context,
+                  ru: 'PDF, Word, Excel и другие файлы',
+                  zh: 'PDF、Word、Excel等文件',
+                ),
+                color: Colors.orange,
+                onTap: onDocument,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SupportAttachmentOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _SupportAttachmentOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 15,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 22,
+              ),
+            ],
+          ),
         ),
       ),
     );

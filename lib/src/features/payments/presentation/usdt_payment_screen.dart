@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/clipboard_helper.dart';
@@ -606,7 +607,7 @@ Future<PaymentProvider?> showPaymentMethodDialog(
   BuildContext context, {
   required double amount,
 }) {
-  return showModalBottomSheet<PaymentProvider>(
+  return showBlurredModalBottomSheet<PaymentProvider>(
     context: context,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

@@ -7,17 +7,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
-import '../../../core/ui/app_page_header.dart';
+import '../../../core/ui/app_input_decoration.dart';
+import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/fullscreen_image_overlay.dart';
 import '../../../core/ui/pdf_preview_overlay.dart';
 import '../../../core/services/push_notification_service.dart';
@@ -33,6 +34,7 @@ import '../../notifications/domain/notification_item.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 import '../data/payment_chat_provider.dart';
 
 class PaymentChatScreen extends ConsumerStatefulWidget {
@@ -61,10 +63,74 @@ class PaymentChatScreen extends ConsumerStatefulWidget {
   ConsumerState<PaymentChatScreen> createState() => _PaymentChatScreenState();
 }
 
+class _PaymentChatPageHeader extends StatelessWidget {
+  const _PaymentChatPageHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/');
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 46,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.035),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 18,
+                    spreadRadius: -12,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            'Чат по оплате',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 26,
+              height: 1.05,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     with WidgetsBindingObserver {
   final _textController = TextEditingController();
-  final _focusNode = FocusNode();
   final _scrollController = ScrollController();
 
   final bool _showQuickActions = false;
@@ -158,7 +224,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
-    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -231,113 +296,23 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   /// Показать диалог выбора типа вложения
   void _showAttachmentPicker() {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    showBlurredModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E2E),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              tr(context, ru: 'Прикрепить файл', zh: '附加文件'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.camera_alt, color: Colors.blue),
-              ),
-              title: Text(
-                tr(context, ru: 'Камера', zh: '相机'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(context, ru: 'Сделать фото', zh: '拍照'),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImageFromCamera();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.photo_library, color: Colors.green),
-              ),
-              title: Text(
-                tr(context, ru: 'Галерея', zh: '图库'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(context, ru: 'Выбрать изображение', zh: '选择图片'),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImageFromGallery();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.insert_drive_file,
-                  color: Colors.orange,
-                ),
-              ),
-              title: Text(
-                tr(context, ru: 'Документ', zh: '文档'),
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tr(
-                  context,
-                  ru: 'PDF, Word, Excel и другие',
-                  zh: 'PDF、Word、Excel等',
-                ),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _pickDocumentFile();
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+      useRootNavigator: true,
+      builder: (sheetContext) => _PaymentAttachmentPickerSheet(
+        onCamera: () {
+          Navigator.pop(sheetContext);
+          _pickImageFromCamera();
+        },
+        onGallery: () {
+          Navigator.pop(sheetContext);
+          _pickImageFromGallery();
+        },
+        onDocument: () {
+          Navigator.pop(sheetContext);
+          _pickDocumentFile();
+        },
       ),
     );
   }
@@ -573,7 +548,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   void _showQuickSendSheet() {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    showBlurredModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -751,8 +726,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final bottomInset = mediaQuery.viewInsets.bottom;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomSafeInset = MediaQuery.viewPaddingOf(context).bottom;
+    final composerBottomInset = keyboardInset > 0
+        ? keyboardInset + 10
+        : bottomSafeInset + 12;
 
     return TutorialScreenWrapper(
       screenKey: 'payment_chat',
@@ -779,38 +757,49 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           targetKey: _infoBannerKey,
         ),
       ],
-      child: Stack(
-        children: [
-          // Градиентный фон как на других страницах
-          const Positioned.fill(child: AppBackground()),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // Градиентный фон как на других страницах
+            const Positioned.fill(child: AppBackground()),
 
-          SafeArea(
-            top: false, // Контент скроллится под топ-меню
-            bottom: false,
-            child: Column(
-              children: [
-                // Отступ от верха экрана
-                const SizedBox(height: 65),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: AppPageHeader(title: 'Чат по оплате', showBack: true),
-                ),
-                const SizedBox(height: 12),
-                // Информационный блок о назначении чата
-                _buildInfoBanner(),
+            SafeArea(
+              top: false, // Контент скроллится под топ-меню
+              bottom: false,
+              child: Column(
+                children: [
+                  const SizedBox(
+                    height:
+                        AppLayout.topBarTopMargin +
+                        AppLayout.topBarHeight +
+                        AppLayout.topBarBottomGap,
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: _PaymentChatPageHeader(),
+                  ),
+                  const SizedBox(height: 12),
+                  // Информационный блок о назначении чата
+                  _buildInfoBanner(),
 
-                // Список сообщений
-                Expanded(key: _messagesAreaKey, child: _buildMessagesList()),
+                  // Список сообщений
+                  Expanded(key: _messagesAreaKey, child: _buildMessagesList()),
 
-                // Панель быстрых действий
-                if (_showQuickActions) _buildQuickActionsBar(),
-
-                // Поле ввода
-                _buildInputField(bottomInset),
-              ],
+                  // Панель быстрых действий
+                  if (_showQuickActions) _buildQuickActionsBar(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+        bottomNavigationBar: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: composerBottomInset),
+          child: _buildInputField(),
+        ),
       ),
     );
   }
@@ -888,12 +877,21 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           setState(() => _isInfoBannerExpanded = !_isInfoBannerExpanded),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF8E1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFFFE0B2)),
+          color: Colors.white.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.055),
+              blurRadius: 24,
+              spreadRadius: -14,
+              offset: const Offset(0, 14),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -901,33 +899,74 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.orange.shade700,
-                  size: 16,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [context.brandPrimary, context.brandSecondary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(17),
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.16),
+                        blurRadius: 18,
+                        spreadRadius: -10,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    tr(
-                      context,
-                      ru: 'Чат только для оплаты счетов',
-                      zh: '此聊天仅用于支付发票',
-                    ),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.orange.shade800,
-                      fontSize: 12,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tr(context, ru: 'Чат по оплатам', zh: '付款聊天'),
+                        style: const TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 17,
+                          height: 1.05,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tr(
+                          context,
+                          ru: 'Чеки, вопросы по сумме и подтверждение платежей',
+                          zh: '收据、金额问题和付款确认',
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 12.5,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 AnimatedRotation(
                   turns: _isInfoBannerExpanded ? 0.5 : 0,
                   duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
                   child: Icon(
-                    Icons.keyboard_arrow_down,
-                    color: Colors.orange.shade700,
-                    size: 18,
+                    Icons.keyboard_arrow_down_rounded,
+                    color: context.brandPrimary,
+                    size: 24,
                   ),
                 ),
               ],
@@ -935,23 +974,36 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             AnimatedCrossFade(
               firstChild: const SizedBox.shrink(),
               secondChild: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  tr(
-                    context,
-                    ru:
-                        '• Специалист не сможет ответить на вопросы, не касающиеся приёма оплаты\n'
-                        '• Отправьте скриншот платежа для подтверждения\n'
-                        '• Статус счёта обновится после проверки',
-                    zh:
-                        '• 专员无法回答与付款无关的问题\n'
-                        '• 请发送付款截图以确认\n'
-                        '• 发票状态将在审核后更新',
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: context.brandPrimary.withValues(alpha: 0.10),
+                    ),
                   ),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.orange.shade800,
-                    height: 1.3,
+                  child: Text(
+                    tr(
+                      context,
+                      ru:
+                          '• Здесь отвечаем только по оплатам счетов\n'
+                          '• После оплаты прикрепите чек или скриншот\n'
+                          '• Статус счёта обновится после проверки',
+                      zh:
+                          '• 此处仅处理发票付款问题\n'
+                          '• 付款后请附上收据或截图\n'
+                          '• 审核后会更新发票状态',
+                    ),
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontSize: 12.8,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary.withValues(alpha: 0.82),
+                    ),
                   ),
                 ),
               ),
@@ -959,6 +1011,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   ? CrossFadeState.showSecond
                   : CrossFadeState.showFirst,
               duration: const Duration(milliseconds: 200),
+              sizeCurve: Curves.easeOutCubic,
             ),
           ],
         ),
@@ -978,18 +1031,15 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
 
     final isMe = message.isFromClient;
     final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
-
-    // Используем реальное имя из сообщения
     final authorName = message.senderName;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
-          // Имя автора сообщения
           Padding(
             padding: EdgeInsets.only(
               left: isMe ? 0 : 40,
@@ -998,15 +1048,14 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             ),
             child: Text(
               authorName,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.black.withValues(alpha: 0.6),
+              style: const TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 12.2,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
-
-          // Сообщение
           Row(
             mainAxisAlignment: isMe
                 ? MainAxisAlignment.end
@@ -1015,33 +1064,40 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             children: [
               if (!isMe) ...[
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+                    gradient: LinearGradient(
+                      colors: [context.brandPrimary, context.brandSecondary],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.16),
+                        blurRadius: 14,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.account_balance_wallet_rounded,
                     color: Colors.white,
-                    size: 18,
+                    size: 17,
                   ),
                 ),
                 const SizedBox(width: 8),
               ],
-
               Flexible(
                 child: Container(
                   constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    maxWidth: MediaQuery.of(context).size.width * 0.74,
                   ),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 15,
+                    vertical: 11,
                   ),
                   decoration: BoxDecoration(
                     gradient: isMe
@@ -1056,27 +1112,30 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                         : null,
                     color: isMe ? null : Colors.white,
                     borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: Radius.circular(isMe ? 20 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 20),
+                      topLeft: const Radius.circular(22),
+                      topRight: const Radius.circular(22),
+                      bottomLeft: Radius.circular(isMe ? 22 : 6),
+                      bottomRight: Radius.circular(isMe ? 6 : 22),
                     ),
+                    border: isMe
+                        ? null
+                        : Border.all(
+                            color: Colors.black.withValues(alpha: 0.035),
+                          ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: 0.055),
+                        blurRadius: 22,
+                        spreadRadius: -14,
+                        offset: const Offset(0, 12),
                       ),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Отображаем вложения
                       if (message.attachments.isNotEmpty)
                         _buildMessageAttachments(message.attachments, isMe),
-
-                      // Текст сообщения (если это не просто "Файл")
                       if (message.content.isNotEmpty &&
                           message.content != 'Файл' &&
                           message.content != '文件')
@@ -1155,7 +1214,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                           Text(
                             dateFormat.format(message.createdAt.toLocal()),
                             style: TextStyle(
+                              fontFamily: 'Gilroy',
                               fontSize: 11,
+                              fontWeight: FontWeight.w600,
                               color: isMe ? Colors.white70 : Colors.black45,
                             ),
                           ),
@@ -1165,27 +1226,30 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                   ),
                 ),
               ),
-
               if (isMe) ...[
                 const SizedBox(width: 8),
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.black.withValues(alpha: 0.035),
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: 0.055),
+                        blurRadius: 14,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                   child: Icon(
                     Icons.person_rounded,
                     color: context.brandPrimary,
-                    size: 18,
+                    size: 17,
                   ),
                 ),
               ],
@@ -1207,69 +1271,73 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           attachment.fileType,
         );
         final fullUrl = ApiConfig.getMediaUrl(attachment.url);
+        final previewSize = (MediaQuery.sizeOf(context).width * 0.56)
+            .clamp(190.0, 230.0)
+            .toDouble();
+        final previewBg = isMe
+            ? Colors.white.withValues(alpha: 0.16)
+            : const Color(0xFFF8FAFC);
 
         if (isImage) {
           return GestureDetector(
             onTap: () => _showFullImage(fullUrl, attachment.fileName),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    CachedNetworkImage(
-                      imageUrl: fullUrl,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 360,
-                      memCacheHeight: 360,
-                      maxWidthDiskCache: 720,
-                      maxHeightDiskCache: 720,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      useOldImageOnUrlChange: false,
-                      filterQuality: FilterQuality.low,
-                      placeholder: (context, url) => Container(
-                        width: 150,
-                        height: 150,
-                        color: isMe
-                            ? Colors.white.withValues(alpha: 0.2)
-                            : Colors.grey.withValues(alpha: 0.2),
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  width: previewSize,
+                  height: previewSize,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(color: previewBg),
+                      CachedNetworkImage(
+                        imageUrl: fullUrl,
+                        width: previewSize,
+                        height: previewSize,
+                        fit: BoxFit.contain,
+                        memCacheWidth: 420,
+                        memCacheHeight: 420,
+                        maxWidthDiskCache: 900,
+                        maxHeightDiskCache: 900,
+                        fadeInDuration: Duration.zero,
+                        fadeOutDuration: Duration.zero,
+                        useOldImageOnUrlChange: false,
+                        filterQuality: FilterQuality.medium,
+                        placeholder: (context, url) => ColoredBox(
+                          color: previewBg,
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 150,
-                        height: 100,
-                        color: isMe
-                            ? Colors.white.withValues(alpha: 0.2)
-                            : Colors.grey.withValues(alpha: 0.2),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.broken_image,
-                              color: isMe ? Colors.white70 : Colors.black45,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              tr(context, ru: 'Ошибка загрузки', zh: '加载错误'),
-                              style: TextStyle(
-                                fontSize: 12,
+                        errorWidget: (context, url, error) => ColoredBox(
+                          color: previewBg,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.broken_image,
                                 color: isMe ? Colors.white70 : Colors.black45,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                tr(context, ru: 'Ошибка загрузки', zh: '加载错误'),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isMe ? Colors.white70 : Colors.black45,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    _buildImageDownloadButton(
-                      onPressed: () =>
-                          _downloadFile(fullUrl, attachment.fileName),
-                    ),
-                  ],
+                      _buildImageDownloadButton(
+                        onPressed: () =>
+                            _downloadFile(fullUrl, attachment.fileName),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1484,47 +1552,22 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       );
 
       final savedText = tr(context, ru: 'Файл сохранён', zh: '文件已保存');
-      final openText = tr(context, ru: 'Открыть', zh: '打开');
-
-      if (kIsWeb) {
-        final response = await Dio().get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = response.data;
-        if (bytes == null || bytes.isEmpty) {
-          throw Exception('Empty file response');
-        }
-        final saved = await downloadFile(
-          bytes: Uint8List.fromList(bytes),
-          fileName: fileName,
-        );
-        if (!saved) {
-          throw Exception('Could not save file');
-        }
-        if (!mounted) return;
-        AppToast.hide();
-        AppToast.showFromSnackBar(
-          context,
-          SnackBar(
-            content: Text('$savedText: $fileName'),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.fixed,
-          ),
-        );
-        return;
+      final response = await Dio().get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = response.data;
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('Empty file response');
       }
-
-      // Получаем директорию для сохранения
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$fileName';
-
-      // Скачиваем файл
-      final dio = Dio();
-      await dio.download(url, filePath);
-
+      final saved = await downloadFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: fileName,
+      );
+      if (!saved) {
+        throw Exception('Could not save file');
+      }
       if (!mounted) return;
-
       AppToast.hide();
       AppToast.showFromSnackBar(
         context,
@@ -1532,14 +1575,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           content: Text('$savedText: $fileName'),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.fixed,
-          action: SnackBarAction(
-            label: openText,
-            textColor: Colors.white,
-            onPressed: () {
-              // Открываем файл
-              launchUrl(Uri.file(filePath));
-            },
-          ),
         ),
       );
     } catch (e) {
@@ -1567,8 +1602,8 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+              gradient: LinearGradient(
+                colors: [context.brandPrimary, context.brandSecondary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -1584,9 +1619,10 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
           Text(
             tr(context, ru: 'Чат по оплате', zh: '付款聊天'),
             style: const TextStyle(
+              fontFamily: 'Gilroy',
               fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -1599,7 +1635,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                 zh: '如有任何发票支付和配送问题，请联系我们',
               ),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
+              style: const TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 14,
+                height: 1.25,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
         ],
@@ -1636,152 +1678,134 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     );
   }
 
-  Widget _buildInputField(double bottomInset) {
+  Widget _buildInputField() {
     final chatState = ref.watch(paymentChatControllerProvider);
     final pendingAttachments = chatState.pendingAttachments;
     final isUploading = chatState.isUploading;
 
-    return Container(
+    return Padding(
       key: _inputAreaKey,
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 12,
-        bottom: 12 + bottomInset,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 28,
+              spreadRadius: -14,
+              offset: const Offset(0, 16),
+            ),
+            BoxShadow(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              blurRadius: 22,
+              spreadRadius: -16,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
           ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Preview прикреплённых файлов
-            if (pendingAttachments.isNotEmpty || isUploading)
-              _buildPendingAttachments(pendingAttachments, isUploading),
-
-            Row(
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Кнопка прикрепления файла
-                GestureDetector(
-                  onTap: _showAttachmentPicker,
-                  onLongPress: _showQuickSendSheet,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
+                if (pendingAttachments.isNotEmpty || isUploading)
+                  _buildPendingAttachments(pendingAttachments, isUploading),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _PaymentComposerButton(
+                      icon: Icons.attach_file_rounded,
+                      onTap: _showAttachmentPicker,
+                      onLongPress: _showQuickSendSheet,
+                      tooltip: tr(context, ru: 'Прикрепить', zh: '附加'),
                     ),
-                    child: const Icon(
-                      Icons.attach_file_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Поле ввода
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8F8F8),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: TextField(
-                      controller: _textController,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.newline,
-                      decoration: InputDecoration(
-                        hintText: tr(
-                          context,
-                          ru: 'Введите ваше сообщение...',
-                          zh: '输入您的消息...',
-                        ),
-                        hintStyle: const TextStyle(
-                          color: Colors.black38,
-                          fontSize: 15,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.black87,
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Кнопка отправки с индикатором загрузки
-                Builder(
-                  builder: (context) {
-                    final isSending = ref.watch(
-                      paymentChatControllerProvider.select((s) => s.isSending),
-                    );
-                    return GestureDetector(
-                      onTap: (isSending || isUploading)
-                          ? null
-                          : () => _handleMessageSend(_textController.text),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: (isSending || isUploading)
-                                ? [Colors.grey, Colors.grey.shade400]
-                                : [
-                                    context.brandPrimary,
-                                    context.brandSecondary,
-                                  ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: (isSending || isUploading)
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: AppOutlinedInputFrame(
+                          radius: 20,
+                          borderWidth: 1.2,
+                          focusedBorderWidth: 1.6,
+                          fillColor: const Color(0xFFF8FAFC),
+                          borderColor: const Color(0xFFE1E5ED),
+                          focusedBorderColor: context.brandPrimary,
+                          builder: (context, focusNode) {
+                            return TextField(
+                              controller: _textController,
+                              focusNode: focusNode,
+                              minLines: 1,
+                              maxLines: 4,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: tr(
+                                  context,
+                                  ru: 'Введите сообщение...',
+                                  zh: '输入消息...',
                                 ),
-                              )
-                            : const Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 20,
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFB0B4BE),
+                                  fontFamily: 'Gilroy',
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                                isDense: true,
                               ),
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.25,
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textCapitalization: TextCapitalization.sentences,
+                            );
+                          },
+                        ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(width: 8),
+                    Builder(
+                      builder: (context) {
+                        final isSending = ref.watch(
+                          paymentChatControllerProvider.select(
+                            (s) => s.isSending,
+                          ),
+                        );
+                        final sendDisabled =
+                            isSending || isUploading || _isSendingLocally;
+                        return _PaymentComposerButton(
+                          icon: Icons.send_rounded,
+                          isLoading: sendDisabled,
+                          isDisabled: sendDisabled,
+                          onTap: sendDisabled
+                              ? null
+                              : () => _handleMessageSend(_textController.text),
+                          tooltip: tr(context, ru: 'Отправить', zh: '发送'),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1793,7 +1817,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     bool isUploading,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -1801,21 +1825,21 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
             // Показываем загружаемый файл
             if (isUploading)
               Container(
-                width: 80,
-                height: 80,
+                width: 72,
+                height: 72,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF0F0F0),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Center(
+                child: Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Color(0xFF4CAF50),
+                        context.brandPrimary,
                       ),
                     ),
                   ),
@@ -1830,19 +1854,19 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               final isImage = fileType.startsWith('image/');
 
               return Container(
-                width: 80,
-                height: 80,
+                width: 72,
+                height: 72,
                 margin: const EdgeInsets.only(right: 8),
                 child: Stack(
                   children: [
                     // Превью файла
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                       child: isImage
                           ? CachedNetworkImage(
                               imageUrl: ApiConfig.getMediaUrl(url),
-                              width: 80,
-                              height: 80,
+                              width: 72,
+                              height: 72,
                               fit: BoxFit.cover,
                               memCacheWidth: 160,
                               memCacheHeight: 160,
@@ -1866,13 +1890,13 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               ),
                             )
                           : Container(
-                              width: 80,
-                              height: 80,
+                              width: 72,
+                              height: 72,
                               decoration: BoxDecoration(
                                 color: _getDocumentColor(
                                   fileName,
                                 ).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(16),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1936,6 +1960,321 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               );
             }),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentComposerButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final String tooltip;
+  final bool isLoading;
+  final bool isDisabled;
+
+  const _PaymentComposerButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.onLongPress,
+    this.isLoading = false,
+    this.isDisabled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null && !isDisabled;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          onLongPress: enabled ? onLongPress : null,
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: enabled
+                    ? [context.brandPrimary, context.brandSecondary]
+                    : [const Color(0xFFB8BDC8), const Color(0xFFD5D8DF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: enabled
+                  ? [
+                      BoxShadow(
+                        color: context.brandPrimary.withValues(alpha: 0.18),
+                        blurRadius: 16,
+                        spreadRadius: -10,
+                        offset: const Offset(0, 9),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: isLoading
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(icon, color: Colors.white, size: 21),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentAttachmentPickerSheet extends StatelessWidget {
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback onDocument;
+
+  const _PaymentAttachmentPickerSheet({
+    required this.onCamera,
+    required this.onGallery,
+    required this.onDocument,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          MediaQuery.viewPaddingOf(context).bottom + 16,
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 30,
+                spreadRadius: -16,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD7DAE1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: context.brandGradient,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.brandPrimary.withValues(alpha: 0.18),
+                      blurRadius: 20,
+                      spreadRadius: -12,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(17),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.receipt_long_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tr(context, ru: 'Прикрепить чек', zh: '附加收据'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Gilroy',
+                              fontSize: 20,
+                              height: 1.05,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            tr(
+                              context,
+                              ru: 'Фото, скриншот или документ по оплате',
+                              zh: '添加付款照片、截图或文件',
+                            ),
+                            style: const TextStyle(
+                              color: Color(0xE6FFFFFF),
+                              fontFamily: 'Gilroy',
+                              fontSize: 12.8,
+                              height: 1.15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PaymentAttachmentOptionTile(
+                icon: Icons.camera_alt_rounded,
+                title: tr(context, ru: 'Камера', zh: '相机'),
+                subtitle: tr(context, ru: 'Сфотографировать чек', zh: '拍摄收据'),
+                color: Colors.blue,
+                onTap: onCamera,
+              ),
+              const SizedBox(height: 8),
+              _PaymentAttachmentOptionTile(
+                icon: Icons.photo_library_rounded,
+                title: tr(context, ru: 'Галерея', zh: '相册'),
+                subtitle: tr(
+                  context,
+                  ru: 'Выбрать скриншот оплаты',
+                  zh: '选择付款截图',
+                ),
+                color: Colors.green,
+                onTap: onGallery,
+              ),
+              const SizedBox(height: 8),
+              _PaymentAttachmentOptionTile(
+                icon: Icons.insert_drive_file_rounded,
+                title: tr(context, ru: 'Документ', zh: '文档'),
+                subtitle: tr(
+                  context,
+                  ru: 'PDF, Word, Excel и другие файлы',
+                  zh: 'PDF、Word、Excel等文件',
+                ),
+                color: Colors.orange,
+                onTap: onDocument,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentAttachmentOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PaymentAttachmentOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 15,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 22,
+              ),
+            ],
+          ),
         ),
       ),
     );

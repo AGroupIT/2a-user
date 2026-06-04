@@ -51,6 +51,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Флаг для показа диалога принятия правил
   bool _termsDialogShown = false;
+  final _noCodeSearchController = TextEditingController();
 
   final GlobalKey _quickCardsKey = GlobalKey();
   final GlobalKey _digestKey = GlobalKey();
@@ -62,6 +63,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) UpdateService.checkAndPrompt(context);
     });
+  }
+
+  @override
+  void dispose() {
+    _noCodeSearchController.dispose();
+    super.dispose();
   }
 
   /// Проверить и показать диалог принятия правил если нужно
@@ -87,6 +94,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       barrierDismissible: false,
       builder: (context) => const _TermsAcceptanceDialog(),
     );
+  }
+
+  void _openNoCodeSearch() {
+    final query = _noCodeSearchController.text.trim();
+    final location = query.length >= 3
+        ? Uri(
+            path: '/search-nocode',
+            queryParameters: {'query': query},
+          ).toString()
+        : '/search-nocode';
+    context.push(location);
   }
 
   @override
@@ -250,83 +268,115 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
           children: [
-            _GreetingBlock(fullName: clientName),
+            _HomeReveal(
+              order: 0,
+              child: _GreetingBlock(
+                fullName: clientName,
+                clientCode: clientCode,
+                agentName: agent?.name,
+                onTap: () => context.push('/profile'),
+              ),
+            ),
             const SizedBox(height: 15),
             if (staleNotice != null) ...[
-              _StaleDataBanner(
-                message: staleNotice.message,
-                onRefresh: () => unawaited(onRefresh()),
-                onDismiss: () =>
-                    ref.read(staleDataNoticeProvider.notifier).clear(),
+              _HomeReveal(
+                order: 1,
+                child: _StaleDataBanner(
+                  message: staleNotice.message,
+                  onRefresh: () => unawaited(onRefresh()),
+                  onDismiss: () =>
+                      ref.read(staleDataNoticeProvider.notifier).clear(),
+                ),
               ),
               const SizedBox(height: 15),
             ],
-            KeyedSubtree(
-              key: _quickCardsKey,
-              child: _StatsBlock(
-                bonusKgValue: _formatKg(bonusKgBalance),
-                bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
-                tracksValue: _formatCount(tracksCount),
-                tracksWeekly: _formatDeltaCount(tracksWeeklyCount),
-                assembliesValue: _formatCount(assembliesCount),
-                assembliesWeekly: _formatDeltaCount(assembliesWeeklyCount),
-                invoicesValue: _formatCount(invoicesCount),
-                invoicesWeekly: _formatDeltaCount(invoicesWeeklyCount),
-                onTracksTap: () => context.go('/tracks'),
-                onAssembliesTap: () => context.go('/tracks'),
-                onInvoicesTap: () => context.go('/invoices'),
-                onAddTracksTap: () => showAddTracksDialog(context, ref),
+            _HomeReveal(
+              order: 2,
+              child: KeyedSubtree(
+                key: _quickCardsKey,
+                child: _StatsBlock(
+                  bonusKgValue: _formatKg(bonusKgBalance),
+                  bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
+                  tracksValue: _formatCount(tracksCount),
+                  tracksWeekly: _formatDeltaCount(tracksWeeklyCount),
+                  assembliesValue: _formatCount(assembliesCount),
+                  assembliesWeekly: _formatDeltaCount(assembliesWeeklyCount),
+                  invoicesValue: _formatCount(invoicesCount),
+                  invoicesWeekly: _formatDeltaCount(invoicesWeeklyCount),
+                  onTracksTap: () => context.go('/tracks'),
+                  onAssembliesTap: () => context.go('/tracks'),
+                  onBonusKgTap: () => context.push('/referral'),
+                  onInvoicesTap: () => context.go('/invoices'),
+                  onAddTracksTap: () => showAddTracksDialog(context, ref),
+                ),
               ),
             ),
             const SizedBox(height: 15),
             if (agent?.hasHomeBanner == true) ...[
-              _PromoSlider(agent: agent!),
+              _HomeReveal(order: 3, child: _PromoSlider(agent: agent!)),
               const SizedBox(height: 15),
             ],
             if (agent?.hasWarehouseContacts == true) ...[
-              _WarehouseDataBlock(clientCode: clientCode, agent: agent!),
+              _HomeReveal(
+                order: 4,
+                child: _WarehouseDataBlock(
+                  clientCode: clientCode,
+                  agent: agent!,
+                ),
+              ),
               const SizedBox(height: 15),
             ],
-            KeyedSubtree(
-              key: _digestKey,
-              child: _DigestBlock(
-                tracksAsync: tracksDigestAsync,
-                assembliesAsync: assembliesDigestAsync,
-                invoicesAsync: invoicesDigestAsync,
-                photosAsync: recentPhotosAsync,
-                onTrackTap: (track) {
-                  final params = <String, String>{
-                    if (track.id != null) 'trackId': track.id.toString(),
-                    'trackCode': track.code,
-                  };
-                  context.go(
-                    Uri(path: '/tracks', queryParameters: params).toString(),
-                  );
-                },
-                onAssemblyTap: (assembly) {
-                  context.go(
-                    Uri(
-                      path: '/tracks',
-                      queryParameters: {'assemblyId': assembly.id.toString()},
-                    ).toString(),
-                  );
-                },
-                onInvoiceTap: (invoice) {
-                  context.go(
-                    Uri(
-                      path: '/invoices',
-                      queryParameters: {'invoiceId': invoice.id},
-                    ).toString(),
-                  );
-                },
-                onPhotoTap: (photo) {
-                  Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute<void>(
-                      fullscreenDialog: true,
-                      builder: (_) => PhotoViewerScreen(item: photo),
-                    ),
-                  );
-                },
+            _HomeReveal(
+              order: 5,
+              child: _NoCodeSearchCard(
+                controller: _noCodeSearchController,
+                onSearch: _openNoCodeSearch,
+              ),
+            ),
+            const SizedBox(height: 15),
+            _HomeReveal(
+              order: 6,
+              child: KeyedSubtree(
+                key: _digestKey,
+                child: _DigestBlock(
+                  tracksAsync: tracksDigestAsync,
+                  assembliesAsync: assembliesDigestAsync,
+                  invoicesAsync: invoicesDigestAsync,
+                  photosAsync: recentPhotosAsync,
+                  onTrackTap: (track) {
+                    final params = <String, String>{
+                      if (track.id != null) 'trackId': track.id.toString(),
+                      'trackCode': track.code,
+                    };
+                    context.go(
+                      Uri(path: '/tracks', queryParameters: params).toString(),
+                    );
+                  },
+                  onAssemblyTap: (assembly) {
+                    context.go(
+                      Uri(
+                        path: '/tracks',
+                        queryParameters: {'assemblyId': assembly.id.toString()},
+                      ).toString(),
+                    );
+                  },
+                  onInvoiceTap: (invoice) {
+                    context.go(
+                      Uri(
+                        path: '/invoices',
+                        queryParameters: {'invoiceId': invoice.id},
+                      ).toString(),
+                    );
+                  },
+                  onPhotoTap: (photo) {
+                    Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute<void>(
+                        fullscreenDialog: true,
+                        builder: (_) => PhotoViewerScreen(item: photo),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             SizedBox(height: bottomContentGap),
@@ -369,6 +419,60 @@ String _formatKg(double? value) {
 String _formatDeltaKg(double? value) {
   if (value == null) return '–';
   return '+${_formatKg(value)}';
+}
+
+class _HomeReveal extends StatefulWidget {
+  final int order;
+  final Widget child;
+
+  const _HomeReveal({required this.order, required this.child});
+
+  @override
+  State<_HomeReveal> createState() => _HomeRevealState();
+}
+
+class _HomeRevealState extends State<_HomeReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    final curve = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _opacity = Tween<double>(begin: 0, end: 1).animate(curve);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, 0.045),
+      end: Offset.zero,
+    ).animate(curve);
+
+    Future<void>.delayed(Duration(milliseconds: 55 * widget.order), () {
+      if (!mounted) return;
+      _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
+    );
+  }
 }
 
 class _StaleDataBanner extends StatelessWidget {
@@ -467,60 +571,335 @@ class _StaleDataBanner extends StatelessWidget {
 
 class _GreetingBlock extends StatelessWidget {
   final String fullName;
-  static const _textColor = Color(0xFF2F2F2F);
-  static const _nameStyle = TextStyle(
-    color: _textColor,
-    fontFamily: 'Gilroy',
-    fontSize: 33.6,
-    fontWeight: FontWeight.bold,
-    letterSpacing: 0,
-  );
+  final String clientCode;
+  final String? agentName;
+  final VoidCallback onTap;
 
-  const _GreetingBlock({required this.fullName});
+  const _GreetingBlock({
+    required this.fullName,
+    required this.clientCode,
+    required this.agentName,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final greeting = _greetingFor(DateTime.now());
-    return SizedBox(
-      width: double.infinity,
-      height: 69,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 153,
-            height: 28,
-            child: Text(
-              greeting,
-              maxLines: 1,
-              overflow: TextOverflow.visible,
-              softWrap: false,
-              style: const TextStyle(
-                color: _textColor,
-                fontFamily: 'Gilroy',
-                fontSize: 23.6,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 0,
+    final agentLabel = agentName?.trim();
+    final radius = BorderRadius.circular(24);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Semantics(
+        button: true,
+        label: 'Открыть профиль',
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            splashColor: Colors.white.withValues(alpha: 0.08),
+            highlightColor: Colors.white.withValues(alpha: 0.04),
+            child: Ink(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    context.brandPrimary.withValues(alpha: 0.98),
+                    context.brandSecondary.withValues(alpha: 0.9),
+                  ],
+                ),
+                borderRadius: radius,
+                boxShadow: [
+                  BoxShadow(
+                    color: context.brandPrimary.withValues(alpha: 0.22),
+                    offset: const Offset(0, 14),
+                    blurRadius: 32,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: radius,
+                child: Stack(
+                  children: [
+                    const Positioned.fill(child: _HeaderGlowBackdrop()),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      greeting,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.86,
+                                        ),
+                                        fontFamily: 'Gilroy',
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    SizedBox(
+                                      height: 34,
+                                      child: _OverflowMarqueeText(
+                                        text: fullName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontFamily: 'Gilroy',
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w900,
+                                          height: 34 / 28,
+                                          letterSpacing: -0.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const _PulsingHeaderIcon(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _HeaderInfoPill(
+                                icon: Icons.badge_rounded,
+                                label: 'Код $clientCode',
+                              ),
+                              if (agentLabel != null && agentLabel.isNotEmpty)
+                                _HeaderInfoPill(
+                                  icon: Icons.apartment_rounded,
+                                  label: agentLabel,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          SizedBox(
-            width: double.infinity,
-            height: 41,
-            child: _OverflowMarqueeText(text: fullName, style: _nameStyle),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   String _greetingFor(DateTime now) {
     final h = now.hour;
-    if (h >= 5 && h < 12) return 'Доброе утро!';
-    if (h >= 12 && h < 17) return 'Добрый день!';
-    if (h >= 17 && h < 23) return 'Добрый вечер!';
-    return 'Доброй ночи!';
+    if (h >= 5 && h < 12) return 'Доброе утро';
+    if (h >= 12 && h < 17) return 'Добрый день';
+    if (h >= 17 && h < 23) return 'Добрый вечер';
+    return 'Доброй ночи';
+  }
+}
+
+class _HeaderInfoPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeaderInfoPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderGlowBackdrop extends StatefulWidget {
+  const _HeaderGlowBackdrop();
+
+  @override
+  State<_HeaderGlowBackdrop> createState() => _HeaderGlowBackdropState();
+}
+
+class _HeaderGlowBackdropState extends State<_HeaderGlowBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final wave = Curves.easeInOutCubic.transform(_controller.value);
+            final shift = (wave * 2) - 1;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  right: -62,
+                  top: -58,
+                  child: Transform.translate(
+                    offset: Offset(-10 * shift, 6 * shift),
+                    child: _HeaderGlowCircle(
+                      size: 154,
+                      color: Colors.white.withValues(alpha: 0.13),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 22,
+                  bottom: -68,
+                  child: Transform.translate(
+                    offset: Offset(9 * shift, -7 * shift),
+                    child: _HeaderGlowCircle(
+                      size: 152,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: -14,
+                  bottom: 16,
+                  child: Transform.translate(
+                    offset: Offset(5 * shift, -4 * shift),
+                    child: _HeaderGlowCircle(
+                      size: 82,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderGlowCircle extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _HeaderGlowCircle({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
+
+class _PulsingHeaderIcon extends StatefulWidget {
+  const _PulsingHeaderIcon();
+
+  @override
+  State<_PulsingHeaderIcon> createState() => _PulsingHeaderIconState();
+}
+
+class _PulsingHeaderIconState extends State<_PulsingHeaderIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+    _scale = Tween<double>(
+      begin: 0.96,
+      end: 1.04,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        child: const Icon(
+          Icons.local_shipping_rounded,
+          color: Colors.white,
+          size: 25,
+        ),
+      ),
+    );
   }
 }
 
@@ -687,19 +1066,25 @@ class _PromoSlider extends StatelessWidget {
                   Positioned.fill(
                     child: imageUrl == null
                         ? const ColoredBox(color: Color(0xCCFFFFFF))
-                        : Image.network(
-                            resolvedImageUrl!,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.centerLeft,
-                            errorBuilder: (_, error, _) {
-                              if (kDebugMode) {
-                                debugPrint(
-                                  '[Home] Banner image failed: '
-                                  '$resolvedImageUrl $error',
+                        : RepaintBoundary(
+                            child: Image.network(
+                              resolvedImageUrl!,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.centerLeft,
+                              gaplessPlayback: true,
+                              filterQuality: FilterQuality.low,
+                              errorBuilder: (_, error, _) {
+                                if (kDebugMode) {
+                                  debugPrint(
+                                    '[Home] Banner image failed: '
+                                    '$resolvedImageUrl $error',
+                                  );
+                                }
+                                return const ColoredBox(
+                                  color: Color(0xCCFFFFFF),
                                 );
-                              }
-                              return const ColoredBox(color: Color(0xCCFFFFFF));
-                            },
+                              },
+                            ),
                           ),
                   ),
                   ConstrainedBox(
@@ -792,6 +1177,7 @@ class _StatsBlock extends StatelessWidget {
   final String invoicesWeekly;
   final VoidCallback onTracksTap;
   final VoidCallback onAssembliesTap;
+  final VoidCallback onBonusKgTap;
   final VoidCallback onInvoicesTap;
   final VoidCallback onAddTracksTap;
 
@@ -806,94 +1192,66 @@ class _StatsBlock extends StatelessWidget {
     required this.invoicesWeekly,
     required this.onTracksTap,
     required this.onAssembliesTap,
+    required this.onBonusKgTap,
     required this.onInvoicesTap,
     required this.onAddTracksTap,
   });
 
-  static const _designWidth = 400.0;
-  static const _gap = 10.0;
-  static const _topCardWidth = 142.5;
-  static const _addCardWidth = 95.0;
-  static const _bottomCardWidth = 195.0;
-  static const _cardHeight = 95.0;
-
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : _designWidth;
-        final scale = width / _designWidth;
-        final gap = _gap * scale;
-
-        return Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _AddTracksStatCard(onTap: onAddTracksTap),
+        const SizedBox(height: 8),
+        Row(
           children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: _topCardWidth * scale,
-                  child: _StatCard(
-                    title: 'Треки',
-                    value: tracksValue,
-                    weeklyValue: tracksWeekly,
-                    icon: Icons.local_shipping_rounded,
-                    scale: scale,
-                    onTap: onTracksTap,
-                  ),
-                ),
-                SizedBox(width: gap),
-                SizedBox(
-                  width: _topCardWidth * scale,
-                  child: _StatCard(
-                    title: 'Сборки',
-                    value: assembliesValue,
-                    weeklyValue: assembliesWeekly,
-                    icon: Icons.inventory_2_rounded,
-                    scale: scale,
-                    onTap: onAssembliesTap,
-                  ),
-                ),
-                SizedBox(width: gap),
-                SizedBox(
-                  width: _addCardWidth * scale,
-                  child: _AddTracksStatCard(
-                    scale: scale,
-                    onTap: onAddTracksTap,
-                  ),
-                ),
-              ],
+            Expanded(
+              child: _StatCard(
+                title: 'Треки',
+                value: tracksValue,
+                weeklyValue: tracksWeekly,
+                icon: Icons.local_shipping_rounded,
+                onTap: onTracksTap,
+              ),
             ),
-            SizedBox(height: gap),
-            Row(
-              children: [
-                SizedBox(
-                  width: _bottomCardWidth * scale,
-                  child: _StatCard(
-                    title: 'Бонусные кг',
-                    value: bonusKgValue,
-                    weeklyValue: bonusKgWeekly,
-                    icon: Icons.scale_rounded,
-                    scale: scale,
-                  ),
-                ),
-                SizedBox(width: gap),
-                SizedBox(
-                  width: _bottomCardWidth * scale,
-                  child: _StatCard(
-                    title: 'Счета',
-                    value: invoicesValue,
-                    weeklyValue: invoicesWeekly,
-                    icon: Icons.receipt_long_rounded,
-                    scale: scale,
-                    onTap: onInvoicesTap,
-                  ),
-                ),
-              ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                title: 'Сборки',
+                value: assembliesValue,
+                weeklyValue: assembliesWeekly,
+                icon: Icons.inventory_2_rounded,
+                onTap: onAssembliesTap,
+              ),
             ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                title: 'Бонусные кг',
+                value: bonusKgValue,
+                weeklyValue: bonusKgWeekly,
+                icon: Icons.scale_rounded,
+                onTap: onBonusKgTap,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                title: 'Счета',
+                value: invoicesValue,
+                weeklyValue: invoicesWeekly,
+                icon: Icons.receipt_long_rounded,
+                onTap: onInvoicesTap,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -903,7 +1261,6 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String weeklyValue;
   final IconData icon;
-  final double scale;
   final VoidCallback? onTap;
 
   const _StatCard({
@@ -911,116 +1268,106 @@ class _StatCard extends StatelessWidget {
     required this.value,
     required this.weeklyValue,
     required this.icon,
-    required this.scale,
     this.onTap,
   });
 
-  static const _textColor = Color(0xFF2F2F2F);
-
   @override
   Widget build(BuildContext context) {
-    final fontScale = scale.clamp(0.78, 1.08);
     final card = Container(
-      height: _StatsBlock._cardHeight * scale,
-      padding: EdgeInsets.all(10 * scale),
+      constraints: const BoxConstraints(minHeight: 102),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10 * scale),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0x1A000000),
-            offset: Offset(3 * scale, 4 * scale),
-            blurRadius: 25 * scale,
+            color: Colors.black.withValues(alpha: 0.06),
+            offset: const Offset(0, 8),
+            blurRadius: 20,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 22 * scale,
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(icon, color: context.brandPrimary, size: 18),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.3,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary.withValues(alpha: 0.8),
+                  size: 19,
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
             child: Text(
-              title,
+              value,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _textColor,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
                 fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w500,
-                fontSize: 17.6 * fontScale,
-                height: 22 / 17.6,
-                letterSpacing: 0,
+                fontWeight: FontWeight.w900,
+                fontSize: 25,
+                height: 0.95,
+                letterSpacing: -0.5,
               ),
             ),
           ),
-          const Spacer(),
-          SizedBox(
-            height: 31 * scale,
-            child: Row(
-              children: [
-                Container(
-                  width: 22 * scale,
-                  height: 22 * scale,
-                  decoration: BoxDecoration(
-                    color: context.brandPrimary,
-                    borderRadius: BorderRadius.circular(3 * scale),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(icon, color: Colors.white, size: 15 * fontScale),
-                ),
-                SizedBox(width: 5 * scale),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      style: TextStyle(
-                        color: _textColor,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w900,
-                        fontSize: 24.6 * fontScale,
-                        height: 31 / 24.6,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(999),
             ),
-          ),
-          const Spacer(),
-          SizedBox(
-            height: 16 * scale,
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  child: Text(
-                    weeklyValue,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: _textColor,
-                      fontFamily: 'Gilroy',
-                      fontWeight: FontWeight.w400,
-                      fontSize: 13.6 * fontScale,
-                      height: 16 / 13.6,
-                      letterSpacing: 0,
-                    ),
-                  ),
+                Icon(
+                  Icons.trending_up_rounded,
+                  size: 13,
+                  color: context.brandPrimary,
                 ),
-                SizedBox(width: 5 * scale),
+                const SizedBox(width: 3),
                 Text(
-                  'за неделю',
+                  '$weeklyValue за неделю',
                   maxLines: 1,
-                  style: TextStyle(
-                    color: _textColor,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
                     fontFamily: 'Gilroy',
-                    fontWeight: FontWeight.w400,
-                    fontSize: 13.6 * fontScale,
-                    height: 16 / 13.6,
-                    letterSpacing: 0,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.5,
+                    height: 1.1,
                   ),
                 ),
               ],
@@ -1031,56 +1378,151 @@ class _StatCard extends StatelessWidget {
     );
 
     if (onTap == null) return card;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: card,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: card,
+      ),
     );
   }
 }
 
 class _AddTracksStatCard extends StatelessWidget {
-  final double scale;
   final VoidCallback onTap;
 
-  const _AddTracksStatCard({required this.scale, required this.onTap});
+  const _AddTracksStatCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final fontScale = scale.clamp(0.78, 1.08);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: _StatsBlock._cardHeight * scale,
-        padding: EdgeInsets.all(10 * scale),
-        decoration: BoxDecoration(
-          color: context.brandPrimary,
-          borderRadius: BorderRadius.circular(10 * scale),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0x1A000000),
-              offset: Offset(3 * scale, 4 * scale),
-              blurRadius: 25 * scale,
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            'Добавить\nтреки',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontFamily: 'Gilroy',
-              fontWeight: FontWeight.w700,
-              fontSize: 14.6 * fontScale,
-              height: 18 / 14.6,
-              letterSpacing: 0,
-            ),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 78),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          decoration: BoxDecoration(
+            gradient: context.brandGradient,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: context.brandPrimary.withValues(alpha: 0.24),
+                offset: const Offset(0, 12),
+                blurRadius: 28,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Добавить треки',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        height: 1.1,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Вставьте номера — мы начнём отслеживание',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const _NudgingArrowIcon(),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NudgingArrowIcon extends StatefulWidget {
+  const _NudgingArrowIcon();
+
+  @override
+  State<_NudgingArrowIcon> createState() => _NudgingArrowIconState();
+}
+
+class _NudgingArrowIconState extends State<_NudgingArrowIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat(reverse: true);
+    _offset = Tween<double>(begin: 0, end: 5).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _offset,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(_offset.value, 0),
+          child: child,
+        );
+      },
+      child: const Icon(
+        Icons.arrow_forward_rounded,
+        color: Colors.white,
+        size: 24,
       ),
     );
   }
@@ -1092,8 +1534,6 @@ class _WarehouseDataBlock extends StatelessWidget {
 
   const _WarehouseDataBlock({required this.clientCode, required this.agent});
 
-  static const _textColor = Color(0xFF2F2F2F);
-
   @override
   Widget build(BuildContext context) {
     final address = _warehouseAddressForClient(agent.warehouseAddress);
@@ -1101,67 +1541,152 @@ class _WarehouseDataBlock extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1A000000),
-            offset: Offset(3, 4),
-            blurRadius: 25,
+            color: Colors.black.withValues(alpha: 0.06),
+            offset: const Offset(0, 10),
+            blurRadius: 26,
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final buttons = <Widget>[
-            if (address.isNotEmpty)
-              _WarehouseCopyButton(
-                label: 'Скопировать адрес',
-                icon: CupertinoIcons.doc_on_doc,
-                value: address,
-              ),
-            if (phone.isNotEmpty)
-              _WarehouseCopyButton(
-                label: 'Скопировать телефон',
-                icon: CupertinoIcons.phone,
-                value: phone,
-              ),
-          ];
-          final buttonWidth = buttons.length <= 1 || constraints.maxWidth < 300
-              ? constraints.maxWidth
-              : (constraints.maxWidth - 10) / 2;
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Text(
-                'Данные склада',
-                style: TextStyle(
-                  color: _textColor,
-                  fontFamily: 'Gilroy',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17.6,
-                  height: 22 / 17.6,
-                  letterSpacing: 0,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.warehouse_rounded,
+                  color: context.brandPrimary,
+                  size: 22,
                 ),
               ),
-              if (buttons.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  children: buttons
-                      .map(
-                        (button) => SizedBox(width: buttonWidth, child: button),
-                      )
-                      .toList(growable: false),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Склад и маркировка',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                        height: 1.15,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Скопируйте данные для отправки товара',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.qr_code_2_rounded, color: context.brandPrimary),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Код клиента: '),
+                        TextSpan(
+                          text: clientCode,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
-            ],
-          );
-        },
+            ),
+          ),
+          if (address.isNotEmpty || phone.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final useStack = constraints.maxWidth < 340;
+                final children = <Widget>[
+                  if (address.isNotEmpty)
+                    _WarehouseCopyButton(
+                      label: 'Адрес склада',
+                      icon: CupertinoIcons.doc_on_doc,
+                      value: address,
+                    ),
+                  if (phone.isNotEmpty)
+                    _WarehouseCopyButton(
+                      label: 'Телефон склада',
+                      icon: CupertinoIcons.phone,
+                      value: phone,
+                    ),
+                ];
+
+                if (useStack || children.length == 1) {
+                  return Column(
+                    children: [
+                      for (var i = 0; i < children.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 8),
+                        children[i],
+                      ],
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    for (var i = 0; i < children.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      Expanded(child: children[i]),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1186,41 +1711,39 @@ class _WarehouseCopyButton extends StatelessWidget {
     required this.value,
   });
 
-  static const _textColor = Color(0xFF2F2F2F);
-
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFDFDFDF),
-      borderRadius: BorderRadius.circular(10),
+      color: context.brandPrimary.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(15),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(15),
         onTap: () => _copyValue(context),
         child: Container(
-          height: 24,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFDFDFDF), width: 0.5),
-            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: context.brandPrimary.withValues(alpha: 0.12),
+            ),
+            borderRadius: BorderRadius.circular(15),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: _textColor, size: 12),
-              const SizedBox(width: 10),
+              Icon(icon, color: context.brandPrimary, size: 17),
+              const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textColor,
+                  style: TextStyle(
+                    color: context.brandPrimary,
                     fontFamily: 'Gilroy',
-                    fontWeight: FontWeight.w400,
-                    fontSize: 14,
-                    height: 14 / 14,
-                    letterSpacing: 0,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                    height: 1.1,
                   ),
                 ),
               ),
@@ -1243,15 +1766,181 @@ class _WarehouseCopyButton extends StatelessWidget {
   }
 }
 
+class _NoCodeSearchCard extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onSearch;
+
+  const _NoCodeSearchCard({required this.controller, required this.onSearch});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            offset: const Offset(0, 8),
+            blurRadius: 22,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  Icons.manage_search_rounded,
+                  color: context.brandPrimary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Поиск трека без кода',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Если склад ещё не привязал посылку к вашему коду',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  textInputAction: TextInputAction.search,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Трек-номер',
+                    hintStyle: TextStyle(
+                      color: AppColors.textSecondary.withValues(alpha: 0.72),
+                      fontFamily: 'Gilroy',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: context.brandPrimary,
+                      size: 20,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(
+                        color: Colors.black.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(
+                        color: Colors.black.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(
+                        color: context.brandPrimary.withValues(alpha: 0.55),
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                  onSubmitted: (_) => onSearch(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: onSearch,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.brandPrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Найти',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 enum _DigestTab {
-  tracks('Треки'),
-  assemblies('Сборки'),
-  invoices('Счета'),
-  photos('Фотоотчеты');
+  tracks('Треки', Icons.local_shipping_rounded),
+  assemblies('Сборки', Icons.inventory_2_rounded),
+  invoices('Счета', Icons.receipt_long_rounded),
+  photos('Фото', Icons.photo_library_rounded);
 
   final String label;
+  final IconData icon;
 
-  const _DigestTab(this.label);
+  const _DigestTab(this.label, this.icon);
 }
 
 class _DigestBlock extends StatefulWidget {
@@ -1284,52 +1973,90 @@ class _DigestBlockState extends State<_DigestBlock> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Последние обновления',
-          style: TextStyle(
-            color: Color(0xFF000000),
-            fontFamily: 'Gilroy',
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            height: 22 / 18,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            offset: const Offset(0, 10),
+            blurRadius: 26,
           ),
-        ),
-        const SizedBox(height: 6),
-        _DigestTabBar(
-          selected: _selected,
-          onChanged: (tab) => setState(() => _selected = tab),
-        ),
-        const SizedBox(height: 8),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          child: KeyedSubtree(
-            key: ValueKey(_selected),
-            child: switch (_selected) {
-              _DigestTab.tracks => _TrackDigestList(
-                itemsAsync: widget.tracksAsync,
-                onTap: widget.onTrackTap,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Последние обновления',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Треки, сборки, счета и фото в одном месте',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _DigestTab.assemblies => _AssemblyDigestList(
-                itemsAsync: widget.assembliesAsync,
-                onTap: widget.onAssemblyTap,
-              ),
-              _DigestTab.invoices => _InvoiceDigestList(
-                itemsAsync: widget.invoicesAsync,
-                onTap: widget.onInvoiceTap,
-              ),
-              _DigestTab.photos => _PhotoDigestGrid(
-                itemsAsync: widget.photosAsync,
-                onTap: widget.onPhotoTap,
-              ),
-            },
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 13),
+          _DigestTabBar(
+            selected: _selected,
+            onChanged: (tab) => setState(() => _selected = tab),
+          ),
+          const SizedBox(height: 12),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: KeyedSubtree(
+              key: ValueKey(_selected),
+              child: switch (_selected) {
+                _DigestTab.tracks => _TrackDigestList(
+                  itemsAsync: widget.tracksAsync,
+                  onTap: widget.onTrackTap,
+                ),
+                _DigestTab.assemblies => _AssemblyDigestList(
+                  itemsAsync: widget.assembliesAsync,
+                  onTap: widget.onAssemblyTap,
+                ),
+                _DigestTab.invoices => _InvoiceDigestList(
+                  itemsAsync: widget.invoicesAsync,
+                  onTap: widget.onInvoiceTap,
+                ),
+                _DigestTab.photos => _PhotoDigestGrid(
+                  itemsAsync: widget.photosAsync,
+                  onTap: widget.onPhotoTap,
+                ),
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1340,98 +2067,77 @@ class _DigestTabBar extends StatelessWidget {
 
   const _DigestTabBar({required this.selected, required this.onChanged});
 
-  static const _designWidth = 400.0;
-  static const _height = 30.0;
-  static const _gap = 10.0;
-
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _height,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth.isFinite
-              ? constraints.maxWidth
-              : _designWidth;
-          final scale = (width / _designWidth).clamp(0.78, 1.0);
-
-          return Row(
-            children: [
-              for (var i = 0; i < _DigestTab.values.length; i++) ...[
-                if (i > 0) const SizedBox(width: _gap),
-                Flexible(
-                  flex: _tabFlex(_DigestTab.values[i]),
-                  child: _DigestTabButton(
-                    tab: _DigestTab.values[i],
-                    selected: selected == _DigestTab.values[i],
-                    height: _height,
-                    scale: scale,
-                    onTap: () => onChanged(_DigestTab.values[i]),
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          for (var i = 0; i < _DigestTab.values.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _DigestTabButton(
+              tab: _DigestTab.values[i],
+              selected: selected == _DigestTab.values[i],
+              onTap: () => onChanged(_DigestTab.values[i]),
+            ),
+          ],
+        ],
       ),
     );
-  }
-
-  static int _tabFlex(_DigestTab tab) {
-    return switch (tab) {
-      _DigestTab.tracks => 80,
-      _DigestTab.assemblies => 85,
-      _DigestTab.invoices => 80,
-      _DigestTab.photos => 125,
-    };
   }
 }
 
 class _DigestTabButton extends StatelessWidget {
   final _DigestTab tab;
   final bool selected;
-  final double height;
-  final double scale;
   final VoidCallback onTap;
 
   const _DigestTabButton({
     required this.tab,
     required this.selected,
-    required this.height,
-    required this.scale,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final fontScale = scale.clamp(0.78, 1.0);
+    final foreground = selected ? Colors.white : AppColors.textPrimary;
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: double.infinity,
-          height: height,
-          padding: EdgeInsets.symmetric(horizontal: 10 * scale),
+          duration: const Duration(milliseconds: 170),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: selected ? context.brandPrimary : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            tab.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF2F2F2F),
-              fontFamily: 'Gilroy',
-              fontSize: 16.6 * fontScale,
-              fontWeight: FontWeight.w400,
-              height: 20 / 16.6,
+            color: selected ? context.brandPrimary : const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? context.brandPrimary
+                  : Colors.black.withValues(alpha: 0.04),
             ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(tab.icon, size: 16, color: foreground),
+              const SizedBox(width: 6),
+              Text(
+                tab.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: foreground,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1466,6 +2172,7 @@ class _TrackDigestList extends StatelessWidget {
           children: [
             for (final track in top)
               _DigestItemCard(
+                icon: Icons.local_shipping_rounded,
                 title: track.code,
                 createdAt: track.createdAt,
                 updatedAt: track.updatedAt,
@@ -1508,6 +2215,7 @@ class _AssemblyDigestList extends StatelessWidget {
           children: [
             for (final assembly in top)
               _DigestItemCard(
+                icon: Icons.inventory_2_rounded,
                 title: assembly.number,
                 createdAt: assembly.createdAt,
                 updatedAt: assembly.updatedAt,
@@ -1549,6 +2257,7 @@ class _InvoiceDigestList extends StatelessWidget {
           children: [
             for (final invoice in top)
               _DigestItemCard(
+                icon: Icons.receipt_long_rounded,
                 title: invoice.invoiceNumber,
                 createdAt: invoice.createdAt,
                 updatedAt: invoice.updatedAt ?? invoice.sendDate,
@@ -1588,10 +2297,10 @@ class _PhotoDigestGrid extends StatelessWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final tileSize = (constraints.maxWidth - 10) / 3;
+            final tileSize = (constraints.maxWidth - 16) / 3;
             return Wrap(
-              spacing: 5,
-              runSpacing: 5,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final item in top)
                   SizedBox(
@@ -1628,6 +2337,7 @@ class _DigestListColumn extends StatelessWidget {
 }
 
 class _DigestItemCard extends StatelessWidget {
+  final IconData icon;
   final String title;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -1637,6 +2347,7 @@ class _DigestItemCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DigestItemCard({
+    required this.icon,
     required this.title,
     required this.createdAt,
     required this.updatedAt,
@@ -1649,76 +2360,82 @@ class _DigestItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 60),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF2F2F2F),
-                          fontFamily: 'Gilroy',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          height: 24 / 16,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Opacity(
-                        opacity: 0.5,
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 2,
-                          children: [
-                            _DigestDateLabel(
-                              icon: CupertinoIcons.plus_circle,
-                              value: _formatDigestDate(createdAt),
-                            ),
-                            _DigestDateLabel(
-                              icon: CupertinoIcons.arrow_2_circlepath_circle,
-                              value: _formatDigestDate(updatedAt),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 76),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: (statusColor ?? context.brandPrimary).withValues(
+                    alpha: 0.14,
                   ),
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                const SizedBox(width: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minWidth: 89,
-                    maxWidth: 156,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _DigestStatusPill(text: statusText, color: statusColor),
-                      if (markers != null) ...[
-                        const SizedBox(height: 6),
-                        markers!,
+                child: Icon(
+                  icon,
+                  color: statusColor ?? context.brandPrimary,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        _DigestDateLabel(
+                          icon: CupertinoIcons.plus_circle,
+                          value: _formatDigestDate(createdAt),
+                        ),
+                        _DigestDateLabel(
+                          icon: CupertinoIcons.arrow_2_circlepath_circle,
+                          value: _formatDigestDate(updatedAt),
+                        ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _DigestStatusPill(text: statusText, color: statusColor),
+                  if (markers != null) ...[const SizedBox(height: 8), markers!],
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -1738,16 +2455,16 @@ class _DigestDateLabel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 24, color: const Color(0xFF2F2F2F)),
-        const SizedBox(width: 5),
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
         Text(
           value,
           style: const TextStyle(
-            color: Color(0xFF2F2F2F),
+            color: AppColors.textSecondary,
             fontFamily: 'Gilroy',
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            height: 24 / 16,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
           ),
         ),
       ],
@@ -1763,35 +2480,35 @@ class _DigestStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = color ?? const Color(0xFFB8E1C8);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 89, maxWidth: 156),
-      child: Container(
-        height: 22,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            text,
-            maxLines: 1,
-            softWrap: false,
-            style: const TextStyle(
-              color: Color(0xFF2F2F2F),
-              fontFamily: 'Gilroy',
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              height: 16 / 14,
-            ),
-          ),
+    final accent = color ?? context.brandPrimary;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 132),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: _readableStatusTextColor(accent),
+          fontFamily: 'Gilroy',
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          height: 1.1,
         ),
       ),
     );
   }
+}
+
+Color _readableStatusTextColor(Color color) {
+  final hsl = HSLColor.fromColor(color);
+  return hsl.withLightness((hsl.lightness * 0.46).clamp(0.18, 0.38)).toColor();
 }
 
 class _TrackDigestMarkers extends StatelessWidget {
@@ -1870,12 +2587,13 @@ class _DigestStateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 60),
+      constraints: const BoxConstraints(minHeight: 92),
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
       ),
       alignment: Alignment.center,
       child: child,
@@ -1969,10 +2687,25 @@ class _PhotoThumb extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         ),
-                        errorWidget: (_, _, _) => Container(
-                          color: Colors.black.withValues(alpha: 0.06),
-                          child: const Center(
-                            child: Icon(Icons.broken_image_outlined),
+                        errorWidget: (_, _, _) => AppCachedMediaImage(
+                          url: item.url,
+                          variant: AppMediaImageVariant.full,
+                          fit: BoxFit.cover,
+                          maxHeightDiskCache: 400,
+                          maxWidthDiskCache: 400,
+                          memCacheHeight: 200,
+                          memCacheWidth: 200,
+                          placeholder: (_, _) => Container(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (_, _, _) => Container(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            child: const Center(
+                              child: Icon(Icons.broken_image_outlined),
+                            ),
                           ),
                         ),
                       ),

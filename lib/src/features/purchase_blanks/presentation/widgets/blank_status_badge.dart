@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../data/purchase_blank_model.dart';
 
 /// Бейдж статуса бланка
@@ -19,26 +20,32 @@ class BlankStatusBadge extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 3 : 5,
+        horizontal: compact ? 9 : 11,
+        vertical: compact ? 6 : 8,
       ),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        color: status.color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: status.color.withValues(alpha: 0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(status.icon, size: compact ? 14 : 16, color: status.color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Gilroy',
-              fontSize: compact ? 11 : 13,
-              height: compact ? 13 / 11 : 15 / 13,
-              fontWeight: FontWeight.w600,
-              color: status.color,
+          Icon(status.icon, size: compact ? 13 : 15, color: status.color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: compact ? 11.5 : 13,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                color: status.color,
+                letterSpacing: -0.05,
+              ),
             ),
           ),
         ],

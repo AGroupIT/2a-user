@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
+import '../../../core/ui/sheet_handle.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../add_tracks/data/add_tracks_repository.dart';
 import '../../add_tracks/domain/add_tracks_result.dart';
@@ -11,10 +13,13 @@ import '../data/tracks_provider.dart';
 
 /// Модальное окно для добавления треков
 Future<void> showAddTracksDialog(BuildContext context, WidgetRef ref) async {
-  return showModalBottomSheet(
+  return showBlurredModalBottomSheet(
     context: context,
+    useRootNavigator: true,
+    useSafeArea: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.22),
     builder: (context) => _AddTracksDialog(),
   );
 }
@@ -207,230 +212,476 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
 
   Widget _buildContent(BuildContext context) {
     final clientCode = ref.watch(activeClientCodeProvider);
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+    final bottomPadding = mediaQuery.padding.bottom;
 
     return Container(
+      constraints: BoxConstraints(maxHeight: mediaQuery.size.height * 0.9),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomPadding + 80),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Шапка с заголовком и кнопкой закрытия
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Добавить треки',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          const SheetHandle(),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 18 + bottomPadding),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _AddTracksHeader(clientCode: clientCode),
+                  const SizedBox(height: 14),
+                  if (clientCode != null) ...[
+                    const _AddTracksHintCard(),
+                    const SizedBox(height: 12),
+                    _AddTracksInputCard(
+                      controller: _ctrl,
+                      enabled: !_submitting,
+                      onChanged: () {
+                        if (_error != null || _result != null) {
+                          setState(() {
+                            _error = null;
+                            _result = null;
+                          });
+                        }
+                      },
                     ),
+                    if (_result != null) ...[
+                      const SizedBox(height: 12),
+                      _AddTracksResultCard(result: _result!),
+                    ],
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      _AddTracksFeedbackCard(
+                        icon: Icons.error_outline_rounded,
+                        title: 'Не удалось добавить',
+                        message: _error!,
+                        color: Colors.redAccent,
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    _AddTracksPrimaryButton(
+                      loading: _submitting,
+                      onTap: _submitting ? null : _submit,
+                    ),
+                  ] else ...[
+                    const _AddTracksFeedbackCard(
+                      icon: Icons.badge_outlined,
+                      title: 'Код клиента не выбран',
+                      message: 'Сначала выберите код клиента в верхнем меню.',
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddTracksHeader extends StatelessWidget {
+  final String? clientCode;
+
+  const _AddTracksHeader({required this.clientCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            spreadRadius: -12,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Добавить треки',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 21,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.25,
                   ),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFF5F5F5),
+                const SizedBox(height: 5),
+                const Text(
+                  'Вставьте один или несколько номеров — мы начнём отслеживание',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.8,
+                    height: 1.15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (clientCode != null) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.badge_outlined,
+                          color: Colors.white,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Код $clientCode',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Gilroy',
+                            fontSize: 12.5,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddTracksHintCard extends StatelessWidget {
+  const _AddTracksHintCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.content_paste_rounded,
+              color: context.brandPrimary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Как вставлять номера',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'По одному в строке или через запятую. Дубликаты автоматически уберём.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.5,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-            if (clientCode != null) ...[
-              // Поле ввода
-              const Text(
-                'Введите трек-номера',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'По одному в строке или через запятую',
-                style: TextStyle(color: Color(0xFF999999), fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              AppGradientInputFrame(
-                fillColor: const Color(0xFFF8F9FA),
-                child: TextField(
-                  controller: _ctrl,
-                  maxLines: 8,
-                  enabled: !_submitting,
-                  style: const TextStyle(fontSize: 14, fontFamily: 'monospace'),
-                  decoration: const InputDecoration(
-                    hintText: 'ABC123456789\nDEF987654321\n...',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.all(14),
-                  ),
-                  onChanged: (_) {
-                    if (_error != null || _result != null) {
-                      setState(() {
-                        _error = null;
-                        _result = null;
-                      });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
+class _AddTracksInputCard extends StatelessWidget {
+  final TextEditingController controller;
+  final bool enabled;
+  final VoidCallback onChanged;
 
-              // Результат
-              if (_result != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: _result!.added > 0
-                        ? const Color(0xFFE8F5E9)
-                        : const Color(0xFFFFF3E0),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            _result!.added > 0
-                                ? Icons.check_circle
-                                : Icons.warning,
-                            color: _result!.added > 0
-                                ? const Color(0xFF4CAF50)
-                                : const Color(0xFFFF9800),
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _result!.added > 0
-                                ? 'Добавлено: ${_result!.added}'
-                                : 'Ничего не добавлено',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: _result!.added > 0
-                                  ? const Color(0xFF4CAF50)
-                                  : const Color(0xFFFF9800),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_result!.skipped.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Пропущено: ${_result!.skipped.length}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF666666),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        ...(_result!.skipped
-                            .take(3)
-                            .map(
-                              (item) => Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(
-                                  '• ${item.code}: ${item.reason}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF999999),
-                                  ),
-                                ),
-                              ),
-                            )),
-                        if (_result!.skipped.length > 3)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              '... ещё ${_result!.skipped.length - 3}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF999999),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ],
+  const _AddTracksInputCard({
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppOutlinedInputFrame(
+      radius: 18,
+      fillColor: const Color(0xFFF8FAFC),
+      borderColor: const Color(0xFFE3E7EE),
+      enabled: enabled,
+      builder: (context, focusNode) => TextField(
+        focusNode: focusNode,
+        controller: controller,
+        maxLines: 8,
+        enabled: enabled,
+        textCapitalization: TextCapitalization.characters,
+        style: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          height: 1.35,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w700,
+        ),
+        decoration: InputDecoration(
+          hintText: 'ABC123456789\nDEF987654321\n...',
+          hintStyle: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 14,
+            height: 1.35,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w600,
+          ),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Icon(
+              Icons.local_shipping_rounded,
+              color: context.brandPrimary,
+              size: 22,
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 44,
+            minHeight: 44,
+          ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.fromLTRB(0, 14, 14, 14),
+        ),
+        onChanged: (_) => onChanged(),
+      ),
+    );
+  }
+}
+
+class _AddTracksResultCard extends StatelessWidget {
+  final AddTracksResult result;
+
+  const _AddTracksResultCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final success = result.added > 0;
+    final color = success ? const Color(0xFF27C47A) : Colors.orangeAccent;
+
+    return _AddTracksFeedbackCard(
+      icon: success ? Icons.check_circle_rounded : Icons.warning_rounded,
+      title: success ? 'Добавлено: ${result.added}' : 'Ничего не добавлено',
+      message: _message,
+      color: color,
+    );
+  }
+
+  String get _message {
+    if (result.skipped.isEmpty) return 'Список треков обновится автоматически.';
+    final skippedPreview = result.skipped
+        .take(3)
+        .map((item) => '${item.code}: ${item.reason}')
+        .join('\n');
+    final tail = result.skipped.length > 3
+        ? '\n... ещё ${result.skipped.length - 3}'
+        : '';
+    return 'Пропущено: ${result.skipped.length}\n$skippedPreview$tail';
+  }
+}
+
+class _AddTracksFeedbackCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final Color color;
+
+  const _AddTracksFeedbackCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = color.computeLuminance() > 0.58
+        ? AppColors.textPrimary
+        : color;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: textColor, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 5),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.5,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-              // Ошибка
-              if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFEBEE),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+class _AddTracksPrimaryButton extends StatelessWidget {
+  final bool loading;
+  final VoidCallback? onTap;
+
+  const _AddTracksPrimaryButton({required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          height: 52,
+          decoration: BoxDecoration(
+            gradient: onTap == null ? null : context.brandGradient,
+            color: onTap == null ? const Color(0xFFE5E7EB) : null,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: onTap == null
+                ? null
+                : [
+                    BoxShadow(
+                      color: context.brandPrimary.withValues(alpha: 0.20),
+                      blurRadius: 16,
+                      spreadRadius: -9,
+                      offset: const Offset(0, 9),
+                    ),
+                  ],
+          ),
+          child: Center(
+            child: loading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Color(0xFFE53935),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: Color(0xFFE53935),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Кнопка отправки
-              ElevatedButton(
-                onPressed: _submitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.brandPrimary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: _submitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Добавить',
+                      Icon(Icons.add_rounded, color: Colors.white, size: 21),
+                      SizedBox(width: 7),
+                      Text(
+                        'Добавить треки',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontFamily: 'Gilroy',
+                          fontSize: 15,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-              ),
-            ] else ...[
-              const Text(
-                'Сначала выберите код клиента в шапке',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF999999), fontSize: 14),
-              ),
-            ],
-          ],
+                    ],
+                  ),
+          ),
         ),
       ),
     );

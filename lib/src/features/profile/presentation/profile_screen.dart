@@ -9,15 +9,14 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/utils/clipboard_helper.dart';
-import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/file_download_helper.dart';
 
+import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
@@ -26,8 +25,6 @@ import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
-import '../../../core/logging/client_log_service.dart';
-import '../data/problem_report_repository.dart';
 import '../data/profile_provider.dart';
 
 void _showStyledSnackBar(
@@ -80,6 +77,251 @@ void _showStyledSnackBar(
   );
 }
 
+String _profileInitials(String fullName) {
+  final parts = fullName
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return '2A';
+  final first = parts.first.characters.first.toUpperCase();
+  final second = parts.length > 1
+      ? parts[1].characters.first.toUpperCase()
+      : '';
+  return '$first$second';
+}
+
+class _ProfilePageHeader extends StatelessWidget {
+  const _ProfilePageHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/');
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 46,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.035),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 18,
+                    spreadRadius: -12,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            'Профиль',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 26,
+              height: 1.05,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHeroCard extends StatelessWidget {
+  final ClientProfile profile;
+
+  const _ProfileHeroCard({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final agentName = profile.agent?.name.trim();
+    final codeLabel = profile.codes.isEmpty
+        ? 'Код не выбран'
+        : profile.codes.length == 1
+        ? profile.codes.first.code
+        : '${profile.codes.length} кодов';
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 28,
+            spreadRadius: -12,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: AnimatedHeroGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      _profileInitials(profile.fullName),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Gilroy',
+                        fontSize: 18,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          profile.fullName.isEmpty
+                              ? 'Личный кабинет'
+                              : profile.fullName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Gilroy',
+                            fontSize: 24,
+                            height: 1.04,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.35,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          agentName?.isNotEmpty == true
+                              ? agentName!
+                              : 'Данные кабинета и безопасность',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xE6FFFFFF),
+                            fontFamily: 'Gilroy',
+                            fontSize: 13,
+                            height: 1.18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _ProfileHeroChip(
+                              icon: Icons.badge_outlined,
+                              label: codeLabel,
+                            ),
+                            _ProfileHeroChip(
+                              icon: profile.isActive
+                                  ? Icons.verified_rounded
+                                  : Icons.pause_circle_outline_rounded,
+                              label: profile.isActive ? 'Активен' : 'Неактивен',
+                            ),
+                            if (profile.terminal != null)
+                              _ProfileHeroChip(
+                                icon: Icons.location_on_outlined,
+                                label: profile.terminal!.nameRu,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileHeroChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ProfileHeroChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontSize: 12.3,
+              height: 1,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -115,7 +357,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isBindingPasskey = false;
   bool _isUnlinkingPasskey = false;
   PasskeyStatus? _passkeyStatus;
-  bool _isSendingProblemReport = false;
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -225,8 +466,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     bottomPad + 16,
                   ),
                   children: [
-                    const AppPageHeader(title: 'Профиль', showBack: true),
-                    const SizedBox(height: 15),
+                    const _ProfilePageHeader(),
+                    const SizedBox(height: 12),
+                    _ProfileHeroCard(profile: profile),
+                    const SizedBox(height: 14),
 
                     // Personal Info Section
                     KeyedSubtree(
@@ -246,14 +489,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    _buildProblemReportSection(profile),
-                    const SizedBox(height: 15),
-
                     // Export Section
                     KeyedSubtree(
                       key: _exportKey,
                       child: _buildSectionCard(
                         title: 'Выгрузка данных',
+                        icon: Icons.file_download_rounded,
                         children: [
                           _buildExportButton(
                             key: _invoicesExportButtonKey,
@@ -281,19 +522,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       decoration: _profileCardDecoration(),
                       child: Material(
                         type: MaterialType.transparency,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(24),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(24),
                           onTap: _logout,
                           child: Padding(
-                            padding: const EdgeInsets.all(14),
+                            padding: const EdgeInsets.all(16),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.logout_rounded,
-                                  color: Colors.red.shade600,
-                                  size: 20,
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(13),
+                                  ),
+                                  child: Icon(
+                                    Icons.logout_rounded,
+                                    color: Colors.red.shade600,
+                                    size: 19,
+                                  ),
                                 ),
                                 const SizedBox(width: 10),
                                 Text(
@@ -301,9 +550,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   style: TextStyle(
                                     color: Colors.red.shade600,
                                     fontFamily: 'Gilroy',
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w900,
                                     fontSize: 14.6,
-                                    height: 18 / 14.6,
+                                    height: 1,
                                   ),
                                 ),
                               ],
@@ -349,12 +598,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   BoxDecoration _profileCardDecoration() {
     return BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      boxShadow: const [
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      boxShadow: [
         BoxShadow(
-          color: Color(0x1A000000),
-          offset: Offset(3, 4),
-          blurRadius: 25,
+          color: Colors.black.withValues(alpha: 0.05),
+          blurRadius: 24,
+          spreadRadius: -16,
+          offset: const Offset(0, 14),
         ),
       ],
     );
@@ -364,10 +615,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return const TextStyle(
       color: _textColor,
       fontFamily: 'Gilroy',
-      fontSize: 18,
-      height: 22 / 18,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0,
+      fontSize: 17,
+      height: 1.05,
+      fontWeight: FontWeight.w900,
+      letterSpacing: -0.05,
     );
   }
 
@@ -490,17 +741,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           children: [
             Row(
               children: [
-                const Expanded(
-                  child: Text(
-                    'Личные данные',
-                    style: TextStyle(
-                      color: _textColor,
-                      fontFamily: 'Gilroy',
-                      fontSize: 18,
-                      height: 22 / 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: Icon(
+                    Icons.person_outline_rounded,
+                    color: context.brandPrimary,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Личные данные', style: _sectionTitleStyle),
                 ),
                 TextButton(
                   onPressed: _cancelEditing,
@@ -573,18 +829,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Личные данные',
-                  style: TextStyle(
-                    color: _textColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 18,
-                    height: 22 / 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.person_outline_rounded,
+                  color: context.brandPrimary,
+                  size: 19,
                 ),
               ),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Личные данные', style: _sectionTitleStyle)),
               IconButton(
                 onPressed: () => _startEditing(profile),
                 icon: Icon(
@@ -697,23 +956,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Безопасность',
-                  style: TextStyle(
-                    color: _textColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 18,
-                    height: 22 / 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.shield_outlined,
+                  color: context.brandPrimary,
+                  size: 19,
                 ),
               ),
-              Icon(
-                Icons.shield_outlined,
-                size: 20,
-                color: Colors.grey.shade400,
-              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Безопасность', style: _sectionTitleStyle)),
             ],
           ),
           const SizedBox(height: 14),
@@ -1134,7 +1391,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // Сохраняем context перед открытием bottom sheet
     final navigatorContext = context;
 
-    showModalBottomSheet(
+    showBlurredModalBottomSheet(
       context: context,
       useRootNavigator: true,
       backgroundColor: Colors.white,
@@ -1233,6 +1490,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return _buildSectionCard(
       title: 'Компания',
+      icon: Icons.business_rounded,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1368,47 +1626,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required String value,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: context.brandPrimary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 16, color: context.brandPrimary),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: '$label: ',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  TextSpan(
-                    text: value,
-                    style: const TextStyle(fontWeight: FontWeight.w400),
-                  ),
-                ],
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 18, color: context.brandPrimary),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textColor,
-                fontFamily: 'Gilroy',
-                fontSize: 14,
-                height: 16 / 14,
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 11.8,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _textColor,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1423,12 +1699,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
         decoration: BoxDecoration(
-          color: context.brandPrimary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: context.brandPrimary.withValues(alpha: 0.2),
+            color: context.brandPrimary.withValues(alpha: 0.14),
           ),
         ),
         child: Row(
@@ -1442,8 +1718,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 color: _textColor,
                 fontFamily: 'Gilroy',
                 fontSize: 13,
-                height: 15 / 13,
-                fontWeight: FontWeight.w700,
+                height: 1,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(width: 5),
@@ -1465,6 +1741,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildSectionCard({
     required String title,
+    IconData? icon,
     required List<Widget> children,
   }) {
     return Container(
@@ -1473,7 +1750,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: _sectionTitleStyle),
+          Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: context.brandPrimary, size: 19),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(child: Text(title, style: _sectionTitleStyle)),
+            ],
+          ),
           const SizedBox(height: 14),
           ...children,
         ],
@@ -1481,247 +1774,54 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildProblemReportSection(ClientProfile profile) {
-    return _buildSectionCard(
-      title: 'Помощь',
-      children: [
-        _buildExportButton(
-          icon: Icons.bug_report_outlined,
-          label: 'Сообщить о проблеме',
-          onPressed: () => _showProblemReportSheet(profile),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _showProblemReportSheet(ClientProfile profile) async {
-    ClientLogService.instance.action('Открыт экран сообщения о проблеме');
-    final controller = TextEditingController();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 16),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x1A000000),
-                      blurRadius: 25,
-                      offset: Offset(3, 4),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 38,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE1E1E7),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text('Сообщить о проблеме', style: _sectionTitleStyle),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Опишите, что не работает. Мы приложим последние действия и ошибки API без паролей, токенов и чувствительных данных.',
-                        style: TextStyle(
-                          color: Color(0x992F2F2F),
-                          fontFamily: 'Gilroy',
-                          fontSize: 14,
-                          height: 18 / 14,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: controller,
-                        minLines: 4,
-                        maxLines: 7,
-                        enabled: !_isSendingProblemReport,
-                        textInputAction: TextInputAction.newline,
-                        decoration: appInputDecoration(
-                          context,
-                          hintText: 'Например: не открываются фотоотчёты',
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isSendingProblemReport
-                                  ? null
-                                  : () => Navigator.pop(sheetContext),
-                              child: const Text('Отмена'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: _isSendingProblemReport
-                                  ? null
-                                  : () async {
-                                      final description = controller.text
-                                          .trim();
-                                      if (description.length < 5) {
-                                        _showStyledSnackBar(
-                                          context,
-                                          'Опишите проблему подробнее',
-                                          isError: true,
-                                        );
-                                        return;
-                                      }
-
-                                      setState(
-                                        () => _isSendingProblemReport = true,
-                                      );
-                                      setSheetState(() {});
-                                      await _submitProblemReport(
-                                        profile,
-                                        description,
-                                        sheetContext,
-                                      );
-                                      if (mounted) {
-                                        setState(
-                                          () => _isSendingProblemReport = false,
-                                        );
-                                      }
-                                      if (context.mounted) {
-                                        setSheetState(() {});
-                                      }
-                                    },
-                              child: _isSendingProblemReport
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('Отправить'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+  Widget _buildReadonlyField({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 11.8,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    ).whenComplete(controller.dispose);
-  }
-
-  Future<void> _submitProblemReport(
-    ClientProfile profile,
-    String description,
-    BuildContext sheetContext,
-  ) async {
-    ClientLogService.instance.action('Отправка отчёта о проблеме');
-    try {
-      final currentScreen = GoRouterState.of(context).uri.toString();
-      final result = await ref
-          .read(problemReportRepositoryProvider)
-          .send(
-            description: description,
-            profile: profile,
-            currentScreen: currentScreen,
-          );
-      if (!mounted) return;
-      if (sheetContext.mounted) Navigator.pop(sheetContext);
-      _showStyledSnackBar(
-        context,
-        result.queued
-            ? 'Связь нестабильна. Отчёт сохранён и отправится автоматически.'
-            : result.id == null
-            ? 'Отчёт отправлен'
-            : 'Отчёт #${result.id} отправлен',
-      );
-    } catch (error, stackTrace) {
-      final cause = error is ProblemReportSendException ? error.cause : error;
-      final diagnosticsText = error is ProblemReportSendException
-          ? error.diagnostics?.toSupportText()
-          : null;
-      await ClientLogService.instance.captureNonFatal(
-        'Не удалось отправить отчёт о проблеме',
-        error: cause,
-        stackTrace: stackTrace,
-        data: {if (diagnosticsText != null) 'hasNetworkDiagnostics': true},
-      );
-      if (!mounted) return;
-      var copiedDiagnostics = false;
-      if (diagnosticsText != null && diagnosticsText.isNotEmpty) {
-        copiedDiagnostics = await AppClipboard.copyText(diagnosticsText);
-      }
-      if (!mounted) return;
-      final errorInfo = ErrorUtils.getErrorInfo(cause);
-      _showStyledSnackBar(
-        context,
-        copiedDiagnostics
-            ? '${errorInfo.message} Диагностика скопирована, отправьте её менеджеру.'
-            : errorInfo.message,
-        isError: true,
-      );
-    }
-  }
-
-  Widget _buildReadonlyField({required String label, required String value}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0x992F2F2F),
-            fontFamily: 'Gilroy',
-            fontSize: 12,
-            height: 14 / 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: _textColor,
-                  fontFamily: 'Gilroy',
-                  fontSize: 15,
-                  height: 18 / 15,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textColor,
+                    fontFamily: 'Gilroy',
+                    fontSize: 15,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
+              ],
             ),
-            const Icon(
-              Icons.lock_outline_rounded,
-              size: 18,
-              color: Color(0xFF999999),
-            ),
-          ],
-        ),
-      ],
+          ),
+          const SizedBox(width: 10),
+          const Icon(
+            Icons.lock_outline_rounded,
+            size: 18,
+            color: AppColors.textSecondary,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1734,19 +1834,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return SizedBox(
       key: key,
       width: double.infinity,
-      height: 44,
+      height: 50,
       child: Material(
-        color: context.brandPrimary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: context.brandPrimary),
-                const SizedBox(width: 10),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(icon, size: 18, color: context.brandPrimary),
+                ),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Text(
                     label,
@@ -1756,15 +1864,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       color: _textColor,
                       fontFamily: 'Gilroy',
                       fontSize: 14,
-                      height: 16 / 14,
-                      fontWeight: FontWeight.w600,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 Icon(
-                  Icons.download_rounded,
+                  Icons.chevron_right_rounded,
                   size: 18,
-                  color: context.brandPrimary,
+                  color: AppColors.textSecondary.withValues(alpha: 0.72),
                 ),
               ],
             ),
@@ -2294,12 +2402,12 @@ class _TerminalChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? context.brandPrimary : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? context.brandPrimary : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? context.brandPrimary : const Color(0xFFE0E0E0),
+            color: selected ? context.brandPrimary : const Color(0xFFE1E5ED),
           ),
         ),
         child: Center(
@@ -2308,7 +2416,7 @@ class _TerminalChip extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w800,
               color: selected ? Colors.white : const Color(0xFF333333),
             ),
           ),

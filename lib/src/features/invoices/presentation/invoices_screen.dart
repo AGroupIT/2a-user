@@ -7,12 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/sheet_handle.dart';
-import '../../../core/ui/status_pill.dart';
 import '../../../core/ui/status_timeline_sheet.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
@@ -65,6 +65,14 @@ Color? _parseHexColor(String? hexString) {
   } catch (_) {
     return null;
   }
+}
+
+String _formatUsdAmount(num value, {bool withCents = false}) {
+  final money = NumberFormat.decimalPattern('ru');
+  if (withCents) {
+    return '\$${value.toStringAsFixed(2)}';
+  }
+  return '\$${money.format(value.round())}';
 }
 
 Future<bool> _requestInvoicePaymentStatus(
@@ -124,7 +132,6 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   final ScrollController _scrollController = ScrollController();
   String? _selectedStatusCode; // null = "Все"
   String _query = '';
-  bool _isSearchVisible = false;
 
   final GlobalKey _invoicesListKey = GlobalKey();
   final GlobalKey _filtersKey = GlobalKey();
@@ -276,12 +283,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     final bonusBalance = referral?.referralKgBalance ?? 0;
     final maxBonusPct = referral?.maxBonusPercent ?? 0;
 
-    showModalBottomSheet<void>(
+    showBlurredModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => _InvoiceDetailSheet(
         item: item,
         clientCode: clientCode,
@@ -349,14 +357,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   }
 
   Future<void> _showInvoiceFiltersSheet(List<InvoiceStatus> statuses) async {
-    final result = await showModalBottomSheet<_InvoiceFiltersResult>(
+    final result = await showBlurredModalBottomSheet<_InvoiceFiltersResult>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => _InvoiceFiltersSheet(
         selectedStatusCode: _selectedStatusCode,
         statuses: statuses,
@@ -476,7 +483,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     16,
-                    topPad * 0.7 + 16,
+                    topPad * 0.7 + 14,
                     16,
                     bottomPad + 16,
                   ),
@@ -485,35 +492,21 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                   itemCount: filtered.isEmpty ? 4 : filtered.length + 3,
                   itemBuilder: (context, index) {
                     if (index == 0) {
-                      return _InvoiceHeaderSection(
-                        filtersKey: _filtersKey,
-                        isFilterActive: _selectedStatusCode != null,
-                        isSearchActive: _isSearchVisible || _query.isNotEmpty,
-                        onFilterTap: () => _showInvoiceFiltersSheet(dbStatuses),
-                        onSearchTap: () {
-                          setState(() => _isSearchVisible = !_isSearchVisible);
-                        },
-                      );
+                      return const _InvoicesHeroHeader();
                     }
                     if (index == 1) {
-                      return AnimatedSize(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: (_isSearchVisible || _query.isNotEmpty)
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: _InvoiceSearchField(
-                                  query: _query,
-                                  onChanged: (value) =>
-                                      setState(() => _query = value),
-                                  onClear: () => setState(() {
-                                    _query = '';
-                                    _isSearchVisible = false;
-                                  }),
-                                ),
-                              )
-                            : const SizedBox.shrink(),
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _InvoiceControlsCard(
+                          filtersKey: _filtersKey,
+                          isFilterActive: _selectedStatusCode != null,
+                          query: _query,
+                          onFilterTap: () =>
+                              _showInvoiceFiltersSheet(dbStatuses),
+                          onQueryChanged: (value) =>
+                              setState(() => _query = value),
+                          onClear: () => setState(() => _query = ''),
+                        ),
                       );
                     }
                     if (index == 2) {
@@ -560,57 +553,252 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   }
 }
 
-class _InvoiceHeaderSection extends StatelessWidget {
+class _InvoicesHeroHeader extends StatelessWidget {
+  const _InvoicesHeroHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(24);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 28,
+            spreadRadius: -12,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _InvoicesHeaderGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(17),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.receipt_long_rounded,
+                          color: Colors.white,
+                          size: 25,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Счета',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Gilroy',
+                                fontWeight: FontWeight.w900,
+                                fontSize: 24,
+                                height: 1.04,
+                                letterSpacing: -0.35,
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'Суммы, статусы и понятная расшифровка оплаты',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xE6FFFFFF),
+                                fontFamily: 'Gilroy',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                height: 1.18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoicesHeaderGlowBackdrop extends StatefulWidget {
+  const _InvoicesHeaderGlowBackdrop();
+
+  @override
+  State<_InvoicesHeaderGlowBackdrop> createState() =>
+      _InvoicesHeaderGlowBackdropState();
+}
+
+class _InvoicesHeaderGlowBackdropState
+    extends State<_InvoicesHeaderGlowBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final wave = Curves.easeInOutCubic.transform(_controller.value);
+            final shift = (wave * 2) - 1;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  right: -62,
+                  top: -58,
+                  child: Transform.translate(
+                    offset: Offset(-10 * shift, 6 * shift),
+                    child: _InvoicesHeaderGlowCircle(
+                      size: 154,
+                      color: Colors.white.withValues(alpha: 0.13),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 22,
+                  bottom: -68,
+                  child: Transform.translate(
+                    offset: Offset(9 * shift, -7 * shift),
+                    child: _InvoicesHeaderGlowCircle(
+                      size: 152,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: -14,
+                  bottom: 16,
+                  child: Transform.translate(
+                    offset: Offset(5 * shift, -4 * shift),
+                    child: _InvoicesHeaderGlowCircle(
+                      size: 82,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoicesHeaderGlowCircle extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _InvoicesHeaderGlowCircle({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
+
+class _InvoiceControlsCard extends StatelessWidget {
   final GlobalKey filtersKey;
   final bool isFilterActive;
-  final bool isSearchActive;
+  final String query;
   final VoidCallback onFilterTap;
-  final VoidCallback onSearchTap;
+  final ValueChanged<String> onQueryChanged;
+  final VoidCallback onClear;
 
-  const _InvoiceHeaderSection({
+  const _InvoiceControlsCard({
     required this.filtersKey,
     required this.isFilterActive,
-    required this.isSearchActive,
+    required this.query,
     required this.onFilterTap,
-    required this.onSearchTap,
+    required this.onQueryChanged,
+    required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 24,
+            spreadRadius: -16,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Expanded(
-            child: Text(
-              'Счета',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'Gilroy',
-                fontSize: 24,
-                height: 29 / 24,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2F2F2F),
-                letterSpacing: 0,
-              ),
+          Expanded(
+            child: _InvoiceSearchField(
+              query: query,
+              onChanged: onQueryChanged,
+              onClear: onClear,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
           _InvoiceHeaderIconButton(
             key: filtersKey,
             icon: Icons.filter_alt_rounded,
             tooltip: 'Фильтр',
             isActive: isFilterActive,
             onTap: onFilterTap,
-          ),
-          const SizedBox(width: 10),
-          _InvoiceHeaderIconButton(
-            icon: Icons.search_rounded,
-            tooltip: 'Поиск',
-            isActive: isSearchActive,
-            onTap: onSearchTap,
           ),
         ],
       ),
@@ -634,18 +822,29 @@ class _InvoiceHeaderIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? context.brandPrimary : const Color(0xFF2F2F2F);
+    final accent = context.brandPrimary;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Center(child: Icon(icon, size: 23, color: color)),
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: isActive ? accent : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: isActive ? Colors.white : AppColors.textSecondary,
+            ),
           ),
         ),
       ),
@@ -693,43 +892,39 @@ class _InvoiceSearchFieldState extends State<_InvoiceSearchField> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 25,
-            offset: Offset(3, 4),
-          ),
-        ],
-      ),
-      child: TextField(
+    return AppOutlinedInputFrame(
+      height: 48,
+      radius: 18,
+      fillColor: const Color(0xFFF8FAFC),
+      borderColor: const Color(0xFFE3E7EE),
+      builder: (context, focusNode) => TextField(
+        focusNode: focusNode,
         controller: _controller,
         style: const TextStyle(
           fontFamily: 'Gilroy',
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: Color(0xFF2F2F2F),
+          fontSize: 14.5,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
           letterSpacing: 0,
         ),
         decoration: InputDecoration(
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            color: context.brandPrimary,
-            size: 22,
-          ),
+          prefixIcon: focusNode.hasFocus
+              ? null
+              : Icon(
+                  Icons.search_rounded,
+                  color: context.brandPrimary,
+                  size: 22,
+                ),
           suffixIcon: _controller.text.isNotEmpty
               ? IconButton(
                   onPressed: () {
                     _controller.clear();
+                    setState(() {});
                     widget.onClear();
                   },
                   icon: const Icon(
                     Icons.close_rounded,
-                    color: Color(0xFF8A8A8A),
+                    color: AppColors.textSecondary,
                     size: 20,
                   ),
                 )
@@ -737,19 +932,355 @@ class _InvoiceSearchFieldState extends State<_InvoiceSearchField> {
           hintText: 'Поиск по счёту',
           hintStyle: const TextStyle(
             fontFamily: 'Gilroy',
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0x99000000),
+            fontSize: 14.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
             letterSpacing: 0,
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          contentPadding: EdgeInsets.fromLTRB(
+            focusNode.hasFocus ? 16 : 0,
+            14,
+            12,
+            14,
+          ),
           isDense: true,
         ),
         onChanged: (value) {
           setState(() {});
           widget.onChanged(value);
         },
+      ),
+    );
+  }
+}
+
+class _InvoiceSheetSurface extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? pinnedChild;
+  final Widget? footer;
+  final bool keyboardAware;
+
+  const _InvoiceSheetSurface({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.pinnedChild,
+    this.footer,
+    this.keyboardAware = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final keyboardInset = keyboardAware
+        ? MediaQuery.viewInsetsOf(context).bottom
+        : 0.0;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SheetHandle(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: _InvoiceSheetHeader(
+                  icon: icon,
+                  title: title,
+                  subtitle: subtitle,
+                ),
+              ),
+              if (pinnedChild != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: pinnedChild,
+                ),
+              Flexible(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: child,
+                  ),
+                ),
+              ),
+              if (footer != null)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
+                  child: footer,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceSheetHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _InvoiceSheetHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            spreadRadius: -12,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 21,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.8,
+                    height: 1.15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InvoiceSectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  const _InvoiceSectionCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: context.brandPrimary, size: 17),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14.5,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.05,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _InvoicePrimaryButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _InvoicePrimaryButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 50,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: enabled ? context.brandGradient : null,
+            color: enabled ? null : const Color(0xFFE9ECEF),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: context.brandPrimary.withValues(alpha: 0.18),
+                      blurRadius: 18,
+                      spreadRadius: -10,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceSecondaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _InvoiceSecondaryButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          height: 50,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: context.brandPrimary.withValues(alpha: 0.34),
+            ),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: context.brandPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 14.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -768,7 +1299,7 @@ class _InvoiceStatusOption {
   const _InvoiceStatusOption({required this.code, required this.label});
 }
 
-class _InvoiceFiltersSheet extends StatelessWidget {
+class _InvoiceFiltersSheet extends StatefulWidget {
   final String? selectedStatusCode;
   final List<InvoiceStatus> statuses;
 
@@ -778,40 +1309,58 @@ class _InvoiceFiltersSheet extends StatelessWidget {
   });
 
   @override
+  State<_InvoiceFiltersSheet> createState() => _InvoiceFiltersSheetState();
+}
+
+class _InvoiceFiltersSheetState extends State<_InvoiceFiltersSheet> {
+  late String? _statusCode = widget.selectedStatusCode;
+
+  @override
   Widget build(BuildContext context) {
     final options = <_InvoiceStatusOption>[
       const _InvoiceStatusOption(code: null, label: 'Все'),
-      ...statuses.map(
+      ...widget.statuses.map(
         (status) =>
             _InvoiceStatusOption(code: status.code, label: status.nameRu),
       ),
     ];
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SheetHandle(),
-            const SizedBox(height: 12),
-            const Text(
-              'Фильтр',
-              style: TextStyle(
-                fontFamily: 'Gilroy',
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2F2F2F),
-              ),
+    return _InvoiceSheetSurface(
+      icon: Icons.filter_alt_rounded,
+      title: 'Фильтр',
+      subtitle: 'Выберите нужный статус счёта',
+      footer: Row(
+        children: [
+          Expanded(
+            child: _InvoiceSecondaryButton(
+              label: 'Сбросить',
+              onTap: () =>
+                  Navigator.pop(context, const _InvoiceFiltersResult(null)),
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _InvoicePrimaryButton(
+              label: 'Применить',
+              icon: Icons.check_rounded,
+              onTap: () =>
+                  Navigator.pop(context, _InvoiceFiltersResult(_statusCode)),
+            ),
+          ),
+        ],
+      ),
+      child: _InvoiceSectionCard(
+        icon: Icons.flag_rounded,
+        title: 'Статус счёта',
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
             for (final option in options)
-              _InvoiceFilterOptionTile(
-                title: option.label,
-                selected: option.code == selectedStatusCode,
-                onTap: () =>
-                    Navigator.pop(context, _InvoiceFiltersResult(option.code)),
+              _InvoiceFilterChip(
+                label: option.label,
+                selected: option.code == _statusCode,
+                onTap: () => setState(() => _statusCode = option.code),
               ),
           ],
         ),
@@ -820,45 +1369,241 @@ class _InvoiceFiltersSheet extends StatelessWidget {
   }
 }
 
-class _InvoiceFilterOptionTile extends StatelessWidget {
-  final String title;
+class _InvoiceFilterChip extends StatelessWidget {
+  final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _InvoiceFilterOptionTile({
-    required this.title,
+  const _InvoiceFilterChip({
+    required this.label,
     required this.selected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
     return Material(
       color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? accent : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? accent : Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: selected
-                        ? context.brandPrimary
-                        : const Color(0xFF2F2F2F),
-                  ),
+              if (selected) ...[
+                const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              if (selected)
-                Icon(Icons.check_rounded, color: context.brandPrimary),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceDetailSummaryCard extends StatelessWidget {
+  final InvoiceItem item;
+  final Color? statusColor;
+  final VoidCallback onStatusTap;
+  final VoidCallback onCopyNumber;
+
+  const _InvoiceDetailSummaryCard({
+    required this.item,
+    required this.statusColor,
+    required this.onStatusTap,
+    required this.onCopyNumber,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final money = NumberFormat.decimalPattern('ru');
+    final amountUsd = _formatUsdAmount(item.totalCostUsd);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Номер счёта',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 11.5,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.invoiceNumber,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontFamily: 'Gilroy',
+                              fontSize: 20,
+                              height: 1.04,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.25,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          child: InkWell(
+                            onTap: onCopyNumber,
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 30,
+                              height: 30,
+                              child: Icon(
+                                Icons.copy_rounded,
+                                size: 16,
+                                color: context.brandPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onStatusTap,
+                child: _InvoiceCardStatusPill(
+                  text: item.statusName ?? item.status,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Стоимость в долларах',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 11.5,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      amountUsd,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 31,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.65,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (item.totalCostRub > 0 || item.totalCostCny > 0)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (item.totalCostRub > 0)
+                      _InvoiceSmallAmount(
+                        label: '${money.format(item.totalCostRub.round())} ₽',
+                      ),
+                    if (item.totalCostCny > 0) ...[
+                      const SizedBox(height: 5),
+                      _InvoiceSmallAmount(
+                        label: '¥${money.format(item.totalCostCny.round())}',
+                      ),
+                    ],
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InvoiceSmallAmount extends StatelessWidget {
+  final String label;
+
+  const _InvoiceSmallAmount({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.textSecondary,
+          fontFamily: 'Gilroy',
+          fontSize: 12.2,
+          height: 1,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -879,10 +1624,6 @@ class _InvoiceTile extends ConsumerStatefulWidget {
 
 class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   bool _isNavigatingToPayment = false;
-
-  bool get _isUnpaid =>
-      widget.item.status.toLowerCase() == 'unpaid' ||
-      widget.item.status.toLowerCase() == 'pending';
 
   void _showInvoiceStatusTimeline(
     BuildContext context,
@@ -905,12 +1646,13 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     double bonusBalance,
     double maxBonusPct,
   ) {
-    showModalBottomSheet<void>(
+    showBlurredModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => _InvoiceDetailSheet(
         item: widget.item,
         clientCode: widget.clientCode,
@@ -1052,7 +1794,6 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final referralAsync = ref.watch(referralProvider);
     final invoiceStatuses =
@@ -1064,13 +1805,6 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
     final double maxBonusPct =
         referralAsync.whenOrNull(data: (r) => r.maxBonusPercent) ?? 0;
 
-    final amountText = item.totalCostUsd > 0
-        ? '\$${money.format(item.totalCostUsd.round())}'
-        : item.totalCostRub > 0
-        ? '${money.format(item.totalCostRub.round())} ₽'
-        : item.totalCostCny > 0
-        ? '¥${money.format(item.totalCostCny.round())}'
-        : '\$0';
     final createdText = _formatListDate(item.createdAt);
     final updatedAt =
         item.updatedAt ??
@@ -1079,114 +1813,193 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
         item.arrivalDate ??
         item.createdAt;
     final updatedText = _formatListDate(updatedAt);
-    final actionText = _isUnpaid ? 'Оплатить' : 'Открыть';
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 92),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 26,
-              offset: Offset(3, 4),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.invoiceNumber,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy',
-                          fontSize: 16,
-                          height: 19 / 16,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF2F2F2F),
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Opacity(
-                        opacity: 0.5,
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 2,
-                          children: [
-                            _InvoiceCardDate(
-                              icon: CupertinoIcons.plus_circle,
-                              text: createdText,
-                            ),
-                            _InvoiceCardDate(
-                              icon: CupertinoIcons.arrow_2_circlepath_circle,
-                              text: updatedText,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () =>
-                      _showInvoiceStatusTimeline(context, invoiceStatuses),
-                  child: _InvoiceCardStatusPill(
-                    text: item.statusName ?? item.status,
-                    color: statusColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 24,
-              child: Row(
+    final amountUsdText = _formatUsdAmount(item.totalCostUsd);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 24,
+                spreadRadius: -16,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      amountText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Gilroy',
-                        fontSize: 16,
-                        height: 19 / 16,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF000000),
-                        letterSpacing: 0,
-                      ),
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: context.brandPrimary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long_rounded,
+                      color: context.brandPrimary,
+                      size: 21,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  _InvoiceCardActionButton(
-                    label: _isNavigatingToPayment ? '...' : actionText,
-                    onTap: _isUnpaid
-                        ? () => _goToPayment(context)
-                        : () => _openDetail(context, bonusBalance, maxBonusPct),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Номер счёта',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontFamily: 'Gilroy',
+                            fontSize: 11.5,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          item.invoiceNumber,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontSize: 19,
+                            height: 1.04,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        _showInvoiceStatusTimeline(context, invoiceStatuses),
+                    child: _InvoiceCardStatusPill(
+                      text: item.statusName ?? item.status,
+                      color: statusColor,
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.035),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.80),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: context.brandPrimary.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.attach_money_rounded,
+                        color: context.brandPrimary,
+                        size: 23,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Итого',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontFamily: 'Gilroy',
+                              fontSize: 11.5,
+                              height: 1,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            amountUsdText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Gilroy',
+                              fontSize: 27,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.black.withValues(alpha: 0.035),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary.withValues(alpha: 0.78),
+                        size: 24,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InvoiceDateMeta(
+                    icon: CupertinoIcons.plus_circle,
+                    label: createdText,
+                  ),
+                  _InvoiceDateMeta(
+                    icon: CupertinoIcons.arrow_2_circlepath_circle,
+                    label: updatedText,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1198,11 +2011,11 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
   }
 }
 
-class _InvoiceCardDate extends StatelessWidget {
+class _InvoiceDateMeta extends StatelessWidget {
   final IconData icon;
-  final String text;
+  final String label;
 
-  const _InvoiceCardDate({required this.icon, required this.text});
+  const _InvoiceDateMeta({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -1210,19 +2023,19 @@ class _InvoiceCardDate extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 24, color: const Color(0xFF2F2F2F)),
-        const SizedBox(width: 5),
+        const SizedBox(width: 1),
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
         Text(
-          text,
+          label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
+            color: AppColors.textSecondary,
             fontFamily: 'Gilroy',
-            fontSize: 16,
-            height: 24 / 16,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFF2F2F2F),
-            letterSpacing: 0,
+            fontSize: 12,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -1238,70 +2051,34 @@ class _InvoiceCardStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = color ?? context.brandPrimary.withValues(alpha: 0.18);
+    final accent = color ?? context.brandPrimary;
+    final isLight = accent.computeLuminance() > 0.58;
+    final bg = isLight
+        ? accent.withValues(alpha: 0.42)
+        : accent.withValues(alpha: 0.12);
+    final textColor = isLight ? AppColors.textPrimary : accent;
+
     return Container(
-      height: 34,
-      constraints: const BoxConstraints(minWidth: 72, maxWidth: 128),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      alignment: Alignment.center,
+      constraints: const BoxConstraints(minHeight: 26, maxWidth: 96),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(10),
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accent.withValues(alpha: 0.20)),
       ),
+      alignment: Alignment.center,
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         textAlign: TextAlign.center,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Gilroy',
-          fontSize: 14,
-          height: 16 / 14,
-          fontWeight: FontWeight.w500,
-          color: Color(0xFF000000),
+          fontSize: 11.6,
+          height: 1,
+          fontWeight: FontWeight.w900,
+          color: textColor,
           letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-}
-
-class _InvoiceCardActionButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _InvoiceCardActionButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          height: 24,
-          width: 190,
-          constraints: const BoxConstraints(maxWidth: 190),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: context.brandPrimary, width: 0.5),
-          ),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Gilroy',
-              fontSize: 12,
-              height: 14 / 12,
-              fontWeight: FontWeight.w400,
-              color: Color(0xFF2F2F2F),
-              letterSpacing: 0,
-            ),
-          ),
         ),
       ),
     );
@@ -1365,6 +2142,24 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           allPhotos: photos,
           initialIndex: index,
         ),
+      ),
+    );
+  }
+
+  void _openWaybillPhoto(InvoiceItem item) {
+    final url = item.tkWaybillPhotoUrl;
+    if (url == null || url.isEmpty) return;
+
+    final photo = PhotoItem(
+      url: ApiConfig.getMediaUrl(url),
+      date: item.updatedAt ?? item.createdAt ?? DateTime.now(),
+    );
+
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) =>
+            PhotoViewerScreen(item: photo, allPhotos: [photo], initialIndex: 0),
       ),
     );
   }
@@ -1463,604 +2258,406 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final showBonusSection =
         _isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 1.0,
-      minChildSize: 0.5,
-      maxChildSize: 1.0,
-      expand: false,
-      builder: (context, scrollController) {
-        return GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            child: Column(
-              children: [
-                // Ручка
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 12, bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: _InvoiceSheetSurface(
+        icon: Icons.receipt_long_rounded,
+        title: 'Счёт ${item.invoiceNumber}',
+        subtitle: 'Разбивка суммы и данные для оплаты',
+        keyboardAware: true,
+        pinnedChild: _InvoiceDetailSummaryCard(
+          item: item,
+          statusColor: statusColor,
+          onStatusTap: () => _showInvoiceStatusTimeline(invoiceStatuses),
+          onCopyNumber: () async {
+            final copied = await AppClipboard.copyText(item.invoiceNumber);
+            if (!context.mounted) return;
+            AppToast.showFromSnackBar(
+              context,
+              SnackBar(
+                content: Text(
+                  copied ? 'Номер скопирован' : 'Не удалось скопировать',
                 ),
-
-                // Заголовок
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    item.invoiceNumber,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () async {
-                                    final copied = await AppClipboard.copyText(
-                                      item.invoiceNumber,
-                                    );
-                                    if (!context.mounted) return;
-                                    AppToast.showFromSnackBar(
-                                      context,
-                                      SnackBar(
-                                        content: Text(
-                                          copied
-                                              ? 'Номер скопирован'
-                                              : 'Не удалось скопировать',
-                                        ),
-                                        backgroundColor: copied
-                                            ? null
-                                            : Colors.red.shade700,
-                                      ),
-                                    );
-                                  },
-                                  child: const Icon(
-                                    Icons.copy,
-                                    size: 18,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () =>
-                                  _showInvoiceStatusTimeline(invoiceStatuses),
-                              child: StatusPill(
-                                text: item.statusName ?? item.status,
-                                color: statusColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                backgroundColor: copied ? null : Colors.red.shade700,
+              ),
+            );
+          },
+        ),
+        footer: _isUnpaid
+            ? _InvoicePrimaryButton(
+                label: 'Перейти к оплате',
+                icon: Icons.payment_rounded,
+                onTap: widget.onPay,
+              )
+            : _InvoiceSecondaryButton(
+                label: 'Закрыть',
+                onTap: () => Navigator.of(context).pop(),
+              ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildPlainInfoBlock([
+              _buildInfoRow(context, 'Номер счёта', item.invoiceNumber),
+              _buildInfoRow(context, 'Статус', item.statusName ?? item.status),
+              if (item.createdAt != null)
+                _buildInfoRow(context, 'Выставлен', df.format(item.createdAt!)),
+              if (item.paidAt != null)
+                _buildInfoRow(context, 'Оплачен', df.format(item.paidAt!)),
+              if (item.arrivalMarket != null && item.arrivalMarket!.isNotEmpty)
+                _buildInfoRow(
+                  context,
+                  'Рынок прибытия',
+                  _localizeMarket(item.arrivalMarket!),
                 ),
-
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-
-                // Контент
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: EdgeInsets.only(
-                      top: 20,
-                      left: 16,
-                      right: 16,
-                      bottom:
-                          MediaQuery.of(context).viewInsets.bottom +
-                          MediaQuery.of(context).padding.bottom +
-                          24,
-                    ),
-                    children: [
-                      // ══ Основная информация ══════════════════════════════
-                      _buildSection('Основная информация', [
-                        if (item.createdAt != null)
-                          _buildInfoRow(
-                            context,
-                            'Дата создания',
-                            df.format(item.createdAt!),
-                          ),
-                        if (item.paidAt != null)
-                          _buildInfoRow(
-                            context,
-                            'Дата оплаты',
-                            df.format(item.paidAt!),
-                          ),
-                        if (item.arrivalMarket != null &&
-                            item.arrivalMarket!.isNotEmpty)
-                          _buildInfoRow(
-                            context,
-                            'Рынок прибытия',
-                            _localizeMarket(item.arrivalMarket!),
-                          ),
-                      ]),
-                      const SizedBox(height: 20),
-
-                      // ══ Информация по коробкам ═══════════════════════════
-                      _buildSection('Информация по коробкам', [
-                        if (item.placesCount > 0)
-                          _buildInfoRow(
-                            context,
-                            'Количество мест',
-                            '${item.placesCount}',
-                          ),
-                        if (item.weight > 0)
-                          _buildInfoRow(
-                            context,
-                            'Вес',
-                            '${item.weight.toStringAsFixed(2)} кг',
-                          ),
-                        if (item.volume > 0)
-                          _buildInfoRow(
-                            context,
-                            'Объём',
-                            '${item.volume.toStringAsFixed(3)} м³',
-                          ),
-                        if (item.weight > 0 && item.volume > 0)
-                          _buildInfoRow(
-                            context,
-                            'Плотность',
-                            '${(item.weight / item.volume).toStringAsFixed(2)} кг/м³',
-                          ),
-                        if (item.scalePhotoUrls.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 100,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: item.scalePhotoUrls.length,
-                              addAutomaticKeepAlives: false,
-                              addSemanticIndexes: false,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(width: 8),
-                              itemBuilder: (context, index) {
-                                return GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () => _openScalePhoto(item, index),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      ApiConfig.getMediaUrl(
-                                        item.scalePhotoUrls[index],
-                                      ),
-                                      width: 100,
-                                      height: 100,
-                                      cacheWidth: 240,
-                                      cacheHeight: 240,
-                                      fit: BoxFit.cover,
-                                      filterQuality: FilterQuality.low,
-                                      errorBuilder: (_, _, _) => Container(
-                                        width: 100,
-                                        height: 100,
-                                        color: const Color(0xFFEEEEEE),
-                                        child: const Icon(
-                                          Icons.broken_image,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ]),
-
-                      // ══ Накладная от ТК ═══════════════════════════════
-                      if (item.tkWaybillPhotoUrl != null) ...[
-                        const SizedBox(height: 20),
-                        _buildSection('Накладная от ТК', [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
-                              width: double.infinity,
-                              cacheWidth: 1200,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.low,
-                              errorBuilder: (_, _, _) => Container(
-                                height: 120,
-                                color: const Color(0xFFEEEEEE),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    color: Colors.grey,
-                                    size: 40,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ]),
-                      ],
-                      const SizedBox(height: 20),
-
-                      // ══ Финансовая информация ════════════════════════════
-                      _buildSection('Финансовая информация', [
-                        // Коэффициент фотоотчёта
-                        if (item.photoReportCoefficient != null &&
-                            item.photoReportCoefficient! != 1.0) ...[
-                          _buildInfoRow(
-                            context,
-                            'Коэф. фотоотчёта',
-                            'x${item.photoReportCoefficient!.toStringAsFixed(2)}',
-                          ),
-                          if (item.totalTracks > 0)
-                            _buildInfoRow(
-                              context,
-                              'Треки с фото / без',
-                              '${item.tracksWithPhoto} / '
-                                  '${item.totalTracks - item.tracksWithPhoto} '
-                                  'из ${item.totalTracks}',
-                            ),
-                        ],
-
-                        // Тариф: базовый
-                        if (item.clientPricePerKg != null &&
-                            item.clientPricePerKg! > 0)
-                          _buildInfoRow(
-                            context,
-                            'Тариф',
-                            '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг',
-                          ),
-
-                        // Коэффициент за фото
-                        if (item.photoReportCoefficient != null &&
-                            item.photoReportCoefficient! > 1.0)
-                          _buildInfoRow(
-                            context,
-                            'Коэфф. фото',
-                            '×${item.photoReportCoefficient!.toStringAsFixed(2)}',
-                          ),
-
-                        // Итоговый тариф с коэффициентом
-                        if (item.clientPricePerKgWithPhoto != null &&
-                            item.clientPricePerKgWithPhoto! > 0 &&
-                            item.clientPricePerKgWithPhoto !=
-                                item.clientPricePerKg)
-                          _buildInfoRow(
-                            context,
-                            'Итого тариф',
-                            '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг',
-                          ),
-
-                        // Стоимость по тарифу
-                        if (item.shippingCost != null && item.shippingCost! > 0)
-                          _buildInfoRow(
-                            context,
-                            'Стоимость по тарифу',
-                            '\$${item.shippingCost!.toStringAsFixed(2)}',
-                          ),
-
-                        const Divider(height: 20),
-
-                        // Разгрузка
-                        if (item.transshipmentCost != null &&
-                            item.transshipmentCost! > 0)
-                          _buildInfoRow(
-                            context,
-                            'Разгрузка',
-                            '\$${item.transshipmentCost!.toStringAsFixed(2)}',
-                          ),
-
-                        // Новый фактический расход показываем подробно.
-                        if (item.hasDetailedPackagingUsage)
-                          _buildPackagingUsageBlock(context, item)
-                        else if (item.resolvedPackagingCostTotal != null &&
-                            item.resolvedPackagingCostTotal! > 0)
-                          _buildInfoRow(
-                            context,
-                            _packagingLabel(item),
-                            '\$${item.resolvedPackagingCostTotal!.toStringAsFixed(2)}',
-                          ),
-
-                        // Страховка — показываем только если есть стоимость
-                        if ((item.insuranceCostClient != null &&
-                                item.insuranceCostClient! > 0) ||
-                            (item.insuranceCost != null &&
-                                item.insuranceCost! > 0)) ...[
-                          if (item.insurancePercentClient != null &&
-                              item.insurancePercentClient! > 0)
-                            _buildInfoRow(
-                              context,
-                              'Страховка',
-                              '${item.insurancePercentClient!.toStringAsFixed(1)}%',
-                            )
-                          else if (item.insurancePercent != null &&
-                              item.insurancePercent! > 0)
-                            _buildInfoRow(
-                              context,
-                              'Страховка',
-                              '${item.insurancePercent!.toStringAsFixed(1)}%',
-                            ),
-                          if (item.insuranceCostClient != null &&
-                              item.insuranceCostClient! > 0)
-                            _buildInfoRow(
-                              context,
-                              'Страховка',
-                              '\$${item.insuranceCostClient!.toStringAsFixed(2)}',
-                            )
-                          else if (item.insuranceCost != null &&
-                              item.insuranceCost! > 0)
-                            _buildInfoRow(
-                              context,
-                              'Страховка',
-                              '\$${item.insuranceCost!.toStringAsFixed(2)}',
-                            ),
-                        ],
-
-                        // Скидка
-                        if (item.discountAmount != null &&
-                            item.discountAmount! > 0)
-                          _buildInfoRow(
-                            context,
-                            'Скидка',
-                            '−\$${item.discountAmount!.toStringAsFixed(2)}',
-                          ),
-
-                        // Применённые бонусные кг
-                        if (item.bonusKgApplied > 0)
-                          _buildInfoRow(
-                            context,
-                            'Оплата бонусами',
-                            '−${item.bonusKgApplied.toStringAsFixed(2)} кг',
-                          ),
-
-                        const Divider(height: 20),
-
-                        // Стоимость доставки в $
-                        if (item.totalCostUsd > 0)
-                          _buildInfoRow(
-                            context,
-                            'Стоимость доставки',
-                            '\$${item.totalCostUsd.toStringAsFixed(2)}',
-                            isTotal: true,
-                          ),
-
-                        // К оплате в ¥
-                        if (item.totalCostCny > 0) ...[
-                          const SizedBox(height: 4),
-                          _buildInfoRow(
-                            context,
-                            'К оплате в юанях',
-                            '¥${money.format(item.totalCostCny.round())}',
-                            isTotal: true,
-                          ),
-                        ],
-
-                        // К оплате в ₽
-                        if (item.totalCostRub > 0) ...[
-                          const SizedBox(height: 4),
-                          _buildInfoRow(
-                            context,
-                            'К оплате в рублях',
-                            '${money.format(item.totalCostRub.round())} ₽',
-                            isTotal: true,
-                          ),
-                        ],
-
-                        // Курс валют (только если есть)
-                        if (item.clientRubRate != null ||
-                            item.clientYuanRate != null) ...[
-                          const Divider(height: 20),
-                          if (item.clientRubRate != null)
-                            _buildInfoRow(
-                              context,
-                              'Курс \$/₽',
-                              item.clientRubRate!.toStringAsFixed(2),
-                            ),
-                          if (item.clientYuanRate != null)
-                            _buildInfoRow(
-                              context,
-                              'Курс \$/¥',
-                              item.clientYuanRate!.toStringAsFixed(4),
-                            ),
-                        ],
-                      ]),
-                      const SizedBox(height: 24),
-
-                      // ══ Бонусные кг ══════════════════════════════════════
-                      if (showBonusSection) ...[
-                        const Text(
-                          'Бонусные кг',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF333333),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.green.shade200),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.scale_rounded,
-                                    color: Colors.green.shade700,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Доступно: ${widget.bonusBalance.toStringAsFixed(2)} кг',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.green.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (item.bonusKgApplied > 0) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Уже применено: ${item.bonusKgApplied.toStringAsFixed(2)} кг',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.green.shade600,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _bonusKgCtrl,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.allow(
-                                          RegExp(r'^\d+[.,]?\d*'),
-                                        ),
-                                      ],
-                                      decoration: appInputDecoration(
-                                        context,
-                                        hintText:
-                                            'Кол-во кг (макс ${maxKg.toStringAsFixed(2)})',
-                                        fillColor: Colors.white,
-                                        isDense: true,
-                                        borderColor: Colors.green.shade300,
-                                        focusedBorderColor:
-                                            Colors.green.shade600,
-                                        focusedWidth: 2,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 12,
-                                            ),
-                                      ),
-                                      onChanged: (_) => setState(() {}),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  SizedBox(
-                                    height: 46,
-                                    child: ElevatedButton(
-                                      onPressed: _isApplyingBonus
-                                          ? null
-                                          : _applyBonusKg,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green.shade600,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                        ),
-                                      ),
-                                      child: _isApplyingBonus
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.white,
-                                              ),
-                                            )
-                                          : const Text('Применить'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (enteredKg > 0 && pricePerKg > 0) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Скидка: ~\$${bonusDiscount.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-
-                      // ══ Кнопка оплаты ════════════════════════════════════
-                      if (_isUnpaid)
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: widget.onPay,
-                            child: const Text('Перейти к оплате'),
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
+            ]),
+            const SizedBox(height: 12),
+            _buildSection('Груз и доставка', [
+              if (item.totalTracks > 0)
+                _buildInfoRow(context, 'Треков в счёте', '${item.totalTracks}'),
+              if (item.placesCount > 0)
+                _buildInfoRow(
+                  context,
+                  'Количество мест',
+                  '${item.placesCount}',
                 ),
-              ],
-            ),
-          ),
-        );
-      },
+              if (item.weight > 0)
+                _buildInfoRow(
+                  context,
+                  'Вес',
+                  '${item.weight.toStringAsFixed(2)} кг',
+                ),
+              if (item.volume > 0)
+                _buildInfoRow(
+                  context,
+                  'Объём',
+                  '${item.volume.toStringAsFixed(3)} м³',
+                ),
+              if (item.weight > 0 && item.volume > 0)
+                _buildInfoRow(
+                  context,
+                  'Плотность',
+                  '${(item.weight / item.volume).toStringAsFixed(2)} кг/м³',
+                ),
+              if (item.tariffName != null && item.tariffName!.isNotEmpty)
+                _buildInfoRow(context, 'Тариф', item.tariffName!),
+            ], icon: Icons.inventory_2_rounded),
+            const SizedBox(height: 12),
+            _buildSection('Расчёт суммы', [
+              if (item.clientPricePerKg != null && item.clientPricePerKg! > 0)
+                _buildInfoRow(
+                  context,
+                  'Тариф за кг',
+                  '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг',
+                ),
+              if (item.photoReportCoefficient != null &&
+                  item.photoReportCoefficient! > 1.0)
+                _buildInfoRow(
+                  context,
+                  'Коэфф. фото',
+                  '×${item.photoReportCoefficient!.toStringAsFixed(2)}',
+                ),
+              if (item.clientPricePerKgWithPhoto != null &&
+                  item.clientPricePerKgWithPhoto! > 0 &&
+                  item.clientPricePerKgWithPhoto != item.clientPricePerKg)
+                _buildInfoRow(
+                  context,
+                  'Итоговый тариф',
+                  '\$${item.clientPricePerKgWithPhoto!.toStringAsFixed(2)}/кг',
+                ),
+              if (item.shippingCost != null && item.shippingCost! > 0)
+                _buildInfoRow(
+                  context,
+                  'Доставка по тарифу',
+                  '\$${item.shippingCost!.toStringAsFixed(2)}',
+                ),
+              if (item.transshipmentCost != null && item.transshipmentCost! > 0)
+                _buildInfoRow(
+                  context,
+                  'Разгрузка',
+                  '\$${item.transshipmentCost!.toStringAsFixed(2)}',
+                ),
+              if (item.hasDetailedPackagingUsage)
+                _buildPackagingUsageBlock(context, item)
+              else if (item.resolvedPackagingCostTotal != null &&
+                  item.resolvedPackagingCostTotal! > 0)
+                _buildInfoRow(
+                  context,
+                  _packagingLabel(item),
+                  '\$${item.resolvedPackagingCostTotal!.toStringAsFixed(2)}',
+                ),
+              if (item.insuranceCostClient != null &&
+                  item.insuranceCostClient! > 0)
+                _buildInfoRow(
+                  context,
+                  'Страховка',
+                  '\$${item.insuranceCostClient!.toStringAsFixed(2)}',
+                )
+              else if (item.insuranceCost != null && item.insuranceCost! > 0)
+                _buildInfoRow(
+                  context,
+                  'Страховка',
+                  '\$${item.insuranceCost!.toStringAsFixed(2)}',
+                ),
+              if (item.discountAmount != null && item.discountAmount! > 0)
+                _buildInfoRow(
+                  context,
+                  'Скидка',
+                  '−\$${item.discountAmount!.toStringAsFixed(2)}',
+                ),
+              if (item.bonusKgApplied > 0)
+                _buildInfoRow(
+                  context,
+                  'Бонусные кг',
+                  '−${item.bonusKgApplied.toStringAsFixed(2)} кг',
+                ),
+              const Divider(height: 22),
+              if (item.totalCostUsd > 0)
+                _buildInfoRow(
+                  context,
+                  'Итого в долларах',
+                  _formatUsdAmount(item.totalCostUsd, withCents: true),
+                  isTotal: true,
+                ),
+              if (item.totalCostCny > 0)
+                _buildInfoRow(
+                  context,
+                  'К оплате в юанях',
+                  '¥${money.format(item.totalCostCny.round())}',
+                  isTotal: true,
+                ),
+              if (item.totalCostRub > 0)
+                _buildInfoRow(
+                  context,
+                  'К оплате в рублях',
+                  '${money.format(item.totalCostRub.round())} ₽',
+                  isTotal: true,
+                ),
+              if (item.clientRubRate != null)
+                _buildInfoRow(
+                  context,
+                  'Курс \$/₽',
+                  item.clientRubRate!.toStringAsFixed(2),
+                ),
+              if (item.clientYuanRate != null)
+                _buildInfoRow(
+                  context,
+                  'Курс \$/¥',
+                  item.clientYuanRate!.toStringAsFixed(4),
+                ),
+            ], icon: Icons.payments_rounded),
+            if (showBonusSection) ...[
+              const SizedBox(height: 12),
+              _buildBonusSection(
+                context: context,
+                item: item,
+                maxKg: maxKg,
+                enteredKg: enteredKg,
+                bonusDiscount: bonusDiscount,
+              ),
+            ],
+            if (item.scalePhotoUrls.isNotEmpty ||
+                item.tkWaybillPhotoUrl != null) ...[
+              const SizedBox(height: 12),
+              _buildMediaSection(item),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
-    if (children.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF333333),
-          ),
+  Widget _buildBonusSection({
+    required BuildContext context,
+    required InvoiceItem item,
+    required double maxKg,
+    required double enteredKg,
+    required double bonusDiscount,
+  }) {
+    return _buildSection('Бонусные кг', [
+      _buildInfoRow(
+        context,
+        'Доступно',
+        '${widget.bonusBalance.toStringAsFixed(2)} кг',
+      ),
+      _buildInfoRow(context, 'Можно списать', '${maxKg.toStringAsFixed(2)} кг'),
+      if (item.bonusKgApplied > 0)
+        _buildInfoRow(
+          context,
+          'Уже применено',
+          '${item.bonusKgApplied.toStringAsFixed(2)} кг',
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8F8F8),
-            borderRadius: BorderRadius.circular(14),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _bonusKgCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+[.,]?\d*')),
+              ],
+              decoration: appInputDecoration(
+                context,
+                hintText: 'Кол-во кг',
+                fillColor: Colors.white,
+                isDense: true,
+                borderColor: Colors.green.shade300,
+                focusedBorderColor: Colors.green.shade600,
+                focusedWidth: 2,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
           ),
-          child: Column(children: children),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 46,
+            child: ElevatedButton(
+              onPressed: _isApplyingBonus ? null : _applyBonusKg,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: _isApplyingBonus
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Применить'),
+            ),
+          ),
+        ],
+      ),
+      if (enteredKg > 0) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Предварительная скидка: ~\$${bonusDiscount.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.green.shade700,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ],
+    ], icon: Icons.redeem_rounded);
+  }
+
+  Widget _buildMediaSection(InvoiceItem item) {
+    return _buildSection('Фото и накладные', [
+      if (item.scalePhotoUrls.isNotEmpty) ...[
+        const Text(
+          'Фото с весов',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 104,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: item.scalePhotoUrls.length,
+            addAutomaticKeepAlives: false,
+            addSemanticIndexes: false,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openScalePhoto(item, index),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.network(
+                    ApiConfig.getMediaUrl(item.scalePhotoUrls[index]),
+                    width: 104,
+                    height: 104,
+                    cacheWidth: 240,
+                    cacheHeight: 240,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                    errorBuilder: (_, _, _) => Container(
+                      width: 104,
+                      height: 104,
+                      color: const Color(0xFFEEEEEE),
+                      child: const Icon(Icons.broken_image, color: Colors.grey),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+      if (item.tkWaybillPhotoUrl != null) ...[
+        if (item.scalePhotoUrls.isNotEmpty) const SizedBox(height: 12),
+        const Text(
+          'Фото накладной',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openWaybillPhoto(item),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
+                width: 104,
+                height: 104,
+                cacheWidth: 240,
+                cacheHeight: 240,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low,
+                errorBuilder: (_, _, _) => Container(
+                  width: 104,
+                  height: 104,
+                  color: const Color(0xFFEEEEEE),
+                  child: const Icon(Icons.broken_image, color: Colors.grey),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ], icon: Icons.photo_library_rounded);
+  }
+
+  Widget _buildSection(
+    String title,
+    List<Widget> children, {
+    required IconData icon,
+  }) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return _InvoiceSectionCard(
+      icon: icon,
+      title: title,
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildPlainInfoBlock(List<Widget> children) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Column(children: children),
     );
   }
 

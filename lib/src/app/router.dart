@@ -10,7 +10,6 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/invoices/presentation/invoices_screen.dart';
-import '../features/more/presentation/more_screen.dart';
 import '../features/news/presentation/news_detail_screen.dart';
 import '../features/news/presentation/news_list_screen.dart';
 import '../features/payment_chat/presentation/payment_chat_screen.dart';
@@ -173,18 +172,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          StatefulShellBranch(
-            observers: [ClientLogNavigatorObserver()],
-            routes: [
-              GoRoute(
-                name: 'more',
-                path: '/more',
-                builder: (context, state) => const MoreScreen(),
-              ),
-            ],
-          ),
         ],
       ),
+      GoRoute(path: '/more', redirect: (context, state) => '/'),
       GoRoute(
         name: 'calculator',
         path: '/calculator',
@@ -198,9 +188,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'search-nocode',
         path: '/search-nocode',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
+        builder: (context, state) => AppScaffold(
           title: 'Поиск по трек-номеру',
-          child: TrackSearchNoCodeScreen(),
+          child: TrackSearchNoCodeScreen(
+            initialQuery: state.uri.queryParameters['query'],
+          ),
         ),
       ),
       GoRoute(

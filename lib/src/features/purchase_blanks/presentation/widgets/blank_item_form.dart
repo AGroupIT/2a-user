@@ -81,10 +81,11 @@ class _BlankItemFormState extends State<BlankItemForm> {
       maxHeight: 1200,
       imageQuality: 80,
     );
-    if (images.isEmpty) return;
+    if (!mounted || images.isEmpty) return;
 
     for (final xFile in images) {
       final bytes = await xFile.readAsBytes();
+      if (!mounted) return;
       setState(() {
         _pickedPhotos.add(_PickedPhoto(bytes: bytes, name: xFile.name));
       });
@@ -137,28 +138,67 @@ class _BlankItemFormState extends State<BlankItemForm> {
           children: [
             // ── Заголовок ──────────────────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  isEditing ? Icons.edit_rounded : Icons.add_rounded,
-                  color: context.brandPrimary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isEditing ? 'Редактирование товара' : 'Новый товар',
-                  style: PurchaseBlankUi.sectionTitleStyle,
-                ),
-                const Spacer(),
-                if (widget.onCancel != null)
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: widget.onCancel,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(16),
                   ),
+                  child: Icon(
+                    isEditing ? Icons.edit_rounded : Icons.add_rounded,
+                    color: context.brandPrimary,
+                    size: 23,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isEditing ? 'Редактирование товара' : 'Новый товар',
+                        style: PurchaseBlankUi.sectionTitleStyle,
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Добавьте ссылку, параметры, цену и фото товара',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 12,
+                          height: 1.18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.onCancel != null) ...[
+                  const SizedBox(width: 8),
+                  Material(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: widget.onCancel,
+                      borderRadius: BorderRadius.circular(14),
+                      child: const SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
             // ── Название товара ────────────
             _FormField(
@@ -233,84 +273,142 @@ class _BlankItemFormState extends State<BlankItemForm> {
             const SizedBox(height: 14),
 
             // ── Фото ──────────────────────
-            Text(
-              'Фото товара',
-              style: PurchaseBlankUi.bodyStyle.copyWith(
-                fontWeight: FontWeight.w700,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.025),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                // Существующие фото (если редактирование)
-                if (widget.existingItem != null)
-                  ...widget.existingItem!.photoUrls.map(
-                    (url) => _PhotoThumb(imageUrl: url),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Фото товара',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 13,
+                      height: 16 / 13,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                // Новые фото
-                ..._pickedPhotos.asMap().entries.map(
-                  (e) => _PhotoThumb(
-                    bytes: e.value.bytes,
-                    onRemove: () => _removePhoto(e.key),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Можно добавить несколько снимков, чтобы сотруднику было проще выкупить товар.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 11.5,
+                      height: 1.22,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                // Кнопка добавления
-                GestureDetector(
-                  onTap: _pickPhotos,
-                  child: Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey.shade300,
-                        width: 1.5,
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      // Существующие фото (если редактирование)
+                      if (widget.existingItem != null)
+                        ...widget.existingItem!.photoUrls.map(
+                          (url) => _PhotoThumb(imageUrl: url),
+                        ),
+                      // Новые фото
+                      ..._pickedPhotos.asMap().entries.map(
+                        (e) => _PhotoThumb(
+                          bytes: e.value.bytes,
+                          onRemove: () => _removePhoto(e.key),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.add_a_photo_rounded,
-                      color: Colors.grey.shade400,
-                      size: 24,
-                    ),
+                      // Кнопка добавления
+                      Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          onTap: _pickPhotos,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: context.brandPrimary.withValues(
+                                  alpha: 0.18,
+                                ),
+                                width: 1.2,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              Icons.add_a_photo_rounded,
+                              color: context.brandPrimary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 18),
 
             // ── Кнопка сохранения ─────────
             SizedBox(
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.brandPrimary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
+              height: 52,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: _isSaving ? null : context.brandGradient,
+                  color: _isSaving
+                      ? context.brandPrimary.withValues(alpha: 0.55)
+                      : null,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: _isSaving
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: context.brandPrimary.withValues(alpha: 0.18),
+                            blurRadius: 18,
+                            spreadRadius: -10,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                 ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                child: FilledButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          isEditing ? 'Сохранить изменения' : 'Добавить товар',
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                            height: 18 / 15,
+                          ),
                         ),
-                      )
-                    : Text(
-                        isEditing ? 'Сохранить' : 'Добавить товар',
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          height: 18 / 15,
-                        ),
-                      ),
+                ),
               ),
             ),
           ],
@@ -349,44 +447,58 @@ class _FormField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            color: PurchaseBlankUi.mutedTextColor,
+            color: AppColors.textSecondary,
             fontFamily: 'Gilroy',
             fontSize: 13,
-            height: 15 / 13,
-            fontWeight: FontWeight.w600,
+            height: 16 / 13,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 4),
-        TextFormField(
-          controller: controller,
-          maxLines: maxLines,
-          keyboardType: keyboardType,
-          inputFormatters: inputFormatters,
-          validator: validator,
-          style: const TextStyle(
-            color: PurchaseBlankUi.textColor,
-            fontFamily: 'Gilroy',
-            fontSize: 15,
-            height: 18 / 15,
-          ),
-          decoration: appInputDecoration(
-            context,
-            hintText: hint,
-            hintStyle: const TextStyle(
-              color: Color(0x662F2F2F),
-              fontFamily: 'Gilroy',
-              fontSize: 14,
-              height: 16 / 14,
-            ),
-            isDense: true,
-            fillColor: context.brandPrimary.withValues(alpha: 0.05),
-            borderColor: Colors.grey.shade200,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            errorBorderColor: Colors.red,
-          ),
+        const SizedBox(height: 7),
+        AppOutlinedInputFrame(
+          radius: 18,
+          borderWidth: 1.2,
+          focusedBorderWidth: 1.6,
+          fillColor: const Color(0xFFF8FAFC),
+          borderColor: const Color(0xFFE1E5ED),
+          focusedBorderColor: context.brandPrimary,
+          builder: (context, focusNode) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              maxLines: maxLines,
+              keyboardType: keyboardType,
+              inputFormatters: inputFormatters,
+              validator: validator,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 15,
+                height: 18 / 15,
+                fontWeight: FontWeight.w800,
+              ),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(
+                  color: Color(0xFFB0B4BE),
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  height: 16 / 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                isDense: true,
+              ),
+            );
+          },
         ),
       ],
     );
@@ -412,41 +524,65 @@ class _PhotoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: imageUrl != null
-              ? Image.network(
-                  ApiConfig.getMediaUrl(imageUrl!),
-                  width: 64,
-                  height: 64,
-                  fit: BoxFit.cover,
-                )
-              : Image.memory(bytes!, width: 64, height: 64, fit: BoxFit.cover),
-        ),
-        if (onRemove != null)
-          Positioned(
-            top: -4,
-            right: -4,
-            child: GestureDetector(
-              onTap: onRemove,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 13,
-                  color: Colors.white,
+    return SizedBox(
+      width: 82,
+      height: 82,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: imageUrl != null
+                  ? Image.network(
+                      ApiConfig.getMediaUrl(imageUrl!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        color: Colors.white,
+                        child: const Icon(
+                          Icons.broken_image_rounded,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : Image.memory(bytes!, fit: BoxFit.cover),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  width: 2,
                 ),
               ),
             ),
           ),
-      ],
+          if (onRemove != null)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: GestureDetector(
+                onTap: onRemove,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE53935),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

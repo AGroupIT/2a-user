@@ -31,31 +31,31 @@ class BlankItemCard extends StatelessWidget {
         children: [
           // ── Заголовок ─────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 8, 0),
+            padding: const EdgeInsets.fromLTRB(16, 14, 10, 0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Номер
                 Container(
-                  width: 28,
-                  height: 28,
+                  width: 40,
+                  height: 40,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: context.brandPrimary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(15),
                   ),
                   child: Text(
                     '${item.orderNumber}',
                     style: TextStyle(
                       fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      height: 15 / 13,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
                       color: context.brandPrimary,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 // Название + ссылка
                 Expanded(
                   child: Column(
@@ -64,11 +64,11 @@ class BlankItemCard extends StatelessWidget {
                       Text(
                         item.productName,
                         style: const TextStyle(
-                          color: PurchaseBlankUi.textColor,
+                          color: AppColors.textPrimary,
                           fontFamily: 'Gilroy',
-                          fontSize: 15,
-                          height: 18 / 15,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          height: 1.15,
+                          fontWeight: FontWeight.w900,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -83,6 +83,7 @@ class BlankItemCard extends StatelessWidget {
                               fontFamily: 'Gilroy',
                               fontSize: 12,
                               height: 14 / 12,
+                              fontWeight: FontWeight.w600,
                               color: Colors.blue.shade600,
                               decoration: TextDecoration.underline,
                             ),
@@ -148,23 +149,23 @@ class BlankItemCard extends StatelessWidget {
           if (item.photoUrls.isNotEmpty) ...[
             const SizedBox(height: 10),
             SizedBox(
-              height: 72,
+              height: 84,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: item.photoUrls.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (context, i) {
                   return ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(16),
                     child: CachedNetworkImage(
                       imageUrl: ApiConfig.getMediaUrl(item.photoUrls[i]),
-                      width: 72,
-                      height: 72,
+                      width: 84,
+                      height: 84,
                       fit: BoxFit.cover,
                       placeholder: (_, _) => Container(
-                        width: 72,
-                        height: 72,
+                        width: 84,
+                        height: 84,
                         color: Colors.grey.shade100,
                         child: const Icon(
                           Icons.image_rounded,
@@ -173,8 +174,8 @@ class BlankItemCard extends StatelessWidget {
                         ),
                       ),
                       errorWidget: (_, _, _) => Container(
-                        width: 72,
-                        height: 72,
+                        width: 84,
+                        height: 84,
                         color: Colors.grey.shade100,
                         child: const Icon(
                           Icons.broken_image_rounded,
@@ -193,16 +194,16 @@ class BlankItemCard extends StatelessWidget {
           if (item.characteristics != null &&
               item.characteristics!.isNotEmpty) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.025),
+                  ),
                 ),
                 child: Text(
                   item.characteristics!,
@@ -221,7 +222,7 @@ class BlankItemCard extends StatelessWidget {
 
           // ── Цена и количество ─────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Row(
               children: [
                 _InfoChip(label: 'Кол-во', value: '${item.quantity} шт.'),
@@ -242,81 +243,78 @@ class BlankItemCard extends StatelessWidget {
 
           // ── Данные сотрудника ──────────────────────────
           if (item.hasEmployeeData) ...[
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Divider(height: 1),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-              child: Row(
-                children: [
-                  if (item.trackNumber != null) ...[
-                    Icon(
-                      Icons.local_shipping_rounded,
-                      size: 14,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      item.trackNumber!,
-                      style: TextStyle(
-                        fontFamily: 'Gilroy',
-                        fontSize: 12,
-                        height: 14 / 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: context.brandPrimary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (item.trackNumber != null)
+                      _MiniFact(
+                        icon: Icons.local_shipping_rounded,
+                        label: item.trackNumber!,
                       ),
-                    ),
-                    const SizedBox(width: 12),
+                    if (item.commission != null)
+                      _MiniFact(
+                        icon: Icons.percent_rounded,
+                        label:
+                            'Комиссия ¥${item.commission!.toStringAsFixed(2)}',
+                      ),
+                    if (item.itemTotal != null)
+                      _MiniFact(
+                        icon: Icons.done_all_rounded,
+                        label: 'Итог ¥${item.itemTotal!.toStringAsFixed(2)}',
+                        accent: true,
+                      ),
                   ],
-                  if (item.commission != null) ...[
-                    Text(
-                      'Комиссия: ¥${item.commission!.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontFamily: 'Gilroy',
-                        fontSize: 12,
-                        height: 14 / 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (item.itemTotal != null)
-                    Text(
-                      'Итог: ¥${item.itemTotal!.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontFamily: 'Gilroy',
-                        fontSize: 13,
-                        height: 15 / 13,
-                        fontWeight: FontWeight.w700,
-                        color: context.brandPrimary,
-                      ),
-                    ),
-                ],
+                ),
               ),
             ),
           ] else ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 13,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Трек и комиссия заполняются сотрудником',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy',
-                      fontSize: 11,
-                      height: 13 / 11,
-                      color: Colors.grey.shade400,
-                      fontStyle: FontStyle.italic,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.055),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 15,
+                      color: context.brandPrimary.withValues(alpha: 0.72),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'Трек и комиссия заполняются сотрудником',
+                        style: TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 11.5,
+                          height: 13.5 / 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -335,6 +333,55 @@ class BlankItemCard extends StatelessWidget {
   }
 }
 
+class _MiniFact extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool accent;
+
+  const _MiniFact({
+    required this.icon,
+    required this.label,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ? context.brandPrimary : AppColors.textSecondary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: accent
+            ? context.brandPrimary.withValues(alpha: 0.10)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: accent
+              ? context.brandPrimary.withValues(alpha: 0.12)
+              : Colors.black.withValues(alpha: 0.035),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _InfoChip extends StatelessWidget {
   final String label;
   final String value;
@@ -350,12 +397,13 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: highlighted
-              ? context.brandPrimary.withValues(alpha: 0.08)
-              : Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(8),
+              ? context.brandPrimary.withValues(alpha: 0.10)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.025)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,8 +414,8 @@ class _InfoChip extends StatelessWidget {
                 fontFamily: 'Gilroy',
                 fontSize: 10,
                 height: 12 / 10,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
               ),
             ),
             const SizedBox(height: 1),
@@ -377,10 +425,10 @@ class _InfoChip extends StatelessWidget {
                 fontFamily: 'Gilroy',
                 fontSize: 13,
                 height: 15 / 13,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w900,
                 color: highlighted
                     ? context.brandPrimary
-                    : PurchaseBlankUi.textColor,
+                    : AppColors.textPrimary,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

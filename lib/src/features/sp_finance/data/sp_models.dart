@@ -106,7 +106,8 @@ class SpStats {
       totalRevenueRub: parseDouble(json['totalRevenueRub']),
       totalShippingRub: parseDouble(json['totalShippingRub']),
       totalProfitRub: parseDouble(json['totalProfitRub']),
-      participants: (json['participants'] as List<dynamic>?)
+      participants:
+          (json['participants'] as List<dynamic>?)
               ?.map((e) => SpParticipant.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -200,7 +201,10 @@ class SpProductInfo {
   factory SpProductInfo.fromJson(Map<String, dynamic> json) {
     return SpProductInfo(
       id: json['id'] as int,
-      title: json['title'] as String? ?? json['name'] as String? ?? json['productName'] as String?,
+      title:
+          json['title'] as String? ??
+          json['name'] as String? ??
+          json['productName'] as String?,
       description: json['description'] as String?,
       category: json['category'] as String?,
       brand: json['brand'] as String?,
@@ -215,18 +219,19 @@ class SpTrack {
   final int id;
   final String trackNumber;
   final String? spParticipantName;
-  final String? note;               // Комментарий/заметка к треку
-  final double? supplierPriceYuan;  // Цена поставщика в ¥
-  final double? purchasePriceYuan;  // Цена выкупа в ¥ (со скидкой)
-  final double? clientPriceYuan;    // Цена для участника в ¥
-  final double? purchaseRate;       // Курс ¥→₽
-  final double? costPriceRub;       // Себестоимость = purchasePriceYuan × rate
-  final double? clientPriceRub;     // Цена участника = clientPriceYuan × rate
+  final String? note; // Комментарий/заметка к треку
+  final double? supplierPriceYuan; // Цена поставщика в ¥
+  final double? purchasePriceYuan; // Цена выкупа в ¥ (со скидкой)
+  final double? clientPriceYuan; // Цена для участника в ¥
+  final double? purchaseRate; // Курс ¥→₽
+  final double? costPriceRub; // Себестоимость = purchasePriceYuan × rate
+  final double? clientPriceRub; // Цена участника = clientPriceYuan × rate
   final double? organizerMarginRub; // Прибыль = clientPriceRub - costPriceRub
-  final double? netWeightKg;        // Чистый вес
-  final double? shippingCostRub;    // Доля доставки = netWeight × ставка за кг
+  final double? netWeightKg; // Чистый вес
+  final double? shippingCostRub; // Доля доставки = netWeight × ставка за кг
   final double? additionalExpensesRub; // Дополнительные расходы в ₽
-  final double? totalCostRub;       // Итого = clientPriceRub + shippingCostRub + additionalExpensesRub
+  final double?
+  totalCostRub; // Итого = clientPriceRub + shippingCostRub + additionalExpensesRub
   final String? status;
   final String? productTitle;
   final List<SpPhoto>? photos;
@@ -281,8 +286,8 @@ class SpTrack {
       status: json['status'] as String?,
       productTitle: json['productTitle'] as String?,
       photos: (json['photos'] as List<dynamic>?)
-              ?.map((e) => SpPhoto.fromJson(e as Map<String, dynamic>))
-              .toList(),
+          ?.map((e) => SpPhoto.fromJson(e as Map<String, dynamic>))
+          .toList(),
       productInfo: _parseProductInfo(json['productInfo']),
     );
   }
@@ -294,7 +299,9 @@ class SpTrack {
     // Если это массив - берём первый элемент (как в track_item.dart)
     if (productInfoData is List) {
       if (productInfoData.isEmpty) return null;
-      return SpProductInfo.fromJson(productInfoData.first as Map<String, dynamic>);
+      return SpProductInfo.fromJson(
+        productInfoData.first as Map<String, dynamic>,
+      );
     }
 
     // Если это объект - парсим напрямую
@@ -329,7 +336,8 @@ class SpTrack {
       clientPriceRub: clientPriceRub,
       organizerMarginRub: organizerMarginRub,
       shippingCostRub: shippingCostRub,
-      additionalExpensesRub: additionalExpensesRub ?? this.additionalExpensesRub,
+      additionalExpensesRub:
+          additionalExpensesRub ?? this.additionalExpensesRub,
       totalCostRub: totalCostRub,
       status: status,
       productTitle: productTitle,
@@ -393,7 +401,11 @@ class SpInvoice {
 
   /// Доставка USD = тариф + упаковка + перевалка + страховка - скидка
   double get deliveryCostUsd {
-    return tariffCost + packagingCost + transshipmentCost + insuranceCost - discount;
+    return tariffCost +
+        packagingCost +
+        transshipmentCost +
+        insuranceCost -
+        discount;
   }
 
   /// Доставка RUB = Доставка USD × Курс
@@ -455,6 +467,10 @@ class SpAssembly {
   final String? assemblyNumber;
   final String? name; // Название сборки
   final String status;
+  final String? statusName;
+  final String? statusNameRu;
+  final String? statusNameZh;
+  final String? statusColor;
   final double? totalShippingCostRub;
   final double? defaultPurchaseRate;
   final List<SpTrack> tracks;
@@ -463,13 +479,18 @@ class SpAssembly {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final List<Box> boxes; // Коробки (новое)
-  final List<ScalePhoto> scalePhotos; // Фото на весах (старые, для обратной совместимости)
+  final List<ScalePhoto>
+  scalePhotos; // Фото на весах (старые, для обратной совместимости)
 
   const SpAssembly({
     required this.id,
     this.assemblyNumber,
     this.name,
     required this.status,
+    this.statusName,
+    this.statusNameRu,
+    this.statusNameZh,
+    this.statusColor,
     this.totalShippingCostRub,
     this.defaultPurchaseRate,
     required this.tracks,
@@ -484,8 +505,36 @@ class SpAssembly {
   /// Отображаемое название сборки
   String get displayName {
     if (name != null && name!.isNotEmpty) return name!;
-    if (assemblyNumber != null && assemblyNumber!.isNotEmpty) return assemblyNumber!;
+    if (assemblyNumber != null && assemblyNumber!.isNotEmpty) {
+      return assemblyNumber!;
+    }
     return 'Сборка #$id';
+  }
+
+  String get statusDisplayName {
+    final candidates = [statusNameRu, statusName, _fallbackStatusName(status)];
+    for (final candidate in candidates) {
+      if (candidate != null && candidate.trim().isNotEmpty) {
+        return candidate;
+      }
+    }
+    return status;
+  }
+
+  static String? _fallbackStatusName(String status) {
+    return switch (status) {
+      'new' => 'Новая',
+      'packing' => 'Упаковка',
+      'packed' => 'Упакована',
+      'warehouse_review' => 'Проверка склада',
+      'ready_to_ship' => 'Готова к отправке',
+      'ready_to_shipping' => 'Готова к отправке',
+      'shipping' => 'Отправляется',
+      'shipped' => 'Отправлена',
+      'completed' => 'Завершена',
+      'cancelled' => 'Отменена',
+      _ => null,
+    };
   }
 
   factory SpAssembly.fromJson(Map<String, dynamic> json) {
@@ -498,27 +547,39 @@ class SpAssembly {
 
     return SpAssembly(
       id: json['id'] as int,
-      assemblyNumber: json['assemblyNumber'] as String? ?? json['number'] as String?,
+      assemblyNumber:
+          json['assemblyNumber'] as String? ?? json['number'] as String?,
       name: json['name'] as String?,
       status: json['status'] as String,
+      statusName: json['statusName'] as String?,
+      statusNameRu:
+          json['statusNameRu'] as String? ?? json['statusName'] as String?,
+      statusNameZh: json['statusNameZh'] as String?,
+      statusColor: json['statusColor'] as String?,
       totalShippingCostRub: parseDoubleNullable(json['totalShippingCostRub']),
       defaultPurchaseRate: parseDoubleNullable(json['defaultPurchaseRate']),
-      tracks: (json['tracks'] as List<dynamic>?)
+      tracks:
+          (json['tracks'] as List<dynamic>?)
               ?.map((e) => SpTrack.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      invoices: (json['invoices'] as List<dynamic>?)
+      invoices:
+          (json['invoices'] as List<dynamic>?)
               ?.map((e) => SpInvoice.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       stats: SpStats.fromJson(json['stats'] as Map<String, dynamic>),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
-      boxes: (json['boxes'] as List<dynamic>?)
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
+      boxes:
+          (json['boxes'] as List<dynamic>?)
               ?.map((e) => Box.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      scalePhotos: (json['scalePhotos'] as List<dynamic>?)
+      scalePhotos:
+          (json['scalePhotos'] as List<dynamic>?)
               ?.map((e) => ScalePhoto.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -537,6 +598,10 @@ class SpAssembly {
       assemblyNumber: assemblyNumber,
       name: name,
       status: status,
+      statusName: statusName,
+      statusNameRu: statusNameRu,
+      statusNameZh: statusNameZh,
+      statusColor: statusColor,
       totalShippingCostRub: totalShippingCostRub ?? this.totalShippingCostRub,
       defaultPurchaseRate: defaultPurchaseRate ?? this.defaultPurchaseRate,
       tracks: tracks ?? this.tracks,
@@ -544,6 +609,7 @@ class SpAssembly {
       stats: stats ?? this.stats,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      boxes: boxes,
       scalePhotos: scalePhotos ?? this.scalePhotos,
     );
   }
@@ -574,13 +640,21 @@ class SpTrackUpdate {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> json = {};
 
-    if (spParticipantName != null) json['spParticipantName'] = spParticipantName;
-    if (supplierPriceYuan != null) json['supplierPriceYuan'] = supplierPriceYuan;
-    if (purchasePriceYuan != null) json['purchasePriceYuan'] = purchasePriceYuan;
+    if (spParticipantName != null) {
+      json['spParticipantName'] = spParticipantName;
+    }
+    if (supplierPriceYuan != null) {
+      json['supplierPriceYuan'] = supplierPriceYuan;
+    }
+    if (purchasePriceYuan != null) {
+      json['purchasePriceYuan'] = purchasePriceYuan;
+    }
     if (clientPriceYuan != null) json['clientPriceYuan'] = clientPriceYuan;
     if (purchaseRate != null) json['purchaseRate'] = purchaseRate;
     if (netWeightKg != null) json['netWeightKg'] = netWeightKg;
-    if (additionalExpensesRub != null) json['additionalExpensesRub'] = additionalExpensesRub;
+    if (additionalExpensesRub != null) {
+      json['additionalExpensesRub'] = additionalExpensesRub;
+    }
     if (note != null) json['note'] = note;
 
     return json;
@@ -591,14 +665,14 @@ class SpTrackUpdate {
 class SpAssemblyUpdate {
   final double? defaultPurchaseRate;
 
-  const SpAssemblyUpdate({
-    this.defaultPurchaseRate,
-  });
+  const SpAssemblyUpdate({this.defaultPurchaseRate});
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> json = {};
 
-    if (defaultPurchaseRate != null) json['defaultPurchaseRate'] = defaultPurchaseRate;
+    if (defaultPurchaseRate != null) {
+      json['defaultPurchaseRate'] = defaultPurchaseRate;
+    }
 
     return json;
   }

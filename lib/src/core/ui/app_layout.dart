@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 class AppLayout {
   const AppLayout._();
 
-  static const topBarHeight = 40.0;
+  static const topBarHeight = 44.0;
   static const topBarTopMargin = 10.0;
   static const topBarBottomGap = 12.0;
 

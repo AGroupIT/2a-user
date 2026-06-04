@@ -98,7 +98,7 @@ class _PageBackButton extends StatelessWidget {
         if (context.canPop()) {
           context.pop();
         } else {
-          context.go('/more');
+          context.go('/');
         }
       },
       child: Container(

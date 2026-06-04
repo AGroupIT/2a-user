@@ -23,6 +23,7 @@ RUN FULL_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //') && \
     RESOLVED_SENTRY_RELEASE="${SENTRY_RELEASE:-com.twoalogistic.user@$FULL_VERSION}" && \
     RESOLVED_SENTRY_DIST="${SENTRY_DIST:-$BUILD_NUMBER}" && \
     flutter build web --release --pwa-strategy none \
+      --source-maps \
       --dart-define=API_BASE_URL="$API_BASE_URL" \
       --dart-define=MEDIA_BASE_URL="$MEDIA_BASE_URL" \
       --dart-define=SENTRY_DSN="$SENTRY_DSN" \

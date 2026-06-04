@@ -11,20 +11,6 @@ import '../domain/notification_item.dart';
 /// Интервал polling (30 секунд)
 const _kPollingInterval = Duration(seconds: 30);
 
-/// Notifier для фильтра типа уведомлений
-class _SelectedFilterNotifier extends Notifier<NotificationType?> {
-  @override
-  NotificationType? build() => null;
-
-  void set(NotificationType? value) => state = value;
-}
-
-/// Выбранный фильтр типа уведомлений
-final _selectedFilterProvider =
-    NotifierProvider<_SelectedFilterNotifier, NotificationType?>(
-      _SelectedFilterNotifier.new,
-    );
-
 class NotificationsSheet extends ConsumerStatefulWidget {
   final String clientCode;
   final ValueChanged<String> onNavigate;
@@ -74,149 +60,68 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final itemsAsync = ref.watch(notificationsControllerProvider);
-    final selectedFilter = ref.watch(_selectedFilterProvider);
+    final items = itemsAsync.asData?.value ?? const <NotificationItem>[];
+    final unreadCount = items.where((item) => !item.isRead).length;
+    final hasUnread = unreadCount > 0;
 
     return SafeArea(
-      child: Column(
-        children: [
-          const SheetHandle(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Уведомления',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: itemsAsync.value?.any((n) => !n.isRead) == true
-                      ? () => ref
-                            .read(notificationsControllerProvider.notifier)
-                            .markAllRead()
-                      : null,
-                  child: const Text('Прочитать всё'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Фильтры по типам
-          SizedBox(
-            height: 36,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _FilterChip(
-                  label: 'Все',
-                  isSelected: selectedFilter == null,
-                  onTap: () =>
-                      ref.read(_selectedFilterProvider.notifier).set(null),
-                ),
-                const SizedBox(width: 8),
-                ...NotificationType.values.map(
-                  (type) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: _FilterChip(
-                      label: type.displayName,
-                      icon: type.icon,
-                      isSelected: selectedFilter == type,
-                      onTap: () =>
-                          ref.read(_selectedFilterProvider.notifier).set(type),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          Expanded(
-            child: itemsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 48,
-                        color: Colors.red,
-                      ),
-                      const SizedBox(height: 12),
-                      Text('Ошибка загрузки: $e', textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () => ref
-                            .read(notificationsControllerProvider.notifier)
-                            .refresh(),
-                        child: const Text('Повторить'),
-                      ),
-                    ],
-                  ),
-                ),
+      top: false,
+      bottom: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          children: [
+            const SheetHandle(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: _NotificationsHeader(
+                unreadCount: unreadCount,
+                totalCount: items.length,
+                onMarkAllRead: hasUnread
+                    ? () => ref
+                          .read(notificationsControllerProvider.notifier)
+                          .markAllRead()
+                    : null,
               ),
-              data: (items) => _buildItemsList(context, items, selectedFilter),
             ),
-          ),
-        ],
+            Expanded(
+              child: itemsAsync.when(
+                loading: () =>
+                    _NotificationsLoadingState(color: context.brandPrimary),
+                error: (e, _) => _NotificationsErrorState(
+                  message: 'Ошибка загрузки: $e',
+                  onRetry: () => ref
+                      .read(notificationsControllerProvider.notifier)
+                      .refresh(),
+                ),
+                data: (items) => _buildItemsList(context, items),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildItemsList(
-    BuildContext context,
-    List<NotificationItem> items,
-    NotificationType? selectedFilter,
-  ) {
-    // Фильтруем по выбранному типу
-    final filteredItems = selectedFilter != null
-        ? items.where((n) => n.type == selectedFilter).toList()
-        : items;
-
-    if (filteredItems.isEmpty) {
+  Widget _buildItemsList(BuildContext context, List<NotificationItem> items) {
+    if (items.isEmpty) {
       return RefreshIndicator(
         onRefresh: () async {
           debugPrint('🔔 Pull-to-refresh triggered');
           await ref.read(notificationsControllerProvider.notifier).refresh();
         },
+        color: context.brandPrimary,
         child: SingleChildScrollView(
+          controller: widget.controller,
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.5,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    selectedFilter?.icon ?? Icons.notifications_off_outlined,
-                    size: 64,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    selectedFilter != null
-                        ? 'Нет уведомлений типа "${selectedFilter.displayName}"'
-                        : 'Пока нет уведомлений',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Потяните вниз для обновления',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-            ),
+            height: MediaQuery.sizeOf(context).height * 0.45,
+            child: const _NotificationsEmptyState(),
           ),
         ),
       );
@@ -227,14 +132,15 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
         debugPrint('🔔 Pull-to-refresh triggered');
         await ref.read(notificationsControllerProvider.notifier).refresh();
       },
+      color: context.brandPrimary,
       child: ListView.separated(
         controller: widget.controller,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: filteredItems.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          final item = filteredItems[i];
+          final item = items[i];
           return _NotificationTile(
             item: item,
             onTap: () async {
@@ -253,57 +159,268 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool isSelected;
-  final VoidCallback onTap;
+class _NotificationsHeader extends StatelessWidget {
+  final int unreadCount;
+  final int totalCount;
+  final VoidCallback? onMarkAllRead;
 
-  const _FilterChip({
-    required this.label,
-    this.icon,
-    required this.isSelected,
-    required this.onTap,
+  const _NotificationsHeader({
+    required this.unreadCount,
+    required this.totalCount,
+    required this.onMarkAllRead,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? context.brandPrimary : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? context.brandPrimary : Colors.grey.shade300,
+    final hasUnread = unreadCount > 0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            spreadRadius: -12,
+            offset: const Offset(0, 12),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: isSelected ? Colors.white : Colors.grey.shade700,
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: const Icon(
+              Icons.notifications_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Уведомления',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 23,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  hasUnread
+                      ? '$unreadCount новых из $totalCount'
+                      : totalCount > 0
+                      ? 'Все уведомления прочитаны'
+                      : 'Новых событий пока нет',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.8,
+                    height: 1.15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (onMarkAllRead != null)
+            _HeaderActionButton(onTap: onMarkAllRead!)
+          else
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
               ),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : Colors.grey.shade700,
+              child: const Icon(
+                Icons.check_circle_outline_rounded,
+                color: Colors.white,
+                size: 21,
               ),
             ),
-          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderActionButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HeaderActionButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Прочитать всё',
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: const Icon(
+              Icons.done_all_rounded,
+              color: Colors.white,
+              size: 21,
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _NotificationsLoadingState extends StatelessWidget {
+  final Color color;
+
+  const _NotificationsLoadingState({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: CircularProgressIndicator(
+        valueColor: AlwaysStoppedAnimation<Color>(color),
+      ),
+    );
+  }
+}
+
+class _NotificationsErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _NotificationsErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 44, color: Colors.red),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton(onPressed: onRetry, child: const Text('Повторить')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationsEmptyState extends StatelessWidget {
+  const _NotificationsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Icon(
+              Icons.notifications_none_rounded,
+              color: context.brandPrimary,
+              size: 34,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Пока нет уведомлений',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Потяните вниз, чтобы обновить список',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _cleanNotificationTitle(String title) {
+  return title
+      .replaceFirst(
+        RegExp(r'^[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\s]+', unicode: true),
+        '',
+      )
+      .trimLeft();
 }
 
 class _NotificationTile extends StatelessWidget {
@@ -314,27 +431,37 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final df = DateFormat('dd MMM, HH:mm', 'ru');
+    final df = DateFormat('d MMM, HH:mm', 'ru');
     final time = df.format(item.createdAt);
+    final title = _cleanNotificationTitle(item.title);
+    final accent = context.brandPrimary;
+    final unread = !item.isRead;
 
     return Material(
       color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
+        borderRadius: BorderRadius.circular(24),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: item.isRead
-                ? Colors.grey.withValues(alpha: 0.05)
-                : context.brandSecondary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: item.isRead
-                ? null
-                : Border.all(
-                    color: context.brandSecondary.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
+            color: unread ? accent.withValues(alpha: 0.065) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: unread
+                  ? accent.withValues(alpha: 0.20)
+                  : Colors.black.withValues(alpha: 0.035),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.045),
+                blurRadius: 24,
+                spreadRadius: -16,
+                offset: const Offset(0, 14),
+              ),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,25 +470,26 @@ class _NotificationTile extends StatelessWidget {
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
-                      color: context.brandSecondary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      color: accent.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(17),
                     ),
-                    child: Icon(
-                      item.type.icon,
-                      color: context.brandSecondary,
-                      size: 22,
-                    ),
+                    child: Icon(item.type.icon, color: accent, size: 22),
                   ),
-                  if (!item.isRead)
+                  if (unread)
                     Positioned(
-                      right: -2,
-                      top: -2,
-                      child: CircleAvatar(
-                        radius: 6,
-                        backgroundColor: context.brandPrimary,
+                      right: -1,
+                      top: -1,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: context.brandPrimary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
                       ),
                     ),
                 ],
@@ -372,74 +500,65 @@ class _NotificationTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
-                            item.title,
+                            title.isEmpty ? item.type.displayName : title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontWeight: item.isRead
-                                  ? FontWeight.w600
+                              color: AppColors.textPrimary,
+                              fontFamily: 'Gilroy',
+                              fontWeight: unread
+                                  ? FontWeight.w900
                                   : FontWeight.w800,
-                              fontSize: 15,
-                              color: Colors.black87,
+                              fontSize: 15.5,
+                              height: 1.12,
+                              letterSpacing: -0.05,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           time,
-                          style: TextStyle(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontFamily: 'Gilroy',
+                            fontSize: 11.8,
+                            height: 1.1,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    // Тип уведомления
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.brandSecondary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        item.type.displayName,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: context.brandPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 7),
+                    _NotificationTypePill(type: item.type),
+                    const SizedBox(height: 8),
                     Text(
                       item.message,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.black.withValues(alpha: 0.7),
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        height: 1.28,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    // Показываем изменение статуса если есть
                     if (item.oldStatus != null && item.newStatus != null) ...[
-                      const SizedBox(height: 6),
-                      Row(
+                      const SizedBox(height: 10),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           _StatusBadge(status: item.oldStatus!, isOld: true),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 6),
-                            child: Icon(
-                              Icons.arrow_forward,
-                              size: 14,
-                              color: Colors.grey,
-                            ),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 14,
+                            color: AppColors.textSecondary,
                           ),
                           _StatusBadge(status: item.newStatus!, isOld: false),
                         ],
@@ -448,10 +567,44 @@ class _NotificationTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 20),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary.withValues(alpha: 0.62),
+                size: 22,
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationTypePill extends StatelessWidget {
+  final NotificationType type;
+
+  const _NotificationTypePill({required this.type});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.10)),
+      ),
+      child: Text(
+        type.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 11.2,
+          height: 1,
+          fontWeight: FontWeight.w800,
+          color: context.brandPrimary,
         ),
       ),
     );

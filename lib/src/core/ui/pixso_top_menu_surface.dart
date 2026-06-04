@@ -1,4 +1,8 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
+import 'app_colors.dart';
 
 class PixsoTopMenuSurface extends StatelessWidget {
   final Widget child;
@@ -14,9 +18,8 @@ class PixsoTopMenuSurface extends StatelessWidget {
     this.minWidth = 0,
   });
 
-  static const height = 40.0;
-  static const _radius = 10.0;
-  static const _surfaceColor = Color(0xCCFFFFFF);
+  static const height = 44.0;
+  static const _radius = 18.0;
 
   @override
   Widget build(BuildContext context) {
@@ -26,22 +29,79 @@ class PixsoTopMenuSurface extends StatelessWidget {
       constraints: BoxConstraints(minWidth: minWidth, minHeight: height),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(_radius),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 25,
-            spreadRadius: 0,
-            offset: Offset(3, 4),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 24,
+            spreadRadius: -4,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.05),
+            blurRadius: 18,
+            spreadRadius: -8,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _surfaceColor,
-          borderRadius: BorderRadius.circular(_radius),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.86),
+              borderRadius: BorderRadius.circular(_radius),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.96),
+                  Colors.white.withValues(alpha: 0.76),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: padding,
+              child: width == null ? child : Center(child: child),
+            ),
+          ),
         ),
-        child: Padding(padding: padding, child: child),
       ),
+    );
+  }
+}
+
+class PixsoTopMenuActionSurface extends StatelessWidget {
+  final Widget child;
+  final bool highlighted;
+
+  const PixsoTopMenuActionSurface({
+    super.key,
+    required this.child,
+    this.highlighted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: highlighted
+            ? context.brandPrimary.withValues(alpha: 0.10)
+            : Colors.black.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlighted
+              ? context.brandPrimary.withValues(alpha: 0.12)
+              : Colors.black.withValues(alpha: 0.035),
+        ),
+      ),
+      child: Center(child: child),
     );
   }
 }

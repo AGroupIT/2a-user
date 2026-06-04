@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
-import '../../../core/ui/app_input_decoration.dart';
 
-class SpFinanceUi {
-  const SpFinanceUi._();
+class RulesUi {
+  const RulesUi._();
 
   static const textColor = Color(0xFF2F2F2F);
   static const mutedTextColor = Color(0x992F2F2F);
@@ -26,7 +25,7 @@ class SpFinanceUi {
     );
   }
 
-  static BoxDecoration softDecoration(BuildContext context) {
+  static BoxDecoration softDecoration() {
     return BoxDecoration(
       color: const Color(0xFFF8FAFC),
       borderRadius: BorderRadius.circular(18),
@@ -44,71 +43,13 @@ class SpFinanceUi {
       letterSpacing: -0.15,
     );
   }
-
-  static TextStyle get bodyStyle {
-    return const TextStyle(
-      color: AppColors.textPrimary,
-      fontFamily: 'Gilroy',
-      fontSize: 14,
-      height: 18 / 14,
-      fontWeight: FontWeight.w600,
-    );
-  }
-
-  static TextStyle get labelStyle {
-    return const TextStyle(
-      color: AppColors.textSecondary,
-      fontFamily: 'Gilroy',
-      fontSize: 12,
-      height: 14 / 12,
-      fontWeight: FontWeight.w700,
-    );
-  }
-
-  static InputDecoration inputDecoration(
-    BuildContext context, {
-    String? labelText,
-    String? hintText,
-    String? suffixText,
-    IconData? prefixIcon,
-  }) {
-    return appInputDecoration(
-      context,
-      labelText: labelText,
-      hintText: hintText,
-      suffixText: suffixText,
-      prefixIcon: prefixIcon == null ? null : Icon(prefixIcon),
-      labelStyle: labelStyle,
-      hintStyle: const TextStyle(
-        color: Color(0xFFB0B4BE),
-        fontFamily: 'Gilroy',
-        fontSize: 14,
-        height: 16 / 14,
-        fontWeight: FontWeight.w600,
-      ),
-      fillColor: const Color(0xFFF8FAFC),
-      borderColor: const Color(0xFFE1E5ED),
-      focusedBorderColor: context.brandPrimary,
-      radius: 18,
-      focusedWidth: 1.6,
-    );
-  }
-
-  static Color? parseHexColor(String? hexString) {
-    if (hexString == null || hexString.isEmpty) return null;
-    final buffer = StringBuffer();
-    if (hexString.length == 6 || hexString.length == 7) buffer.write('ff');
-    buffer.write(hexString.replaceFirst('#', ''));
-    final value = int.tryParse(buffer.toString(), radix: 16);
-    return value == null ? null : Color(value);
-  }
 }
 
-class SpPageHeader extends StatelessWidget {
+class RulesPageHeader extends StatelessWidget {
   final String title;
   final String fallbackRoute;
 
-  const SpPageHeader({
+  const RulesPageHeader({
     super.key,
     required this.title,
     this.fallbackRoute = '/',
@@ -176,54 +117,18 @@ class SpPageHeader extends StatelessWidget {
   }
 }
 
-class SpHeroChip extends StatelessWidget {
-  final IconData? icon;
-  final String label;
+class RulesHeroCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final int titleMaxLines;
 
-  const SpHeroChip({super.key, this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, color: Colors.white, size: 15),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontFamily: 'Gilroy',
-              fontSize: 12.5,
-              height: 1,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class SpAnimatedHeroSurface extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-
-  const SpAnimatedHeroSurface({
+  const RulesHeroCard({
     super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(16),
-    this.radius = 24,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.titleMaxLines = 2,
   });
 
   @override
@@ -232,7 +137,7 @@ class SpAnimatedHeroSurface extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: context.brandGradient,
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: context.brandPrimary.withValues(alpha: 0.22),
@@ -243,11 +148,63 @@ class SpAnimatedHeroSurface extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            const Positioned.fill(child: SpAnimatedHeroGlowBackdrop()),
-            Padding(padding: padding, child: child),
+            const Positioned.fill(child: RulesHeaderGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 30),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: titleMaxLines,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Gilroy',
+                            fontSize: 24,
+                            height: 1.04,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          subtitle,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xE6FFFFFF),
+                            fontFamily: 'Gilroy',
+                            fontSize: 13,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -255,15 +212,15 @@ class SpAnimatedHeroSurface extends StatelessWidget {
   }
 }
 
-class SpAnimatedHeroGlowBackdrop extends StatefulWidget {
-  const SpAnimatedHeroGlowBackdrop({super.key});
+class RulesHeaderGlowBackdrop extends StatefulWidget {
+  const RulesHeaderGlowBackdrop({super.key});
 
   @override
-  State<SpAnimatedHeroGlowBackdrop> createState() =>
-      _SpAnimatedHeroGlowBackdropState();
+  State<RulesHeaderGlowBackdrop> createState() =>
+      _RulesHeaderGlowBackdropState();
 }
 
-class _SpAnimatedHeroGlowBackdropState extends State<SpAnimatedHeroGlowBackdrop>
+class _RulesHeaderGlowBackdropState extends State<RulesHeaderGlowBackdrop>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -300,7 +257,7 @@ class _SpAnimatedHeroGlowBackdropState extends State<SpAnimatedHeroGlowBackdrop>
                   top: -58,
                   child: Transform.translate(
                     offset: Offset(-10 * shift, 6 * shift),
-                    child: _SpHeroGlowCircle(
+                    child: _RulesGlowCircle(
                       size: 154,
                       color: Colors.white.withValues(alpha: 0.13),
                     ),
@@ -311,7 +268,7 @@ class _SpAnimatedHeroGlowBackdropState extends State<SpAnimatedHeroGlowBackdrop>
                   bottom: -68,
                   child: Transform.translate(
                     offset: Offset(9 * shift, -7 * shift),
-                    child: _SpHeroGlowCircle(
+                    child: _RulesGlowCircle(
                       size: 152,
                       color: Colors.white.withValues(alpha: 0.08),
                     ),
@@ -322,7 +279,7 @@ class _SpAnimatedHeroGlowBackdropState extends State<SpAnimatedHeroGlowBackdrop>
                   bottom: 16,
                   child: Transform.translate(
                     offset: Offset(5 * shift, -4 * shift),
-                    child: _SpHeroGlowCircle(
+                    child: _RulesGlowCircle(
                       size: 82,
                       color: Colors.white.withValues(alpha: 0.08),
                     ),
@@ -337,11 +294,11 @@ class _SpAnimatedHeroGlowBackdropState extends State<SpAnimatedHeroGlowBackdrop>
   }
 }
 
-class _SpHeroGlowCircle extends StatelessWidget {
+class _RulesGlowCircle extends StatelessWidget {
   final double size;
   final Color color;
 
-  const _SpHeroGlowCircle({required this.size, required this.color});
+  const _RulesGlowCircle({required this.size, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +306,89 @@ class _SpHeroGlowCircle extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
+
+class RulesStateCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? message;
+  final bool isLoading;
+  final bool isError;
+
+  const RulesStateCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.message,
+    this.isLoading = false,
+    this.isError = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = isError ? const Color(0xFFE53935) : context.brandPrimary;
+    return Container(
+      decoration: RulesUi.cardDecoration(),
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Center(
+              child: isLoading
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: accent,
+                      ),
+                    )
+                  : Icon(icon, color: accent, size: 24),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 22 / 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                if (message != null && message!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    message!,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 13.5,
+                      height: 18 / 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

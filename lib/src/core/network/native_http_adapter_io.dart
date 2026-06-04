@@ -17,6 +17,8 @@ class _NativeHttpAdapter implements HttpClientAdapter {
   String? _clientKind;
   bool _closed = false;
   bool _loggedClient = false;
+  bool _closeAfterActiveRequests = false;
+  int _activeRequests = 0;
 
   static bool get isSupportedPlatform {
     return defaultTargetPlatform == TargetPlatform.iOS ||
@@ -35,42 +37,62 @@ class _NativeHttpAdapter implements HttpClientAdapter {
     }
 
     final client = _ensureClient();
-    final request = http.StreamedRequest(options.method, options.uri)
-      ..followRedirects = options.followRedirects
-      ..maxRedirects = options.maxRedirects
-      ..persistentConnection = options.persistentConnection;
-
-    _copyHeaders(options, request);
-    options.extra['native_http_client'] = _clientKind;
-
-    final bodyBytes = await _collectRequestBody(options, requestStream);
-    request.contentLength = bodyBytes.length;
-    if (bodyBytes.isNotEmpty) {
-      request.sink.add(bodyBytes);
-    }
-    unawaited(request.sink.close());
+    _activeRequests++;
+    var completionDeferredToNativeFuture = false;
 
     try {
+      final request = http.StreamedRequest(options.method, options.uri)
+        ..followRedirects = options.followRedirects
+        ..maxRedirects = options.maxRedirects
+        ..persistentConnection = options.persistentConnection;
+
+      _copyHeaders(options, request);
+      options.extra['native_http_client'] = _clientKind;
+
+      final bodyBytes = await _collectRequestBody(options, requestStream);
+      request.contentLength = bodyBytes.length;
+      if (bodyBytes.isNotEmpty) {
+        request.sink.add(bodyBytes);
+      }
+      unawaited(request.sink.close());
+
+      final sendFuture = _withRequestStartTimeout(
+        client.send(request),
+        options,
+        hasBody: bodyBytes.isNotEmpty,
+      );
       final response = await _withCancel(
-        _withRequestStartTimeout(
-          client.send(request),
-          options,
-          hasBody: bodyBytes.isNotEmpty,
-        ),
+        sendFuture,
         cancelFuture,
         options,
+        onCancel: () {
+          completionDeferredToNativeFuture = true;
+          // CupertinoClient/CronetClient не умеют безопасно закрываться, пока
+          // нативный запрос ещё выполняется. Поэтому при отмене Dio ждём
+          // завершения underlying future и только потом считаем запрос
+          // законченным для deferred close.
+          unawaited(sendFuture.whenComplete(_markRequestComplete));
+        },
       );
 
       return ResponseBody(
-        _withReceiveTimeout(response.stream, options).map(_asUint8List),
+        _trackResponseStream(
+          _withReceiveTimeout(response.stream, options).map(_asUint8List),
+        ),
         response.statusCode,
         headers: response.headers.map((key, value) => MapEntry(key, [value])),
         isRedirect: response.isRedirect,
         statusMessage: response.reasonPhrase,
       );
     } on DioException {
+      if (!completionDeferredToNativeFuture) {
+        _markRequestComplete();
+      }
       rethrow;
     } catch (error) {
+      if (!completionDeferredToNativeFuture) {
+        _markRequestComplete();
+      }
       throw DioException.connectionError(
         requestOptions: options,
         reason: error.toString(),
@@ -207,12 +229,30 @@ class _NativeHttpAdapter implements HttpClientAdapter {
   Future<T> _withCancel<T>(
     Future<T> future,
     Future<void>? cancelFuture,
-    RequestOptions options,
-  ) {
+    RequestOptions options, {
+    void Function()? onCancel,
+  }) {
     if (cancelFuture == null) return future;
+    var settled = false;
+    final guardedFuture = future.then<T>(
+      (value) {
+        settled = true;
+        return value;
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        settled = true;
+        Error.throwWithStackTrace(error, stackTrace);
+      },
+    );
+
     return Future.any<T>([
-      future,
+      guardedFuture,
       cancelFuture.then<T>((_) {
+        if (settled) {
+          return guardedFuture;
+        }
+        settled = true;
+        onCancel?.call();
         throw DioException.requestCancelled(
           requestOptions: options,
           reason: 'request cancelled',
@@ -240,11 +280,64 @@ class _NativeHttpAdapter implements HttpClientAdapter {
     return chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
   }
 
+  Stream<Uint8List> _trackResponseStream(Stream<Uint8List> stream) async* {
+    try {
+      yield* stream;
+    } finally {
+      _markRequestComplete();
+    }
+  }
+
+  void _markRequestComplete() {
+    if (_activeRequests > 0) {
+      _activeRequests--;
+    }
+    if (_activeRequests == 0 && _closeAfterActiveRequests) {
+      _disposeClient();
+    }
+  }
+
+  void _disposeClient() {
+    _closeAfterActiveRequests = false;
+    final client = _client;
+    final clientKind = _clientKind;
+    _client = null;
+    _clientKind = null;
+    if (client == null) return;
+    try {
+      client.close();
+    } catch (error) {
+      // close() у cupertino_http/cronet_http бросает исключение, если нативный
+      // стек считает, что запрос ещё жив. Это не должно падать в приложение:
+      // новый Dio уже создан, старый клиент просто будет освобождён ОС позже.
+      ClientLogService.instance.add(
+        type: 'native_http_adapter_close_failed',
+        level: 'warning',
+        message: 'Нативный HTTP-клиент не удалось закрыть синхронно',
+        data: {'client': clientKind, 'error': error.toString()},
+      );
+      debugPrint('[NativeHttpAdapter] close ignored: $error');
+    }
+  }
+
   @override
   void close({bool force = false}) {
     _closed = true;
-    _client?.close();
-    _client = null;
-    _clientKind = null;
+    if (_activeRequests > 0) {
+      _closeAfterActiveRequests = true;
+      ClientLogService.instance.add(
+        type: 'native_http_adapter_close_deferred',
+        level: 'info',
+        message:
+            'Закрытие нативного HTTP-клиента отложено до завершения запросов',
+        data: {
+          'client': _clientKind,
+          'activeRequests': _activeRequests,
+          'force': force,
+        },
+      );
+      return;
+    }
+    _disposeClient();
   }
 }

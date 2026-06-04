@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../data/purchase_blank_model.dart';
@@ -104,38 +104,12 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return AppPageHeader(
-      title: 'Выкуп по бланку',
-      showBack: true,
-      actions: [
-        GestureDetector(
-          onTap: _createBlank,
-          child: Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: context.brandPrimary,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add_rounded, size: 18, color: Colors.white),
-                SizedBox(width: 4),
-                Text(
-                  'Создать',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Gilroy',
-                    fontSize: 13,
-                    height: 15 / 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const PurchaseBlankPageHeader(title: 'Выкуп по бланку'),
+        const SizedBox(height: 12),
+        _PurchaseBlanksHero(onCreate: _createBlank),
       ],
     );
   }
@@ -151,48 +125,55 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
       PurchaseBlankStatus.cancelled: 'Отменены',
     };
 
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: allStatuses.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final status = allStatuses[i];
-          final isSelected = _selectedStatus == status;
-          final color = status?.color ?? context.brandPrimary;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: PurchaseBlankUi.cardDecoration(),
+      child: SizedBox(
+        height: 40,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: allStatuses.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            final status = allStatuses[i];
+            final isSelected = _selectedStatus == status;
+            final color = status?.color ?? context.brandPrimary;
 
-          return GestureDetector(
-            onTap: () => setState(() => _selectedStatus = status),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? color : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x12000000),
-                    offset: Offset(2, 3),
-                    blurRadius: 14,
+            return Material(
+              type: MaterialType.transparency,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                onTap: () => setState(() => _selectedStatus = status),
+                borderRadius: BorderRadius.circular(14),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected ? color : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected
+                          ? color
+                          : Colors.black.withValues(alpha: 0.035),
+                    ),
                   ),
-                ],
-              ),
-              child: Text(
-                labels[status] ?? '',
-                style: TextStyle(
-                  color: isSelected ? Colors.white : PurchaseBlankUi.textColor,
-                  fontFamily: 'Gilroy',
-                  fontSize: 13,
-                  height: 15 / 13,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  child: Text(
+                    labels[status] ?? '',
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 13,
+                      height: 15 / 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -207,10 +188,18 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
       padding: const EdgeInsets.all(18),
       child: Row(
         children: [
-          Icon(
-            Icons.description_rounded,
-            color: context.brandPrimary,
-            size: 26,
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              Icons.description_rounded,
+              color: context.brandPrimary,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -247,6 +236,122 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
   }
 }
 
+class _PurchaseBlanksHero extends StatelessWidget {
+  final VoidCallback onCreate;
+
+  const _PurchaseBlanksHero({required this.onCreate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 28,
+            spreadRadius: -12,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: AnimatedHeroGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.assignment_rounded,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Быстрый выкуп товаров',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Gilroy',
+                                fontSize: 22,
+                                height: 1.04,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.25,
+                              ),
+                            ),
+                            SizedBox(height: 7),
+                            Text(
+                              'Добавьте ссылки, количество и цену — менеджер проверит бланк и оформит выкуп.',
+                              style: TextStyle(
+                                color: Color(0xE6FFFFFF),
+                                fontFamily: 'Gilroy',
+                                fontSize: 13,
+                                height: 1.2,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: onCreate,
+                      icon: const Icon(Icons.add_rounded, size: 21),
+                      label: const Text(
+                        'Создать новый бланк',
+                        style: TextStyle(
+                          fontFamily: 'Gilroy',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: context.brandPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Карточка бланка ─────────────────────────────────────────
 
 class _BlankCard extends StatelessWidget {
@@ -262,29 +367,29 @@ class _BlankCard extends StatelessWidget {
       decoration: PurchaseBlankUi.cardDecoration(),
       child: Material(
         type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(24),
         child: InkWell(
           onTap: () => context.push('/purchase-blanks/${blank.id}'),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(24),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок с номером и статусом
                 Row(
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: context.brandPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+                        color: context.brandPrimary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       alignment: Alignment.center,
                       child: Icon(
-                        Icons.description_rounded,
+                        Icons.assignment_rounded,
                         color: context.brandPrimary,
-                        size: 22,
+                        size: 24,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -295,37 +400,51 @@ class _BlankCard extends StatelessWidget {
                           Text(
                             'Бланк #${blank.id}',
                             style: const TextStyle(
-                              color: PurchaseBlankUi.textColor,
+                              color: AppColors.textPrimary,
                               fontFamily: 'Gilroy',
                               fontSize: 18,
                               height: 22 / 18,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            dateFormat.format(blank.createdAt),
-                            style: const TextStyle(
-                              color: PurchaseBlankUi.mutedTextColor,
-                              fontFamily: 'Gilroy',
-                              fontSize: 12,
-                              height: 14 / 12,
-                            ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.add_circle_outline_rounded,
+                                size: 15,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  dateFormat.format(blank.createdAt),
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontFamily: 'Gilroy',
+                                    fontSize: 12,
+                                    height: 14 / 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    BlankStatusBadge(status: blank.status),
+                    BlankStatusBadge(status: blank.status, compact: true),
                   ],
                 ),
                 const SizedBox(height: 14),
-
-                // Статистика
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: context.brandPrimary.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.black.withValues(alpha: 0.025),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -334,7 +453,7 @@ class _BlankCard extends StatelessWidget {
                         label: 'Товаров',
                         value: '${blank.itemsCount}',
                       ),
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 12),
                       _StatItem(
                         icon: Icons.currency_yuan_rounded,
                         label: 'Сумма ¥',
@@ -343,7 +462,7 @@ class _BlankCard extends StatelessWidget {
                             : '—',
                       ),
                       if (blank.totalAmountRub != null) ...[
-                        const SizedBox(width: 20),
+                        const SizedBox(width: 12),
                         _StatItem(
                           icon: Icons.currency_ruble_rounded,
                           label: 'Итого ₽',
@@ -353,28 +472,25 @@ class _BlankCard extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                // Комментарий сотрудника
                 if (blank.employeeComment != null &&
                     blank.employeeComment!.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 12,
-                    ),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.blue.shade200),
+                      color: Colors.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.blue.withValues(alpha: 0.16),
+                      ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
                           Icons.comment_rounded,
-                          size: 14,
+                          size: 16,
                           color: Colors.blue.shade700,
                         ),
                         const SizedBox(width: 8),
@@ -383,8 +499,9 @@ class _BlankCard extends StatelessWidget {
                             blank.employeeComment!,
                             style: TextStyle(
                               fontFamily: 'Gilroy',
-                              fontSize: 12,
-                              height: 15 / 12,
+                              fontSize: 12.5,
+                              height: 1.22,
+                              fontWeight: FontWeight.w600,
                               color: Colors.blue.shade700,
                             ),
                             maxLines: 2,
@@ -395,15 +512,26 @@ class _BlankCard extends StatelessWidget {
                     ),
                   ),
                 ],
-
-                // Стрелка
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.grey.shade400,
-                  ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Открыть бланк',
+                      style: TextStyle(
+                        color: context.brandPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: context.brandPrimary,
+                      size: 22,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -431,20 +559,28 @@ class _StatItem extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: Colors.grey.shade600),
-          const SizedBox(width: 6),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, size: 15, color: context.brandPrimary),
+          ),
+          const SizedBox(width: 7),
           Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'Gilroy',
                     fontSize: 10,
                     height: 12 / 10,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 Text(
@@ -453,8 +589,8 @@ class _StatItem extends StatelessWidget {
                     fontFamily: 'Gilroy',
                     fontSize: 13,
                     height: 15 / 13,
-                    fontWeight: FontWeight.w700,
-                    color: PurchaseBlankUi.textColor,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

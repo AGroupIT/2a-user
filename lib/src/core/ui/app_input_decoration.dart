@@ -5,6 +5,9 @@ import 'app_colors.dart';
 const double kAppInputRadius = 10;
 const double kAppInputLargeRadius = 14;
 
+typedef AppOutlinedInputFrameBuilder =
+    Widget Function(BuildContext context, FocusNode focusNode);
+
 OutlineInputBorder appInputBorder(
   Color color, {
   double radius = kAppInputRadius,
@@ -113,6 +116,107 @@ class AppGradientInputFrame extends StatelessWidget {
 
     if (margin != null) {
       result = Padding(padding: margin!, child: result);
+    }
+
+    return result;
+  }
+}
+
+class AppOutlinedInputFrame extends StatefulWidget {
+  final AppOutlinedInputFrameBuilder builder;
+  final double? height;
+  final double radius;
+  final double borderWidth;
+  final double focusedBorderWidth;
+  final Color fillColor;
+  final Color? borderColor;
+  final Color? focusedBorderColor;
+  final bool enabled;
+  final EdgeInsetsGeometry? margin;
+
+  const AppOutlinedInputFrame({
+    super.key,
+    required this.builder,
+    this.height,
+    this.radius = kAppInputLargeRadius,
+    this.borderWidth = 1,
+    this.focusedBorderWidth = 1.5,
+    this.fillColor = Colors.white,
+    this.borderColor,
+    this.focusedBorderColor,
+    this.enabled = true,
+    this.margin,
+  });
+
+  @override
+  State<AppOutlinedInputFrame> createState() => _AppOutlinedInputFrameState();
+}
+
+class _AppOutlinedInputFrameState extends State<AppOutlinedInputFrame> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final focused = widget.enabled && _focusNode.hasFocus;
+    final normalBorderColor = widget.borderColor ?? const Color(0xFFE3E7EE);
+    final borderColor = widget.enabled
+        ? (focused
+              ? widget.focusedBorderColor ?? context.brandPrimary
+              : normalBorderColor)
+        : normalBorderColor.withValues(alpha: 0.58);
+
+    Widget result = AnimatedContainer(
+      height: widget.height,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: widget.enabled
+            ? widget.fillColor
+            : widget.fillColor.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(widget.radius),
+        boxShadow: focused
+            ? [
+                BoxShadow(
+                  color: (widget.focusedBorderColor ?? context.brandPrimary)
+                      .withValues(alpha: 0.12),
+                  blurRadius: 16,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(widget.radius),
+        border: Border.all(
+          color: borderColor,
+          width: focused ? widget.focusedBorderWidth : widget.borderWidth,
+        ),
+      ),
+      child: widget.builder(context, _focusNode),
+    );
+
+    if (widget.margin != null) {
+      result = Padding(padding: widget.margin!, child: result);
     }
 
     return result;

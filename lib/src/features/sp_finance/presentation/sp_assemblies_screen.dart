@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/empty_state.dart';
 import '../data/sp_models.dart';
@@ -95,11 +94,10 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
                 bottomPad + 16,
               ),
               children: [
-                const AppPageHeader(
-                  title: 'Совместные покупки',
-                  showBack: true,
-                ),
-                const SizedBox(height: 15),
+                const SpPageHeader(title: 'Совместные покупки'),
+                const SizedBox(height: 12),
+                const _SpAssembliesHero(),
+                const SizedBox(height: 14),
                 if (state.assemblies.isEmpty)
                   const _SpEmptyCard()
                 else
@@ -132,6 +130,64 @@ class _SpAssembliesScreenState extends ConsumerState<SpAssembliesScreen> {
   }
 }
 
+class _SpAssembliesHero extends StatelessWidget {
+  const _SpAssembliesHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return SpAnimatedHeroSurface(
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: const Icon(
+              Icons.groups_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Финансы совместных покупок',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 22,
+                    height: 1.04,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+                SizedBox(height: 7),
+                Text(
+                  'Проверяйте участников, заполненность треков, оплату и итоговую прибыль по каждой сборке.',
+                  style: TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SpEmptyCard extends StatelessWidget {
   const _SpEmptyCard();
 
@@ -142,10 +198,18 @@ class _SpEmptyCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       child: Row(
         children: [
-          Icon(
-            Icons.shopping_cart_outlined,
-            size: 28,
-            color: context.brandPrimary,
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(
+              Icons.shopping_cart_outlined,
+              size: 26,
+              color: context.brandPrimary,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -157,10 +221,14 @@ class _SpEmptyCard extends StatelessWidget {
                   style: SpFinanceUi.sectionTitleStyle,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Заполните СП данные в треках ваших сборок, и они появятся здесь',
-                  style: SpFinanceUi.bodyStyle.copyWith(
-                    color: SpFinanceUi.mutedTextColor,
+                const Text(
+                  'Заполните СП-данные в треках сборок — они появятся здесь автоматически.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -177,7 +245,6 @@ class _AssemblyCard extends StatelessWidget {
 
   const _AssemblyCard({required this.assembly});
 
-  /// Проверяет, заполнен ли трек полностью
   bool _isTrackComplete(SpTrack track) {
     return track.spParticipantName != null &&
         track.spParticipantName!.isNotEmpty &&
@@ -189,190 +256,45 @@ class _AssemblyCard extends StatelessWidget {
         track.purchaseRate! > 0;
   }
 
-  /// Строит виджет статуса заполненности
-  List<Widget> _buildFillStatus(BuildContext context) {
-    // Считаем только треки которые участвуют в СП
+  @override
+  Widget build(BuildContext context) {
+    final dateFormat = DateFormat('dd.MM.yyyy');
     final spTracks = assembly.tracks
         .where(
           (t) => t.spParticipantName != null && t.spParticipantName!.isNotEmpty,
         )
         .toList();
-
-    if (spTracks.isEmpty) {
-      return [];
-    }
-
     final incompleteCount = spTracks.where((t) => !_isTrackComplete(t)).length;
-
-    if (incompleteCount == 0) {
-      return [
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.green.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green.shade200),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.check_circle_rounded,
-                size: 16,
-                color: Colors.green.shade700,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Все треки заполнены',
-                style: SpFinanceUi.bodyStyle.copyWith(
-                  color: Colors.green.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ];
-    }
-
-    return [
-      const SizedBox(height: 12),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.orange.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.warning_rounded,
-              size: 16,
-              color: Colors.orange.shade700,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Не заполнено треков: $incompleteCount из ${spTracks.length}',
-              style: SpFinanceUi.bodyStyle.copyWith(
-                color: Colors.orange.shade700,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
-  }
-
-  /// Строит виджет статуса оплаты участников
-  List<Widget> _buildPaymentStatus(BuildContext context) {
-    final participants = assembly.stats.participants;
-    if (participants.isEmpty) {
-      return [];
-    }
-
-    final paidCount = participants.where((p) => p.isPaid).length;
-    final totalCount = participants.length;
-
-    if (paidCount == totalCount) {
-      return [
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.shade200),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.payments_rounded,
-                size: 16,
-                color: Colors.blue.shade700,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Все участники оплатили',
-                style: SpFinanceUi.bodyStyle.copyWith(
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ];
-    }
-
-    return [
-      const SizedBox(height: 8),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.purple.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.purple.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.payments_rounded,
-              size: 16,
-              color: Colors.purple.shade700,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Оплатили: $paidCount из $totalCount',
-              style: SpFinanceUi.bodyStyle.copyWith(
-                color: Colors.purple.shade700,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
+    final paidCount = assembly.stats.participants.where((p) => p.isPaid).length;
+    final participantsCount = assembly.stats.participants.length;
+    final hasProfit = assembly.stats.totalProfitRub >= 0;
 
     return Container(
       decoration: SpFinanceUi.cardDecoration(),
       child: Material(
         type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(24),
         child: InkWell(
-          onTap: () {
-            context.push('/sp-finance/assemblies/${assembly.id}');
-          },
-          borderRadius: BorderRadius.circular(10),
+          onTap: () => context.push('/sp-finance/assemblies/${assembly.id}'),
+          borderRadius: BorderRadius.circular(24),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок
                 Row(
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
-                      alignment: Alignment.center,
+                      width: 50,
+                      height: 50,
                       decoration: BoxDecoration(
-                        color: context.brandPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+                        color: context.brandPrimary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Icon(
                         Icons.inventory_2_rounded,
                         color: context.brandPrimary,
-                        size: 22,
+                        size: 25,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -382,28 +304,50 @@ class _AssemblyCard extends StatelessWidget {
                         children: [
                           Text(
                             assembly.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: SpFinanceUi.textColor,
+                              color: AppColors.textPrimary,
                               fontFamily: 'Gilroy',
                               fontSize: 18,
                               height: 22 / 18,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            dateFormat.format(assembly.createdAt),
-                            style: SpFinanceUi.labelStyle,
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.add_circle_outline_rounded,
+                                size: 15,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  dateFormat.format(assembly.createdAt),
+                                  style: SpFinanceUi.labelStyle,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                    _CompactStatusPill(
+                      label: assembly.statusDisplayName,
+                      color:
+                          SpFinanceUi.parseHexColor(assembly.statusColor) ??
+                          context.brandPrimary,
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textSecondary,
+                    ),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                // Статистика
+                const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: SpFinanceUi.softDecoration(context),
@@ -414,33 +358,24 @@ class _AssemblyCard extends StatelessWidget {
                           Expanded(
                             child: _StatItem(
                               icon: Icons.people_rounded,
-                              label: 'Участников',
-                              value: assembly.stats.participants.length
-                                  .toString(),
+                              label: 'Участники',
+                              value: '$participantsCount',
                             ),
                           ),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: _StatItem(
                               icon: Icons.shopping_bag_rounded,
-                              label: 'Треков СП',
+                              label: 'Треки СП',
                               value:
                                   '${assembly.stats.tracksWithSP}/${assembly.stats.tracksTotal}',
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
-                          Expanded(
-                            child: _StatItem(
-                              icon: Icons.inventory_2_rounded,
-                              label: 'Грязный вес',
-                              value: assembly.stats.grossWeightKg != null
-                                  ? '${assembly.stats.grossWeightKg!.toStringAsFixed(2)} кг'
-                                  : '— кг',
-                            ),
-                          ),
                           Expanded(
                             child: _StatItem(
                               icon: Icons.scale_rounded,
@@ -449,53 +384,50 @@ class _AssemblyCard extends StatelessWidget {
                                   '${assembly.stats.totalNetWeightKg.toStringAsFixed(2)} кг',
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _StatItem(
+                              icon: Icons.trending_up_rounded,
+                              label: 'Прибыль',
+                              value:
+                                  '${assembly.stats.totalProfitRub.toStringAsFixed(0)} ₽',
+                              color: hasProfit
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
-
-                // Статус заполненности треков
-                ..._buildFillStatus(context),
-
-                // Статус оплаты участников
-                ..._buildPaymentStatus(context),
-
-                // Прибыль
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: assembly.stats.totalProfitRub > 0
-                        ? Colors.green.shade50
-                        : Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                if (spTracks.isNotEmpty || participantsCount > 0) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Text(
-                        'Прибыль:',
-                        style: SpFinanceUi.bodyStyle.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${assembly.stats.totalProfitRub.toStringAsFixed(0)} ₽',
-                        style: SpFinanceUi.bodyStyle.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: assembly.stats.totalProfitRub > 0
+                      if (spTracks.isNotEmpty)
+                        _CompactStatusPill(
+                          label: incompleteCount == 0
+                              ? 'Треки заполнены'
+                              : 'Не заполнено $incompleteCount/${spTracks.length}',
+                          color: incompleteCount == 0
                               ? Colors.green.shade700
-                              : Colors.red.shade700,
+                              : Colors.orange.shade700,
                         ),
-                      ),
+                      if (participantsCount > 0)
+                        _CompactStatusPill(
+                          label: paidCount == participantsCount
+                              ? 'Все оплатили'
+                              : 'Оплата $paidCount/$participantsCount',
+                          color: paidCount == participantsCount
+                              ? Colors.green.shade700
+                              : context.brandPrimary,
+                        ),
                     ],
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -505,37 +437,87 @@ class _AssemblyCard extends StatelessWidget {
   }
 }
 
+class _CompactStatusPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _CompactStatusPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              height: 1,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color? color;
 
   const _StatItem({
     required this.icon,
     required this.label,
     required this.value,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final resolvedColor = color ?? context.brandPrimary;
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade600),
-        const SizedBox(width: 6),
-        Flexible(
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: resolvedColor.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(icon, size: 16, color: resolvedColor),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: SpFinanceUi.labelStyle.copyWith(fontSize: 10)),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SpFinanceUi.labelStyle.copyWith(fontSize: 10.5),
+              ),
+              const SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(
-                  color: SpFinanceUi.textColor,
+                style: TextStyle(
+                  color: resolvedColor,
                   fontFamily: 'Gilroy',
-                  fontSize: 13,
-                  height: 15 / 13,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

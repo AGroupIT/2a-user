@@ -3,28 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../../../core/ui/tutorial_card.dart';
+
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
+import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/news_provider.dart';
 import '../domain/news_item.dart';
-
-const _newsTextColor = Color(0xFF2F2F2F);
-const _newsMutedTextColor = Color(0x992F2F2F);
-
-BoxDecoration _newsCardDecoration({Color color = Colors.white}) {
-  return BoxDecoration(
-    color: color,
-    borderRadius: BorderRadius.circular(10),
-    boxShadow: const [
-      BoxShadow(color: Color(0x1A000000), offset: Offset(3, 4), blurRadius: 25),
-    ],
-  );
-}
+import 'news_ui.dart';
 
 class NewsListScreen extends ConsumerStatefulWidget {
   const NewsListScreen({super.key});
@@ -73,15 +61,37 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
       );
     }
 
+    List<Widget> baseHeader() {
+      return [
+        NewsPageHeader(
+          title: tr(context, ru: 'Новости', zh: '新闻'),
+        ),
+        const SizedBox(height: 12),
+        NewsHeroCard(
+          icon: Icons.newspaper_rounded,
+          title: tr(context, ru: 'Новости компании', zh: '公司新闻'),
+          subtitle: tr(
+            context,
+            ru: 'Важные объявления, изменения в работе склада, тарифы и полезные материалы.',
+            zh: '重要公告、仓库工作变化、价格和实用信息。',
+          ),
+        ),
+        const SizedBox(height: 14),
+      ];
+    }
+
     return asyncItems.when(
       loading: () => buildFrame(
-        children: const [
-          AppPageHeader(title: 'Новости', showBack: true),
-          SizedBox(height: 15),
-          _NewsStateCard(
+        children: [
+          ...baseHeader(),
+          NewsStateCard(
             icon: Icons.newspaper_rounded,
-            title: 'Загружаем новости',
-            message: 'Получаем последние публикации компании.',
+            title: tr(context, ru: 'Загружаем новости', zh: '正在加载新闻'),
+            message: tr(
+              context,
+              ru: 'Получаем последние публикации компании.',
+              zh: '正在获取公司的最新发布。',
+            ),
             isLoading: true,
           ),
         ],
@@ -90,12 +100,8 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
         final errorInfo = ErrorUtils.getErrorInfo(e);
         return buildFrame(
           children: [
-            AppPageHeader(
-              title: tr(context, ru: 'Новости', zh: '新闻'),
-              showBack: true,
-            ),
-            const SizedBox(height: 15),
-            _NewsStateCard(
+            ...baseHeader(),
+            NewsStateCard(
               icon: errorInfo.icon,
               title: errorInfo.title,
               message: errorInfo.message,
@@ -108,12 +114,8 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
         if (items.isEmpty) {
           return buildFrame(
             children: [
-              AppPageHeader(
-                title: tr(context, ru: 'Новости', zh: '新闻'),
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
-              _NewsStateCard(
+              ...baseHeader(),
+              NewsStateCard(
                 icon: Icons.newspaper_outlined,
                 title: tr(context, ru: 'Пока нет новостей', zh: '暂无新闻'),
                 message: tr(
@@ -125,6 +127,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
             ],
           );
         }
+
         return TutorialScreenWrapper(
           screenKey: 'news_list',
           steps: [
@@ -145,11 +148,9 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
           ],
           child: buildFrame(
             children: [
-              AppPageHeader(
-                title: tr(context, ru: 'Новости', zh: '新闻'),
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
+              ...baseHeader(),
+              _NewsSectionHeader(count: items.length),
+              const SizedBox(height: 10),
               for (var i = 0; i < items.length; i++) ...[
                 if (i == 0)
                   KeyedSubtree(
@@ -158,7 +159,7 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
                   )
                 else
                   _NewsCard(item: items[i]),
-                if (i != items.length - 1) const SizedBox(height: 15),
+                if (i != items.length - 1) const SizedBox(height: 12),
               ],
             ],
           ),
@@ -174,89 +175,60 @@ class _NewsListScreenState extends ConsumerState<NewsListScreen> {
   }
 }
 
-class _NewsStateCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? message;
-  final bool isLoading;
-  final bool isError;
+class _NewsSectionHeader extends StatelessWidget {
+  final int count;
 
-  const _NewsStateCard({
-    required this.icon,
-    required this.title,
-    this.message,
-    this.isLoading = false,
-    this.isError = false,
-  });
+  const _NewsSectionHeader({required this.count});
 
   @override
   Widget build(BuildContext context) {
-    final accent = isError ? const Color(0xFFE53935) : context.brandPrimary;
-    return Container(
-      decoration: _newsCardDecoration(),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: accent,
-                      ),
-                    )
-                  : Icon(icon, color: accent, size: 22),
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: context.brandPrimary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(
+            Icons.feed_rounded,
+            color: context.brandPrimary,
+            size: 22,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            tr(context, ru: 'Последние новости', zh: '最新新闻'),
+            style: NewsUi.sectionTitleStyle,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: context.brandPrimary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              color: context.brandPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _newsTextColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    height: 20 / 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (message != null && message!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    message!,
-                    style: const TextStyle(
-                      color: _newsMutedTextColor,
-                      fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      height: 16 / 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class _NewsCard extends StatelessWidget {
   final NewsItem item;
+
   const _NewsCard({required this.item});
 
   @override
@@ -264,130 +236,91 @@ class _NewsCard extends StatelessWidget {
     final locale = isZh(context) ? 'zh' : 'ru';
     final df = DateFormat('dd MMM yyyy', locale);
 
-    return Container(
-      decoration: _newsCardDecoration(),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => context.push('/news/${item.slug}'),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => context.push('/news/${item.slug}'),
+        child: Container(
+          decoration: NewsUi.cardDecoration(),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Cover image
               if (item.imageUrl != null)
-                CachedNetworkImage(
-                  imageUrl: item.imageUrl!,
-                  height: 156,
-                  fit: BoxFit.cover,
-                  placeholder: (_, _) => Container(
-                    height: 156,
-                    color: const Color(0xFFF5F5F5),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  ),
-                  errorWidget: (_, _, _) => Container(
-                    height: 156,
-                    color: const Color(0xFFF5F5F5),
-                    child: const Icon(
-                      Icons.image_not_supported_rounded,
-                      color: Color(0xFFCCCCCC),
-                    ),
-                  ),
-                )
+                _NewsCoverImage(imageUrl: item.imageUrl!)
               else
                 const _NewsPlaceholderCover(),
-
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    NewsDatePill(label: df.format(item.publishedAt)),
+                    const SizedBox(height: 12),
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 19,
+                        height: 1.08,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    if (item.excerpt.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        item.excerpt,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 13.5,
+                          height: 18 / 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
+                        horizontal: 12,
+                        vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: context.brandPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        color: context.brandPrimary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: context.brandPrimary.withValues(alpha: 0.10),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.calendar_today_rounded,
-                            size: 13,
-                            color: context.brandPrimary,
+                          Text(
+                            tr(context, ru: 'Читать далее', zh: '阅读更多'),
+                            style: TextStyle(
+                              color: context.brandPrimary,
+                              fontFamily: 'Gilroy',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                              height: 1,
+                            ),
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            df.format(item.publishedAt),
-                            style: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 12,
-                              height: 14 / 12,
-                              fontWeight: FontWeight.w600,
-                              color: context.brandPrimary,
-                            ),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 17,
+                            color: context.brandPrimary,
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    Text(
-                      item.title,
-                      style: const TextStyle(
-                        color: _newsTextColor,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 17,
-                        height: 21 / 17,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    Text(
-                      item.excerpt,
-                      style: const TextStyle(
-                        color: _newsMutedTextColor,
-                        fontFamily: 'Gilroy',
-                        fontSize: 14,
-                        height: 18 / 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Read more link
-                    Row(
-                      children: [
-                        Text(
-                          tr(context, ru: 'Читать далее', zh: '阅读更多'),
-                          style: TextStyle(
-                            color: context.brandPrimary,
-                            fontFamily: 'Gilroy',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            height: 16 / 13,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 16,
-                          color: context.brandPrimary,
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -400,31 +333,69 @@ class _NewsCard extends StatelessWidget {
   }
 }
 
+class _NewsCoverImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _NewsCoverImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      height: 158,
+      fit: BoxFit.cover,
+      placeholder: (_, _) => Container(
+        height: 158,
+        color: const Color(0xFFF5F5F5),
+        child: Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: context.brandPrimary,
+          ),
+        ),
+      ),
+      errorWidget: (_, _, _) => const _NewsPlaceholderCover(),
+    );
+  }
+}
+
 class _NewsPlaceholderCover extends StatelessWidget {
   const _NewsPlaceholderCover();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 126,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            context.brandPrimary.withValues(alpha: 0.95),
-            context.brandSecondary.withValues(alpha: 0.72),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Align(
-        alignment: Alignment.bottomLeft,
-        child: Icon(
-          Icons.newspaper_rounded,
-          color: Colors.white.withValues(alpha: 0.92),
-          size: 38,
-        ),
+    return SizedBox(
+      height: 146,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(gradient: context.brandGradient),
+          ),
+          const Positioned.fill(child: NewsHeaderGlowBackdrop()),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.newspaper_rounded,
+                  color: Colors.white,
+                  size: 29,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

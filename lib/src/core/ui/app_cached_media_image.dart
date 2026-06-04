@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../network/api_config.dart';
 
@@ -8,9 +7,11 @@ enum AppMediaImageVariant { thumbnail, full }
 
 /// Единая загрузка медиа для карточек/превью.
 ///
-/// Для превью берём backend-thumbnail вместо оригинала, поэтому web/iOS/Android
-/// не скачивают тяжёлое изображение для маленькой плитки. Оригинал остаётся для
-/// fullscreen viewer, скачивания и share.
+/// Важно: сейчас превью намеренно грузятся через тот же рабочий media URL,
+/// что и fullscreen viewer. Backend-thumbnail endpoint может ломать превью
+/// на карточках, хотя оригинал при клике открывается корректно. Когда
+/// thumbnail-пайплайн будет стабильно проверен на production, сюда можно
+/// вернуть ApiConfig.getMediaThumbnailUrl для AppMediaImageVariant.thumbnail.
 class AppCachedMediaImage extends StatelessWidget {
   const AppCachedMediaImage({
     super.key,
@@ -50,16 +51,13 @@ class AppCachedMediaImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = switch (variant) {
-      AppMediaImageVariant.thumbnail => ApiConfig.getMediaThumbnailUrl(
-        url,
-        size: thumbnailSize,
-      ),
+      AppMediaImageVariant.thumbnail => ApiConfig.getMediaUrl(url),
       AppMediaImageVariant.full => ApiConfig.getMediaUrl(url),
     };
+    final fallbackErrorWidget = errorWidget ?? _defaultErrorWidget;
 
     return CachedNetworkImage(
       imageUrl: imageUrl,
-      cacheManager: AppMediaCacheManager.instance,
       fit: fit,
       memCacheWidth: memCacheWidth,
       memCacheHeight: memCacheHeight,
@@ -71,7 +69,10 @@ class AppCachedMediaImage extends StatelessWidget {
       filterQuality: filterQuality,
       imageBuilder: imageBuilder,
       placeholder: placeholder ?? _defaultPlaceholder,
-      errorWidget: errorWidget ?? _defaultErrorWidget,
+      errorWidget: (context, url, error) {
+        debugPrint('[AppCachedMediaImage] failed: $url — $error');
+        return fallbackErrorWidget(context, url, error);
+      },
     );
   }
 
@@ -92,21 +93,4 @@ class AppCachedMediaImage extends StatelessWidget {
       child: const Center(child: Icon(Icons.broken_image_outlined)),
     );
   }
-}
-
-class AppMediaCacheManager {
-  AppMediaCacheManager._();
-
-  static const cacheKey = '2a_user_media_cache_v1';
-
-  /// flutter_cache_manager ограничивает кеш числом объектов, а не байтами.
-  /// Ставим высокий лимит для фоток/thumbnail без раздувания памяти: сами
-  /// превью приходят уже уменьшенными backend-ом.
-  static final CacheManager instance = CacheManager(
-    Config(
-      cacheKey,
-      stalePeriod: const Duration(days: 90),
-      maxNrOfCacheObjects: 5000,
-    ),
-  );
 }

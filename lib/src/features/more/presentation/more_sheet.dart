@@ -6,10 +6,15 @@ import '../../../core/config/sentry_config.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_diagnostics.dart';
+import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../profile/data/problem_report_repository.dart';
+import '../../profile/data/profile_provider.dart';
+import '../../profile/presentation/problem_report_sheet.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
@@ -85,135 +90,367 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
     }
   }
 
+  void _showProfileUnavailableMessage() {
+    AppToast.showFromSnackBar(
+      context,
+      SnackBar(
+        content: const Text('Профиль ещё не загрузился. Попробуйте ещё раз.'),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _openProblemReport(ClientProfile? profile) {
+    if (profile == null) {
+      _showProfileUnavailableMessage();
+      return;
+    }
+
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final hostContext = rootNavigator.context;
+    final repository = ref.read(problemReportRepositoryProvider);
+    final currentScreen = ClientLogService.instance.currentScreen;
+
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!hostContext.mounted) return;
+      showProblemReportSheet(
+        context: hostContext,
+        profile: profile,
+        repository: repository,
+        currentScreen: currentScreen,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final activeCode = ref.watch(activeClientCodeProvider);
+    final profileAsync = ref.watch(clientProfileProvider);
+    final profile = profileAsync.asData?.value;
+    final isProfileLoading = profile == null && profileAsync.isLoading;
+    final bottomSafe = MediaQuery.paddingOf(context).bottom;
 
-    return SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SheetHandle(),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-                    child: Text(
-                      'Меню',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 36,
+            spreadRadius: -14,
+            offset: const Offset(0, -14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            const SheetHandle(),
+            Flexible(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(16, 14, 16, 24 + bottomSafe),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _MoreHeader(activeCode: activeCode),
+                    const SizedBox(height: 14),
+                    _QuickActionsGrid(
+                      actions: [
+                        _QuickActionData(
+                          icon: Icons.person_rounded,
+                          title: 'Профиль',
+                          subtitle: 'Аккаунт',
+                          onTap: () => _go(context, '/profile'),
+                        ),
+                        _QuickActionData(
+                          icon: Icons.support_agent_rounded,
+                          title: 'Поддержка',
+                          subtitle: 'Чат',
+                          onTap: () => _go(context, '/support'),
+                        ),
+                        _QuickActionData(
+                          icon: Icons.account_balance_wallet_rounded,
+                          title: 'Оплата',
+                          subtitle: 'Чат по счетам',
+                          color: const Color(0xFF4CAF50),
+                          onTap: () => _go(context, '/payment-chat'),
+                        ),
+                        _QuickActionData(
+                          icon: Icons.calculate_rounded,
+                          title: 'Калькулятор',
+                          subtitle: 'Доставка',
+                          color: const Color(0xFF2196F3),
+                          onTap: () => _go(context, '/calculator'),
+                        ),
+                      ],
                     ),
-                  ),
-
-                  // ── Аккаунт ───────────────────────────────────
-                  _MenuItem(
-                    icon: Icons.person_rounded,
-                    title: 'Профиль',
-                    onTap: () => _go(context, '/profile'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.card_giftcard_rounded,
-                    title: 'Реферальная программа',
-                    iconColor: const Color(0xFF4CAF50),
-                    onTap: () => _go(context, '/referral'),
-                  ),
-
-                  // ── Полезные инструменты ──────────────────────
-                  const _SectionLabel(text: 'Полезные инструменты'),
-                  _MenuItem(
-                    icon: Icons.description_rounded,
-                    title: 'Выкуп по бланку',
-                    iconColor: const Color(0xFFFF5722),
-                    onTap: () => _go(context, '/purchase-blanks'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.shopping_bag_rounded,
-                    title: 'Совместные покупки',
-                    iconColor: const Color(0xFF9C27B0),
-                    onTap: () => _go(context, '/sp-finance'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.calculate_rounded,
-                    title: 'Калькулятор доставки',
-                    iconColor: const Color(0xFF2196F3),
-                    onTap: () => _go(context, '/calculator'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.travel_explore_rounded,
-                    title: 'Поиск по трек-номеру без кода клиента',
-                    iconColor: const Color(0xFF00BCD4),
-                    onTap: () => _go(context, '/search-nocode'),
-                  ),
-
-                  // ── Поддержка ─────────────────────────────────
-                  const _SectionLabel(text: 'Поддержка'),
-                  _MenuItem(
-                    icon: Icons.account_balance_wallet_rounded,
-                    title: 'Чат по оплате',
-                    iconColor: const Color(0xFF4CAF50),
-                    onTap: () => _go(context, '/payment-chat'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.support_agent_rounded,
-                    title: 'Чат с поддержкой',
-                    onTap: () => _go(context, '/support'),
-                  ),
-
-                  // ── Диагностика ───────────────────────────────
-                  const _SectionLabel(text: 'Диагностика'),
-                  _MenuItem(
-                    icon: Icons.wifi_rounded,
-                    title: _networkDiagnosticsRunning
-                        ? 'Диагностика выполняется...'
-                        : 'Диагностика сети',
-                    iconColor: const Color(0xFF2196F3),
-                    onTap: _runNetworkDiagnostics,
-                  ),
-                  if (SentryConfig.verifyButtonEnabled) ...[
-                    const SizedBox(height: 8),
-                    _MenuItem(
-                      icon: Icons.bug_report_rounded,
-                      title: 'Verify Sentry Setup',
-                      iconColor: Colors.redAccent,
-                      onTap: () {
-                        throw StateError('Sentry verify test exception');
-                      },
+                    const SizedBox(height: 18),
+                    _MoreSection(
+                      title: 'Инструменты',
+                      children: [
+                        _MoreMenuTile(
+                          icon: Icons.description_rounded,
+                          title: 'Выкуп по бланку',
+                          subtitle: 'Загрузить бланк на выкуп товаров',
+                          iconColor: const Color(0xFFFF5722),
+                          onTap: () => _go(context, '/purchase-blanks'),
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.shopping_bag_rounded,
+                          title: 'Совместные покупки',
+                          subtitle: 'Финансы и участие в СП',
+                          iconColor: const Color(0xFF9C27B0),
+                          onTap: () => _go(context, '/sp-finance'),
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.travel_explore_rounded,
+                          title: 'Поиск трека без кода',
+                          subtitle: 'Если склад ещё не привязал посылку',
+                          iconColor: const Color(0xFF00BCD4),
+                          onTap: () => _go(context, '/search-nocode'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _MoreSection(
+                      title: 'Аккаунт',
+                      children: [
+                        _MoreMenuTile(
+                          icon: Icons.card_giftcard_rounded,
+                          title: 'Реферальная программа',
+                          subtitle: 'Бонусные килограммы и приглашения',
+                          iconColor: const Color(0xFF4CAF50),
+                          onTap: () => _go(context, '/referral'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _MoreSection(
+                      title: 'Материалы',
+                      children: [
+                        _MoreMenuTile(
+                          icon: Icons.newspaper_rounded,
+                          title: 'Новости',
+                          subtitle: 'Обновления и объявления',
+                          onTap: () => _go(context, '/news'),
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.rule_rounded,
+                          title: 'Правила оказания услуг',
+                          subtitle: 'Условия работы склада и доставки',
+                          onTap: () => _go(context, '/rules'),
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.price_change_rounded,
+                          title: 'Тарифы',
+                          subtitle: 'Стоимость услуг и доставки',
+                          iconColor: const Color(0xFFFF9800),
+                          onTap: () => _go(context, '/tariffs'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _MoreSection(
+                      title: 'Диагностика',
+                      children: [
+                        _MoreMenuTile(
+                          icon: Icons.wifi_rounded,
+                          title: _networkDiagnosticsRunning
+                              ? 'Диагностика выполняется…'
+                              : 'Диагностика сети',
+                          subtitle: _networkDiagnosticsRunning
+                              ? 'Собираем отчёт для поддержки'
+                              : 'Скопировать отчёт для менеджера',
+                          iconColor: const Color(0xFF2196F3),
+                          loading: _networkDiagnosticsRunning,
+                          onTap: _runNetworkDiagnostics,
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.bug_report_outlined,
+                          title: 'Сообщить о проблеме',
+                          subtitle: isProfileLoading
+                              ? 'Загружаем профиль'
+                              : 'Отправить отчёт в поддержку',
+                          iconColor: Colors.redAccent,
+                          loading: isProfileLoading,
+                          onTap: () => _openProblemReport(profile),
+                        ),
+                        if (SentryConfig.verifyButtonEnabled)
+                          _MoreMenuTile(
+                            icon: Icons.bug_report_rounded,
+                            title: 'Verify Sentry Setup',
+                            subtitle: 'Тестовая ошибка для проверки Sentry',
+                            iconColor: Colors.redAccent,
+                            onTap: () {
+                              throw StateError('Sentry verify test exception');
+                            },
+                          ),
+                      ],
                     ),
                   ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-                  // ── Полезные материалы ────────────────────────
-                  const _SectionLabel(text: 'Полезные материалы'),
-                  _MenuItem(
-                    icon: Icons.newspaper_rounded,
-                    title: 'Новости',
-                    onTap: () => _go(context, '/news'),
+class _MoreHeader extends StatelessWidget {
+  final String? activeCode;
+
+  const _MoreHeader({required this.activeCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 24,
+            spreadRadius: -10,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: AnimatedHeroGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.apps_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Ещё',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Gilroy',
+                                fontWeight: FontWeight.w900,
+                                fontSize: 24,
+                                height: 1.05,
+                                letterSpacing: -0.35,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Быстрый доступ к сервисам кабинета',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xE6FFFFFF),
+                                fontFamily: 'Gilroy',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12.5,
+                                height: 1.15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.rule_rounded,
-                    title: 'Правила оказания услуг',
-                    onTap: () => _go(context, '/rules'),
-                  ),
-                  const SizedBox(height: 8),
-                  _MenuItem(
-                    icon: Icons.price_change_rounded,
-                    title: 'Тарифы',
-                    iconColor: const Color(0xFFFF9800),
-                    onTap: () => _go(context, '/tariffs'),
+                  const SizedBox(height: 15),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _HeaderPill(
+                        icon: Icons.badge_rounded,
+                        label: activeCode == null
+                            ? 'Код не выбран'
+                            : 'Код $activeCode',
+                      ),
+                      const _HeaderPill(
+                        icon: Icons.bolt_rounded,
+                        label: 'Инструменты и помощь',
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeaderPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w800,
+              fontSize: 12.5,
+              height: 1.1,
             ),
           ),
         ],
@@ -222,78 +459,280 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
+class _QuickActionData {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color? color;
+  final VoidCallback onTap;
 
-  const _SectionLabel({required this.text});
+  const _QuickActionData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.color,
+  });
+}
+
+class _QuickActionsGrid extends StatelessWidget {
+  final List<_QuickActionData> actions;
+
+  const _QuickActionsGrid({required this.actions});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF999999),
-          letterSpacing: 0.3,
+    final rows = <Widget>[];
+    for (var index = 0; index < actions.length; index += 2) {
+      rows.add(
+        Row(
+          children: [
+            Expanded(child: _QuickActionCard(data: actions[index])),
+            const SizedBox(width: 10),
+            Expanded(
+              child: index + 1 < actions.length
+                  ? _QuickActionCard(data: actions[index + 1])
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      );
+      if (index + 2 < actions.length) rows.add(const SizedBox(height: 10));
+    }
+
+    return Column(children: rows);
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  final _QuickActionData data;
+
+  const _QuickActionCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = data.color ?? context.brandPrimary;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: data.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.045)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.045),
+                blurRadius: 16,
+                spreadRadius: -8,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 92),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(data.icon, color: color, size: 21),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    data.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14.5,
+                      height: 1.05,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    data.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11.5,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _MenuItem extends StatelessWidget {
+class _MoreSection extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+
+  const _MoreSection({required this.title, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              height: 1.1,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 18,
+                spreadRadius: -10,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                children[i],
+                if (i < children.length - 1)
+                  Divider(
+                    height: 1,
+                    indent: 64,
+                    endIndent: 14,
+                    color: Colors.black.withValues(alpha: 0.055),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MoreMenuTile extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String subtitle;
   final VoidCallback onTap;
   final Color? iconColor;
+  final bool loading;
 
-  const _MenuItem({
+  const _MoreMenuTile({
     required this.icon,
     required this.title,
+    required this.subtitle,
     required this.onTap,
     this.iconColor,
+    this.loading = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = iconColor ?? context.brandSecondary;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
-          ),
+        onTap: loading ? null : onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(
             children: [
               Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: color, size: 22),
+                child: Icon(icon, color: color, size: 21),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    color: Colors.black87,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.black38),
+              const SizedBox(width: 10),
+              if (loading)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary.withValues(alpha: 0.64),
+                  size: 23,
+                ),
             ],
           ),
         ),

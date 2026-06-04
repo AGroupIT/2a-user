@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
@@ -81,7 +82,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
     ref.read(bottomNavVisibleProvider.notifier).hide();
 
-    showModalBottomSheet(
+    showBlurredModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,

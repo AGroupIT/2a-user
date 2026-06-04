@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../auth/data/auth_provider.dart';
-
-const _calcTextColor = Color(0xFF2F2F2F);
-const _calcMutedTextColor = Color(0x992F2F2F);
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -214,12 +212,18 @@ class _Packaging {
   final String name;
   final double baseCost;
   final bool isActive;
+  final String unitLabel;
+  final String kind;
+  final bool suitableForFragileGoods;
 
   _Packaging({
     required this.id,
     required this.name,
     required this.baseCost,
     required this.isActive,
+    required this.unitLabel,
+    required this.kind,
+    required this.suitableForFragileGoods,
   });
 
   factory _Packaging.fromJson(Map<String, dynamic> j) => _Packaging(
@@ -229,7 +233,13 @@ class _Packaging {
     name: (j['nameRu'] as String?) ?? (j['name'] as String?) ?? '',
     baseCost: (j['baseCost'] as num?)?.toDouble() ?? 0,
     isActive: (j['isActive'] as bool?) ?? true,
+    unitLabel: (j['unitLabel'] as String?) ?? 'место',
+    kind: (j['kind'] as String?) ?? 'primary',
+    suitableForFragileGoods: (j['suitableForFragileGoods'] as bool?) ?? false,
   );
+
+  bool get isPrimary => kind != 'addon';
+  bool get isAddon => kind == 'addon';
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -239,6 +249,71 @@ class CalculatorScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<CalculatorScreen> createState() => _CalculatorScreenState();
+}
+
+class _CalculatorPageHeader extends StatelessWidget {
+  const _CalculatorPageHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/');
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 46,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.035),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 18,
+                    spreadRadius: -12,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            'Калькулятор',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 26,
+              height: 1.05,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
@@ -256,7 +331,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   final _photoCtrl = TextEditingController(text: '0');
 
   _Tariff? _selectedTariff;
-  _Packaging? _selectedPackaging;
+  _Packaging? _selectedPrimaryPackaging;
+  final Set<int> _selectedAddonPackagingIds = <int>{};
 
   @override
   void dispose() {
@@ -271,7 +347,11 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   // ── Calculation ────────────────────────────────────────────────────────────
 
-  _CalcResult? _calculate(List<_Tariff> tariffs, List<_PhotoCoef> coefs) {
+  _CalcResult? _calculate(
+    List<_Tariff> tariffs,
+    List<_PhotoCoef> coefs,
+    List<_Packaging> packagings,
+  ) {
     final tariff =
         _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
     if (tariff == null) return null;
@@ -311,10 +391,19 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     }
     // Разгрузка = кол-во мест × $5
     final transshipment = places * 5.0;
-    // Упаковка = базовая стоимость × кол-во мест
-    final packagingCost = _selectedPackaging != null
-        ? _selectedPackaging!.baseCost * places
-        : 0.0;
+    final selectedAddonPackagings = packagings
+        .where((p) => _selectedAddonPackagingIds.contains(p.id))
+        .toList();
+    final selectedPackagings = [
+      if (_selectedPrimaryPackaging != null) _selectedPrimaryPackaging!,
+      ...selectedAddonPackagings,
+    ];
+    // Упаковка = сумма базовых стоимостей выбранных упаковок × кол-во мест
+    final packagingBaseCost = selectedPackagings.fold<double>(
+      0,
+      (sum, packaging) => sum + packaging.baseCost,
+    );
+    final packagingCost = packagingBaseCost * places;
     final totalCost = shipping + transshipment + packagingCost;
 
     return _CalcResult(
@@ -329,7 +418,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       shipping: shipping,
       transshipment: transshipment,
       packagingCost: packagingCost,
-      packagingName: _selectedPackaging?.name,
+      packagingNames: selectedPackagings.map((p) => p.name).toList(),
+      packagingBaseCost: packagingBaseCost,
       total: totalCost,
       priceUnit: priceUnit,
     );
@@ -397,16 +487,15 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
             ),
             children: [
               // ── Header ──
-              const AppPageHeader(
-                title: 'Калькулятор доставки',
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
+              const _CalculatorPageHeader(),
+              const SizedBox(height: 12),
+              const _CalculatorHeroCard(),
+              const SizedBox(height: 14),
               const _InfoCard(
                 text:
                     'Расчёт носит информационный характер. Фактический вес, количество мест и плотность груза могут быть определены только непосредственно перед отправкой товара.',
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 14),
 
               // ── Тариф ──
               tariffsAsync.when(
@@ -455,7 +544,12 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
               // ── Упаковка ──
               packagingsAsync.when(
-                loading: () => const SizedBox.shrink(),
+                loading: () => const Padding(
+                  padding: EdgeInsets.only(bottom: 15),
+                  child: _SectionCard(
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
                 error: (e, st) => const SizedBox.shrink(),
                 data: (packagings) {
                   if (packagings.isEmpty) return const SizedBox.shrink();
@@ -463,26 +557,22 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                     padding: const EdgeInsets.only(bottom: 15),
                     child: KeyedSubtree(
                       key: _packagingKey,
-                      child: _SectionCard(
-                        child: _CalcDropdown<_Packaging?>(
-                          value: _selectedPackaging,
-                          label: 'Упаковка',
-                          items: [
-                            const _CalcDropdownItem<_Packaging?>(
-                              value: null,
-                              label: 'Без упаковки',
-                            ),
-                            ...packagings.map(
-                              (p) => _CalcDropdownItem<_Packaging?>(
-                                value: p,
-                                label:
-                                    '${p.name}  (\$${p.baseCost.toStringAsFixed(2)}/мест)',
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _selectedPackaging = v),
+                      child: _PackagingPickerCard(
+                        packagings: packagings,
+                        selectedPrimaryPackaging: _selectedPrimaryPackaging,
+                        selectedAddonPackagingIds: _selectedAddonPackagingIds,
+                        onPrimaryChanged: (packaging) => setState(
+                          () => _selectedPrimaryPackaging = packaging,
                         ),
+                        onAddonToggled: (packaging) => setState(() {
+                          if (_selectedAddonPackagingIds.contains(
+                            packaging.id,
+                          )) {
+                            _selectedAddonPackagingIds.remove(packaging.id);
+                          } else {
+                            _selectedAddonPackagingIds.add(packaging.id);
+                          }
+                        }),
                       ),
                     ),
                   );
@@ -569,21 +659,47 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               tariffsAsync.maybeWhen(
                 data: (tariffs) => coefsAsync.maybeWhen(
                   data: (coefs) {
-                    final result = _calculate(tariffs, coefs);
+                    final result = _calculate(
+                      tariffs,
+                      coefs,
+                      packagingsAsync.maybeWhen(
+                        data: (packagings) => packagings,
+                        orElse: () => const <_Packaging>[],
+                      ),
+                    );
                     if (result == null) {
                       return _SectionCard(
-                        child: Center(
-                          child: Text(
-                            'Введите вес, мест и количество треков',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: _calcMutedTextColor,
-                              fontFamily: 'Gilroy',
-                              fontSize: 14,
-                              height: 18 / 14,
-                              fontWeight: FontWeight.w500,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: context.brandPrimary.withValues(
+                                  alpha: 0.10,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                Icons.edit_note_rounded,
+                                color: context.brandPrimary,
+                                size: 24,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Введите вес, количество мест и треков — расчёт появится автоматически',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontFamily: 'Gilroy',
+                                  fontSize: 13.5,
+                                  height: 1.25,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }
@@ -616,7 +732,8 @@ class _CalcResult {
   final double shipping;
   final double transshipment;
   final double packagingCost;
-  final String? packagingName;
+  final List<String> packagingNames;
+  final double packagingBaseCost;
   final double total;
   final String priceUnit;
 
@@ -632,7 +749,8 @@ class _CalcResult {
     required this.shipping,
     required this.transshipment,
     required this.packagingCost,
-    this.packagingName,
+    required this.packagingNames,
+    required this.packagingBaseCost,
     required this.total,
     this.priceUnit = 'кг',
   });
@@ -649,110 +767,148 @@ class _ResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [context.brandPrimary, context.brandSecondary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: context.brandPrimary.withValues(alpha: 0.18),
+                  blurRadius: 20,
+                  spreadRadius: -12,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.22),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.payments_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Итого к оплате',
+                        style: TextStyle(
+                          color: Color(0xE6FFFFFF),
+                          fontFamily: 'Gilroy',
+                          fontSize: 12.5,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '\$${result.total.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Gilroy',
+                          fontSize: 30,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           const _Label('Расчёт стоимости'),
-          const SizedBox(height: 12),
-
-          // Тариф
+          const SizedBox(height: 10),
           _Row('Тариф', result.tariffName),
           _Row(
             'Цена за ${result.priceUnit}',
             '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}',
           ),
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
-
-          // Фотоотчёт
-          if (hasPhotoMarkup) ...[
-            const Divider(height: 16),
+          if (hasPhotoMarkup)
             _Row(
               'Надбавка за фотоотчёт',
               '×${result.photoCoef.toStringAsFixed(2)}',
               subtitle:
                   '${result.tracksWithPhoto} из ${result.tracksTotal} треков (${result.photoPercent.toStringAsFixed(0)}%)',
             ),
-          ],
-
-          const Divider(height: 16),
-
-          // Стоимости
+          const SizedBox(height: 4),
+          const _Label('Статьи расходов'),
+          const SizedBox(height: 10),
           _Row(
             'Доставка',
             '\$${result.shipping.toStringAsFixed(2)}',
-            subtitle:
-                '${result.priceUnit == 'м³' ? '${(result.shipping / (result.pricePerKg * result.photoCoef)).toStringAsFixed(3)} м³' : '${result.weight.toStringAsFixed(2)} кг'} × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}',
+            subtitle: result.priceUnit == 'м³'
+                ? '${(result.shipping / (result.pricePerKg * result.photoCoef)).toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}'
+                : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}',
           ),
-          const SizedBox(height: 6),
           _Row(
             'Разгрузка',
             '\$${result.transshipment.toStringAsFixed(2)}',
             subtitle: '${result.places} мест × \$5',
           ),
-          if (result.packagingCost > 0) ...[
-            const SizedBox(height: 6),
+          if (result.packagingCost > 0)
             _Row(
-              'Упаковка${result.packagingName != null ? ' (${result.packagingName})' : ''}',
+              'Упаковка',
               '\$${result.packagingCost.toStringAsFixed(2)}',
               subtitle:
-                  '${result.places} мест × \$${(result.packagingCost / result.places).toStringAsFixed(2)}',
+                  '${result.packagingNames.join(', ')} · ${result.places} мест × \$${result.packagingBaseCost.toStringAsFixed(2)}',
             ),
-          ],
-
-          const Divider(height: 16),
-
-          // Итого
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Итого',
-                style: TextStyle(
-                  fontFamily: 'Gilroy',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  height: 19 / 16,
-                  color: _calcTextColor,
-                ),
-              ),
-              Text(
-                '\$${result.total.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontFamily: 'Gilroy',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20,
-                  height: 24 / 20,
-                  color: context.brandSecondary,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Disclaimer
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.orange.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.18)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: Colors.orange,
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Colors.orange,
+                  ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Расчёт носит информационный характер. Фактический вес, количество мест и плотность груза могут быть определены только непосредственно перед отправкой товара.',
+                    'Финальная стоимость уточняется после фактического взвешивания и проверки груза перед отправкой.',
                     style: TextStyle(
                       fontFamily: 'Gilroy',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
                       color: Colors.orange[800],
-                      height: 15 / 12,
+                      height: 1.25,
                     ),
                   ),
                 ),
@@ -767,6 +923,91 @@ class _ResultCard extends StatelessWidget {
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
+class _CalculatorHeroCard extends StatelessWidget {
+  const _CalculatorHeroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: context.brandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: context.brandPrimary.withValues(alpha: 0.22),
+            blurRadius: 28,
+            spreadRadius: -12,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: AnimatedHeroGlowBackdrop()),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.calculate_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Предварительный расчёт',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Gilroy',
+                            fontSize: 22,
+                            height: 1.04,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.25,
+                          ),
+                        ),
+                        SizedBox(height: 7),
+                        Text(
+                          'Введите параметры груза — сразу увидите доставку, разгрузку и упаковку.',
+                          style: TextStyle(
+                            color: Color(0xE6FFFFFF),
+                            fontFamily: 'Gilroy',
+                            fontSize: 13,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _InfoCard extends StatelessWidget {
   final String text;
 
@@ -777,32 +1018,387 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.brandPrimary.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.12)),
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 22,
+            spreadRadius: -14,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline_rounded,
-            size: 18,
-            color: context.brandPrimary,
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: context.brandPrimary,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
               style: const TextStyle(
-                color: _calcMutedTextColor,
+                color: AppColors.textSecondary,
                 fontFamily: 'Gilroy',
                 fontSize: 13,
                 height: 17 / 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PackagingPickerCard extends StatelessWidget {
+  final List<_Packaging> packagings;
+  final _Packaging? selectedPrimaryPackaging;
+  final Set<int> selectedAddonPackagingIds;
+  final ValueChanged<_Packaging?> onPrimaryChanged;
+  final ValueChanged<_Packaging> onAddonToggled;
+
+  const _PackagingPickerCard({
+    required this.packagings,
+    required this.selectedPrimaryPackaging,
+    required this.selectedAddonPackagingIds,
+    required this.onPrimaryChanged,
+    required this.onAddonToggled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryPackagings = packagings.where((p) => p.isPrimary).toList();
+    final addonPackagings = packagings.where((p) => p.isAddon).toList();
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Label('Упаковка'),
+          const SizedBox(height: 5),
+          const Text(
+            'Выберите основную упаковку и при необходимости дополнительную защиту.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 12.5,
+              height: 1.22,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _PackagingGroupCard(
+            title: 'Основная упаковка',
+            subtitle: 'Выберите один вариант или оставьте расчёт без упаковки.',
+            children: [
+              _PackagingOptionTile(
+                title: 'Без основной упаковки',
+                subtitle: 'Не добавлять основную упаковку в расчёт',
+                selected: selectedPrimaryPackaging == null,
+                primary: true,
+                badges: [
+                  _PackagingBadgeData(
+                    label: 'Без доп. затрат',
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+                onTap: () => onPrimaryChanged(null),
+              ),
+              if (primaryPackagings.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Нет доступной основной упаковки',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontFamily: 'Gilroy',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else
+                ...primaryPackagings.map(
+                  (packaging) => Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _PackagingOptionTile(
+                      title: packaging.name,
+                      subtitle: packaging.baseCost > 0
+                          ? '\$${packaging.baseCost.toStringAsFixed(2)} / ${packaging.unitLabel}'
+                          : 'Без доп. стоимости',
+                      selected: selectedPrimaryPackaging?.id == packaging.id,
+                      primary: true,
+                      badges: [
+                        _PackagingBadgeData(
+                          label: 'Основная упаковка',
+                          color: context.brandPrimary,
+                        ),
+                        if (packaging.suitableForFragileGoods)
+                          _PackagingBadgeData(
+                            label: 'Для хрупкого',
+                            color: Colors.green.shade700,
+                          ),
+                      ],
+                      onTap: () => onPrimaryChanged(packaging),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _PackagingGroupCard(
+            title: 'Дополнительная защита',
+            subtitle:
+                'Можно выбрать несколько вариантов или оставить без доп. защиты.',
+            backgroundColor: Colors.white,
+            children: [
+              if (addonPackagings.isEmpty)
+                const Text(
+                  'Дополнительная защита недоступна',
+                  style: TextStyle(
+                    color: Colors.black45,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                ...addonPackagings.map(
+                  (packaging) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _PackagingOptionTile(
+                      title: packaging.name,
+                      subtitle: packaging.baseCost > 0
+                          ? '\$${packaging.baseCost.toStringAsFixed(2)} / ${packaging.unitLabel}'
+                          : 'Без доп. стоимости',
+                      selected: selectedAddonPackagingIds.contains(
+                        packaging.id,
+                      ),
+                      primary: false,
+                      badges: [
+                        _PackagingBadgeData(
+                          label: 'Доп. защита',
+                          color: Colors.blue.shade700,
+                        ),
+                        if (packaging.suitableForFragileGoods)
+                          _PackagingBadgeData(
+                            label: 'Для хрупкого',
+                            color: Colors.green.shade700,
+                          ),
+                      ],
+                      onTap: () => onAddonToggled(packaging),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackagingGroupCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+  final Color? backgroundColor;
+
+  const _PackagingGroupCard({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: backgroundColor ?? const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8EAEE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 12,
+              height: 1.22,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _PackagingOptionTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final bool primary;
+  final List<_PackagingBadgeData> badges;
+  final VoidCallback onTap;
+
+  const _PackagingOptionTile({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.primary,
+    required this.badges,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected
+                ? context.brandPrimary.withValues(alpha: 0.08)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? context.brandPrimary : const Color(0xFFE8EAEE),
+              width: selected ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                primary
+                    ? (selected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked)
+                    : (selected
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank),
+                color: selected ? context.brandPrimary : Colors.black45,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        height: 1.15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: badges
+                          .map(
+                            (badge) => _CalcPackagingBadge(
+                              label: badge.label,
+                              color: badge.color,
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12,
+                        height: 1.18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PackagingBadgeData {
+  final String label;
+  final Color color;
+
+  const _PackagingBadgeData({required this.label, required this.color});
+}
+
+class _CalcPackagingBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _CalcPackagingBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontFamily: 'Gilroy',
+          fontSize: 11,
+          height: 1,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -819,11 +1415,11 @@ class _MutedMessage extends StatelessWidget {
       text,
       textAlign: TextAlign.center,
       style: const TextStyle(
-        color: _calcMutedTextColor,
+        color: AppColors.textSecondary,
         fontFamily: 'Gilroy',
         fontSize: 14,
         height: 18 / 14,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -837,14 +1433,16 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(10)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x1A000000),
-            offset: Offset(3, 4),
-            blurRadius: 25,
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 24,
+            spreadRadius: -14,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -862,12 +1460,12 @@ class _Label extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        color: _calcTextColor,
+        color: AppColors.textPrimary,
         fontFamily: 'Gilroy',
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w900,
         fontSize: 18,
         height: 22 / 18,
-        letterSpacing: 0,
+        letterSpacing: -0.15,
       ),
     );
   }
@@ -881,8 +1479,14 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.025)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -896,19 +1500,19 @@ class _Row extends StatelessWidget {
                     fontFamily: 'Gilroy',
                     fontSize: 14,
                     height: 18 / 14,
-                    fontWeight: FontWeight.w500,
-                    color: _calcMutedTextColor,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 if (subtitle != null)
                   Text(
                     subtitle!,
                     style: const TextStyle(
-                      color: _calcMutedTextColor,
+                      color: AppColors.textSecondary,
                       fontFamily: 'Gilroy',
                       fontSize: 11,
                       height: 14 / 11,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
               ],
@@ -918,11 +1522,11 @@ class _Row extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: _calcTextColor,
+              color: AppColors.textPrimary,
               fontFamily: 'Gilroy',
               fontSize: 14,
               height: 18 / 14,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -954,54 +1558,66 @@ class _NumField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            color: _calcMutedTextColor,
+            color: AppColors.textSecondary,
             fontFamily: 'Gilroy',
             fontSize: 13,
             height: 16 / 13,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: controller,
-          onChanged: onChanged,
-          keyboardType: decimal
-              ? const TextInputType.numberWithOptions(decimal: true)
-              : TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(
-              decimal ? RegExp(r'[\d.,]') : RegExp(r'\d'),
-            ),
-          ],
-          decoration: _inputDecoration(context, hint),
-          style: const TextStyle(
-            color: _calcTextColor,
-            fontFamily: 'Gilroy',
-            fontSize: 15,
-            height: 18 / 15,
-            fontWeight: FontWeight.w600,
-          ),
+        const SizedBox(height: 7),
+        AppOutlinedInputFrame(
+          radius: 18,
+          borderWidth: 1.2,
+          focusedBorderWidth: 1.6,
+          fillColor: const Color(0xFFF8FAFC),
+          borderColor: const Color(0xFFE1E5ED),
+          focusedBorderColor: context.brandPrimary,
+          builder: (context, focusNode) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              onChanged: onChanged,
+              keyboardType: decimal
+                  ? const TextInputType.numberWithOptions(decimal: true)
+                  : TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(
+                  decimal ? RegExp(r'[\d.,]') : RegExp(r'\d'),
+                ),
+              ],
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(
+                  color: Color(0xFFB0B4BE),
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  height: 16 / 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                isDense: true,
+              ),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 15,
+                height: 18 / 15,
+                fontWeight: FontWeight.w800,
+              ),
+            );
+          },
         ),
       ],
     );
   }
 }
-
-InputDecoration _inputDecoration(BuildContext context, String hint) =>
-    appInputDecoration(
-      context,
-      hintText: hint,
-      hintStyle: const TextStyle(
-        color: Color(0x662F2F2F),
-        fontFamily: 'Gilroy',
-        fontSize: 14,
-        height: 16 / 14,
-        fontWeight: FontWeight.w500,
-      ),
-      fillColor: context.brandPrimary.withValues(alpha: 0.05),
-      borderColor: Colors.grey.shade200,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    );
 
 // ─── Dropdown (same style as status filter on tracks screen) ─────────────────
 
@@ -1069,11 +1685,11 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                 child: GestureDetector(
                   onTap: () {},
                   child: Material(
-                    elevation: 8,
-                    shadowColor: const Color(0x1A000000),
-                    borderRadius: BorderRadius.circular(10),
+                    elevation: 10,
+                    shadowColor: Colors.black.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(20),
                       child: Container(
                         width: menuWidth,
                         constraints: BoxConstraints(
@@ -1099,16 +1715,16 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                               },
                               borderRadius: BorderRadius.vertical(
                                 top: isFirst
-                                    ? const Radius.circular(10)
+                                    ? const Radius.circular(20)
                                     : Radius.zero,
                                 bottom: isLast
-                                    ? const Radius.circular(10)
+                                    ? const Radius.circular(20)
                                     : Radius.zero,
                               ),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
-                                  vertical: 12,
+                                  vertical: 13,
                                 ),
                                 decoration: BoxDecoration(
                                   color: isSelected
@@ -1118,10 +1734,10 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.vertical(
                                     top: isFirst
-                                        ? const Radius.circular(10)
+                                        ? const Radius.circular(20)
                                         : Radius.zero,
                                     bottom: isLast
-                                        ? const Radius.circular(10)
+                                        ? const Radius.circular(20)
                                         : Radius.zero,
                                   ),
                                 ),
@@ -1132,11 +1748,11 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                                     fontSize: 14,
                                     height: 18 / 14,
                                     fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
+                                        ? FontWeight.w800
+                                        : FontWeight.w700,
                                     color: isSelected
                                         ? context.brandPrimary
-                                        : _calcTextColor,
+                                        : AppColors.textPrimary,
                                   ),
                                 ),
                               ),
@@ -1154,6 +1770,7 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
       ),
     );
     Overlay.of(context).insert(_overlayEntry!);
+    setState(() {});
   }
 
   void _hideMenu() {
@@ -1179,15 +1796,22 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: GestureDetector(
-        onTap: () => _overlayEntry == null ? _showMenu() : _hideMenu(),
+        onTap: () {
+          if (_overlayEntry == null) {
+            _showMenu();
+            return;
+          }
+          _hideMenu();
+          setState(() {});
+        },
         child: Container(
           key: _targetKey,
           decoration: BoxDecoration(
-            color: context.brandPrimary.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE1E5ED), width: 1.2),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1199,22 +1823,22 @@ class _CalcDropdownState<T> extends State<_CalcDropdown<T>> {
                     Text(
                       widget.label,
                       style: const TextStyle(
-                        color: _calcMutedTextColor,
+                        color: AppColors.textSecondary,
                         fontFamily: 'Gilroy',
                         fontSize: 12,
                         height: 14 / 12,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       selectedLabel,
                       style: const TextStyle(
-                        color: _calcTextColor,
+                        color: AppColors.textPrimary,
                         fontFamily: 'Gilroy',
                         fontSize: 14,
                         height: 18 / 14,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w800,
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,

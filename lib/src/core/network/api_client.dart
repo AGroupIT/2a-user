@@ -149,7 +149,7 @@ class ApiClient {
 
     final oldDio = _dio;
     _dio = _createDio();
-    oldDio.close(force: force);
+    _closeDioQuietly(oldDio, force: force, reason: reason);
     _lastConnectionResetAt = now;
     ClientLogService.instance.httpConnectionReset(
       reason: reason,
@@ -170,7 +170,7 @@ class ApiClient {
     _fallbackActivatedAt = null;
     final oldDio = _dio;
     _dio = _createDio();
-    oldDio.close(force: true);
+    _closeDioQuietly(oldDio, force: true, reason: 'restore_primary_base_url');
     _lastConnectionResetAt = DateTime.now();
     ClientLogService.instance.add(
       type: 'api_base_url_primary_restore',
@@ -191,7 +191,11 @@ class ApiClient {
     _fallbackActivatedAt = DateTime.now();
     final oldDio = _dio;
     _dio = _createDio();
-    oldDio.close(force: true);
+    _closeDioQuietly(
+      oldDio,
+      force: true,
+      reason: 'switch_to_fallback_base_url',
+    );
     _lastConnectionResetAt = DateTime.now();
     ClientLogService.instance.add(
       type: 'api_base_url_fallback',
@@ -205,6 +209,27 @@ class ApiClient {
       },
     );
     return true;
+  }
+
+  void _closeDioQuietly(
+    Dio dio, {
+    required bool force,
+    required String reason,
+  }) {
+    try {
+      dio.close(force: force);
+    } catch (error) {
+      // Native URLSession/Cronet can throw while previous requests are still
+      // winding down. Reset must remain best-effort: new Dio is already active,
+      // and surfacing close() here crashes the app on resume.
+      ClientLogService.instance.add(
+        type: 'http_connection_close_failed',
+        level: 'warning',
+        message: 'Не удалось синхронно закрыть старый HTTP-клиент',
+        data: {'reason': reason, 'force': force, 'error': error.toString()},
+      );
+      debugPrint('[ApiClient] Ignored Dio close error: $error');
+    }
   }
 
   static bool _isTransientNetworkError(DioException e) {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ui/app_background.dart';
+import '../../core/ui/app_colors.dart';
 import '../../core/ui/app_layout.dart';
 import '../../core/ui/pixso_top_menu_surface.dart';
 import '../../features/clients/presentation/client_switcher_button.dart';
@@ -138,7 +139,8 @@ class _ActionsPill extends ConsumerWidget {
         false;
 
     return PixsoTopMenuSurface(
-      width: 100,
+      width: 116,
+      padding: const EdgeInsets.all(7),
       child: Material(
         type: MaterialType.transparency,
         child: Row(
@@ -146,16 +148,15 @@ class _ActionsPill extends ConsumerWidget {
           children: [
             _TopBarActionButton(
               tooltip: 'Главная',
-              width: 20,
               icon: CupertinoIcons.house,
+              highlighted: true,
               onTap: () => context.go('/'),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
             const NotificationsBellButton(),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
             _TopBarActionButton(
               tooltip: 'Чат поддержки',
-              width: 20,
               icon: CupertinoIcons.chat_bubble_2,
               hasBadge: hasUnreadSupportChat,
               onTap: () => context.go('/support'),
@@ -169,17 +170,17 @@ class _ActionsPill extends ConsumerWidget {
 
 class _TopBarActionButton extends StatelessWidget {
   final String tooltip;
-  final double width;
   final IconData icon;
   final bool hasBadge;
+  final bool highlighted;
   final VoidCallback onTap;
 
   const _TopBarActionButton({
     required this.tooltip,
-    required this.width,
     required this.icon,
     required this.onTap,
     this.hasBadge = false,
+    this.highlighted = false,
   });
 
   static const _contentColor = Color(0xFF2F2F2F);
@@ -188,34 +189,39 @@ class _TopBarActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            SizedBox(
-              width: width,
-              height: 20,
-              child: Center(
-                child: Icon(icon, size: 19.6, color: _contentColor),
-              ),
-            ),
-            if (hasBadge)
-              Positioned(
-                right: -3,
-                top: -2,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent,
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              PixsoTopMenuActionSurface(
+                highlighted: highlighted,
+                child: Icon(
+                  icon,
+                  size: 18.5,
+                  color: highlighted ? context.brandPrimary : _contentColor,
                 ),
               ),
-          ],
+              if (hasBadge)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,31 +1,20 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
-import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
+import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
-import '../../../core/ui/quill_delta_viewer.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/rules_provider.dart';
-
-const _ruleDetailTextColor = Color(0xFF2F2F2F);
-const _ruleDetailMutedTextColor = Color(0x992F2F2F);
-
-BoxDecoration _ruleDetailCardDecoration({Color color = Colors.white}) {
-  return BoxDecoration(
-    color: color,
-    borderRadius: BorderRadius.circular(10),
-    boxShadow: const [
-      BoxShadow(color: Color(0x1A000000), offset: Offset(3, 4), blurRadius: 25),
-    ],
-  );
-}
+import 'rules_ui.dart';
 
 class RuleDetailScreen extends ConsumerStatefulWidget {
   final String slug;
@@ -50,33 +39,66 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
 
+    Future<void> onRefresh() async {
+      ref.invalidate(ruleItemProvider(widget.slug));
+      await ref.read(ruleItemProvider(widget.slug).future);
+    }
+
     Widget buildFrame({required List<Widget> children}) {
       return Stack(
         children: [
-          ListView(
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(
-              16,
-              topPad * 0.7 + 16,
-              16,
-              bottomPad + 16,
+          RefreshIndicator(
+            onRefresh: onRefresh,
+            color: context.brandPrimary,
+            child: ListView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                topPad * 0.7 + 16,
+                16,
+                bottomPad + 16,
+              ),
+              children: children,
             ),
-            children: children,
           ),
           ScrollToTopButton(controller: _scrollController),
         ],
       );
     }
 
+    List<Widget> baseHeader() {
+      return [
+        RulesPageHeader(
+          title: tr(context, ru: 'Правило', zh: '规则'),
+          fallbackRoute: '/rules',
+        ),
+        const SizedBox(height: 12),
+        RulesHeroCard(
+          icon: Icons.rule_rounded,
+          title: tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
+          subtitle: tr(
+            context,
+            ru: 'Получаем актуальный текст условия.',
+            zh: '正在获取最新规则内容。',
+          ),
+        ),
+        const SizedBox(height: 14),
+      ];
+    }
+
     return asyncItem.when(
       loading: () => buildFrame(
-        children: const [
-          AppPageHeader(title: 'Правило', showBack: true),
-          SizedBox(height: 15),
-          _RuleDetailStateCard(
+        children: [
+          ...baseHeader(),
+          RulesStateCard(
             icon: Icons.rule_rounded,
-            title: 'Загружаем правило',
-            message: 'Получаем актуальный текст правила.',
+            title: tr(context, ru: 'Загружаем правило', zh: '正在加载规则'),
+            message: tr(
+              context,
+              ru: 'Получаем актуальный текст правила.',
+              zh: '正在获取规则内容。',
+            ),
             isLoading: true,
           ),
         ],
@@ -85,12 +107,8 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
         final errorInfo = ErrorUtils.getErrorInfo(e);
         return buildFrame(
           children: [
-            AppPageHeader(
-              title: tr(context, ru: 'Правило', zh: '规则'),
-              showBack: true,
-            ),
-            const SizedBox(height: 15),
-            _RuleDetailStateCard(
+            ...baseHeader(),
+            RulesStateCard(
               icon: errorInfo.icon,
               title: errorInfo.title,
               message: errorInfo.message,
@@ -103,12 +121,8 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
         if (item == null) {
           return buildFrame(
             children: [
-              AppPageHeader(
-                title: tr(context, ru: 'Правило', zh: '规则'),
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
-              _RuleDetailStateCard(
+              ...baseHeader(),
+              RulesStateCard(
                 icon: Icons.article_outlined,
                 title: tr(context, ru: 'Правило не найдено', zh: '未找到规则'),
                 message: tr(
@@ -121,6 +135,10 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
             ],
           );
         }
+
+        final orderLabel = item.order > 0
+            ? tr(context, ru: 'Пункт ${item.order}', zh: '第 ${item.order} 条')
+            : tr(context, ru: 'Актуальное правило', zh: '最新规则');
 
         return TutorialScreenWrapper(
           screenKey: 'rule_detail',
@@ -140,69 +158,22 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
           ],
           child: buildFrame(
             children: [
-              AppPageHeader(
+              RulesPageHeader(
                 title: tr(context, ru: 'Правило', zh: '规则'),
-                showBack: true,
+                fallbackRoute: '/rules',
               ),
-              const SizedBox(height: 15),
-              Container(
-                decoration: _ruleDetailCardDecoration(),
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: context.brandPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${item.order}',
-                          style: TextStyle(
-                            color: context.brandPrimary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 20,
-                            height: 24 / 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.title,
-                            style: const TextStyle(
-                              color: _ruleDetailTextColor,
-                              fontFamily: 'Gilroy',
-                              fontSize: 20,
-                              height: 25 / 20,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 12),
+              RulesHeroCard(
+                icon: Icons.rule_rounded,
+                title: item.title,
+                subtitle: orderLabel,
+                titleMaxLines: 3,
               ),
-              const SizedBox(height: 15),
-
-              Container(
-                decoration: _ruleDetailCardDecoration(),
-                padding: const EdgeInsets.all(16),
-                child: QuillDeltaViewer(
-                  jsonContent: item.content,
-                  linkColor: context.brandPrimary,
-                  onImageTap: (imageUrl) =>
-                      _openImageFullscreen(context, imageUrl),
-                ),
+              const SizedBox(height: 14),
+              _RuleContentCard(
+                content: item.content,
+                onImageTap: (imageUrl) =>
+                    _openImageFullscreen(context, _normalizeImageUrl(imageUrl)),
               ),
             ],
           ),
@@ -211,7 +182,12 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
     );
   }
 
-  /// Открывает изображение в полноэкранном режиме
+  String _normalizeImageUrl(String value) {
+    final raw = value.trim();
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    return ApiConfig.getMediaUrl(raw);
+  }
+
   void _openImageFullscreen(BuildContext context, String imageUrl) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -221,88 +197,175 @@ class _RuleDetailScreenState extends ConsumerState<RuleDetailScreen> {
   }
 }
 
-class _RuleDetailStateCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? message;
-  final bool isLoading;
-  final bool isError;
+class _RuleContentCard extends StatelessWidget {
+  final String content;
+  final ValueChanged<String> onImageTap;
 
-  const _RuleDetailStateCard({
-    required this.icon,
-    required this.title,
-    this.message,
-    this.isLoading = false,
-    this.isError = false,
-  });
+  const _RuleContentCard({required this.content, required this.onImageTap});
 
   @override
   Widget build(BuildContext context) {
-    final accent = isError ? const Color(0xFFE53935) : context.brandPrimary;
+    final hasContent = content.trim().isNotEmpty;
+
     return Container(
-      decoration: _ruleDetailCardDecoration(),
+      decoration: RulesUi.cardDecoration(),
       padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: accent,
-                      ),
-                    )
-                  : Icon(icon, color: accent, size: 22),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _ruleDetailTextColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    height: 20 / 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+      child: hasContent
+          ? MarkdownBody(
+              data: content,
+              selectable: true,
+              styleSheet: _markdownStyleSheet(context),
+              onTapLink: (text, href, title) {
+                final uri = Uri.tryParse(href ?? '');
+                if (uri == null) return;
+                launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              imageBuilder: (uri, title, alt) {
+                final raw = uri.toString();
+                final imageUrl =
+                    raw.startsWith('http://') || raw.startsWith('https://')
+                    ? raw
+                    : ApiConfig.getMediaUrl(raw);
+                return _RuleMarkdownImage(
+                  imageUrl: imageUrl,
+                  onTap: () => onImageTap(imageUrl),
+                );
+              },
+            )
+          : Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: RulesUi.softDecoration(),
+              child: Text(
+                tr(
+                  context,
+                  ru: 'Текст правила пока не заполнен.',
+                  zh: '规则内容暂未填写。',
                 ),
-                if (message != null && message!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    message!,
-                    style: const TextStyle(
-                      color: _ruleDetailMutedTextColor,
-                      fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      height: 16 / 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13.5,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
-        ],
+    );
+  }
+
+  MarkdownStyleSheet _markdownStyleSheet(BuildContext context) {
+    const base = TextStyle(
+      color: AppColors.textPrimary,
+      fontFamily: 'Gilroy',
+      fontSize: 15,
+      height: 1.5,
+      fontWeight: FontWeight.w600,
+    );
+
+    return MarkdownStyleSheet(
+      p: base,
+      pPadding: const EdgeInsets.only(bottom: 10),
+      strong: base.copyWith(fontWeight: FontWeight.w900),
+      em: base.copyWith(fontStyle: FontStyle.italic),
+      a: base.copyWith(
+        color: context.brandPrimary,
+        decoration: TextDecoration.underline,
+        decorationColor: context.brandPrimary,
+      ),
+      h1: base.copyWith(
+        fontSize: 22,
+        height: 1.12,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.25,
+      ),
+      h1Padding: const EdgeInsets.only(top: 8, bottom: 10),
+      h2: base.copyWith(
+        fontSize: 20,
+        height: 1.15,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.2,
+      ),
+      h2Padding: const EdgeInsets.only(top: 10, bottom: 8),
+      h3: base.copyWith(fontSize: 17, height: 1.2, fontWeight: FontWeight.w900),
+      h3Padding: const EdgeInsets.only(top: 8, bottom: 6),
+      listBullet: base.copyWith(
+        color: context.brandPrimary,
+        fontWeight: FontWeight.w900,
+      ),
+      listIndent: 22,
+      blockSpacing: 8,
+      blockquote: base.copyWith(color: AppColors.textSecondary),
+      blockquotePadding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      blockquoteDecoration: BoxDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.16)),
+      ),
+      code: base.copyWith(
+        fontFamily: 'monospace',
+        fontSize: 13.5,
+        color: context.brandPrimary,
+        backgroundColor: context.brandPrimary.withValues(alpha: 0.08),
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      codeblockDecoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
       ),
     );
   }
 }
 
-/// Полноэкранный просмотрщик изображения с зумом
+class _RuleMarkdownImage extends StatelessWidget {
+  final String imageUrl;
+  final VoidCallback onTap;
+
+  const _RuleMarkdownImage({required this.imageUrl, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.cover,
+              placeholder: (_, _) => Container(
+                height: 170,
+                color: const Color(0xFFF5F5F5),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: context.brandPrimary,
+                  ),
+                ),
+              ),
+              errorWidget: (_, _, _) => Container(
+                height: 170,
+                color: const Color(0xFFF8FAFC),
+                child: Icon(
+                  Icons.broken_image_rounded,
+                  color: context.brandPrimary.withValues(alpha: 0.45),
+                  size: 38,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FullscreenImageViewer extends StatelessWidget {
   final String imageUrl;
 
@@ -317,9 +380,12 @@ class _FullscreenImageViewer extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         foregroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
         ),
       ),
       body: BlurredMediaBackdrop(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../models/status_timeline_entry.dart';
 import 'app_colors.dart';
@@ -28,7 +29,7 @@ Future<void> showStatusTimelineSheet({
   required List<StatusTimelineEntry> history,
   required List<StatusTimelineStatus> statuses,
 }) {
-  return showModalBottomSheet<void>(
+  return showBlurredModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
@@ -74,75 +75,61 @@ class StatusTimelineSheet extends StatelessWidget {
       for (final status in sortedStatuses) status.code: status,
     };
     final entries = _normalizedHistory();
-    final currentIndex = sortedStatuses.indexWhere(
-      (status) => status.code == currentStatusCode,
-    );
-    final nextStatuses = currentIndex >= 0
-        ? sortedStatuses.skip(currentIndex + 1).toList(growable: false)
-        : const <StatusTimelineStatus>[];
 
     return SafeArea(
       top: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SheetHandle(),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF2F2F2F),
-                fontFamily: 'Gilroy',
-                fontSize: 22,
-                height: 26 / 22,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _CurrentStatusCard(
-              text: currentStatusName,
-              color: currentStatusColor ?? context.brandPrimary,
-            ),
-            const SizedBox(height: 18),
-            const _SectionTitle('Хронология статусов'),
-            const SizedBox(height: 10),
-            if (entries.isEmpty)
-              const _EmptyText('История изменения статуса пока не записана.')
-            else
-              ...entries.map(
-                (entry) => _TimelineRow(
-                  entry: entry,
-                  status: statusByCode[entry.statusCode],
-                  fallbackName: entry.statusCode == currentStatusCode
-                      ? currentStatusName
-                      : entry.statusCode,
-                  fallbackColor: entry.statusCode == currentStatusCode
-                      ? currentStatusColor
-                      : null,
-                ),
-              ),
-            const SizedBox(height: 18),
-            const _SectionTitle('Следующие статусы'),
-            const SizedBox(height: 10),
-            if (sortedStatuses.isEmpty)
-              const _EmptyText('Справочник статусов не загрузился.')
-            else if (nextStatuses.isEmpty)
-              const _EmptyText(
-                'Это финальный или последний настроенный статус.',
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+      bottom: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SheetHandle(),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final status in nextStatuses)
-                    _NextStatusChip(status: status),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF2F2F2F),
+                      fontFamily: 'Gilroy',
+                      fontSize: 22,
+                      height: 26 / 22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _CurrentStatusCard(
+                    text: currentStatusName,
+                    color: currentStatusColor ?? context.brandPrimary,
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionTitle('Хронология статусов'),
+                  const SizedBox(height: 10),
+                  if (entries.isEmpty)
+                    const _EmptyText(
+                      'История изменения статуса пока не записана.',
+                    )
+                  else
+                    ...entries.map(
+                      (entry) => _TimelineRow(
+                        entry: entry,
+                        status: statusByCode[entry.statusCode],
+                        fallbackName: entry.statusCode == currentStatusCode
+                            ? currentStatusName
+                            : entry.statusCode,
+                        fallbackColor: entry.statusCode == currentStatusCode
+                            ? currentStatusColor
+                            : null,
+                      ),
+                    ),
                 ],
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -312,35 +299,6 @@ class _TimelineRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NextStatusChip extends StatelessWidget {
-  final StatusTimelineStatus status;
-
-  const _NextStatusChip({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = status.color ?? context.brandPrimary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Text(
-        status.name,
-        style: TextStyle(
-          color: color,
-          fontFamily: 'Gilroy',
-          fontSize: 14,
-          height: 16 / 14,
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }

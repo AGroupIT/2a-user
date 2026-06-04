@@ -1,28 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/rules_provider.dart';
 import '../domain/rule_item.dart';
-
-const _rulesTextColor = Color(0xFF2F2F2F);
-const _rulesMutedTextColor = Color(0x992F2F2F);
-
-BoxDecoration _rulesCardDecoration({Color color = Colors.white}) {
-  return BoxDecoration(
-    color: color,
-    borderRadius: BorderRadius.circular(10),
-    boxShadow: const [
-      BoxShadow(color: Color(0x1A000000), offset: Offset(3, 4), blurRadius: 25),
-    ],
-  );
-}
+import 'rules_ui.dart';
 
 class RulesScreen extends ConsumerStatefulWidget {
   const RulesScreen({super.key});
@@ -71,15 +59,37 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
       );
     }
 
+    List<Widget> baseHeader() {
+      return [
+        RulesPageHeader(
+          title: tr(context, ru: 'Правила', zh: '规则'),
+        ),
+        const SizedBox(height: 12),
+        RulesHeroCard(
+          icon: Icons.verified_user_rounded,
+          title: tr(context, ru: 'Правила оказания услуг', zh: '服务规则'),
+          subtitle: tr(
+            context,
+            ru: 'Актуальные условия работы, доставки, хранения и ответственности сторон.',
+            zh: '服务、配送、仓储和双方责任的最新规则。',
+          ),
+        ),
+        const SizedBox(height: 14),
+      ];
+    }
+
     return asyncItems.when(
       loading: () => buildFrame(
-        children: const [
-          AppPageHeader(title: 'Правила', showBack: true),
-          SizedBox(height: 15),
-          _RulesStateCard(
+        children: [
+          ...baseHeader(),
+          RulesStateCard(
             icon: Icons.rule_rounded,
-            title: 'Загружаем правила',
-            message: 'Получаем актуальные условия оказания услуг.',
+            title: tr(context, ru: 'Загружаем правила', zh: '正在加载规则'),
+            message: tr(
+              context,
+              ru: 'Получаем актуальные условия оказания услуг.',
+              zh: '正在获取最新服务规则。',
+            ),
             isLoading: true,
           ),
         ],
@@ -88,12 +98,8 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
         final errorInfo = ErrorUtils.getErrorInfo(e);
         return buildFrame(
           children: [
-            AppPageHeader(
-              title: tr(context, ru: 'Правила', zh: '规则'),
-              showBack: true,
-            ),
-            const SizedBox(height: 15),
-            _RulesStateCard(
+            ...baseHeader(),
+            RulesStateCard(
               icon: errorInfo.icon,
               title: errorInfo.title,
               message: errorInfo.message,
@@ -106,12 +112,8 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
         if (items.isEmpty) {
           return buildFrame(
             children: [
-              AppPageHeader(
-                title: tr(context, ru: 'Правила', zh: '规则'),
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
-              _RulesStateCard(
+              ...baseHeader(),
+              RulesStateCard(
                 icon: Icons.rule_folder_outlined,
                 title: tr(context, ru: 'Правила не найдены', zh: '未找到规则'),
                 message: tr(
@@ -143,11 +145,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
           ],
           child: buildFrame(
             children: [
-              AppPageHeader(
-                title: tr(context, ru: 'Правила', zh: '规则'),
-                showBack: true,
-              ),
-              const SizedBox(height: 15),
+              ...baseHeader(),
               for (var i = 0; i < items.length; i++) ...[
                 if (i == 0)
                   KeyedSubtree(
@@ -156,7 +154,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
                   )
                 else
                   _RuleCard(item: items[i]),
-                if (i != items.length - 1) const SizedBox(height: 15),
+                if (i != items.length - 1) const SizedBox(height: 12),
               ],
             ],
           ),
@@ -172,169 +170,96 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
   }
 }
 
-class _RulesStateCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? message;
-  final bool isLoading;
-  final bool isError;
-
-  const _RulesStateCard({
-    required this.icon,
-    required this.title,
-    this.message,
-    this.isLoading = false,
-    this.isError = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = isError ? const Color(0xFFE53935) : context.brandPrimary;
-    return Container(
-      decoration: _rulesCardDecoration(),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: accent,
-                      ),
-                    )
-                  : Icon(icon, color: accent, size: 22),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _rulesTextColor,
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    height: 20 / 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (message != null && message!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    message!,
-                    style: const TextStyle(
-                      color: _rulesMutedTextColor,
-                      fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      height: 16 / 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _RuleCard extends StatelessWidget {
   final RuleItem item;
   const _RuleCard({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: _rulesCardDecoration(),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => context.push('/rules/${item.slug}'),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Icon
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: context.brandPrimary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+    final orderLabel = item.order > 0 ? item.order.toString() : '•';
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => context.push('/rules/${item.slug}'),
+        child: Container(
+          decoration: RulesUi.cardDecoration(),
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      context.brandPrimary,
+                      context.brandPrimary.withValues(alpha: 0.78),
+                    ],
                   ),
-                  child: Center(
-                    child: Text(
-                      '${item.order}',
-                      style: TextStyle(
-                        color: context.brandPrimary,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
-                        height: 24 / 20,
-                      ),
+                  borderRadius: BorderRadius.circular(19),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.brandPrimary.withValues(alpha: 0.18),
+                      blurRadius: 18,
+                      spreadRadius: -10,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    orderLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      height: 1,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
-
-                // Text content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        style: const TextStyle(
-                          color: _rulesTextColor,
-                          fontFamily: 'Gilroy',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                          height: 20 / 16,
-                        ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                        height: 21 / 17,
+                        letterSpacing: -0.1,
                       ),
-                      const SizedBox(height: 4),
+                    ),
+                    if (item.excerpt.trim().isNotEmpty) ...[
+                      const SizedBox(height: 7),
                       Text(
                         item.excerpt,
                         style: const TextStyle(
-                          color: _rulesMutedTextColor,
+                          color: AppColors.textSecondary,
                           fontFamily: 'Gilroy',
-                          fontSize: 13,
-                          height: 16 / 13,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 13.5,
+                          height: 18 / 13.5,
+                          fontWeight: FontWeight.w700,
                         ),
-                        maxLines: 2,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-
-                // Arrow
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 16,
-                  color: Color(0x662F2F2F),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

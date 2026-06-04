@@ -6,7 +6,7 @@ class NewsItem {
   final String title;
   final String excerpt;
 
-  /// Raw article content. It may be Quill Delta JSON or plain text.
+  /// Markdown article content. Quill/Fleather Delta is converted on parse.
   final String content;
   final DateTime publishedAt;
 
@@ -32,11 +32,12 @@ class NewsItem {
     }
 
     final rawContent = json['content'] as String? ?? '';
+    final content = DeltaConverter.toMarkdown(rawContent);
     return NewsItem(
       slug: json['id'].toString(),
       title: json['title'] as String? ?? '',
       excerpt: _extractExcerpt(rawContent),
-      content: rawContent,
+      content: content,
       publishedAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),

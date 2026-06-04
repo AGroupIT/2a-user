@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
@@ -85,6 +84,107 @@ class SpTrackEditScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<SpTrackEditScreen> createState() => _SpTrackEditScreenState();
+}
+
+class _TrackEditHero extends StatelessWidget {
+  final SpTrack track;
+  final double? totalRub;
+  final double? profit;
+
+  const _TrackEditHero({
+    required this.track,
+    required this.totalRub,
+    required this.profit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final participant = track.spParticipantName?.trim();
+    return SpAnimatedHeroSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.edit_note_rounded,
+                  color: Colors.white,
+                  size: 31,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.trackNumber,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Gilroy',
+                        fontSize: 22,
+                        height: 1.04,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.25,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    const Text(
+                      'Заполните участника, цену, курс и чистый вес — расчёты обновятся автоматически.',
+                      style: TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontFamily: 'Gilroy',
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              SpHeroChip(
+                icon: Icons.person_rounded,
+                label: participant != null && participant.isNotEmpty
+                    ? participant
+                    : 'Участник не задан',
+              ),
+              SpHeroChip(
+                icon: Icons.receipt_long_rounded,
+                label: totalRub != null
+                    ? '${totalRub!.toStringAsFixed(0)} ₽ к оплате'
+                    : 'Итог не рассчитан',
+              ),
+              SpHeroChip(
+                icon: Icons.trending_up_rounded,
+                label: profit != null
+                    ? '${profit!.toStringAsFixed(0)} ₽ прибыль'
+                    : 'Прибыль не рассчитана',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
@@ -424,8 +524,14 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 bottomPad + 16,
               ),
               children: [
-                AppPageHeader(title: _track!.trackNumber, showBack: true),
-                const SizedBox(height: 15),
+                SpPageHeader(title: _track!.trackNumber),
+                const SizedBox(height: 12),
+                _TrackEditHero(
+                  track: _track!,
+                  totalRub: totalRub,
+                  profit: profit,
+                ),
+                const SizedBox(height: 14),
 
                 // 1. Имя участника
                 Builder(
@@ -669,33 +775,59 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                 // Кнопка сохранения
                 Builder(
                   builder: (_) {
-                    final w = FilledButton.icon(
-                      onPressed: _isLoading ? null : _saveTrack,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.save_rounded),
-                      label: Text(
-                        _isLoading ? 'Сохранение...' : 'Сохранить',
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy',
-                          fontSize: 16,
-                          height: 18 / 16,
-                          fontWeight: FontWeight.w700,
+                    final w = SizedBox(
+                      height: 54,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: _isLoading ? null : context.brandGradient,
+                          color: _isLoading
+                              ? context.brandPrimary.withValues(alpha: 0.55)
+                              : null,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: _isLoading
+                              ? null
+                              : [
+                                  BoxShadow(
+                                    color: context.brandPrimary.withValues(
+                                      alpha: 0.18,
+                                    ),
+                                    blurRadius: 18,
+                                    spreadRadius: -10,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
                         ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: context.brandPrimary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                        child: FilledButton.icon(
+                          onPressed: _isLoading ? null : _saveTrack,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.save_rounded),
+                          label: Text(
+                            _isLoading ? 'Сохранение...' : 'Сохранить',
+                            style: const TextStyle(
+                              fontFamily: 'Gilroy',
+                              fontSize: 16,
+                              height: 18 / 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            disabledBackgroundColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            disabledForegroundColor: Colors.white,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -726,7 +858,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad + 16),
       children: [
-        const AppPageHeader(title: 'Трек не найден', showBack: true),
+        const SpPageHeader(title: 'Трек не найден'),
         const SizedBox(height: 24),
         _buildCard(
           title: 'Нет актуальных данных',

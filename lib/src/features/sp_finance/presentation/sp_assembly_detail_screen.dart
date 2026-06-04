@@ -5,10 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/app_page_header.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../../core/utils/clipboard_helper.dart';
@@ -99,47 +97,46 @@ class _SpAssemblyDetailScreenState
       (a) => a.id == widget.assemblyId,
     );
     if (assembly == null) {
-      return Scaffold(
-        body: Stack(
-          children: [
-            const AppBackground(),
-            SafeArea(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  topPad * 0.7 + 16,
-                  16,
-                  bottomPad,
-                ),
-                children: [
-                  const AppPageHeader(
-                    title: 'Сборка не найдена',
-                    showBack: true,
+      return ListView(
+        padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, bottomPad),
+        children: [
+          const SpPageHeader(title: 'Сборка не найдена'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: SpFinanceUi.cardDecoration(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 24),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.info_outline_rounded),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Сборка больше не найдена. Обновите список СП и попробуйте открыть её снова.',
-                              style: SpFinanceUi.bodyStyle,
-                            ),
-                          ),
-                        ],
-                      ),
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    color: context.brandPrimary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Сборка больше не найдена. Обновите список СП и попробуйте открыть её снова.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 13,
+                      height: 1.24,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -196,7 +193,7 @@ class _SpAssemblyDetailScreenState
                 bottomPad + 16,
               ),
               children: [
-                AppPageHeader(title: assembly.displayName, showBack: true),
+                SpPageHeader(title: assembly.displayName),
                 const SizedBox(height: 15),
                 _AssemblySummaryCard(assembly: assembly),
                 const SizedBox(height: 15),
@@ -244,51 +241,69 @@ class _AssemblySummaryCard extends StatelessWidget {
     final totalParticipants = stats.participants.length;
     final unfilledTracks = stats.tracksTotal - stats.tracksWithSP;
     final createdDate = DateFormat('dd.MM.yyyy').format(assembly.createdAt);
-    final statusText = _assemblyStatusText(assembly.status);
+    final statusText = assembly.statusDisplayName;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: SpFinanceUi.cardDecoration(),
+    return SpAnimatedHeroSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 58,
+                height: 58,
                 decoration: BoxDecoration(
-                  color: context.brandPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
                 ),
-                child: Icon(
-                  Icons.group_work_rounded,
-                  color: context.brandPrimary,
-                  size: 24,
+                child: const Icon(
+                  Icons.groups_rounded,
+                  color: Colors.white,
+                  size: 30,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Совместная покупка',
-                      style: SpFinanceUi.labelStyle.copyWith(
-                        color: SpFinanceUi.mutedTextColor,
+                      style: TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 6),
                     Text(
                       assembly.displayName,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: SpFinanceUi.textColor,
+                        color: Colors.white,
                         fontFamily: 'Gilroy',
-                        fontSize: 20,
-                        height: 24 / 20,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        height: 1.04,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      'Создана $createdDate',
+                      style: const TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontFamily: 'Gilroy',
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -301,95 +316,26 @@ class _AssemblySummaryCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _InfoChip(
-                icon: Icons.calendar_today_rounded,
-                label: createdDate,
-                color: context.brandPrimary,
+              SpHeroChip(label: statusText),
+              SpHeroChip(
+                icon: Icons.people_rounded,
+                label: '$totalParticipants участников',
               ),
-              _InfoChip(
-                icon: Icons.flag_rounded,
-                label: statusText,
-                color: context.brandPrimary,
-              ),
-              _InfoChip(
+              SpHeroChip(
                 icon: paidCount == totalParticipants && totalParticipants > 0
                     ? Icons.check_circle_rounded
                     : Icons.payments_rounded,
                 label: 'Оплата $paidCount/$totalParticipants',
-                color: paidCount == totalParticipants && totalParticipants > 0
-                    ? Colors.green.shade700
-                    : context.brandPrimary,
               ),
-              _InfoChip(
+              SpHeroChip(
                 icon: unfilledTracks > 0
                     ? Icons.warning_rounded
                     : Icons.verified_rounded,
                 label: unfilledTracks > 0
-                    ? 'Не заполнено: $unfilledTracks'
+                    ? 'Без СП: $unfilledTracks'
                     : 'Треки заполнены',
-                color: unfilledTracks > 0
-                    ? Colors.orange.shade700
-                    : Colors.green.shade700,
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _assemblyStatusText(String status) {
-    switch (status) {
-      case 'new':
-        return 'Новая';
-      case 'packing':
-        return 'Упаковка';
-      case 'packed':
-        return 'Упакована';
-      case 'shipped':
-        return 'Отправлена';
-      case 'completed':
-        return 'Завершена';
-      default:
-        return status;
-    }
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontFamily: 'Gilroy',
-              fontSize: 12,
-              height: 14 / 12,
-              fontWeight: FontWeight.w700,
-            ),
           ),
         ],
       ),
@@ -398,15 +344,10 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _InlineStatusChip extends StatelessWidget {
-  final IconData icon;
   final String label;
   final Color color;
 
-  const _InlineStatusChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
+  const _InlineStatusChip({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -419,8 +360,6 @@ class _InlineStatusChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
           Text(
             label,
             style: SpFinanceUi.labelStyle.copyWith(
@@ -559,32 +498,38 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 24,
-          height: 24,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
-            color: context.brandPrimary,
-            borderRadius: BorderRadius.circular(6),
+            color: context.brandPrimary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(15),
           ),
-          child: Icon(icon, size: 15, color: Colors.white),
+          child: Icon(icon, size: 22, color: context.brandPrimary),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 12),
         Expanded(child: Text(title, style: SpFinanceUi.sectionTitleStyle)),
         if (trailing != null)
           Builder(
             builder: (context) {
               final color = trailingColor ?? context.brandPrimary;
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(8),
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: color.withValues(alpha: 0.16)),
                 ),
                 child: Text(
                   trailing!,
-                  style: SpFinanceUi.labelStyle.copyWith(
+                  style: TextStyle(
                     color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10,
+                    fontFamily: 'Gilroy',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11.5,
+                    height: 1,
                   ),
                 ),
               );
@@ -616,28 +561,34 @@ class _MetricTile extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         decoration: SpFinanceUi.softDecoration(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, size: 15, color: resolvedColor),
-                const SizedBox(width: 5),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: resolvedColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 15, color: resolvedColor),
+                ),
+                const SizedBox(width: 7),
                 Expanded(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: SpFinanceUi.labelStyle.copyWith(
-                      color: SpFinanceUi.mutedTextColor,
-                    ),
+                    style: SpFinanceUi.labelStyle.copyWith(fontSize: 11),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 8),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
@@ -649,7 +600,7 @@ class _MetricTile extends StatelessWidget {
                   fontFamily: 'Gilroy',
                   fontSize: 18,
                   height: 22 / 18,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -825,13 +776,14 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: statusColor.withValues(alpha: 0.16)),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: statusColor.withValues(alpha: 0.14)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.035),
-              offset: const Offset(0, 3),
-              blurRadius: 16,
+              color: Colors.black.withValues(alpha: 0.045),
+              blurRadius: 22,
+              spreadRadius: -14,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
@@ -840,20 +792,20 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
             // Заголовок участника
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(22),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 child: Row(
                   children: [
                     // Чекбокс оплаты
                     GestureDetector(
                       onTap: _isUpdating ? null : _togglePaymentStatus,
                       child: Container(
-                        width: 24,
-                        height: 24,
+                        width: 30,
+                        height: 30,
                         decoration: BoxDecoration(
                           color: isPaid ? statusColor : Colors.white,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(11),
                           border: Border.all(
                             color: isPaid ? statusColor : Colors.grey.shade300,
                             width: 2,
@@ -869,14 +821,20 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    CircleAvatar(
-                      backgroundColor: statusColor.withValues(alpha: 0.1),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       child: Text(
                         widget.participant.name[0].toUpperCase(),
                         style: TextStyle(
                           color: statusColor,
                           fontFamily: 'Gilroy',
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
@@ -900,9 +858,6 @@ class _ParticipantCardState extends ConsumerState<_ParticipantCard> {
                           ),
                           const SizedBox(height: 5),
                           _InlineStatusChip(
-                            icon: isPaid
-                                ? Icons.check_circle_rounded
-                                : Icons.schedule_rounded,
                             label: isPaid ? 'Оплачено' : 'Ожидает оплату',
                             color: statusColor,
                           ),
@@ -1254,7 +1209,9 @@ class _TrackCard extends StatelessWidget {
 
     // Информация о товаре
     final productName = track.productInfo?.title ?? track.productTitle;
+    final productTitle = productName?.trim();
     final productQty = track.productInfo?.quantity ?? 1;
+    final participantName = track.spParticipantName?.trim();
     final statusColor = isComplete
         ? Colors.green.shade700
         : Colors.orange.shade700;
@@ -1268,142 +1225,153 @@ class _TrackCard extends StatelessWidget {
             extra: {'assemblyId': assembly.id},
           );
         },
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(24),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: statusColor.withValues(alpha: 0.16)),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                offset: const Offset(0, 3),
-                blurRadius: 14,
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 24,
+                spreadRadius: -14,
+                offset: const Offset(0, 14),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Верхняя строка: номер трека + статус
               Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      track.trackNumber,
-                      style: SpFinanceUi.bodyStyle.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.local_shipping_rounded,
+                      color: statusColor,
+                      size: 22,
                     ),
                   ),
-                  _InlineStatusChip(
-                    icon: isComplete
-                        ? Icons.check_circle_rounded
-                        : Icons.warning_rounded,
-                    label: isComplete ? 'Заполнено' : 'Не заполнено',
-                    color: statusColor,
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.trackNumber,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontFamily: 'Gilroy',
+                            fontSize: 17,
+                            height: 1.1,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.15,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        _InlineStatusChip(
+                          label: isComplete ? 'Заполнено' : 'Не заполнено',
+                          color: statusColor,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: Colors.grey,
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.025),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
 
-              // О товаре
-              if (productName != null && productName.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.inventory_2_rounded,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '$productName × $productQty шт.',
-                        style: SpFinanceUi.labelStyle.copyWith(
-                          color: SpFinanceUi.mutedTextColor,
+              if ((productTitle != null && productTitle.isNotEmpty) ||
+                  (participantName != null && participantName.isNotEmpty)) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: SpFinanceUi.softDecoration(context),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (productTitle != null && productTitle.isNotEmpty)
+                        _TrackMetaPill(
+                          icon: Icons.inventory_2_rounded,
+                          label: '$productTitle × $productQty шт.',
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                      if (participantName != null && participantName.isNotEmpty)
+                        _TrackMetaPill(
+                          icon: Icons.person_rounded,
+                          label: participantName,
+                          color: context.brandPrimary,
+                        ),
+                    ],
+                  ),
                 ),
               ],
 
-              // Имя участника
-              if (track.spParticipantName != null &&
-                  track.spParticipantName!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person_rounded,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      track.spParticipantName!,
-                      style: SpFinanceUi.labelStyle.copyWith(
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = (constraints.maxWidth - 8) / 2;
+
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _FinanceItem(
+                        width: itemWidth,
+                        label: 'Цена товара',
+                        value: clientPriceRub,
                         color: context.brandPrimary,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                  ],
-                ),
-              ],
-
-              const Divider(height: 16),
-
-              // Финансовые показатели - 2 строки по 2 элемента
-              Row(
-                children: [
-                  Expanded(
-                    child: _FinanceItem(
-                      label: 'Цена товара',
-                      value: clientPriceRub,
-                      color: context.brandPrimary,
-                    ),
-                  ),
-                  Expanded(
-                    child: _FinanceItem(
-                      label: 'Цена доставки',
-                      value: shippingCostRub,
-                      color: context.brandPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _FinanceItem(
-                      label: 'Итого к оплате',
-                      value: totalRub,
-                      color: context.brandPrimary,
-                      isBold: true,
-                    ),
-                  ),
-                  Expanded(
-                    child: _FinanceItem(
-                      label: 'Прибыль',
-                      value: profitRub,
-                      color: profitRub != null && profitRub > 0
-                          ? Colors.green.shade700
-                          : Colors.red.shade700,
-                      isBold: true,
-                    ),
-                  ),
-                ],
+                      _FinanceItem(
+                        width: itemWidth,
+                        label: 'Доставка',
+                        value: shippingCostRub,
+                        color: context.brandPrimary,
+                      ),
+                      _FinanceItem(
+                        width: itemWidth,
+                        label: 'Итого',
+                        value: totalRub,
+                        color: context.brandPrimary,
+                        isBold: true,
+                      ),
+                      _FinanceItem(
+                        width: itemWidth,
+                        label: 'Прибыль',
+                        value: profitRub,
+                        color: profitRub != null && profitRub > 0
+                            ? Colors.green.shade700
+                            : Colors.red.shade700,
+                        isBold: true,
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -1413,13 +1381,61 @@ class _TrackCard extends StatelessWidget {
   }
 }
 
+class _TrackMetaPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  const _TrackMetaPill({required this.icon, required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = color ?? AppColors.textSecondary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width - 150,
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: accent,
+                fontFamily: 'Gilroy',
+                fontSize: 11.5,
+                height: 1,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FinanceItem extends StatelessWidget {
+  final double width;
   final String label;
   final double? value;
   final Color color;
   final bool isBold;
 
   const _FinanceItem({
+    required this.width,
     required this.label,
     required this.value,
     required this.color,
@@ -1428,22 +1444,49 @@ class _FinanceItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: SpFinanceUi.labelStyle.copyWith(fontSize: 10)),
-        const SizedBox(height: 2),
-        Text(
-          value != null ? '${value!.toStringAsFixed(2)} ₽' : '—',
-          style: TextStyle(
-            fontFamily: 'Gilroy',
-            fontSize: 12,
-            height: 14 / 12,
-            color: value != null ? color : Colors.grey.shade400,
-            fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
+    final hasValue = value != null;
+
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isBold
+              ? color.withValues(alpha: 0.075)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isBold
+                ? color.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.025),
           ),
         ),
-      ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SpFinanceUi.labelStyle.copyWith(fontSize: 10.5, height: 1),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasValue ? '${value!.toStringAsFixed(0)} ₽' : '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: isBold ? 14 : 13,
+                height: 1,
+                color: hasValue ? color : Colors.grey.shade400,
+                fontWeight: isBold ? FontWeight.w900 : FontWeight.w800,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1488,9 +1531,9 @@ class _BoxesSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.brandPrimary.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.08)),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1503,7 +1546,7 @@ class _BoxesSection extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: context.brandPrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(15),
                 ),
                 child: Center(
                   child: Text(
@@ -1540,7 +1583,7 @@ class _BoxesSection extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
               children: [
