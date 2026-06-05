@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
+import '../../../core/utils/error_utils.dart';
 import '../data/auth_provider.dart';
 import 'auth_visuals.dart';
 
@@ -170,10 +172,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         _startPolling();
         _startCountdown();
       } else {
-        final error = response.data?['error'] ?? 'Ошибка запроса';
+        final error = _extractResponseError(response.data) ?? 'Ошибка запроса';
         _showError(error);
         setState(() => _isLoading = false);
       }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      _showError(
+        _passwordResetErrorMessage(e, fallback: 'Не удалось отправить запрос'),
+      );
+      setState(() => _isLoading = false);
     } catch (e) {
       if (!mounted) return;
       _showError('Не удалось отправить запрос');
@@ -290,10 +298,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           _isLoading = false;
         });
       } else {
-        final error = response.data?['error'] ?? 'Ошибка';
+        final error = _extractResponseError(response.data) ?? 'Ошибка';
         _showError(error);
         setState(() => _isLoading = false);
       }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      _showError(
+        _passwordResetErrorMessage(e, fallback: 'Не удалось установить пароль'),
+      );
+      setState(() => _isLoading = false);
     } catch (e) {
       if (!mounted) return;
       _showError('Не удалось установить пароль');
@@ -310,6 +324,31 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (!mounted) return;
       await launchUrl(uri);
     }
+  }
+
+  String? _extractResponseError(Object? data) {
+    if (data is Map) {
+      final error = data['error'] ?? data['message'];
+      if (error is String && error.trim().isNotEmpty) {
+        return error.trim();
+      }
+    }
+    return null;
+  }
+
+  String _passwordResetErrorMessage(
+    DioException error, {
+    required String fallback,
+  }) {
+    final serverError = _extractResponseError(error.response?.data);
+    if (serverError != null) return serverError;
+
+    if (error.response?.statusCode == 404) {
+      return 'Номер телефона не зарегистрирован у этого партнёра';
+    }
+
+    final userMessage = ErrorUtils.getErrorInfo(error).message;
+    return userMessage.isNotEmpty ? userMessage : fallback;
   }
 
   void _showError(String message) {
