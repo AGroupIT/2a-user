@@ -39,6 +39,7 @@ class AppShell extends ConsumerWidget {
     'Треки',
     'Счета',
     'Поддержка',
+    'Маркет',
     'Ещё',
   ];
 
@@ -210,6 +211,11 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
       icon: CupertinoIcons.chat_bubble_text,
       selectedIcon: CupertinoIcons.chat_bubble_text_fill,
       label: 'Чат',
+    ),
+    (
+      icon: CupertinoIcons.cart,
+      selectedIcon: CupertinoIcons.cart_fill,
+      label: 'Маркет',
     ),
     (
       icon: CupertinoIcons.ellipsis,

@@ -9,6 +9,7 @@ import '../../core/ui/app_colors.dart';
 import '../../core/ui/app_layout.dart';
 import '../../core/ui/pixso_top_menu_surface.dart';
 import '../../features/clients/presentation/client_switcher_button.dart';
+import '../../features/china_marketplaces/data/china_marketplace_provider.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/notifications/domain/notification_item.dart';
 import '../../features/notifications/presentation/notifications_bell_button.dart';
@@ -138,8 +139,12 @@ class _ActionsPill extends ConsumerWidget {
         ) ??
         false;
 
+    final marketplaceCartCount = ref.watch(
+      chinaMarketplacesControllerProvider.select((state) => state.cartQuantity),
+    );
+
     return PixsoTopMenuSurface(
-      width: 116,
+      width: 152,
       padding: const EdgeInsets.all(7),
       child: Material(
         type: MaterialType.transparency,
@@ -161,6 +166,18 @@ class _ActionsPill extends ConsumerWidget {
               hasBadge: hasUnreadSupportChat,
               onTap: () => context.go('/support'),
             ),
+            const SizedBox(width: 6),
+            _TopBarActionButton(
+              tooltip: 'Корзина маркетплейсов',
+              icon: CupertinoIcons.cart,
+              hasBadge: marketplaceCartCount > 0,
+              badgeText: marketplaceCartCount > 9
+                  ? '9+'
+                  : marketplaceCartCount > 0
+                  ? '$marketplaceCartCount'
+                  : null,
+              onTap: () => context.go('/marketplaces/cart'),
+            ),
           ],
         ),
       ),
@@ -172,6 +189,7 @@ class _TopBarActionButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
   final bool hasBadge;
+  final String? badgeText;
   final bool highlighted;
   final VoidCallback onTap;
 
@@ -180,6 +198,7 @@ class _TopBarActionButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.hasBadge = false,
+    this.badgeText,
     this.highlighted = false,
   });
 
@@ -208,16 +227,35 @@ class _TopBarActionButton extends StatelessWidget {
               ),
               if (hasBadge)
                 Positioned(
-                  right: -2,
-                  top: -2,
+                  right: badgeText == null ? -2 : -7,
+                  top: badgeText == null ? -2 : -6,
                   child: Container(
-                    width: 8,
-                    height: 8,
+                    constraints: BoxConstraints(
+                      minWidth: badgeText == null ? 8 : 16,
+                      minHeight: badgeText == null ? 8 : 16,
+                    ),
+                    padding: badgeText == null
+                        ? EdgeInsets.zero
+                        : const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: Colors.white, width: 1.5),
                     ),
+                    child: badgeText == null
+                        ? null
+                        : Center(
+                            child: Text(
+                              badgeText!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Gilroy',
+                                fontSize: 8.5,
+                                height: 1,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
             ],

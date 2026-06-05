@@ -20,6 +20,7 @@ import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/track_search_no_code_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
+import '../features/china_marketplaces/presentation/china_marketplaces_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
 import '../features/sp_finance/presentation/sp_v2_purchase_detail_screen.dart';
@@ -170,6 +171,34 @@ final routerProvider = Provider<GoRouter>((ref) {
                   final initialMessage = state.extra as String?;
                   return SupportChatScreen(initialMessage: initialMessage);
                 },
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            observers: [ClientLogNavigatorObserver()],
+            routes: [
+              GoRoute(
+                name: 'china-marketplaces',
+                path: '/marketplaces',
+                builder: (context, state) => const ChinaMarketplacesScreen(),
+                routes: [
+                  GoRoute(
+                    name: 'china-marketplace-cart',
+                    path: 'cart',
+                    builder: (context, state) =>
+                        const ChinaMarketplaceCartScreen(),
+                  ),
+                  GoRoute(
+                    name: 'china-marketplace-product',
+                    path: 'product/:id',
+                    builder: (context, state) {
+                      final productId = state.pathParameters['id'] ?? '';
+                      return ChinaMarketplaceProductDetailScreen(
+                        productId: productId,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
