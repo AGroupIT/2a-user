@@ -21,6 +21,7 @@ class TrackItem {
   final String? clientCode;
   final int? clientCodeId;
   final List<StatusTimelineEntry> statusHistory;
+  final List<TrackSpItem> spItems;
 
   const TrackItem({
     this.id,
@@ -41,6 +42,7 @@ class TrackItem {
     this.clientCode,
     this.clientCodeId,
     this.statusHistory = const [],
+    this.spItems = const [],
   });
 
   // Последний активный фотозапрос (не отмененный)
@@ -123,6 +125,12 @@ class TrackItem {
         .map(StatusTimelineEntry.fromStatusHistoryJson)
         .toList();
 
+    final spItemsList = json['spItems'] as List<dynamic>? ?? [];
+    final spItems = spItemsList
+        .whereType<Map<String, dynamic>>()
+        .map(TrackSpItem.fromJson)
+        .toList();
+
     // Код клиента
     final clientCodeData = json['clientCode'] as Map<String, dynamic>?;
     final clientCode = clientCodeData?['code'] as String?;
@@ -147,8 +155,143 @@ class TrackItem {
       clientCode: clientCode,
       clientCodeId: clientCodeId,
       statusHistory: statusHistory,
+      spItems: spItems,
     );
   }
+}
+
+class TrackSpItem {
+  final int id;
+  final String title;
+  final String status;
+  final String? sourceUrl;
+  final int quantity;
+  final int? linkQuantity;
+  final String? linkComment;
+  final double? clientPriceYuan;
+  final double? clientPriceRub;
+  final double? shippingCostRub;
+  final double? additionalExpensesRub;
+  final TrackSpCustomer? customer;
+  final TrackSpPurchase? purchase;
+  final List<TrackSpMedia> media;
+
+  const TrackSpItem({
+    required this.id,
+    required this.title,
+    required this.status,
+    this.sourceUrl,
+    required this.quantity,
+    this.linkQuantity,
+    this.linkComment,
+    this.clientPriceYuan,
+    this.clientPriceRub,
+    this.shippingCostRub,
+    this.additionalExpensesRub,
+    this.customer,
+    this.purchase,
+    this.media = const [],
+  });
+
+  factory TrackSpItem.fromJson(Map<String, dynamic> json) {
+    return TrackSpItem(
+      id: _readInt(json['id']) ?? 0,
+      title: json['title']?.toString() ?? 'Товар СП',
+      status: json['status']?.toString() ?? '',
+      sourceUrl: json['sourceUrl']?.toString(),
+      quantity: _readInt(json['quantity']) ?? 1,
+      linkQuantity: _readInt(json['linkQuantity']),
+      linkComment: json['linkComment']?.toString(),
+      clientPriceYuan: _readDouble(json['clientPriceYuan']),
+      clientPriceRub: _readDouble(json['clientPriceRub']),
+      shippingCostRub: _readDouble(json['shippingCostRub']),
+      additionalExpensesRub: _readDouble(json['additionalExpensesRub']),
+      customer: json['customer'] is Map<String, dynamic>
+          ? TrackSpCustomer.fromJson(json['customer'] as Map<String, dynamic>)
+          : null,
+      purchase: json['purchase'] is Map<String, dynamic>
+          ? TrackSpPurchase.fromJson(json['purchase'] as Map<String, dynamic>)
+          : null,
+      media:
+          (json['media'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(TrackSpMedia.fromJson)
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+class TrackSpCustomer {
+  final int id;
+  final String fullName;
+  final String? phone;
+  final String? telegram;
+
+  const TrackSpCustomer({
+    required this.id,
+    required this.fullName,
+    this.phone,
+    this.telegram,
+  });
+
+  factory TrackSpCustomer.fromJson(Map<String, dynamic> json) {
+    return TrackSpCustomer(
+      id: _readInt(json['id']) ?? 0,
+      fullName: json['fullName']?.toString() ?? 'Клиент СП',
+      phone: json['phone']?.toString(),
+      telegram: json['telegram']?.toString(),
+    );
+  }
+}
+
+class TrackSpPurchase {
+  final int id;
+  final String title;
+  final String currency;
+
+  const TrackSpPurchase({
+    required this.id,
+    required this.title,
+    required this.currency,
+  });
+
+  factory TrackSpPurchase.fromJson(Map<String, dynamic> json) {
+    return TrackSpPurchase(
+      id: _readInt(json['id']) ?? 0,
+      title: json['title']?.toString() ?? 'Совместная покупка',
+      currency: json['currency']?.toString() ?? 'CNY',
+    );
+  }
+}
+
+class TrackSpMedia {
+  final int id;
+  final String url;
+  final String? thumbnailUrl;
+
+  const TrackSpMedia({required this.id, required this.url, this.thumbnailUrl});
+
+  factory TrackSpMedia.fromJson(Map<String, dynamic> json) {
+    return TrackSpMedia(
+      id: _readInt(json['id']) ?? 0,
+      url: json['url']?.toString() ?? '',
+      thumbnailUrl: json['thumbnailUrl']?.toString(),
+    );
+  }
+}
+
+int? _readInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+double? _readDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString().replaceAll(',', '.'));
 }
 
 // Сборка (Assembly)

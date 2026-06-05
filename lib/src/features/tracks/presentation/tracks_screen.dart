@@ -7311,6 +7311,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             onEdit: () => widget.onEditProduct(track),
                           ),
                         ],
+                        if (track.spItems.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          _TrackSpItemsBlock(items: track.spItems),
+                        ],
                         if (infoSections.isNotEmpty) ...[
                           const SizedBox(height: 10),
                           _TrackInfoSectionsSurface(children: infoSections),
@@ -7604,6 +7608,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 photoMediaUrls: photoMediaUrls,
                 hasProductInfo: hasProductInfo,
               ),
+            ],
+            if (track.spItems.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _TrackSpItemsBlock(items: track.spItems),
             ],
             if (infoSections.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -11013,6 +11021,393 @@ class _CollapsibleNoteState extends State<_CollapsibleNote> {
         ],
       ),
     );
+  }
+}
+
+class _TrackSpItemsBlock extends StatelessWidget {
+  final List<TrackSpItem> items;
+
+  const _TrackSpItemsBlock({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    final visibleItems = items.take(3).toList();
+    final firstPurchase = items
+        .map((item) => item.purchase?.title.trim())
+        .whereType<String>()
+        .where((title) => title.isNotEmpty)
+        .firstOrNull;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.86),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withValues(alpha: 0.12)),
+                ),
+                child: Icon(Icons.groups_2_rounded, color: accent, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      firstPurchase ?? 'Совместная покупка',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14.5,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      items.length == 1
+                          ? 'Трек привязан к товару СП'
+                          : 'Трек привязан к товарам СП: ${items.length}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1.1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < visibleItems.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _TrackSpItemRow(item: visibleItems[i]),
+          ],
+          if (items.length > visibleItems.length) ...[
+            const SizedBox(height: 8),
+            Text(
+              '+ ещё ${items.length - visibleItems.length} товар(а)',
+              style: TextStyle(
+                color: accent,
+                fontFamily: 'Gilroy',
+                fontSize: 12.5,
+                height: 1.1,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TrackSpItemRow extends StatelessWidget {
+  final TrackSpItem item;
+
+  const _TrackSpItemRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    final thumbnailUrl = item.media
+        .map(
+          (media) => (media.thumbnailUrl?.isNotEmpty == true)
+              ? media.thumbnailUrl!
+              : media.url,
+        )
+        .where((url) => url.trim().isNotEmpty)
+        .firstOrNull;
+    final customerName = item.customer?.fullName.trim();
+    final priceLabel = _formatSpItemMoney(item);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TrackSpItemPreview(url: thumbnailUrl, trackTitle: item.title),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13.5,
+                    height: 1.12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children: [
+                    if (customerName != null && customerName.isNotEmpty)
+                      _TrackSpMiniPill(
+                        icon: Icons.person_outline_rounded,
+                        label: customerName,
+                      ),
+                    _TrackSpMiniPill(
+                      icon: Icons.inventory_2_outlined,
+                      label: '${item.quantity} шт',
+                    ),
+                    _TrackSpMiniPill(
+                      icon: Icons.verified_outlined,
+                      label: _spItemStatusLabel(item.status),
+                    ),
+                    if (priceLabel != null)
+                      _TrackSpMiniPill(
+                        icon: Icons.payments_outlined,
+                        label: priceLabel,
+                        highlighted: true,
+                      ),
+                  ],
+                ),
+                if ((item.linkComment ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  Text(
+                    item.linkComment!.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 12,
+                      height: 1.18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if ((item.sourceUrl ?? '').trim().isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.link_rounded,
+              color: accent.withValues(alpha: 0.72),
+              size: 18,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TrackSpItemPreview extends StatelessWidget {
+  final String? url;
+  final String trackTitle;
+
+  const _TrackSpItemPreview({this.url, required this.trackTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    final imageUrl = url?.trim();
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Icon(Icons.shopping_bag_outlined, color: accent, size: 22),
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final photo = PhotoItem(
+          url: imageUrl,
+          date: DateTime.now(),
+          trackingNumber: trackTitle,
+        );
+        Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute<void>(
+            fullscreenDialog: true,
+            builder: (_) => PhotoViewerScreen(
+              item: photo,
+              allPhotos: [photo],
+              initialIndex: 0,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: 48,
+        height: 48,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: AppCachedMediaImage(
+          url: imageUrl,
+          thumbnailSize: 240,
+          memCacheWidth: 120,
+          memCacheHeight: 120,
+          maxWidthDiskCache: 240,
+          maxHeightDiskCache: 240,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          filterQuality: FilterQuality.low,
+          imageBuilder: (_, imageProvider) => DecoratedBox(
+            decoration: BoxDecoration(
+              image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+            ),
+          ),
+          placeholder: (_, _) => Center(
+            child: Icon(Icons.shopping_bag_outlined, color: accent, size: 20),
+          ),
+          errorWidget: (_, _, _) => Center(
+            child: Icon(Icons.broken_image_outlined, color: accent, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackSpMiniPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool highlighted;
+
+  const _TrackSpMiniPill({
+    required this.icon,
+    required this.label,
+    this.highlighted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    final color = highlighted ? accent : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? accent.withValues(alpha: 0.10)
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: highlighted
+              ? accent.withValues(alpha: 0.14)
+              : Colors.black.withValues(alpha: 0.035),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Gilroy',
+                fontSize: 11.5,
+                height: 1,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _formatSpItemMoney(TrackSpItem item) {
+  final rubTotal =
+      (item.clientPriceRub ?? 0) +
+      (item.shippingCostRub ?? 0) +
+      (item.additionalExpensesRub ?? 0);
+  if (rubTotal > 0) {
+    return '${_compactAmount(rubTotal)} ₽';
+  }
+  if ((item.clientPriceYuan ?? 0) > 0) {
+    return '¥${_compactAmount(item.clientPriceYuan!)}';
+  }
+  return null;
+}
+
+String _compactAmount(double value) {
+  final formatter = value % 1 == 0
+      ? NumberFormat('#,##0', 'ru')
+      : NumberFormat('#,##0.##', 'ru');
+  return formatter.format(value);
+}
+
+String _spItemStatusLabel(String status) {
+  switch (status) {
+    case 'requested':
+      return 'Запрошен';
+    case 'need_info':
+      return 'Нужны данные';
+    case 'approved':
+      return 'Подтверждён';
+    case 'purchased':
+      return 'Выкуплен';
+    case 'not_purchased':
+      return 'Не выкуплен';
+    case 'cancelled':
+      return 'Отменён';
+    case 'in_transit':
+      return 'В пути';
+    case 'arrived':
+      return 'Прибыл';
+    case 'sorted':
+      return 'Разобран';
+    case 'ready_to_ship':
+      return 'Готов к отправке';
+    case 'sent_to_customer':
+      return 'Отправлен клиенту';
+    case 'delivered':
+      return 'Доставлен';
+    default:
+      return status.isEmpty ? 'СП' : status;
   }
 }
 

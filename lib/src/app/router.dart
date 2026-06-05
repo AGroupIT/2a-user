@@ -20,9 +20,10 @@ import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/track_search_no_code_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
-import '../features/sp_finance/presentation/sp_assemblies_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
+import '../features/sp_finance/presentation/sp_v2_purchase_detail_screen.dart';
+import '../features/sp_finance/presentation/sp_v2_purchases_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/referral/presentation/referral_screen.dart';
 import '../features/tariffs/presentation/tariffs_screen.dart';
@@ -310,9 +311,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AppScaffold(
           title: 'Совместные покупки',
-          child: SpAssembliesScreen(),
+          child: SpV2PurchasesScreen(),
         ),
         routes: [
+          GoRoute(
+            name: 'sp-v2-purchase-detail',
+            path: 'purchases/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return const _InvalidLinkScreen(
+                  reason: 'Некорректный ID совместной покупки',
+                );
+              }
+              return AppScaffold(
+                title: 'Совместная покупка',
+                child: SpV2PurchaseDetailScreen(purchaseId: id),
+              );
+            },
+          ),
           GoRoute(
             name: 'sp-assembly-detail',
             path: 'assemblies/:id',

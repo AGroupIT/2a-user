@@ -24,6 +24,7 @@ import '../../photos/data/photos_provider.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../rules/data/rules_provider.dart';
 import '../../sp_finance/data/sp_provider.dart';
+import '../../sp_finance/data/sp_v2_provider.dart';
 import '../../support/data/chat_provider.dart';
 import '../../tracks/data/assemblies_provider.dart' as tracks_assemblies;
 import '../../tracks/data/tracks_provider.dart';
@@ -730,6 +731,8 @@ class AuthNotifier extends Notifier<AuthState> {
 
     // SP Finance
     inv(spAssembliesControllerProvider);
+    inv(spV2PurchasesControllerProvider);
+    inv(spV2CustomersProvider);
 
     // Tenant-scoped content and chats
     inv(chatControllerProvider);

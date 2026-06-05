@@ -107,11 +107,13 @@ class SpFinanceUi {
 class SpPageHeader extends StatelessWidget {
   final String title;
   final String fallbackRoute;
+  final Widget? trailing;
 
   const SpPageHeader({
     super.key,
     required this.title,
     this.fallbackRoute = '/',
+    this.trailing,
   });
 
   @override
@@ -171,6 +173,7 @@ class SpPageHeader extends StatelessWidget {
             ),
           ),
         ),
+        if (trailing != null) ...[const SizedBox(width: 10), trailing!],
       ],
     );
   }
@@ -209,6 +212,157 @@ class SpHeroChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class SpInfoNotice extends StatelessWidget {
+  final String title;
+  final String message;
+  final IconData icon;
+  final Widget? trailing;
+
+  const SpInfoNotice({
+    super.key,
+    required this.title,
+    required this.message,
+    this.icon = Icons.info_outline_rounded,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: accent, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 10), trailing!],
+        ],
+      ),
+    );
+  }
+}
+
+class SpCurrencySelector extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const SpCurrencySelector({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        children: [
+          _CurrencyButton(
+            label: 'Юани ¥',
+            selected: value == 'CNY',
+            onTap: () => onChanged('CNY'),
+          ),
+          const SizedBox(width: 6),
+          _CurrencyButton(
+            label: 'Рубли ₽',
+            selected: value == 'RUB',
+            onTap: () => onChanged('RUB'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrencyButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CurrencyButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Material(
+        color: selected ? context.brandPrimary : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            height: 42,
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
