@@ -131,7 +131,7 @@ class ApiClient {
     final resetTooRecent =
         lastResetAt != null &&
         now.difference(lastResetAt) < _minConnectionResetInterval;
-    if (!force && (_inFlightRequests > 1 || resetTooRecent)) {
+    if (!force && (_inFlightRequests > 0 || resetTooRecent)) {
       ClientLogService.instance.add(
         type: 'http_connection_reset_skipped',
         level: 'info',
