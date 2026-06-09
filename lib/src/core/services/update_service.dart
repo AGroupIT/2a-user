@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_config.dart';
 import '../ui/app_colors.dart';
+import '../ui/app_toast.dart';
 
 /// Info about an available update for the current platform.
 class UpdateInfo {
@@ -52,12 +53,18 @@ class UpdateService {
     defaultValue: 'direct',
   );
 
+  static bool get isRustoreDistribution => _distribution == 'rustore';
+
+  static bool get isDirectDistribution => _distribution == 'direct';
+
   /// Check for update and return [UpdateInfo] if available.
-  static Future<UpdateInfo?> checkForUpdate() async {
+  static Future<UpdateInfo?> checkForUpdate({
+    bool rethrowErrors = false,
+  }) async {
     try {
       if (kIsWeb) return null;
       if (!Platform.isAndroid && !Platform.isIOS) return null;
-      if (Platform.isAndroid && _distribution == 'rustore') return null;
+      if (Platform.isAndroid && isRustoreDistribution) return null;
 
       final info = await PackageInfo.fromPlatform();
       final currentStr = info.buildNumber.isNotEmpty
@@ -98,7 +105,63 @@ class UpdateService {
       );
     } catch (e) {
       debugPrint('[UpdateService] Check failed: $e');
+      if (rethrowErrors) rethrow;
       return null;
+    }
+  }
+
+  /// Manual update check from "Ещё" / desktop side menu.
+  ///
+  /// Важно: RuStore-сборки не должны скачивать APK с нашего сервера.
+  /// Для них показываем только понятное сообщение, чтобы модерация RuStore
+  /// не отклонила AAB за альтернативный механизм обновления.
+  static Future<void> manualCheckAndPrompt(BuildContext context) async {
+    if (_isDialogShowing) return;
+
+    if (kIsWeb) {
+      _showSnackBar(context, 'Веб-версия обновляется автоматически.');
+      return;
+    }
+
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      _showSnackBar(
+        context,
+        'Проверка обновлений доступна только в приложении.',
+      );
+      return;
+    }
+
+    if (Platform.isAndroid && isRustoreDistribution) {
+      _showSnackBar(
+        context,
+        'Эта сборка обновляется через RuStore. Скачивание APK здесь отключено.',
+      );
+      return;
+    }
+
+    _showSnackBar(context, 'Проверяем обновление…');
+
+    try {
+      final update = await checkForUpdate(rethrowErrors: true);
+      if (!context.mounted) return;
+
+      if (update == null) {
+        _showSnackBar(context, 'У вас актуальная версия приложения.');
+        return;
+      }
+
+      _isDialogShowing = true;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !update.isForced,
+        builder: (_) => UpdateDialog(update: update),
+      );
+      _isDialogShowing = false;
+    } catch (error) {
+      if (!context.mounted) return;
+      _showSnackBar(context, 'Не удалось проверить обновление.', isError: true);
+    } finally {
+      _isDialogShowing = false;
     }
   }
 
@@ -139,6 +202,25 @@ class UpdateService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDismissedVersionKey, version);
     await prefs.setInt(_kDismissedAtKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static void _showSnackBar(
+    BuildContext context,
+    String message, {
+    bool isError = false,
+  }) {
+    // Ручная проверка обновлений часто запускается из modal sheet/menu.
+    // Обычный ScaffoldMessenger может быть недоступен или оказаться под модалкой,
+    // поэтому используем общий top-toast через root overlay — он виден всегда.
+    AppToast.show(
+      context,
+      message,
+      isError: isError,
+      icon: isError
+          ? Icons.error_outline_rounded
+          : Icons.system_update_alt_rounded,
+      backgroundColor: isError ? Colors.redAccent : context.brandPrimary,
+    );
   }
 
   /// Download the update file with progress callback.
@@ -358,7 +440,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
   @override
   Widget build(BuildContext context) {
     final hasRustore = !Platform.isIOS && widget.update.rustoreUrl.isNotEmpty;
-    final hasDownload = !Platform.isIOS && widget.update.downloadUrl.isNotEmpty;
+    final hasDownload =
+        !Platform.isIOS &&
+        !UpdateService.isRustoreDistribution &&
+        widget.update.downloadUrl.isNotEmpty;
 
     return PopScope(
       canPop: !widget.update.isForced,

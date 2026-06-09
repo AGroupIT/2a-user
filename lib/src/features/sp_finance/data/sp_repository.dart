@@ -12,16 +12,24 @@ class SpRepository {
     try {
       final response = await _apiClient.get('/client/sp/assemblies');
 
-      debugPrint('📦 SP API Response type: ${response.data.runtimeType}');
+      if (kDebugMode) {
+        debugPrint('📦 SP API Response type: ${response.data.runtimeType}');
+      }
 
       final List<dynamic> data = response.data as List<dynamic>;
-      debugPrint('📦 SP API returned ${data.length} assemblies');
+      if (kDebugMode) {
+        debugPrint('📦 SP API returned ${data.length} assemblies');
+      }
 
       final assemblies = <SpAssembly>[];
       for (var i = 0; i < data.length; i++) {
         try {
           final json = data[i] as Map<String, dynamic>;
-          debugPrint('📦 Processing assembly ${i + 1}/${data.length}: ID=${json['id']}');
+          if (kDebugMode) {
+            debugPrint(
+              '📦 Processing assembly ${i + 1}/${data.length}: ID=${json['id']}',
+            );
+          }
           assemblies.add(SpAssembly.fromJson(json));
         } catch (e, stack) {
           debugPrint('❌ Error parsing assembly $i: $e');
@@ -40,7 +48,10 @@ class SpRepository {
   }
 
   /// Обновить настройки сборки СП
-  Future<SpAssembly> updateAssembly(int assemblyId, SpAssemblyUpdate update) async {
+  Future<SpAssembly> updateAssembly(
+    int assemblyId,
+    SpAssemblyUpdate update,
+  ) async {
     final response = await _apiClient.patch(
       '/client/sp/assemblies/$assemblyId',
       data: update.toJson(),
@@ -81,10 +92,7 @@ class SpRepository {
   ) async {
     await _apiClient.post(
       '/client/sp/assemblies/$assemblyId/participant-payment',
-      data: {
-        'participantName': participantName,
-        'isPaid': isPaid,
-      },
+      data: {'participantName': participantName, 'isPaid': isPaid},
     );
   }
 }

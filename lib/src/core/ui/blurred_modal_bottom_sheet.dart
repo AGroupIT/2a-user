@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'app_layout.dart';
+
 /// Project-wide modal bottom sheet with a dimmed + softly blurred backdrop.
 ///
 /// It intentionally mirrors the common subset of [showModalBottomSheet]
@@ -154,6 +156,13 @@ class _BlurredModalBottomSheetPageState<T>
 
   void _onDragUpdate(DragUpdateDetails details) {
     if (!widget.enableDrag) return;
+    if (AppLayout.useSideNavigation(context)) {
+      final dx = details.primaryDelta ?? 0;
+      if (dx <= 0 && _dragOffset <= 0) return;
+      setState(() => _dragOffset = (_dragOffset + dx).clamp(0.0, 1000.0));
+      return;
+    }
+
     final dy = details.primaryDelta ?? 0;
     if (dy <= 0 && _dragOffset <= 0) return;
     setState(() => _dragOffset = (_dragOffset + dy).clamp(0.0, 1000.0));
@@ -162,6 +171,16 @@ class _BlurredModalBottomSheetPageState<T>
   void _onDragEnd(DragEndDetails details) {
     if (!widget.enableDrag) return;
     final velocity = details.primaryVelocity ?? 0;
+    if (AppLayout.useSideNavigation(context)) {
+      final shouldClose = velocity > 650 || _dragOffset > 96;
+      if (shouldClose) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+      if (_dragOffset != 0) setState(() => _dragOffset = 0);
+      return;
+    }
+
     final shouldClose = velocity > 650 || _dragOffset > 96;
     if (shouldClose) {
       Navigator.of(context).maybePop();
@@ -173,7 +192,14 @@ class _BlurredModalBottomSheetPageState<T>
   @override
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.sizeOf(context);
-    final maxHeight = widget.isScrollControlled
+    final useSideSheet = AppLayout.useSideNavigation(context);
+    final modalMaxWidth = useSideSheet
+        ? mediaSize.width * 0.6
+        : AppLayout.modalMaxWidth(context);
+    final maxWidth = modalMaxWidth.clamp(0.0, mediaSize.width).toDouble();
+    final maxHeight = useSideSheet
+        ? mediaSize.height
+        : widget.isScrollControlled
         ? mediaSize.height
         : mediaSize.height * 9 / 16;
     final routeConstraints = widget.constraints == null
@@ -197,7 +223,21 @@ class _BlurredModalBottomSheetPageState<T>
       sheet = Material(type: MaterialType.transparency, child: sheet);
     }
 
-    sheet = ConstrainedBox(constraints: routeConstraints, child: sheet);
+    sheet = ConstrainedBox(
+      constraints: routeConstraints,
+      child: SizedBox(
+        width: maxWidth,
+        height: useSideSheet ? mediaSize.height : null,
+        child: sheet,
+      ),
+    );
+
+    if (useSideSheet) {
+      sheet = ClipRRect(
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
+        child: ColoredBox(color: Colors.white, child: sheet),
+      );
+    }
 
     if (widget.useSafeArea) {
       sheet = SafeArea(top: false, bottom: false, child: sheet);
@@ -206,8 +246,10 @@ class _BlurredModalBottomSheetPageState<T>
     if (widget.enableDrag) {
       sheet = GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onVerticalDragUpdate: _onDragUpdate,
-        onVerticalDragEnd: _onDragEnd,
+        onVerticalDragUpdate: useSideSheet ? null : _onDragUpdate,
+        onVerticalDragEnd: useSideSheet ? null : _onDragEnd,
+        onHorizontalDragUpdate: useSideSheet ? _onDragUpdate : null,
+        onHorizontalDragEnd: useSideSheet ? _onDragEnd : null,
         child: sheet,
       );
     }
@@ -231,16 +273,28 @@ class _BlurredModalBottomSheetPageState<T>
                 ),
               ),
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: FractionalTranslation(
-                translation: Offset(0, 1 - eased),
-                child: Transform.translate(
-                  offset: Offset(0, _dragOffset),
-                  child: child,
+            if (useSideSheet)
+              Align(
+                alignment: Alignment.centerRight,
+                child: FractionalTranslation(
+                  translation: Offset(1 - eased, 0),
+                  child: Transform.translate(
+                    offset: Offset(_dragOffset, 0),
+                    child: child,
+                  ),
+                ),
+              )
+            else
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: FractionalTranslation(
+                  translation: Offset(0, 1 - eased),
+                  child: Transform.translate(
+                    offset: Offset(0, _dragOffset),
+                    child: child,
+                  ),
                 ),
               ),
-            ),
           ],
         );
       },

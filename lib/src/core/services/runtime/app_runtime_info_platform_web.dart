@@ -8,7 +8,7 @@ class RuntimePlatformInfo {
   final String osVersion;
 }
 
-RuntimePlatformInfo getRuntimePlatformInfo() {
+Future<RuntimePlatformInfo> getRuntimePlatformInfo() async {
   final navigator = html.window.navigator;
   final platform = navigator.platform ?? 'web';
   final userAgent = navigator.userAgent;

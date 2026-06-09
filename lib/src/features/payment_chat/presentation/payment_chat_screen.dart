@@ -770,11 +770,11 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
               bottom: false,
               child: Column(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     height:
-                        AppLayout.topBarTopMargin +
-                        AppLayout.topBarHeight +
-                        AppLayout.topBarBottomGap,
+                        AppLayout.topBarTopMarginFor(context) +
+                        AppLayout.topBarHeightFor(context) +
+                        AppLayout.topBarBottomGapFor(context),
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),

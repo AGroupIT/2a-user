@@ -406,54 +406,56 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 24,
                 bottomPadding + keyboardInset + 24,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AuthHeroHeader(
-                    icon: Icons.how_to_reg_rounded,
-                    title: 'Станьте клиентом',
-                    subtitle:
-                        'Зарегистрируйтесь, подтвердите телефон и сразу начинайте пользоваться нашим складом для работы с грузами.',
-                  ),
-                  const SizedBox(height: 24),
+              child: AuthResponsiveContent(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const AuthHeroHeader(
+                      icon: Icons.how_to_reg_rounded,
+                      title: 'Станьте клиентом',
+                      subtitle:
+                          'Зарегистрируйтесь, подтвердите телефон и сразу начинайте пользоваться нашим складом для работы с грузами.',
+                    ),
+                    const SizedBox(height: 24),
 
-                  AuthFormCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    AuthFormCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildStepProgress(),
+                          const SizedBox(height: 20),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 320),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: _stepTransition,
+                            child: _buildCurrentStep(state),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildStepProgress(),
-                        const SizedBox(height: 20),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 320),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: _stepTransition,
-                          child: _buildCurrentStep(state),
+                        const Text(
+                          'Уже есть аккаунт? ',
+                          style: TextStyle(color: Color(0xFF666666)),
+                        ),
+                        GestureDetector(
+                          onTap: () => context.go('/login'),
+                          child: Text(
+                            'Войти',
+                            style: TextStyle(
+                              color: AuthVisuals.primary(context),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Уже есть аккаунт? ',
-                        style: TextStyle(color: Color(0xFF666666)),
-                      ),
-                      GestureDetector(
-                        onTap: () => context.go('/login'),
-                        child: Text(
-                          'Войти',
-                          style: TextStyle(
-                            color: AuthVisuals.primary(context),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

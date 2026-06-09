@@ -603,7 +603,9 @@ class PaginatedTracksNotifier {
       queryParams['assemblyDeliveryInfo'] = requestFilters.assemblyDeliveryInfo;
     }
 
-    debugPrint('Fetching tracks: $queryParams');
+    if (kDebugMode) {
+      debugPrint('Fetching tracks: $queryParams');
+    }
 
     final data = await StaleDataCache.getJson(
       ref: _ref,
@@ -619,7 +621,9 @@ class PaginatedTracksNotifier {
         .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
         .toList();
 
-    debugPrint('Fetched ${tracks.length} tracks, total: $total');
+    if (kDebugMode) {
+      debugPrint('Fetched ${tracks.length} tracks, total: $total');
+    }
 
     return _TracksResult(
       tracks: _sortTracksDesc(tracks, requestFilters.sortBy),

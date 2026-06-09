@@ -67,6 +67,25 @@ class AuthTrustItem {
   const AuthTrustItem({required this.icon, required this.label});
 }
 
+class AuthResponsiveContent extends StatelessWidget {
+  final Widget child;
+
+  const AuthResponsiveContent({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final maxWidth = width >= 900 ? 520.0 : 560.0;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: child,
+      ),
+    );
+  }
+}
+
 class AuthHeroHeader extends StatelessWidget {
   final IconData icon;
   final String title;

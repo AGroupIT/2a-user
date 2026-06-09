@@ -3,11 +3,8 @@ import 'package:twoalogisticcabineuser/src/core/network/api_config.dart';
 
 void main() {
   group('ApiConfig API hosts', () {
-    test('uses legacy public backend as default mobile fallback', () {
-      expect(
-        ApiConfig.fallbackBaseUrl,
-        'https://2alogistic.2a-marketing.ru/api',
-      );
+    test('does not use a default mobile fallback', () {
+      expect(ApiConfig.fallbackBaseUrl, isNull);
     });
   });
 

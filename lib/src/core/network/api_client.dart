@@ -32,6 +32,10 @@ class ApiClient {
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
   static const String _tokenKey = 'auth_token';
+  // Дублируем приватный ключ auth_provider без импорта, чтобы не создавать cycle.
+  // Нужен только как быстрый guard: если пользователь не залогинен, не будим
+  // Android Keystore/EncryptedSharedPreferences ради проверки пустого токена.
+  static const String _isLoggedInPrefsKey = 'is_logged_in';
 
   // In-memory fallback для web и desktop
   static String? _inMemoryToken;
@@ -48,6 +52,8 @@ class ApiClient {
   DateTime? _lastConnectionResetAt;
   String? _baseUrlOverride;
   DateTime? _fallbackActivatedAt;
+  int _consecutiveNetworkErrors = 0;
+  DateTime? _lastNetworkErrorReportAt;
 
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
@@ -512,6 +518,7 @@ class ApiClient {
       onResponse: (response, handler) {
         final options = response.requestOptions;
         final requestId = _responseRequestId(response, options);
+        _consecutiveNetworkErrors = 0;
         ClientLogService.instance.apiResponse(
           method: options.method,
           url: _safeRequestUrl(options),
@@ -519,10 +526,11 @@ class ApiClient {
           statusCode: response.statusCode,
           durationMs: _durationMs(options),
           operation: _operation(options),
+          nativeHttpClient: _nativeHttpClient(options),
         );
         return handler.next(response);
       },
-      onError: (error, handler) {
+      onError: (error, handler) async {
         final options = error.requestOptions;
         final requestId = _responseRequestId(error.response, options);
         ClientLogService.instance.apiError(
@@ -534,8 +542,44 @@ class ApiClient {
           type: error.type,
           error: _safeErrorMessage(error),
           operation: _operation(options),
+          nativeHttpClient: _nativeHttpClient(options),
         );
+        await _maybeReportNetworkErrorBurst(error);
         return handler.next(error);
+      },
+    );
+  }
+
+  Future<void> _maybeReportNetworkErrorBurst(DioException error) async {
+    if (!_isTransientNetworkError(error)) {
+      _consecutiveNetworkErrors = 0;
+      return;
+    }
+
+    _consecutiveNetworkErrors++;
+    if (_consecutiveNetworkErrors < 3) return;
+
+    final now = DateTime.now();
+    final lastReportedAt = _lastNetworkErrorReportAt;
+    if (lastReportedAt != null &&
+        now.difference(lastReportedAt) < const Duration(minutes: 10)) {
+      return;
+    }
+
+    _lastNetworkErrorReportAt = now;
+    await ClientLogService.instance.captureNonFatal(
+      'Повторяющиеся сетевые ошибки API',
+      error: error,
+      stackTrace: error.stackTrace,
+      data: {
+        'dioType': error.type.name,
+        'path': _safeRequestPath(error.requestOptions),
+        'method': error.requestOptions.method,
+        'activeBaseUrl': activeBaseUrl,
+        'usingFallback': isUsingFallbackBaseUrl,
+        if (_nativeHttpClient(error.requestOptions) != null)
+          'nativeHttpClient': _nativeHttpClient(error.requestOptions),
+        'networkErrorCount': _consecutiveNetworkErrors,
       },
     );
   }
@@ -561,6 +605,11 @@ class ApiClient {
 
   String? _operation(RequestOptions options) {
     final value = options.extra['client_log_operation'];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  String? _nativeHttpClient(RequestOptions options) {
+    final value = options.extra['native_http_client'];
     return value is String && value.isNotEmpty ? value : null;
   }
 
@@ -657,6 +706,8 @@ class ApiClient {
       'path': _safeRequestPath(requestOptions),
       if (_operation(requestOptions) != null)
         'operation': _operation(requestOptions),
+      if (_nativeHttpClient(requestOptions) != null)
+        'native_http_client': _nativeHttpClient(requestOptions),
       if (statusCode != null) 'status_code': statusCode,
       if (extra != null) ...extra,
     };
@@ -946,28 +997,69 @@ class ApiClient {
   }
 
   Future<String?> _loadTokenFromStorage() async {
-    // На web и desktop используем SharedPreferences (localStorage)
+    // На web и desktop используем SharedPreferences (localStorage).
     if (kIsWeb || _isDesktop) {
       return _readTokenFromPrefs();
     }
 
-    // На мобильных платформах пытаемся читать из SecureStorage,
-    // а при ошибке/таймауте — fallback в SharedPreferences.
+    // На мобильных платформах сначала читаем быстрый mirror из SharedPreferences.
+    // Это критично для старых Android/Huawei/Xiaomi: обращение к Keystore может
+    // запускать миграцию FlutterSecureStorage и блокировать старт на несколько секунд.
+    final mirroredToken = await _readTokenFromPrefs();
+    if (mirroredToken != null && mirroredToken.isNotEmpty) {
+      if (kDebugMode) {
+        debugPrint('🔐 Token loaded from SharedPreferences mirror');
+      }
+      return mirroredToken;
+    }
+
+    // Если приложение само помнит, что пользователь не авторизован, не трогаем
+    // SecureStorage вообще. Иначе даже экран входа может получить 5-секундный
+    // timeout из-за фонового clientProfileProvider.hasTokenAsync().
+    final shouldProbeSecureStorage = await _shouldProbeSecureStorageForToken();
+    if (!shouldProbeSecureStorage) {
+      return null;
+    }
+
+    return _readTokenFromSecureStorage();
+  }
+
+  Future<bool> _shouldProbeSecureStorageForToken() async {
     try {
-      // Таймаут 5 сек: на некоторых Android устройствах EncryptedSharedPreferences
-      // может зависнуть при первом обращении (генерация ключей шифрования).
+      final prefs = await SharedPreferences.getInstance().timeout(
+        _prefsTimeout,
+      );
+      return prefs.getBool(_isLoggedInPrefsKey) == true;
+    } catch (e) {
+      // Если SharedPreferences временно недоступны, лучше попробовать SecureStorage:
+      // там может лежать единственная копия токена после обновления старой версии.
+      ClientLogService.instance.add(
+        type: 'storage_error',
+        level: 'warning',
+        message: 'Не удалось прочитать флаг авторизации из SharedPreferences',
+        data: {'error': e.toString()},
+      );
+      debugPrint('Error/timeout reading auth flag from SharedPreferences: $e');
+      return true;
+    }
+  }
+
+  Future<String?> _readTokenFromSecureStorage() async {
+    try {
+      // Таймаут 5 сек оставляем только для legacy-сценария: пользователь был
+      // авторизован в старой версии, где mirror в SharedPreferences ещё не было.
       final token = await _storage
           .read(key: _tokenKey)
           .timeout(const Duration(seconds: 5));
       if (token != null && token.isNotEmpty) {
-        // Делаем best-effort копию в SharedPreferences, чтобы переживать
-        // транзиентные ошибки Keychain/Keystore без повторного логина.
+        // Делаем best-effort копию в SharedPreferences, чтобы следующие старты
+        // больше не зависели от Android Keystore/Keychain.
         unawaited(_writeTokenToPrefs(token));
         return token;
       }
     } catch (e) {
-      // PlatformException может быть транзиентной (iOS Keychain до первой разблокировки,
-      // после обновления приложения и т.д.).
+      // PlatformException может быть транзиентной (iOS Keychain до первой
+      // разблокировки, Android Keystore после обновления алгоритма и т.д.).
       ClientLogService.instance.add(
         type: 'storage_error',
         level: 'warning',
@@ -977,11 +1069,7 @@ class ApiClient {
       debugPrint('Error/timeout reading token from SecureStorage: $e');
     }
 
-    final fallback = await _readTokenFromPrefs();
-    if (fallback != null && fallback.isNotEmpty) {
-      debugPrint('🔐 Token loaded from SharedPreferences fallback');
-    }
-    return fallback;
+    return null;
   }
 
   Future<String?> _readTokenFromPrefs() async {
@@ -1053,11 +1141,25 @@ class ApiClient {
       return;
     }
 
-    // На мобильных платформах используем FlutterSecureStorage
+    // На мобильных платформах сначала пишем быстрый mirror в SharedPreferences.
+    // Причина: на части устройств чтение/запись SecureStorage бывает транзиентно
+    // недоступно (Keychain/Keystore). Без mirror это выглядит как "слёт авторизации"
+    // или как долгий вход после обновления приложения.
+    await _writeTokenToPrefs(token);
+    ClientLogService.instance.action(
+      'Токен сохранён',
+      data: {'storage': 'prefs_mirror'},
+    );
+
+    // SecureStorage синхронизируем best-effort в фоне, чтобы вход не ждал
+    // Android Keystore/EncryptedSharedPreferences.
+    unawaited(_writeTokenToSecureStorage(token));
+  }
+
+  Future<void> _writeTokenToSecureStorage(String token) async {
     try {
       // Таймаут 5 сек: при первой записи после переустановки EncryptedSharedPreferences
       // может зависнуть на Android при генерации ключей шифрования.
-      // Токен уже в памяти (_inMemoryToken), поэтому таймаут не ломает авторизацию.
       await _storage
           .write(key: _tokenKey, value: token)
           .timeout(const Duration(seconds: 5));
@@ -1075,11 +1177,6 @@ class ApiClient {
       );
       debugPrint('Error/timeout saving token to SecureStorage: $e');
     }
-
-    // Fallback: дублируем токен в SharedPreferences.
-    // Причина: на части устройств чтение/запись SecureStorage бывает транзиентно
-    // недоступно (Keychain/Keystore). Без fallback это выглядит как "слёт авторизации".
-    await _writeTokenToPrefs(token);
   }
 
   Future<void> clearToken() async {
@@ -1097,7 +1194,12 @@ class ApiClient {
       return;
     }
 
-    // На мобильных платформах удаляем из FlutterSecureStorage
+    // Сначала чистим mirror в SharedPreferences: именно он теперь быстрый
+    // источник токена на мобильных устройствах.
+    await _removeTokenFromPrefs();
+
+    // Затем удаляем из FlutterSecureStorage. Если Keystore зависнет, быстрый mirror
+    // уже очищен, поэтому следующий запуск не восстановит старую авторизацию.
     try {
       await _storage.delete(key: _tokenKey).timeout(const Duration(seconds: 5));
       ClientLogService.instance.action(
@@ -1114,9 +1216,6 @@ class ApiClient {
       );
       debugPrint('Error/timeout clearing token from SecureStorage: $e');
     }
-
-    // Также чистим fallback в SharedPreferences (если использовался)
-    await _removeTokenFromPrefs();
   }
 
   /// Проверка на Desktop платформу

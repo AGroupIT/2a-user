@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ui/app_layout.dart';
 import '../data/shop_provider.dart';
 import '../domain/shop_item.dart';
 import 'widgets/shop_item_card.dart';
@@ -42,7 +43,6 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
       _currentPage = 0;
       _total = 0;
       _isLoadingMore = false;
-
     }
   }
 
@@ -114,34 +114,7 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
             }
             return false;
           },
-          child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.54,
-            ),
-            itemCount: _allItems.length + (hasMore ? 2 : 0),
-            itemBuilder: (context, index) {
-              if (index >= _allItems.length) {
-                // Loading indicator at the bottom
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                );
-              }
-              final item = _allItems[index];
-              return ShopItemCard(
-                item: item,
-                onTap: () {
-                  context.push('/shop/item/${item.id}');
-                },
-              );
-            },
-          ),
+          child: _buildGrid(context, hasMore: hasMore),
         );
       },
       loading: () {
@@ -150,33 +123,7 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
           final hasMore = _allItems.length < _total;
           return NotificationListener<ScrollNotification>(
             onNotification: (notification) => false,
-            child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.54,
-              ),
-              itemCount: _allItems.length + (hasMore ? 2 : 0),
-              itemBuilder: (context, index) {
-                if (index >= _allItems.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                }
-                final item = _allItems[index];
-                return ShopItemCard(
-                  item: item,
-                  onTap: () {
-                    context.push('/shop/item/${item.id}');
-                  },
-                );
-              },
-            ),
+            child: _buildGrid(context, hasMore: hasMore),
           );
         }
         return const Center(child: CircularProgressIndicator());
@@ -201,6 +148,55 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGrid(BuildContext context, {required bool hasMore}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final crossAxisCount = width >= 960
+            ? 4
+            : width >= 700
+            ? 3
+            : 2;
+        final spacing = width >= 700 ? 14.0 : 12.0;
+
+        return GridView.builder(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            AppLayout.bottomScrollPadding(context) + 20,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: width >= 700 ? 0.58 : 0.54,
+          ),
+          itemCount: _allItems.length + (hasMore ? crossAxisCount : 0),
+          itemBuilder: (context, index) {
+            if (index >= _allItems.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
+            final item = _allItems[index];
+            return ShopItemCard(
+              item: item,
+              onTap: () {
+                context.push('/shop/item/${item.id}');
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

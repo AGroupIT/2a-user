@@ -184,6 +184,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomContentGap = AppLayout.bottomScrollPadding(context) + 16;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useWideHomeLayout = screenWidth >= 900;
+    final horizontalPadding = useWideHomeLayout
+        ? AppLayout.horizontalMargin(context)
+        : 16.0;
 
     Future<void> onRefresh() async {
       debugPrint('[Home] pull-to-refresh triggered');
@@ -263,19 +268,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onRefresh: onRefresh,
         color: context.brandPrimary,
         child: ListView(
-          shrinkWrap: true,
-          primary: false,
+          clipBehavior: Clip.none,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPad * 0.7 + 16,
+            horizontalPadding,
+            0,
+          ),
           children: [
             _HomeReveal(
               order: 0,
-              child: _GreetingBlock(
-                fullName: clientName,
-                clientCode: clientCode,
-                agentName: agent?.name,
-                onTap: () => context.push('/profile'),
-              ),
+              child: useWideHomeLayout
+                  ? _WideHeroActionRow(
+                      greeting: _GreetingBlock(
+                        fullName: clientName,
+                        clientCode: clientCode,
+                        agentName: agent?.name,
+                        onTap: () => context.push('/profile'),
+                      ),
+                      action: _AddTracksStatCard(
+                        onTap: () => showAddTracksDialog(context, ref),
+                      ),
+                    )
+                  : _GreetingBlock(
+                      fullName: clientName,
+                      clientCode: clientCode,
+                      agentName: agent?.name,
+                      onTap: () => context.push('/profile'),
+                    ),
             ),
             const SizedBox(height: 15),
             if (staleNotice != null) ...[
@@ -295,6 +317,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: KeyedSubtree(
                 key: _quickCardsKey,
                 child: _StatsBlock(
+                  showAddTracks: !useWideHomeLayout,
                   bonusKgValue: _formatKg(bonusKgBalance),
                   bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
                   tracksValue: _formatCount(tracksCount),
@@ -319,20 +342,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (agent?.hasWarehouseContacts == true) ...[
               _HomeReveal(
                 order: 4,
-                child: _WarehouseDataBlock(
-                  clientCode: clientCode,
-                  agent: agent!,
+                child: useWideHomeLayout
+                    ? _WarehouseSearchRow(
+                        warehouse: _WarehouseDataBlock(
+                          clientCode: clientCode,
+                          agent: agent!,
+                        ),
+                        search: _NoCodeSearchCard(
+                          controller: _noCodeSearchController,
+                          onSearch: _openNoCodeSearch,
+                        ),
+                      )
+                    : _WarehouseDataBlock(
+                        clientCode: clientCode,
+                        agent: agent!,
+                      ),
+              ),
+              if (!useWideHomeLayout) const SizedBox(height: 15),
+            ],
+            if (agent?.hasWarehouseContacts != true || !useWideHomeLayout) ...[
+              _HomeReveal(
+                order: 5,
+                child: _NoCodeSearchCard(
+                  controller: _noCodeSearchController,
+                  onSearch: _openNoCodeSearch,
                 ),
               ),
-              const SizedBox(height: 15),
             ],
-            _HomeReveal(
-              order: 5,
-              child: _NoCodeSearchCard(
-                controller: _noCodeSearchController,
-                onSearch: _openNoCodeSearch,
-              ),
-            ),
             const SizedBox(height: 15),
             _HomeReveal(
               order: 6,
@@ -421,6 +457,27 @@ String _formatDeltaKg(double? value) {
   return '+${_formatKg(value)}';
 }
 
+// На старых Android/Android Go постоянные декоративные анимации слишком дорогие:
+// в profile на M2006C3LG они давали непрерывный raster и десятки saveLayer в секунду.
+// Оставляем внешний вид статичным, но не гоняем ticker на главной странице.
+bool get _useStaticHomeMotion =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+double _compactHomeScale(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  if (width <= 360) return 0.86;
+  if (width <= 390) return 0.92;
+  return 1.0;
+}
+
+// Главная уже была вручную уплотнена под 360dp. После глобального compact
+// text scale компенсируем только fontSize, чтобы визуально не сжать её дважды.
+double _compactHomeFontScale(BuildContext context) {
+  final globalTextScale = AppLayout.compactTextScale(context);
+  if (globalTextScale == 0) return _compactHomeScale(context);
+  return _compactHomeScale(context) / globalTextScale;
+}
+
 class _HomeReveal extends StatefulWidget {
   final int order;
   final Widget child;
@@ -454,10 +511,14 @@ class _HomeRevealState extends State<_HomeReveal>
       end: Offset.zero,
     ).animate(curve);
 
-    Future<void>.delayed(Duration(milliseconds: 55 * widget.order), () {
-      if (!mounted) return;
-      _controller.forward();
-    });
+    if (_useStaticHomeMotion) {
+      _controller.value = 1;
+    } else {
+      Future<void>.delayed(Duration(milliseconds: 55 * widget.order), () {
+        if (!mounted) return;
+        _controller.forward();
+      });
+    }
   }
 
   @override
@@ -586,7 +647,12 @@ class _GreetingBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final greeting = _greetingFor(DateTime.now());
     final agentLabel = agentName?.trim();
-    final radius = BorderRadius.circular(24);
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
+    final radius = BorderRadius.circular(24 * scale);
+    final nameFontSize = 28 * textScale;
+    final nameLineHeight = 34 * textScale;
+    final headerIconSize = 46 * scale;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -596,6 +662,7 @@ class _GreetingBlock extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           borderRadius: radius,
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
             borderRadius: radius,
@@ -627,7 +694,12 @@ class _GreetingBlock extends StatelessWidget {
                   children: [
                     const Positioned.fill(child: _HeaderGlowBackdrop()),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                      padding: EdgeInsets.fromLTRB(
+                        16 * scale,
+                        15 * scale,
+                        16 * scale,
+                        13 * scale,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -647,37 +719,37 @@ class _GreetingBlock extends StatelessWidget {
                                           alpha: 0.86,
                                         ),
                                         fontFamily: 'Gilroy',
-                                        fontSize: 15,
+                                        fontSize: 15 * textScale,
                                         fontWeight: FontWeight.w600,
                                         height: 1.2,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
+                                    SizedBox(height: 6 * scale),
                                     SizedBox(
-                                      height: 34,
+                                      height: nameLineHeight,
                                       child: _OverflowMarqueeText(
                                         text: fullName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: Colors.white,
                                           fontFamily: 'Gilroy',
-                                          fontSize: 28,
+                                          fontSize: nameFontSize,
                                           fontWeight: FontWeight.w900,
-                                          height: 34 / 28,
-                                          letterSpacing: -0.4,
+                                          height: nameLineHeight / nameFontSize,
+                                          letterSpacing: -0.4 * textScale,
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              const _PulsingHeaderIcon(),
+                              SizedBox(width: 12 * scale),
+                              _PulsingHeaderIcon(size: headerIconSize),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          SizedBox(height: 14 * scale),
                           Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: 8 * scale,
+                            runSpacing: 8 * scale,
                             children: [
                               _HeaderInfoPill(
                                 icon: Icons.badge_rounded,
@@ -720,8 +792,13 @@ class _HeaderInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: EdgeInsets.symmetric(
+        horizontal: 10 * scale,
+        vertical: 7 * scale,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
@@ -730,18 +807,18 @@ class _HeaderInfoPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: Colors.white),
-          const SizedBox(width: 6),
+          Icon(icon, size: 15 * scale, color: Colors.white),
+          SizedBox(width: 6 * scale),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 190),
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontFamily: 'Gilroy',
-                fontSize: 13,
+                fontSize: 13 * textScale,
                 fontWeight: FontWeight.w700,
                 height: 1.1,
               ),
@@ -770,7 +847,24 @@ class _HeaderGlowBackdropState extends State<_HeaderGlowBackdrop>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5600),
-    )..repeat(reverse: true);
+    );
+    if (_useStaticHomeMotion) {
+      _controller.value = 0.5;
+    } else {
+      _controller.repeat(reverse: true);
+      _settleAfter(const Duration(seconds: 9));
+    }
+  }
+
+  void _settleAfter(Duration activeFor) {
+    Future<void>.delayed(activeFor, () {
+      if (!mounted || !_controller.isAnimating) return;
+      _controller.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -851,7 +945,9 @@ class _HeaderGlowCircle extends StatelessWidget {
 }
 
 class _PulsingHeaderIcon extends StatefulWidget {
-  const _PulsingHeaderIcon();
+  final double size;
+
+  const _PulsingHeaderIcon({this.size = 46});
 
   @override
   State<_PulsingHeaderIcon> createState() => _PulsingHeaderIconState();
@@ -868,11 +964,28 @@ class _PulsingHeaderIconState extends State<_PulsingHeaderIcon>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
+    );
+    if (_useStaticHomeMotion) {
+      _controller.value = 0.5;
+    } else {
+      _controller.repeat(reverse: true);
+      _settleAfter(const Duration(seconds: 7));
+    }
     _scale = Tween<double>(
       begin: 0.96,
       end: 1.04,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  void _settleAfter(Duration activeFor) {
+    Future<void>.delayed(activeFor, () {
+      if (!mounted || !_controller.isAnimating) return;
+      _controller.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -886,17 +999,17 @@ class _PulsingHeaderIconState extends State<_PulsingHeaderIcon>
     return ScaleTransition(
       scale: _scale,
       child: Container(
-        width: 46,
-        height: 46,
+        width: widget.size,
+        height: widget.size,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(widget.size * 0.35),
           border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
         ),
-        child: const Icon(
+        child: Icon(
           Icons.local_shipping_rounded,
           color: Colors.white,
-          size: 25,
+          size: widget.size * 0.54,
         ),
       ),
     );
@@ -941,7 +1054,7 @@ class _OverflowMarqueeTextState extends State<_OverflowMarqueeText>
   }
 
   void _syncAnimation(double overflow) {
-    if (overflow <= 0) {
+    if (overflow <= 0 || _useStaticHomeMotion) {
       if (_controller.isAnimating || _controller.value != 0) {
         _controller.stop();
         _controller.value = 0;
@@ -976,11 +1089,13 @@ class _OverflowMarqueeTextState extends State<_OverflowMarqueeText>
           if (mounted) _syncAnimation(overflow);
         });
 
-        if (overflow <= 0) {
+        if (overflow <= 0 || _useStaticHomeMotion) {
           return Text(
             widget.text,
             maxLines: 1,
-            overflow: TextOverflow.visible,
+            overflow: _useStaticHomeMotion
+                ? TextOverflow.ellipsis
+                : TextOverflow.visible,
             softWrap: false,
             style: widget.style,
           );
@@ -1043,11 +1158,19 @@ class _PromoSlider extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final scale = width / _designWidth;
+        final rawScale = width / _designWidth;
+        final useCompactDesktopBanner = AppLayout.useSideNavigation(context);
+        final scale = useCompactDesktopBanner
+            ? rawScale.clamp(1.0, 1.35).toDouble()
+            : rawScale;
+        final bannerHeight =
+            _designHeight *
+            (useCompactDesktopBanner ? rawScale * 0.5 : rawScale);
         final radius = BorderRadius.circular(10 * scale);
 
         return SizedBox(
           width: width,
+          height: bannerHeight,
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: radius,
@@ -1087,10 +1210,9 @@ class _PromoSlider extends StatelessWidget {
                             ),
                           ),
                   ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: _designHeight * scale,
-                    ),
+                  SizedBox(
+                    height: bannerHeight,
+                    width: width,
                     child: Padding(
                       padding: EdgeInsets.all(10 * scale),
                       child: Column(
@@ -1099,7 +1221,10 @@ class _PromoSlider extends StatelessWidget {
                         children: [
                           if (eyebrow != null)
                             SizedBox(
-                              width: _textBlockWidth * scale,
+                              width: (width * 0.45).clamp(
+                                180.0,
+                                _textBlockWidth * scale,
+                              ),
                               child: Text(
                                 eyebrow,
                                 style: TextStyle(
@@ -1116,7 +1241,10 @@ class _PromoSlider extends StatelessWidget {
                             SizedBox(height: 10 * scale),
                           if (title != null)
                             SizedBox(
-                              width: _textBlockWidth * scale,
+                              width: (width * 0.45).clamp(
+                                180.0,
+                                _textBlockWidth * scale,
+                              ),
                               child: Text(
                                 title,
                                 style: TextStyle(
@@ -1134,7 +1262,10 @@ class _PromoSlider extends StatelessWidget {
                             SizedBox(height: 10 * scale),
                           if (description != null)
                             SizedBox(
-                              width: _textBlockWidth * scale,
+                              width: (width * 0.45).clamp(
+                                180.0,
+                                _textBlockWidth * scale,
+                              ),
                               child: Text(
                                 description,
                                 style: TextStyle(
@@ -1166,7 +1297,30 @@ class _PromoSlider extends StatelessWidget {
   }
 }
 
+class _WideHeroActionRow extends StatelessWidget {
+  final Widget greeting;
+  final Widget action;
+
+  const _WideHeroActionRow({required this.greeting, required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 136,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(flex: 7, child: greeting),
+          const SizedBox(width: 14),
+          Expanded(flex: 5, child: action),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatsBlock extends StatelessWidget {
+  final bool showAddTracks;
   final String bonusKgValue;
   final String bonusKgWeekly;
   final String tracksValue;
@@ -1182,6 +1336,7 @@ class _StatsBlock extends StatelessWidget {
   final VoidCallback onAddTracksTap;
 
   const _StatsBlock({
+    this.showAddTracks = true,
     required this.bonusKgValue,
     required this.bonusKgWeekly,
     required this.tracksValue,
@@ -1199,56 +1354,73 @@ class _StatsBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final useSingleRow = MediaQuery.sizeOf(context).width >= 900;
+    final cards = [
+      _StatCard(
+        title: 'Треки',
+        value: tracksValue,
+        weeklyValue: tracksWeekly,
+        icon: Icons.local_shipping_rounded,
+        onTap: onTracksTap,
+      ),
+      _StatCard(
+        title: 'Сборки',
+        value: assembliesValue,
+        weeklyValue: assembliesWeekly,
+        icon: Icons.inventory_2_rounded,
+        onTap: onAssembliesTap,
+      ),
+      _StatCard(
+        title: 'Бонусные кг',
+        value: bonusKgValue,
+        weeklyValue: bonusKgWeekly,
+        icon: Icons.scale_rounded,
+        onTap: onBonusKgTap,
+      ),
+      _StatCard(
+        title: 'Счета',
+        value: invoicesValue,
+        weeklyValue: invoicesWeekly,
+        icon: Icons.receipt_long_rounded,
+        onTap: onInvoicesTap,
+      ),
+    ];
+
+    if (useSingleRow) {
+      return SizedBox(
+        height: 96,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < cards.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              Expanded(child: cards[i]),
+            ],
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _AddTracksStatCard(onTap: onAddTracksTap),
-        const SizedBox(height: 8),
+        if (showAddTracks) ...[
+          _AddTracksStatCard(onTap: onAddTracksTap),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
-            Expanded(
-              child: _StatCard(
-                title: 'Треки',
-                value: tracksValue,
-                weeklyValue: tracksWeekly,
-                icon: Icons.local_shipping_rounded,
-                onTap: onTracksTap,
-              ),
-            ),
+            Expanded(child: cards[0]),
             const SizedBox(width: 8),
-            Expanded(
-              child: _StatCard(
-                title: 'Сборки',
-                value: assembliesValue,
-                weeklyValue: assembliesWeekly,
-                icon: Icons.inventory_2_rounded,
-                onTap: onAssembliesTap,
-              ),
-            ),
+            Expanded(child: cards[1]),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: _StatCard(
-                title: 'Бонусные кг',
-                value: bonusKgValue,
-                weeklyValue: bonusKgWeekly,
-                icon: Icons.scale_rounded,
-                onTap: onBonusKgTap,
-              ),
-            ),
+            Expanded(child: cards[2]),
             const SizedBox(width: 8),
-            Expanded(
-              child: _StatCard(
-                title: 'Счета',
-                value: invoicesValue,
-                weeklyValue: invoicesWeekly,
-                icon: Icons.receipt_long_rounded,
-                onTap: onInvoicesTap,
-              ),
-            ),
+            Expanded(child: cards[3]),
           ],
         ),
       ],
@@ -1273,9 +1445,13 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
+    final showInlinePeriod =
+        MediaQuery.sizeOf(context).width >= AppLayout.mobileBreakpoint;
     final card = Container(
-      constraints: const BoxConstraints(minHeight: 102),
-      padding: const EdgeInsets.all(10),
+      constraints: BoxConstraints(minHeight: 96 * scale),
+      padding: EdgeInsets.all(10 * scale),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -1289,30 +1465,35 @@ class _StatCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 30,
-                height: 30,
+                width: 30 * scale,
+                height: 30 * scale,
                 decoration: BoxDecoration(
                   color: context.brandPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: BorderRadius.circular(11 * scale),
                 ),
-                child: Icon(icon, color: context.brandPrimary, size: 18),
+                child: Icon(
+                  icon,
+                  color: context.brandPrimary,
+                  size: 18 * scale,
+                ),
               ),
-              const SizedBox(width: 7),
+              SizedBox(width: 7 * scale),
               Expanded(
                 child: Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textSecondary,
                     fontFamily: 'Gilroy',
                     fontWeight: FontWeight.w700,
-                    fontSize: 12.3,
+                    fontSize: 12.3 * textScale,
                     height: 1.15,
                   ),
                 ),
@@ -1321,58 +1502,47 @@ class _StatCard extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   color: AppColors.textSecondary.withValues(alpha: 0.8),
-                  size: 19,
+                  size: 19 * scale,
                 ),
             ],
           ),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w900,
-                fontSize: 25,
-                height: 0.95,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          SizedBox(height: 9 * scale),
+          if (showInlinePeriod)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.trending_up_rounded,
-                  size: 13,
-                  color: context.brandPrimary,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _WeeklyBadge(value: weeklyValue),
+                  ),
                 ),
-                const SizedBox(width: 3),
-                Text(
-                  '$weeklyValue за неделю',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Gilroy',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10.5,
-                    height: 1.1,
+                const SizedBox(width: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: _StatValueText(value: value),
                   ),
                 ),
               ],
+            )
+          else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: _StatValueText(value: value),
+              ),
             ),
-          ),
+            SizedBox(height: 8 * scale),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _WeeklyBadge(value: weeklyValue),
+            ),
+          ],
         ],
       ),
     );
@@ -1390,6 +1560,73 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+class _StatValueText extends StatelessWidget {
+  final String value;
+
+  const _StatValueText({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final textScale = _compactHomeFontScale(context);
+    return Text(
+      value,
+      maxLines: 1,
+      style: TextStyle(
+        color: AppColors.textPrimary,
+        fontFamily: 'Gilroy',
+        fontWeight: FontWeight.w900,
+        fontSize: 25 * textScale,
+        height: 0.95,
+        letterSpacing: -0.5 * textScale,
+      ),
+    );
+  }
+}
+
+class _WeeklyBadge extends StatelessWidget {
+  final String value;
+
+  const _WeeklyBadge({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 7 * scale, vertical: 4 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.trending_up_rounded,
+            size: 13 * scale,
+            color: context.brandPrimary,
+          ),
+          SizedBox(width: 3 * scale),
+          Flexible(
+            child: Text(
+              '$value за неделю',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w700,
+                fontSize: 10.5 * textScale,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AddTracksStatCard extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -1397,6 +1634,8 @@ class _AddTracksStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(22),
@@ -1404,8 +1643,13 @@ class _AddTracksStatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 78),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          constraints: BoxConstraints(minHeight: 78 * scale),
+          padding: EdgeInsets.fromLTRB(
+            14 * scale,
+            14 * scale,
+            14 * scale,
+            14 * scale,
+          ),
           decoration: BoxDecoration(
             gradient: context.brandGradient,
             borderRadius: BorderRadius.circular(22),
@@ -1420,23 +1664,23 @@ class _AddTracksStatCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 48 * scale,
+                height: 48 * scale,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16 * scale),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.22),
                   ),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.add_rounded,
                   color: Colors.white,
-                  size: 30,
+                  size: 30 * scale,
                 ),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
+              SizedBox(width: 12 * scale),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1449,11 +1693,11 @@ class _AddTracksStatCard extends StatelessWidget {
                         color: Colors.white,
                         fontFamily: 'Gilroy',
                         fontWeight: FontWeight.w900,
-                        fontSize: 18,
+                        fontSize: 18 * textScale,
                         height: 1.1,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: 4 * scale),
                     Text(
                       'Вставьте номера — мы начнём отслеживание',
                       maxLines: 1,
@@ -1462,15 +1706,15 @@ class _AddTracksStatCard extends StatelessWidget {
                         color: Color(0xE6FFFFFF),
                         fontFamily: 'Gilroy',
                         fontWeight: FontWeight.w600,
-                        fontSize: 12.5,
+                        fontSize: 12.5 * textScale,
                         height: 1.15,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              const _NudgingArrowIcon(),
+              SizedBox(width: 10 * scale),
+              _NudgingArrowIcon(size: 24 * scale),
             ],
           ),
         ),
@@ -1480,7 +1724,9 @@ class _AddTracksStatCard extends StatelessWidget {
 }
 
 class _NudgingArrowIcon extends StatefulWidget {
-  const _NudgingArrowIcon();
+  final double size;
+
+  const _NudgingArrowIcon({this.size = 24});
 
   @override
   State<_NudgingArrowIcon> createState() => _NudgingArrowIconState();
@@ -1497,10 +1743,27 @@ class _NudgingArrowIconState extends State<_NudgingArrowIcon>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1300),
-    )..repeat(reverse: true);
+    );
+    if (_useStaticHomeMotion) {
+      _controller.value = 0;
+    } else {
+      _controller.repeat(reverse: true);
+      _settleAfter(const Duration(seconds: 6));
+    }
     _offset = Tween<double>(begin: 0, end: 5).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
     );
+  }
+
+  void _settleAfter(Duration activeFor) {
+    Future<void>.delayed(activeFor, () {
+      if (!mounted || !_controller.isAnimating) return;
+      _controller.animateTo(
+        0,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -1519,11 +1782,50 @@ class _NudgingArrowIconState extends State<_NudgingArrowIcon>
           child: child,
         );
       },
-      child: const Icon(
+      child: Icon(
         Icons.arrow_forward_rounded,
         color: Colors.white,
-        size: 24,
+        size: widget.size,
       ),
+    );
+  }
+}
+
+class _WarehouseSearchRow extends StatelessWidget {
+  final Widget warehouse;
+  final Widget search;
+
+  const _WarehouseSearchRow({required this.warehouse, required this.search});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final warehousePaneWidth = (constraints.maxWidth - 14) * 0.6;
+        // _WarehouseDataBlock decides whether to stack controls by its inner
+        // LayoutBuilder width. Account for the card padding here; otherwise
+        // iPad side-nav can get a compact 142px row while warehouse controls
+        // are already vertical and need the taller row.
+        final warehouseControlsWidth = warehousePaneWidth - 28;
+        final needsStackedWarehouseControls = warehouseControlsWidth < 620;
+        final rowHeight = needsStackedWarehouseControls
+            ? 260.0
+            : constraints.maxWidth >= 1050
+            ? 142.0
+            : 188.0;
+
+        return SizedBox(
+          height: rowHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 6, child: warehouse),
+              const SizedBox(width: 14),
+              Expanded(flex: 4, child: search),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1608,84 +1910,46 @@ class _WarehouseDataBlock extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.qr_code_2_rounded, color: context.brandPrimary),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        const TextSpan(text: 'Код клиента: '),
-                        TextSpan(
-                          text: clientCode,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Gilroy',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final controls = <Widget>[
+                _WarehouseCodeTile(clientCode: clientCode),
+                if (address.isNotEmpty)
+                  _WarehouseCopyButton(
+                    label: 'Адрес склада',
+                    icon: CupertinoIcons.doc_on_doc,
+                    value: address,
                   ),
-                ),
-              ],
-            ),
-          ),
-          if (address.isNotEmpty || phone.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final useStack = constraints.maxWidth < 340;
-                final children = <Widget>[
-                  if (address.isNotEmpty)
-                    _WarehouseCopyButton(
-                      label: 'Адрес склада',
-                      icon: CupertinoIcons.doc_on_doc,
-                      value: address,
-                    ),
-                  if (phone.isNotEmpty)
-                    _WarehouseCopyButton(
-                      label: 'Телефон склада',
-                      icon: CupertinoIcons.phone,
-                      value: phone,
-                    ),
-                ];
+                if (phone.isNotEmpty)
+                  _WarehouseCopyButton(
+                    label: 'Телефон склада',
+                    icon: CupertinoIcons.phone,
+                    value: phone,
+                  ),
+              ];
+              final useSingleRow = constraints.maxWidth >= 620;
 
-                if (useStack || children.length == 1) {
-                  return Column(
-                    children: [
-                      for (var i = 0; i < children.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 8),
-                        children[i],
-                      ],
-                    ],
-                  );
-                }
-
-                return Row(
+              if (!useSingleRow || controls.length == 1) {
+                return Column(
                   children: [
-                    for (var i = 0; i < children.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      Expanded(child: children[i]),
+                    for (var i = 0; i < controls.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      controls[i],
                     ],
                   ],
                 );
-              },
-            ),
-          ],
+              }
+
+              return Row(
+                children: [
+                  for (var i = 0; i < controls.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    Expanded(flex: i == 0 ? 5 : 4, child: controls[i]),
+                  ],
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -1697,6 +1961,53 @@ class _WarehouseDataBlock extends StatelessWidget {
         .trim();
     if (base.isEmpty) return '';
     return '$base(不要隐藏代码 $clientCode)';
+  }
+}
+
+class _WarehouseCodeTile extends StatelessWidget {
+  final String clientCode;
+
+  const _WarehouseCodeTile({required this.clientCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.qr_code_2_rounded, color: context.brandPrimary, size: 19),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Код клиента: '),
+                  TextSpan(
+                    text: clientCode,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1843,65 +2154,64 @@ class _NoCodeSearchCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  textInputAction: TextInputAction.search,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Gilroy',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Трек-номер',
-                    hintStyle: TextStyle(
-                      color: AppColors.textSecondary.withValues(alpha: 0.72),
-                      fontFamily: 'Gilroy',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: context.brandPrimary,
-                      size: 20,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.05),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.05),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide(
-                        color: context.brandPrimary.withValues(alpha: 0.55),
-                        width: 1.4,
-                      ),
-                    ),
-                  ),
-                  onSubmitted: (_) => onSearch(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stackSearchButton = constraints.maxWidth < 520;
+              final field = TextField(
+                controller: controller,
+                textInputAction: TextInputAction.search,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
+                decoration: InputDecoration(
+                  hintText: 'Трек-номер',
+                  hintStyle: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.72),
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: context.brandPrimary,
+                    size: 20,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(
+                      color: Colors.black.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(
+                      color: Colors.black.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(
+                      color: context.brandPrimary.withValues(alpha: 0.55),
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                onSubmitted: (_) => onSearch(),
+              );
+              final button = SizedBox(
+                width: stackSearchButton ? double.infinity : null,
                 height: 48,
                 child: FilledButton(
                   onPressed: onSearch,
@@ -1922,8 +2232,23 @@ class _NoCodeSearchCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-            ],
+              );
+
+              if (stackSearchButton) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [field, const SizedBox(height: 8), button],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: field),
+                  const SizedBox(width: 8),
+                  button,
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -2297,10 +2622,13 @@ class _PhotoDigestGrid extends StatelessWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final tileSize = (constraints.maxWidth - 16) / 3;
+            final columns = constraints.maxWidth >= 900 ? 5 : 3;
+            final spacing = 8.0;
+            final tileSize =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
             return Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: spacing,
+              runSpacing: spacing,
               children: [
                 for (final item in top)
                   SizedBox(
@@ -2324,14 +2652,31 @@ class _DigestListColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < children.length; i++) ...[
-          if (i > 0) const SizedBox(height: 5),
-          children[i],
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 900) {
+          const spacing = 8.0;
+          final tileWidth = (constraints.maxWidth - spacing) / 2;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final child in children)
+                SizedBox(width: tileWidth, child: child),
+            ],
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) const SizedBox(height: 5),
+              children[i],
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -2359,38 +2704,41 @@ class _DigestItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
+    final radius = 18 * scale;
     return Material(
       color: const Color(0xFFF8FAFC),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(radius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 76),
-          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(minHeight: 76 * scale),
+          padding: EdgeInsets.all(12 * scale),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 42 * scale,
+                height: 42 * scale,
                 decoration: BoxDecoration(
                   color: (statusColor ?? context.brandPrimary).withValues(
                     alpha: 0.14,
                   ),
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(15 * scale),
                 ),
                 child: Icon(
                   icon,
                   color: statusColor ?? context.brandPrimary,
-                  size: 21,
+                  size: 21 * scale,
                 ),
               ),
-              const SizedBox(width: 11),
+              SizedBox(width: 11 * scale),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2400,18 +2748,18 @@ class _DigestItemCard extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textPrimary,
                         fontFamily: 'Gilroy',
-                        fontSize: 16,
+                        fontSize: 16 * textScale,
                         fontWeight: FontWeight.w900,
                         height: 1.15,
                       ),
                     ),
-                    const SizedBox(height: 7),
+                    SizedBox(height: 7 * scale),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
+                      spacing: 8 * scale,
+                      runSpacing: 4 * scale,
                       children: [
                         _DigestDateLabel(
                           icon: CupertinoIcons.plus_circle,
@@ -2426,13 +2774,16 @@ class _DigestItemCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 8 * scale),
               Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   _DigestStatusPill(text: statusText, color: statusColor),
-                  if (markers != null) ...[const SizedBox(height: 8), markers!],
+                  if (markers != null) ...[
+                    SizedBox(height: 8 * scale),
+                    markers!,
+                  ],
                 ],
               ),
             ],
@@ -2451,18 +2802,20 @@ class _DigestDateLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 14, color: AppColors.textSecondary),
-        const SizedBox(width: 4),
+        Icon(icon, size: 14 * scale, color: AppColors.textSecondary),
+        SizedBox(width: 4 * scale),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.textSecondary,
             fontFamily: 'Gilroy',
-            fontSize: 12,
+            fontSize: 12 * textScale,
             fontWeight: FontWeight.w700,
             height: 1.1,
           ),
@@ -2481,9 +2834,17 @@ class _DigestStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = color ?? context.brandPrimary;
+    final scale = _compactHomeScale(context);
+    final textScale = _compactHomeFontScale(context);
+    final maxWidth = MediaQuery.sizeOf(context).width <= 360
+        ? 96.0
+        : 132 * scale;
     return Container(
-      constraints: const BoxConstraints(maxWidth: 132),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      padding: EdgeInsets.symmetric(
+        horizontal: 10 * scale,
+        vertical: 6 * scale,
+      ),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
@@ -2497,7 +2858,7 @@ class _DigestStatusPill extends StatelessWidget {
         style: TextStyle(
           color: _readableStatusTextColor(accent),
           fontFamily: 'Gilroy',
-          fontSize: 12,
+          fontSize: 12 * textScale,
           fontWeight: FontWeight.w900,
           height: 1.1,
         ),
@@ -2533,9 +2894,11 @@ class _TrackDigestMarkers extends StatelessWidget {
 
     final hasProductInfo = track.productInfo != null;
 
+    final scale = _compactHomeScale(context);
+
     return SizedBox(
-      width: 89,
-      height: 24,
+      width: 89 * scale,
+      height: 24 * scale,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -2547,12 +2910,12 @@ class _TrackDigestMarkers extends StatelessWidget {
               pending: photoPending,
             ),
           ),
-          const SizedBox(width: 5),
+          SizedBox(width: 5 * scale),
           _DigestMarkerIcon(
             icon: CupertinoIcons.info_circle,
             color: _markerColor(context, done: hasProductInfo, pending: false),
           ),
-          const SizedBox(width: 5),
+          SizedBox(width: 5 * scale),
           _DigestMarkerIcon(
             icon: CupertinoIcons.question_circle,
             color: _markerColor(
@@ -2575,7 +2938,7 @@ class _DigestMarkerIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(icon, size: 24, color: color);
+    return Icon(icon, size: 24 * _compactHomeScale(context), color: color);
   }
 }
 

@@ -25,17 +25,19 @@ class ApiConfig {
     return '$_host/api';
   }
 
-  /// Резервный API-домен для аварийного mobile fallback.
+  /// Резервный API-домен для полевых тестов.
   ///
-  /// По умолчанию используем legacy-домен на том же backend, потому он уже
-  /// публично отвечает клиентам и не переводит 2a-user на admin/HK route.
-  /// Если нужен другой маршрут для полевого теста, его можно задать сборкой:
+  /// В обычных сборках 2a-user не переключается на legacy/backend fallback:
+  /// при временной сетевой ошибке приложение должно оставаться на основном
+  /// production API, чтобы не смешивать диагностику и не уходить на старый
+  /// домен. Если нужен отдельный маршрут для ручного полевого теста, его можно
+  /// явно задать сборкой:
   ///
   /// `--dart-define=FALLBACK_API_BASE_URL=https://api.2a-logistic.com/api`
   static String? get fallbackBaseUrl {
     const envUrl = String.fromEnvironment('FALLBACK_API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    return '$_legacyHost/api';
+    return null;
   }
 
   /// Base URL для статических файлов (uploads)

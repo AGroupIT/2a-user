@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/app_layout.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
@@ -18,12 +19,18 @@ class NotificationsBellButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scale = AppLayout.compactScale(context);
+    final radius = 12 * scale;
     final clientCode = ref.watch(activeClientCodeProvider);
     if (clientCode == null) {
-      return const Tooltip(
+      return Tooltip(
         message: 'Уведомления',
         child: PixsoTopMenuActionSurface(
-          child: Icon(CupertinoIcons.bell, size: 18.5, color: _contentColor),
+          child: Icon(
+            CupertinoIcons.bell,
+            size: 18.5 * scale,
+            color: _contentColor,
+          ),
         ),
       );
     }
@@ -40,13 +47,23 @@ class NotificationsBellButton extends ConsumerWidget {
       message: 'Уведомления',
       child: Material(
         type: MaterialType.transparency,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(radius),
           onTap: () {
             final navigator = Navigator.of(context);
             final router = GoRouter.of(context);
+            final useSideSheet = AppLayout.useSideNavigation(context);
             var isSheetOpen = true;
+
+            void handleNavigate(String route) {
+              if (!isSheetOpen || !navigator.mounted) return;
+              isSheetOpen = false;
+              if (navigator.canPop()) {
+                navigator.pop();
+              }
+              router.push(route);
+            }
 
             showBlurredModalBottomSheet<void>(
               context: context,
@@ -54,24 +71,26 @@ class NotificationsBellButton extends ConsumerWidget {
               barrierColor: Colors.black.withValues(alpha: 0.22),
               useSafeArea: true,
               isScrollControlled: true,
-              builder: (_) => DraggableScrollableSheet(
-                initialChildSize: 0.65,
-                minChildSize: 0.4,
-                maxChildSize: 0.95,
-                expand: false,
-                builder: (_, controller) => NotificationsSheet(
-                  clientCode: clientCode,
-                  onNavigate: (route) {
-                    if (!isSheetOpen || !navigator.mounted) return;
-                    isSheetOpen = false;
-                    if (navigator.canPop()) {
-                      navigator.pop();
-                    }
-                    router.push(route);
-                  },
-                  controller: controller,
-                ),
-              ),
+              builder: (_) {
+                if (useSideSheet) {
+                  return NotificationsSheet(
+                    clientCode: clientCode,
+                    onNavigate: handleNavigate,
+                  );
+                }
+
+                return DraggableScrollableSheet(
+                  initialChildSize: 0.65,
+                  minChildSize: 0.4,
+                  maxChildSize: 0.95,
+                  expand: false,
+                  builder: (_, controller) => NotificationsSheet(
+                    clientCode: clientCode,
+                    onNavigate: handleNavigate,
+                    controller: controller,
+                  ),
+                );
+              },
             ).whenComplete(() => isSheetOpen = false);
           },
           child: Stack(
@@ -81,7 +100,7 @@ class NotificationsBellButton extends ConsumerWidget {
                 highlighted: unreadCount > 0,
                 child: Icon(
                   CupertinoIcons.bell,
-                  size: 18.5,
+                  size: 18.5 * scale,
                   color: unreadCount > 0 ? context.brandPrimary : _contentColor,
                 ),
               ),
@@ -90,12 +109,15 @@ class NotificationsBellButton extends ConsumerWidget {
                   right: -2,
                   top: -2,
                   child: Container(
-                    width: 8,
-                    height: 8,
+                    width: 8 * scale,
+                    height: 8 * scale,
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: Colors.white, width: 1.5),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 1.5 * scale,
+                      ),
                     ),
                   ),
                 ),

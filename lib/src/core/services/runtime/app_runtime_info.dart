@@ -45,11 +45,12 @@ class AppRuntimeInfo {
   static final AppRuntimeInfo instance = AppRuntimeInfo._();
 
   Future<PackageInfo>? _packageInfoFuture;
-  RuntimePlatformInfo? _platformInfo;
+  Future<RuntimePlatformInfo>? _platformInfoFuture;
 
   Future<AppRuntimeSnapshot> snapshot() async {
     final info = await (_packageInfoFuture ??= PackageInfo.fromPlatform());
-    final platformInfo = _platformInfo ??= getRuntimePlatformInfo();
+    final platformInfo = await (_platformInfoFuture ??=
+        getRuntimePlatformInfo());
 
     return AppRuntimeSnapshot(
       appVersion: info.version,

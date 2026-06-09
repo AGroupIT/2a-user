@@ -25,6 +25,18 @@ class _AnimatedHeroGlowBackdropState extends State<AnimatedHeroGlowBackdrop>
       vsync: this,
       duration: const Duration(milliseconds: 5600),
     )..repeat(reverse: true);
+    _settleAfter(const Duration(seconds: 9));
+  }
+
+  void _settleAfter(Duration activeFor) {
+    Future<void>.delayed(activeFor, () {
+      if (!mounted || !_controller.isAnimating) return;
+      _controller.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override

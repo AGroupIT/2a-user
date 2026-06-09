@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_layout.dart';
 
 const double kAppInputRadius = 10;
 const double kAppInputLargeRadius = 14;
@@ -41,6 +42,12 @@ InputDecoration appInputDecoration(
       borderColor ?? Colors.white.withValues(alpha: 0.70);
   final resolvedFocusedColor = focusedBorderColor ?? context.brandPrimary;
   final resolvedErrorColor = errorBorderColor ?? const Color(0xFFE53935);
+  final scale = AppLayout.compactScale(context);
+  final effectiveRadius = radius * scale;
+  final defaultPadding = EdgeInsets.symmetric(
+    horizontal: 14 * scale,
+    vertical: 12 * scale,
+  );
 
   return InputDecoration(
     labelText: labelText,
@@ -53,25 +60,23 @@ InputDecoration appInputDecoration(
     isDense: isDense,
     filled: true,
     fillColor: fillColor ?? Colors.white.withValues(alpha: 0.75),
-    contentPadding:
-        contentPadding ??
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    border: appInputBorder(resolvedBorderColor, radius: radius),
-    enabledBorder: appInputBorder(resolvedBorderColor, radius: radius),
+    contentPadding: contentPadding ?? defaultPadding,
+    border: appInputBorder(resolvedBorderColor, radius: effectiveRadius),
+    enabledBorder: appInputBorder(resolvedBorderColor, radius: effectiveRadius),
     focusedBorder: appInputBorder(
       resolvedFocusedColor,
-      radius: radius,
+      radius: effectiveRadius,
       width: focusedWidth,
     ),
-    errorBorder: appInputBorder(resolvedErrorColor, radius: radius),
+    errorBorder: appInputBorder(resolvedErrorColor, radius: effectiveRadius),
     focusedErrorBorder: appInputBorder(
       resolvedErrorColor,
-      radius: radius,
+      radius: effectiveRadius,
       width: focusedWidth,
     ),
     disabledBorder: appInputBorder(
       resolvedBorderColor.withValues(alpha: 0.55),
-      radius: radius,
+      radius: effectiveRadius,
     ),
   );
 }
@@ -94,7 +99,11 @@ class AppGradientInputFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final innerRadius = (radius - borderWidth).clamp(0, radius).toDouble();
+    final scale = AppLayout.compactScale(context);
+    final effectiveRadius = radius * scale;
+    final innerRadius = (effectiveRadius - borderWidth)
+        .clamp(0, effectiveRadius)
+        .toDouble();
 
     Widget result = DecoratedBox(
       decoration: BoxDecoration(
@@ -103,7 +112,7 @@ class AppGradientInputFrame extends StatelessWidget {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
       ),
       child: Padding(
         padding: EdgeInsets.all(borderWidth),
@@ -183,8 +192,14 @@ class _AppOutlinedInputFrameState extends State<AppOutlinedInputFrame> {
               : normalBorderColor)
         : normalBorderColor.withValues(alpha: 0.58);
 
+    final scale = AppLayout.compactScale(context);
+    final effectiveRadius = widget.radius * scale;
+    final effectiveHeight = widget.height == null
+        ? null
+        : widget.height! * scale;
+
     Widget result = AnimatedContainer(
-      height: widget.height,
+      height: effectiveHeight,
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       clipBehavior: Clip.antiAlias,
@@ -192,7 +207,7 @@ class _AppOutlinedInputFrameState extends State<AppOutlinedInputFrame> {
         color: widget.enabled
             ? widget.fillColor
             : widget.fillColor.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(widget.radius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         boxShadow: focused
             ? [
                 BoxShadow(
@@ -206,7 +221,7 @@ class _AppOutlinedInputFrameState extends State<AppOutlinedInputFrame> {
             : null,
       ),
       foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(widget.radius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         border: Border.all(
           color: borderColor,
           width: focused ? widget.focusedBorderWidth : widget.borderWidth,

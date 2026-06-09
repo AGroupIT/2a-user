@@ -49,7 +49,13 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       # Keep Swift 5 to avoid Swift 6 strict concurrency errors in third-party pods.
       config.build_settings['SWIFT_VERSION'] = '5.0'
-      # Fix Xcode simulator builds failing on CodeSign for CocoaPods frameworks.
+      # CocoaPods frameworks should not be code-signed as standalone targets.
+      # Keep this in Podfile so Xcode recommended-settings warnings do not require
+      # manual edits inside generated Pods.xcodeproj.
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+      config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]'] = 'NO'
       config.build_settings['EXPANDED_CODE_SIGN_IDENTITY[sdk=iphonesimulator*]'] = ''

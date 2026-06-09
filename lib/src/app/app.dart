@@ -8,10 +8,12 @@ import '../core/logging/client_log_service.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
 import '../core/services/app_language_service.dart';
+import '../core/services/app_performance_monitor.dart';
 import '../core/services/chat_presence_service.dart';
 import '../core/services/delta_sync_provider.dart';
 import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
+import '../core/ui/app_layout.dart';
 import '../core/ui/app_toast.dart';
 import '../core/ui/demo_mode_banner.dart';
 import '../features/auth/application/sentry_context_provider.dart';
@@ -37,6 +39,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppPerformanceMonitor.instance.start();
     // Инициализируем обработчик push уведомлений
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initializePushNotificationsHandler(
@@ -103,6 +106,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    AppPerformanceMonitor.instance.stop();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -244,9 +248,33 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       locale: language.locale,
       theme: AppTheme.lightWithColors(brandColors),
       routerConfig: router,
-      builder: (context, child) => Stack(
-        children: [child ?? const SizedBox.shrink(), const DemoModeBanner()],
-      ),
+      builder: (context, child) {
+        final content = _CompactTextScale(
+          child: child ?? const SizedBox.shrink(),
+        );
+        return Stack(children: [content, const DemoModeBanner()]);
+      },
+    );
+  }
+}
+
+class _CompactTextScale extends StatelessWidget {
+  final Widget child;
+
+  const _CompactTextScale({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final compactScale = AppLayout.compactTextScale(context);
+    if (compactScale == 1.0) return child;
+
+    final baseScale = media.textScaler.scale(14) / 14;
+    final effectiveScale = (baseScale * compactScale).clamp(0.82, 1.30);
+
+    return MediaQuery(
+      data: media.copyWith(textScaler: TextScaler.linear(effectiveScale)),
+      child: child,
     );
   }
 }

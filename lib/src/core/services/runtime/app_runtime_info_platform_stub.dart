@@ -5,6 +5,6 @@ class RuntimePlatformInfo {
   final String osVersion;
 }
 
-RuntimePlatformInfo getRuntimePlatformInfo() {
+Future<RuntimePlatformInfo> getRuntimePlatformInfo() async {
   return const RuntimePlatformInfo(device: 'unknown', osVersion: 'unknown');
 }

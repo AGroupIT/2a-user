@@ -52,7 +52,9 @@ final photosRealtimeBridgeProvider = Provider.autoDispose<void>((ref) {
         }
       }
       lastInvalidateAt = now;
-      debugPrint('[UserPhotos] silent invalidate ($reason)');
+      if (kDebugMode) {
+        debugPrint('[UserPhotos] silent invalidate ($reason)');
+      }
       ClientLogService.instance.add(
         type: 'photos_realtime_invalidate',
         level: 'info',
@@ -348,9 +350,11 @@ class PaginatedPhotosNotifier {
     }
 
     _lastSilentRefreshStartedAt = DateTime.now();
-    debugPrint(
-      '[PaginatedPhotos] WS event — silent refresh for ${_state.date ?? 'all'}',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '[PaginatedPhotos] WS event — silent refresh for ${_state.date ?? 'all'}',
+      );
+    }
     ClientLogService.instance.add(
       type: 'photos_silent_refresh_scheduled',
       level: 'info',

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/pixso_top_menu_surface.dart';
 import '../application/client_codes_controller.dart';
 import 'client_switcher_sheet.dart';
@@ -22,6 +23,7 @@ class ClientSwitcherButton extends ConsumerWidget {
       loading: () => '…',
       error: (_, _) => 'Код клиента',
     );
+    final scale = AppLayout.compactScale(context);
 
     return Material(
       type: MaterialType.transparency,
@@ -34,15 +36,15 @@ class ClientSwitcherButton extends ConsumerWidget {
           isScrollControlled: true,
           builder: (_) => const ClientSwitcherSheet(),
         ),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18 * scale),
         child: PixsoTopMenuSurface(
           minWidth: 108,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 8 * scale,
+                height: 8 * scale,
                 decoration: BoxDecoration(
                   color: context.brandPrimary,
                   borderRadius: BorderRadius.circular(99),
@@ -55,9 +57,12 @@ class ClientSwitcherButton extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8 * scale),
               ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 48, maxWidth: 92),
+                constraints: BoxConstraints(
+                  minWidth: 48 * scale,
+                  maxWidth: 92 * scale,
+                ),
                 child: Text(
                   label,
                   maxLines: 1,
@@ -73,14 +78,14 @@ class ClientSwitcherButton extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              const SizedBox(
-                width: 12,
-                height: 18,
+              SizedBox(width: 8 * scale),
+              SizedBox(
+                width: 12 * scale,
+                height: 18 * scale,
                 child: Icon(
                   CupertinoIcons.chevron_down,
                   color: _contentColor,
-                  size: 13,
+                  size: 13 * scale,
                 ),
               ),
             ],

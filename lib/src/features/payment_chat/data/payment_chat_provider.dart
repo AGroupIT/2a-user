@@ -10,8 +10,20 @@ import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
+import '../../../core/utils/error_utils.dart';
 
 // ==================== Payment Chat Repository ====================
+
+String _paymentChatUserErrorMessage(
+  Object error, {
+  required String fallbackTitle,
+}) {
+  final errorInfo = ErrorUtils.getErrorInfo(error);
+  final title = ErrorUtils.isNetworkError(error)
+      ? errorInfo.titleRu
+      : fallbackTitle;
+  return '$title\n\n${errorInfo.messageRu}';
+}
 
 /// Простой Notifier для bool состояния (открыт ли экран чата по оплате)
 class IsPaymentChatScreenOpenNotifier extends Notifier<bool> {
@@ -544,7 +556,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       state = state.copyWith(
         isLoading: false,
-        error: 'Не удалось загрузить чат: $e',
+        error: _paymentChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить чат по оплате',
+        ),
       );
     }
   }
@@ -603,7 +618,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       state = state.copyWith(
         isSending: false,
-        error: 'Не удалось отправить сообщение',
+        error: _paymentChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось отправить сообщение',
+        ),
       );
       return false;
     }
@@ -658,7 +676,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       state = state.copyWith(
         isUploading: false,
-        error: 'Ошибка при загрузке файла: $e',
+        error: _paymentChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить файл',
+        ),
       );
       return null;
     }
@@ -725,7 +746,10 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       state = state.copyWith(
         isUploading: false,
-        error: 'Ошибка при загрузке файла: $e',
+        error: _paymentChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить файл',
+        ),
       );
       return null;
     }

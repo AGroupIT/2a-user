@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_layout.dart';
 
 class PixsoTopMenuSurface extends StatelessWidget {
   final Widget child;
@@ -23,12 +24,21 @@ class PixsoTopMenuSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = AppLayout.compactScale(context);
+    final effectiveHeight = height * scale;
+    final effectiveRadius = _radius * scale;
+    final effectivePadding =
+        padding.resolve(Directionality.of(context)) * scale;
+
     return Container(
-      width: width,
-      height: height,
-      constraints: BoxConstraints(minWidth: minWidth, minHeight: height),
+      width: width == null ? null : width! * scale,
+      height: effectiveHeight,
+      constraints: BoxConstraints(
+        minWidth: minWidth * scale,
+        minHeight: effectiveHeight,
+      ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(_radius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -45,13 +55,13 @@ class PixsoTopMenuSurface extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(_radius),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.86),
-              borderRadius: BorderRadius.circular(_radius),
+              borderRadius: BorderRadius.circular(effectiveRadius),
               border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -63,7 +73,7 @@ class PixsoTopMenuSurface extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: padding,
+              padding: effectivePadding,
               child: width == null ? child : Center(child: child),
             ),
           ),
@@ -85,16 +95,20 @@ class PixsoTopMenuActionSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = AppLayout.compactScale(context);
+    final size = 30 * scale;
+    final radius = 12 * scale;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      width: 30,
-      height: 30,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: highlighted
             ? context.brandPrimary.withValues(alpha: 0.10)
             : Colors.black.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(
           color: highlighted
               ? context.brandPrimary.withValues(alpha: 0.12)

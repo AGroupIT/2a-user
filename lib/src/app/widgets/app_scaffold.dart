@@ -12,8 +12,9 @@ import '../../features/clients/presentation/client_switcher_button.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/notifications/domain/notification_item.dart';
 import '../../features/notifications/presentation/notifications_bell_button.dart';
+import '../../features/shell/presentation/desktop_side_nav.dart';
 
-class AppScaffold extends StatelessWidget {
+class AppScaffold extends ConsumerWidget {
   final String title;
   final Widget child;
   final bool showBack;
@@ -26,12 +27,15 @@ class AppScaffold extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final statusTop = MediaQuery.paddingOf(context).top;
     final theme = Theme.of(context);
     final overlayStyle = theme.brightness == Brightness.dark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
+    final useSideNavigation = AppLayout.useSideNavigation(context);
+    final sideNavExpanded = ref.watch(desktopSideNavExpandedProvider);
+    final sideNavWidth = AppLayout.sideNavWidthFor(sideNavExpanded);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle.copyWith(statusBarColor: Colors.transparent),
@@ -43,16 +47,32 @@ class AppScaffold extends StatelessWidget {
           child: Stack(
             children: [
               const Positioned.fill(child: AppBackground()),
-              Padding(
-                padding: EdgeInsets.only(top: statusTop),
-                child: ClipRect(child: child),
+              AnimatedPadding(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(
+                  left: useSideNavigation ? sideNavWidth : 0,
+                  top: statusTop,
+                ),
+                child: AppLayout.constrainContent(context, child),
               ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: AppFloatingTopBar(title: title, showBack: showBack),
-              ),
+              if (useSideNavigation)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: sideNavWidth,
+                  child: const DesktopSideNav(),
+                ),
+              if (!useSideNavigation)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: AppFloatingTopBar(title: title, showBack: showBack),
+                ),
             ],
           ),
         ),
@@ -78,21 +98,32 @@ class AppFloatingTopBar extends StatelessWidget {
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
     final top = MediaQuery.paddingOf(context).top;
+    final useSideNavigation = AppLayout.useSideNavigation(context);
+    final topBar = Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppLayout.horizontalMargin(context),
+        top + AppLayout.topBarTopMarginFor(context),
+        AppLayout.horizontalMargin(context),
+        AppLayout.topBarBottomGapFor(context),
+      ),
+      child: _buildTopBarSurface(
+        context: context,
+        content: const _TopBarContent(),
+      ),
+    );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          14,
-          top + AppLayout.topBarTopMargin,
-          14,
-          AppLayout.topBarBottomGap,
-        ),
-        child: _buildTopBarSurface(
-          context: context,
-          content: const _TopBarContent(),
-        ),
-      ),
+      child: useSideNavigation
+          ? topBar
+          : Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: AppLayout.navigationContentMaxWidth(context),
+                ),
+                child: topBar,
+              ),
+            ),
     );
   }
 }
@@ -102,7 +133,11 @@ Widget _buildTopBarSurface({
   required Widget content,
 }) {
   // Transparent container - glass effect only on individual buttons
-  return SizedBox(height: AppLayout.topBarHeight, child: content);
+  return SizedBox(
+    width: double.infinity,
+    height: AppLayout.topBarHeightFor(context),
+    child: content,
+  );
 }
 
 class _TopBarContent extends StatelessWidget {
@@ -110,16 +145,21 @@ class _TopBarContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final useSideNavigation = AppLayout.useSideNavigation(context);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Flexible(
-          fit: FlexFit.loose,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ClientSwitcherButton(),
+        if (useSideNavigation)
+          const Spacer()
+        else
+          const Flexible(
+            fit: FlexFit.loose,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ClientSwitcherButton(),
+            ),
           ),
-        ),
         const _ActionsPill(),
       ],
     );
@@ -131,6 +171,7 @@ class _ActionsPill extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final useSideNavigation = AppLayout.useSideNavigation(context);
     final notifications = ref.watch(notificationsControllerProvider);
     final hasUnreadSupportChat =
         notifications.value?.any(
@@ -138,23 +179,27 @@ class _ActionsPill extends ConsumerWidget {
         ) ??
         false;
 
+    final scale = AppLayout.compactScale(context);
+
     return PixsoTopMenuSurface(
-      width: 116,
+      width: useSideNavigation ? 80 : 116,
       padding: const EdgeInsets.all(7),
       child: Material(
         type: MaterialType.transparency,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _TopBarActionButton(
-              tooltip: 'Главная',
-              icon: CupertinoIcons.house,
-              highlighted: true,
-              onTap: () => context.go('/'),
-            ),
-            const SizedBox(width: 6),
+            if (!useSideNavigation) ...[
+              _TopBarActionButton(
+                tooltip: 'Главная',
+                icon: CupertinoIcons.house,
+                highlighted: true,
+                onTap: () => context.go('/'),
+              ),
+              SizedBox(width: 6 * scale),
+            ],
             const NotificationsBellButton(),
-            const SizedBox(width: 6),
+            SizedBox(width: 6 * scale),
             _TopBarActionButton(
               tooltip: 'Чат поддержки',
               icon: CupertinoIcons.chat_bubble_2,
@@ -187,13 +232,16 @@ class _TopBarActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = AppLayout.compactScale(context);
+    final radius = 12 * scale;
+
     return Tooltip(
       message: tooltip,
       child: Material(
         type: MaterialType.transparency,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(radius),
           onTap: onTap,
           child: Stack(
             clipBehavior: Clip.none,
@@ -202,7 +250,7 @@ class _TopBarActionButton extends StatelessWidget {
                 highlighted: highlighted,
                 child: Icon(
                   icon,
-                  size: 18.5,
+                  size: 18.5 * scale,
                   color: highlighted ? context.brandPrimary : _contentColor,
                 ),
               ),
@@ -211,12 +259,15 @@ class _TopBarActionButton extends StatelessWidget {
                   right: -2,
                   top: -2,
                   child: Container(
-                    width: 8,
-                    height: 8,
+                    width: 8 * scale,
+                    height: 8 * scale,
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: Colors.white, width: 1.5),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 1.5 * scale,
+                      ),
                     ),
                   ),
                 ),

@@ -377,73 +377,75 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 24,
                 bottomPadding + 24,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: () {
-                        if (_currentStep == ResetStep.enterPhone ||
-                            _currentStep == ResetStep.success) {
-                          context.pop();
-                        } else {
-                          _cancelTimers();
-                          setState(() => _currentStep = ResetStep.enterPhone);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.78),
+              child: AuthResponsiveContent(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_currentStep == ResetStep.enterPhone ||
+                              _currentStep == ResetStep.success) {
+                            context.pop();
+                          } else {
+                            _cancelTimers();
+                            setState(() => _currentStep = ResetStep.enterPhone);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
                           ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x0A000000),
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.82),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.78),
                             ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.arrow_back_ios_rounded,
-                              size: 16,
-                              color: Color(0xFF666666),
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'Назад',
-                              style: TextStyle(
-                                color: Color(0xFF666666),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x0A000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.arrow_back_ios_rounded,
+                                size: 16,
+                                color: Color(0xFF666666),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Назад',
+                                style: TextStyle(
+                                  color: Color(0xFF666666),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  AuthHeroHeader(
-                    icon: _getHeroIcon(),
-                    title: _getTitle(),
-                    subtitle: _getSubtitle(),
-                    trustItems: _getTrustItems(),
-                  ),
-                  const SizedBox(height: 28),
+                    const SizedBox(height: 24),
+                    AuthHeroHeader(
+                      icon: _getHeroIcon(),
+                      title: _getTitle(),
+                      subtitle: _getSubtitle(),
+                      trustItems: _getTrustItems(),
+                    ),
+                    const SizedBox(height: 28),
 
-                  AuthFormCard(child: _buildContent()),
-                ],
+                    AuthFormCard(child: _buildContent()),
+                  ],
+                ),
               ),
             ),
           ),

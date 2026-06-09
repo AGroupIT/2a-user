@@ -137,7 +137,9 @@ class SpAssembliesController extends Notifier<SpAssembliesState> {
       final repository = ref.read(spRepositoryProvider);
       final assemblies = await repository.getAssemblies();
 
-      debugPrint('✅ SP: Loaded ${assemblies.length} assemblies');
+      if (kDebugMode) {
+        debugPrint('✅ SP: Loaded ${assemblies.length} assemblies');
+      }
 
       state = state.copyWith(assemblies: assemblies, isLoading: false);
     } catch (e) {

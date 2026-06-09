@@ -10,8 +10,20 @@ import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
+import '../../../core/utils/error_utils.dart';
 
 // ==================== Chat Repository ====================
+
+String _supportChatUserErrorMessage(
+  Object error, {
+  required String fallbackTitle,
+}) {
+  final errorInfo = ErrorUtils.getErrorInfo(error);
+  final title = ErrorUtils.isNetworkError(error)
+      ? errorInfo.titleRu
+      : fallbackTitle;
+  return '$title\n\n${errorInfo.messageRu}';
+}
 
 /// Репозиторий для работы с чатом поддержки
 class ChatRepository {
@@ -497,7 +509,10 @@ class ChatController extends Notifier<ChatState> {
       );
       state = state.copyWith(
         isLoading: false,
-        error: 'Не удалось загрузить чат: $e',
+        error: _supportChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить чат поддержки',
+        ),
       );
     }
   }
@@ -558,7 +573,10 @@ class ChatController extends Notifier<ChatState> {
       );
       state = state.copyWith(
         isSending: false,
-        error: 'Не удалось отправить сообщение',
+        error: _supportChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось отправить сообщение',
+        ),
       );
       return false;
     }
@@ -602,7 +620,10 @@ class ChatController extends Notifier<ChatState> {
       );
       state = state.copyWith(
         isUploading: false,
-        error: 'Не удалось загрузить файл',
+        error: _supportChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить файл',
+        ),
       );
       return null;
     }
@@ -657,7 +678,10 @@ class ChatController extends Notifier<ChatState> {
       );
       state = state.copyWith(
         isUploading: false,
-        error: 'Не удалось загрузить файл',
+        error: _supportChatUserErrorMessage(
+          e,
+          fallbackTitle: 'Не удалось загрузить файл',
+        ),
       );
       return null;
     }

@@ -50,6 +50,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       _domainCtrl.text = detectedDomain;
     }
     _introController.forward();
+    Future<void>.delayed(const Duration(seconds: 8), () {
+      if (mounted) {
+        _ambientController.stop();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPasskeyAvailability();
     });
@@ -66,6 +71,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _loadPasskeyAvailability() async {
+    // На старых Android проверка passkeys может поднимать Google Play Services
+    // и заметно блокировать первые кадры. Даём экрану входа сначала отрисоваться.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+
     final available = await ref.read(passkeyAuthServiceProvider).isAvailable();
     if (!mounted) return;
     setState(() {
@@ -353,119 +363,123 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 24,
                 bottomPadding + keyboardInset + 24,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _PremiumEntrance(
-                    animation: _introController,
-                    animationsEnabled: animationsEnabled,
-                    child: const AuthHeroHeader(
-                      icon: Icons.local_shipping_rounded,
-                      title: 'Вход в личный кабинет',
-                      subtitle:
-                          'Следите за грузами, сборками, счетами и фотоотчётами в одном защищённом кабинете.',
-                      trustItems: [
-                        AuthTrustItem(
-                          icon: Icons.photo_camera_rounded,
-                          label: 'Фотоотчёты',
-                        ),
-                        AuthTrustItem(
-                          icon: Icons.fact_check_rounded,
-                          label: 'Проверка товара',
-                        ),
-                        AuthTrustItem(
-                          icon: Icons.shopping_bag_rounded,
-                          label: 'Выкуп',
-                        ),
-                        AuthTrustItem(
-                          icon: Icons.assignment_return_rounded,
-                          label: 'Возвраты',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  _PremiumEntrance(
-                    animation: _introController,
-                    delay: 0.14,
-                    animationsEnabled: animationsEnabled,
-                    child: _AmbientAuthCard(
-                      animation: _ambientController,
+              child: AuthResponsiveContent(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _PremiumEntrance(
+                      animation: _introController,
                       animationsEnabled: animationsEnabled,
-                      child: AuthFormCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildTextField(
-                              controller: _loginCtrl,
-                              label: 'Email или телефон',
-                              hint: 'user@example.com',
-                              prefixIcon: Icons.person_rounded,
-                              keyboardType: TextInputType.emailAddress,
-                            ),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: _verticalRevealTransition,
-                              child: !_showPasswordLogin
-                                  ? _buildPasskeyActions()
-                                  : const SizedBox.shrink(
-                                      key: ValueKey('passkey-hidden'),
-                                    ),
-                            ),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 360),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: _verticalRevealTransition,
-                              child: _showPasswordLogin
-                                  ? _buildPasswordFields()
-                                  : const SizedBox(
-                                      key: ValueKey('password-fields-hidden'),
-                                      height: 12,
-                                    ),
-                            ),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 260),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: _buttonSwapTransition,
-                              child: _showPasswordLogin
-                                  ? _buildPasswordSubmitButton()
-                                  : _buildPasswordRevealButton(),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => context.push('/register'),
-                              style: AuthVisuals.outlinedButtonStyle(context),
-                              icon: const Icon(Icons.person_add_alt_1_rounded),
-                              label: const Text(
-                                'Зарегистрироваться',
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
+                      child: const AuthHeroHeader(
+                        icon: Icons.local_shipping_rounded,
+                        title: 'Вход в личный кабинет',
+                        subtitle:
+                            'Следите за грузами, сборками, счетами и фотоотчётами в одном защищённом кабинете.',
+                        trustItems: [
+                          AuthTrustItem(
+                            icon: Icons.photo_camera_rounded,
+                            label: 'Фотоотчёты',
+                          ),
+                          AuthTrustItem(
+                            icon: Icons.fact_check_rounded,
+                            label: 'Проверка товара',
+                          ),
+                          AuthTrustItem(
+                            icon: Icons.shopping_bag_rounded,
+                            label: 'Выкуп',
+                          ),
+                          AuthTrustItem(
+                            icon: Icons.assignment_return_rounded,
+                            label: 'Возвраты',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    _PremiumEntrance(
+                      animation: _introController,
+                      delay: 0.14,
+                      animationsEnabled: animationsEnabled,
+                      child: _AmbientAuthCard(
+                        animation: _ambientController,
+                        animationsEnabled: animationsEnabled,
+                        child: AuthFormCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildTextField(
+                                controller: _loginCtrl,
+                                label: 'Email или телефон',
+                                hint: 'user@example.com',
+                                prefixIcon: Icons.person_rounded,
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: _verticalRevealTransition,
+                                child: !_showPasswordLogin
+                                    ? _buildPasskeyActions()
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('passkey-hidden'),
+                                      ),
+                              ),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 360),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: _verticalRevealTransition,
+                                child: _showPasswordLogin
+                                    ? _buildPasswordFields()
+                                    : const SizedBox(
+                                        key: ValueKey('password-fields-hidden'),
+                                        height: 12,
+                                      ),
+                              ),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 260),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: _buttonSwapTransition,
+                                child: _showPasswordLogin
+                                    ? _buildPasswordSubmitButton()
+                                    : _buildPasswordRevealButton(),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => context.push('/register'),
+                                style: AuthVisuals.outlinedButtonStyle(context),
+                                icon: const Icon(
+                                  Icons.person_add_alt_1_rounded,
+                                ),
+                                label: const Text(
+                                  'Зарегистрироваться',
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 24),
-                  _PremiumEntrance(
-                    animation: _introController,
-                    delay: 0.28,
-                    animationsEnabled: animationsEnabled,
-                    child: const _PublicTariffsPreview(),
-                  ),
-                ],
+                    const SizedBox(height: 24),
+                    _PremiumEntrance(
+                      animation: _introController,
+                      delay: 0.28,
+                      animationsEnabled: animationsEnabled,
+                      child: const _PublicTariffsPreview(),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -53,15 +53,21 @@ final deltaSyncProvider = Provider<void>((ref) {
 
   // Listen to delta events (room-based, preferred)
   final deltaSub = wsService.deltas.listen((delta) {
-    debugPrint('[DeltaSync] Delta: ${delta.type} ${delta.action} ${delta.id}');
+    if (kDebugMode) {
+      debugPrint(
+        '[DeltaSync] Delta: ${delta.type} ${delta.action} ${delta.id}',
+      );
+    }
     scheduleFlush(delta.type);
   });
 
   // Listen to delta_batch events (mass operations)
   final deltaBatchSub = wsService.deltaBatches.listen((batch) {
-    debugPrint(
-      '[DeltaSync] DeltaBatch: ${batch.type} ${batch.items.length} items',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '[DeltaSync] DeltaBatch: ${batch.type} ${batch.items.length} items',
+      );
+    }
     scheduleFlush(batch.type);
   });
 
@@ -69,14 +75,18 @@ final deltaSyncProvider = Provider<void>((ref) {
   final dataChangedSub = wsService.dataChanged.listen((data) {
     final type = data['type'] as String?;
     if (type != null) {
-      debugPrint('[DeltaSync] DataChanged: $type');
+      if (kDebugMode) {
+        debugPrint('[DeltaSync] DataChanged: $type');
+      }
       scheduleFlush(type);
     }
   });
 
   // При reconnect — инвалидируем все
   final reconnectSub = wsService.reconnected.listen((_) {
-    debugPrint('[DeltaSync] WS reconnected — invalidating all providers');
+    if (kDebugMode) {
+      debugPrint('[DeltaSync] WS reconnected — invalidating all providers');
+    }
     ClientLogService.instance.add(
       type: 'websocket_reconnected',
       level: 'warning',

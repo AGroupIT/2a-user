@@ -158,6 +158,7 @@ class ClientLogService {
     required int? statusCode,
     required int durationMs,
     String? operation,
+    String? nativeHttpClient,
   }) {
     add(
       type: 'api_response',
@@ -173,6 +174,7 @@ class ClientLogService {
         'statusCode': statusCode,
         'durationMs': durationMs,
         if (operation != null) 'operation': operation,
+        if (nativeHttpClient != null) 'nativeHttpClient': nativeHttpClient,
       },
     );
   }
@@ -186,6 +188,7 @@ class ClientLogService {
     required DioExceptionType type,
     String? error,
     String? operation,
+    String? nativeHttpClient,
   }) {
     add(
       type: 'api_error',
@@ -202,6 +205,7 @@ class ClientLogService {
         'durationMs': durationMs,
         'dioType': type.name,
         if (operation != null) 'operation': operation,
+        if (nativeHttpClient != null) 'nativeHttpClient': nativeHttpClient,
         if (error != null) 'error': _redactText(error),
       },
     );

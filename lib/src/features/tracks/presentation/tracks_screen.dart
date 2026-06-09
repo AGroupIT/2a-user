@@ -3732,6 +3732,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     final bottomPad = AppLayout.bottomScrollPadding(context);
     final topPad = AppLayout.topBarTotalHeight(context);
     const bulkButtonExtraPad = 110.0;
+    // DesktopSideNav uses bottom safe-area + 14px padding around its surface.
+    // Keep the selected-tracks action bar visually aligned with that bottom
+    // edge on iPad/desktop, while preserving the mobile bottom-nav offset.
+    const sideNavSurfaceBottomMargin = 14.0;
+    final bulkActionsBottomOffset = AppLayout.useSideNavigation(context)
+        ? MediaQuery.paddingOf(context).bottom + sideNavSurfaceBottomMargin
+        : AppLayout.bottomBarHeightFor(context) +
+              AppLayout.bottomBarBottomMarginFor(context) +
+              72;
 
     final groups = tracksState.tracks.isNotEmpty
         ? _groupTracks(tracksState.tracks)
@@ -3898,10 +3907,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             Positioned(
               left: 16,
               right: 16,
-              bottom:
-                  AppLayout.bottomBarHeight +
-                  AppLayout.bottomBarBottomMargin +
-                  72,
+              bottom: bulkActionsBottomOffset,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -3929,8 +3935,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           ScrollToTopButton(
             controller: _scrollController,
             bottomOffset:
-                AppLayout.bottomBarHeight +
-                AppLayout.bottomBarBottomMargin +
+                AppLayout.bottomBarHeightFor(context) +
+                AppLayout.bottomBarBottomMarginFor(context) +
                 37,
           ),
         ],
@@ -4625,6 +4631,18 @@ class _TracksHeaderGlowBackdropState extends State<_TracksHeaderGlowBackdrop>
       vsync: this,
       duration: const Duration(milliseconds: 5600),
     )..repeat(reverse: true);
+    _settleAfter(const Duration(seconds: 9));
+  }
+
+  void _settleAfter(Duration activeFor) {
+    Future<void>.delayed(activeFor, () {
+      if (!mounted || !_controller.isAnimating) return;
+      _controller.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -7889,19 +7907,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         ),
         if (_showTracks) ...[
           const SizedBox(height: 7),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < widget.tracks.length; i++) ...[
-                if (i > 0) const SizedBox(height: 20),
-                _buildTrackCard(
-                  context,
-                  df,
-                  widget.tracks[i],
-                  embeddedInAssembly: true,
-                ),
-              ],
-            ],
+          _AssemblyTracksGrid(
+            tracks: widget.tracks,
+            itemBuilder: (track) =>
+                _buildTrackCard(context, df, track, embeddedInAssembly: true),
           ),
         ],
       ],
@@ -8987,6 +8996,42 @@ class _TrackCardAction {
   final VoidCallback onTap;
 
   const _TrackCardAction({required this.label, required this.onTap});
+}
+
+class _AssemblyTracksGrid extends StatelessWidget {
+  final List<TrackItem> tracks;
+  final Widget Function(TrackItem track) itemBuilder;
+
+  const _AssemblyTracksGrid({required this.tracks, required this.itemBuilder});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width >= 1180
+            ? 4
+            : width >= 880
+            ? 3
+            : width >= 560
+            ? 2
+            : 1;
+        final spacing = columns == 1 ? 20.0 : 12.0;
+        final tileWidth = columns == 1
+            ? width
+            : (width - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final track in tracks)
+              SizedBox(width: tileWidth, child: itemBuilder(track)),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _AssemblyStatusPill extends StatelessWidget {

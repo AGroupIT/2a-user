@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_layout.dart';
 
 /// Основная кнопка с градиентным фоном
 class PrimaryButton extends StatefulWidget {
@@ -50,7 +51,7 @@ class PrimaryButton extends StatefulWidget {
       isLoading: isLoading,
       width: size,
       height: size,
-      child: Icon(icon, size: 22),
+      child: Icon(icon),
     );
   }
 
@@ -66,8 +67,13 @@ class _PrimaryButtonState extends State<PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = AppLayout.compactScale(context);
+    final effectiveWidth = widget.width == null || !widget.width!.isFinite
+        ? widget.width
+        : widget.width! * scale;
+    final effectiveHeight = widget.height * scale;
     final isCircular = widget.width == widget.height;
-    final borderRadius = isCircular ? widget.height / 2 : 10.0;
+    final borderRadius = isCircular ? effectiveHeight / 2 : 10.0 * scale;
     final brandPrimary = context.brandPrimary;
     final brandGradient = context.brandGradient;
     final hoverGradient = LinearGradient(
@@ -95,8 +101,8 @@ class _PrimaryButtonState extends State<PrimaryButton> {
             duration: const Duration(milliseconds: 100),
             scale: _isPressed ? 0.97 : 1.0,
             child: Container(
-              width: widget.width,
-              height: widget.height,
+              width: effectiveWidth,
+              height: effectiveHeight,
               decoration: BoxDecoration(
                 gradient: _isHovered && _isEnabled
                     ? hoverGradient
@@ -116,10 +122,10 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                 color: Colors.transparent,
                 child: Center(
                   child: widget.isLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
+                      ? SizedBox(
+                          width: 22 * scale,
+                          height: 22 * scale,
+                          child: const CircularProgressIndicator(
                             strokeWidth: 2.5,
                             valueColor: AlwaysStoppedAnimation(Colors.white),
                           ),
@@ -132,9 +138,9 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                             fontSize: 15,
                           ),
                           child: IconTheme(
-                            data: const IconThemeData(
+                            data: IconThemeData(
                               color: Colors.white,
-                              size: 22,
+                              size: 22 * scale,
                             ),
                             child: widget.child,
                           ),
@@ -197,7 +203,7 @@ class SecondaryButton extends StatefulWidget {
       isLoading: isLoading,
       width: size,
       height: size,
-      child: Icon(icon, size: 22),
+      child: Icon(icon),
     );
   }
 
@@ -213,8 +219,13 @@ class _SecondaryButtonState extends State<SecondaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = AppLayout.compactScale(context);
+    final effectiveWidth = widget.width == null || !widget.width!.isFinite
+        ? widget.width
+        : widget.width! * scale;
+    final effectiveHeight = widget.height * scale;
     final isCircular = widget.width == widget.height;
-    final borderRadius = isCircular ? widget.height / 2 : 10.0;
+    final borderRadius = isCircular ? effectiveHeight / 2 : 10.0 * scale;
     final brandPrimary = context.brandPrimary;
     final brandGradient = context.brandGradient;
 
@@ -235,8 +246,8 @@ class _SecondaryButtonState extends State<SecondaryButton> {
             duration: const Duration(milliseconds: 100),
             scale: _isPressed ? 0.97 : 1.0,
             child: Container(
-              width: widget.width,
-              height: widget.height,
+              width: effectiveWidth,
+              height: effectiveHeight,
               decoration: BoxDecoration(
                 gradient: brandGradient,
                 borderRadius: BorderRadius.circular(borderRadius),
@@ -254,8 +265,8 @@ class _SecondaryButtonState extends State<SecondaryButton> {
                   child: Center(
                     child: widget.isLoading
                         ? SizedBox(
-                            width: 22,
-                            height: 22,
+                            width: 22 * scale,
+                            height: 22 * scale,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
                               valueColor: AlwaysStoppedAnimation(brandPrimary),
@@ -271,7 +282,7 @@ class _SecondaryButtonState extends State<SecondaryButton> {
                             child: IconTheme(
                               data: IconThemeData(
                                 color: brandPrimary,
-                                size: 22,
+                                size: 22 * scale,
                               ),
                               child: widget.child,
                             ),

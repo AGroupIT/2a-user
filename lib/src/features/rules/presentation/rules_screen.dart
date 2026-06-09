@@ -29,6 +29,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
     final asyncItems = ref.watch(rulesListProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
+    final horizontalPad = AppLayout.horizontalMargin(context);
 
     Future<void> onRefresh() async {
       ref.invalidate(rulesListProvider);
@@ -46,9 +47,9 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
               key: _rulesListKey,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
-                16,
+                horizontalPad,
                 topPad * 0.7 + 16,
-                16,
+                horizontalPad,
                 bottomPad + 16,
               ),
               children: children,
@@ -146,16 +147,7 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
           child: buildFrame(
             children: [
               ...baseHeader(),
-              for (var i = 0; i < items.length; i++) ...[
-                if (i == 0)
-                  KeyedSubtree(
-                    key: _firstRuleKey,
-                    child: _RuleCard(item: items[i]),
-                  )
-                else
-                  _RuleCard(item: items[i]),
-                if (i != items.length - 1) const SizedBox(height: 12),
-              ],
+              _RuleCardsGrid(items: items, firstItemKey: _firstRuleKey),
             ],
           ),
         );
@@ -167,6 +159,47 @@ class _RulesScreenState extends ConsumerState<RulesScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+class _RuleCardsGrid extends StatelessWidget {
+  final List<RuleItem> items;
+  final GlobalKey firstItemKey;
+
+  const _RuleCardsGrid({required this.items, required this.firstItemKey});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 900
+            ? 3
+            : constraints.maxWidth >= 520
+            ? 2
+            : 1;
+        final spacing = columns >= 3 ? 14.0 : 12.0;
+        final tileWidth = columns == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (var i = 0; i < items.length; i++)
+              SizedBox(
+                width: tileWidth,
+                child: i == 0
+                    ? KeyedSubtree(
+                        key: firstItemKey,
+                        child: _RuleCard(item: items[i]),
+                      )
+                    : _RuleCard(item: items[i]),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 

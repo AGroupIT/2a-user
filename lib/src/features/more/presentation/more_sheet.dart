@@ -6,6 +6,7 @@ import '../../../core/config/sentry_config.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_diagnostics.dart';
+import '../../../core/services/update_service.dart';
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
@@ -25,6 +26,7 @@ class MoreSheet extends ConsumerStatefulWidget {
 
 class _MoreSheetState extends ConsumerState<MoreSheet> {
   bool _networkDiagnosticsRunning = false;
+  bool _updateCheckRunning = false;
 
   void _go(BuildContext context, String route) {
     Navigator.of(context).pop();
@@ -86,6 +88,21 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
     } finally {
       if (mounted) {
         setState(() => _networkDiagnosticsRunning = false);
+      }
+    }
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_updateCheckRunning) return;
+
+    setState(() => _updateCheckRunning = true);
+    ClientLogService.instance.action('Ручная проверка обновления');
+
+    try {
+      await UpdateService.manualCheckAndPrompt(context);
+    } finally {
+      if (mounted) {
+        setState(() => _updateCheckRunning = false);
       }
     }
   }
@@ -265,6 +282,18 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                     _MoreSection(
                       title: 'Диагностика',
                       children: [
+                        _MoreMenuTile(
+                          icon: Icons.system_update_rounded,
+                          title: _updateCheckRunning
+                              ? 'Проверяем обновление…'
+                              : 'Проверить обновление',
+                          subtitle: UpdateService.isRustoreDistribution
+                              ? 'RuStore-сборка обновляется через магазин'
+                              : 'Найти новую версию приложения',
+                          iconColor: const Color(0xFF4CAF50),
+                          loading: _updateCheckRunning,
+                          onTap: _checkForUpdate,
+                        ),
                         _MoreMenuTile(
                           icon: Icons.wifi_rounded,
                           title: _networkDiagnosticsRunning

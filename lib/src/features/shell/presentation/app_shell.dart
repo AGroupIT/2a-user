@@ -11,8 +11,10 @@ import '../../../app/widgets/app_scaffold.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_layout.dart';
 import '../application/shell_branch_provider.dart';
 import '../../more/presentation/more_sheet.dart';
+import 'desktop_side_nav.dart';
 
 /// Notifier to hide/show bottom navigation bar (e.g. when a modal is open)
 class BottomNavVisibleNotifier extends Notifier<bool> {
@@ -27,6 +29,10 @@ final bottomNavVisibleProvider =
     NotifierProvider<BottomNavVisibleNotifier, bool>(
       BottomNavVisibleNotifier.new,
     );
+
+double _compactShellScale(BuildContext context) {
+  return AppLayout.compactScale(context);
+}
 
 class AppShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
@@ -53,6 +59,10 @@ class AppShell extends ConsumerWidget {
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
     final bottomNavVisible = ref.watch(bottomNavVisibleProvider);
+    final useSideNavigation = AppLayout.useSideNavigation(context);
+    final sideNavExpanded = ref.watch(desktopSideNavExpandedProvider);
+    final sideNavWidth = AppLayout.sideNavWidthFor(sideNavExpanded);
+    final compactScale = AppLayout.compactScale(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle.copyWith(statusBarColor: Colors.transparent),
@@ -63,6 +73,8 @@ class AppShell extends ConsumerWidget {
           behavior: HitTestBehavior.opaque,
           onTap: () => FocusScope.of(context).unfocus(),
           onHorizontalDragEnd: (details) {
+            if (useSideNavigation) return;
+
             // Проверяем, что shell - активный маршрут (нет внутренних страниц поверх)
             // Используем rootNavigator чтобы проверить есть ли страницы поверх shell
             final rootNavigator = Navigator.of(context, rootNavigator: true);
@@ -115,41 +127,81 @@ class AppShell extends ConsumerWidget {
           child: Stack(
             children: [
               const Positioned.fill(child: AppBackground()),
-              Padding(
-                padding: EdgeInsets.only(top: statusTop),
-                child: ClipRect(child: navigationShell),
+              AnimatedPadding(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(
+                  left: useSideNavigation ? sideNavWidth : 0,
+                  top: statusTop,
+                ),
+                child: AppLayout.constrainNavigationContent(
+                  context,
+                  navigationShell,
+                ),
               ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: AppFloatingTopBar(title: title, showBack: false),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: AnimatedSlide(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  offset: bottomNavVisible ? Offset.zero : const Offset(0, 1.5),
-                  child: SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                      child: _PixsoBottomNav(
-                        currentIndex: currentIndex,
-                        onTap: (index) {
-                          navigationShell.goBranch(
-                            index,
-                            initialLocation: index == currentIndex,
-                          );
-                        },
+              if (useSideNavigation)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: sideNavWidth,
+                  child: DesktopSideNav(
+                    currentShellIndex: currentIndex,
+                    onShellTap: (index) {
+                      navigationShell.goBranch(
+                        index,
+                        initialLocation: index == currentIndex,
+                      );
+                    },
+                  ),
+                ),
+              if (!useSideNavigation)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: AppFloatingTopBar(title: title, showBack: false),
+                ),
+              if (!useSideNavigation)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    offset: bottomNavVisible
+                        ? Offset.zero
+                        : const Offset(0, 1.5),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          14 * compactScale,
+                          0,
+                          14 * compactScale,
+                          10 * compactScale,
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 560),
+                            child: _PixsoBottomNav(
+                              currentIndex: currentIndex,
+                              onTap: (index) {
+                                navigationShell.goBranch(
+                                  index,
+                                  initialLocation: index == currentIndex,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -271,70 +323,81 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
       child: Align(
         alignment: Alignment.bottomCenter,
         child: _BottomNavSurface(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final contentWidth = constraints.maxWidth;
-                final selectedIndex = widget.currentIndex.clamp(
-                  0,
-                  _items.length - 1,
-                );
-                const gap = 6.0;
-                final buttonSize =
-                    ((contentWidth - gap * (_items.length - 1)) / _items.length)
-                        .clamp(42.0, 50.0);
+          child: LayoutBuilder(
+            builder: (context, _) {
+              final scale = _compactShellScale(context);
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 8 * scale,
+                  vertical: 9 * scale,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final contentWidth = constraints.maxWidth;
+                    final selectedIndex = widget.currentIndex.clamp(
+                      0,
+                      _items.length - 1,
+                    );
+                    final gap = 6.0 * scale;
+                    final buttonSize =
+                        ((contentWidth - gap * (_items.length - 1)) /
+                                _items.length)
+                            .clamp(42.0 * scale, 50.0 * scale);
 
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    for (var index = 0; index < _items.length; index++)
-                      Builder(
-                        builder: (context) {
-                          final item = _items[index];
-                          final isSelected = index == selectedIndex;
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (var index = 0; index < _items.length; index++)
+                          Builder(
+                            builder: (context) {
+                              final item = _items[index];
+                              final isSelected = index == selectedIndex;
 
-                          return _BottomNavButton(
-                            icon: isSelected ? item.selectedIcon : item.icon,
-                            label: item.label,
-                            isSelected: isSelected,
-                            size: buttonSize,
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              ClientLogService.instance.action(
-                                'Нажата нижняя навигация',
-                                data: {
-                                  'tab': item.label,
-                                  'index': index,
-                                  'selected': isSelected,
+                              return _BottomNavButton(
+                                icon: isSelected
+                                    ? item.selectedIcon
+                                    : item.icon,
+                                label: item.label,
+                                isSelected: isSelected,
+                                size: buttonSize,
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  ClientLogService.instance.action(
+                                    'Нажата нижняя навигация',
+                                    data: {
+                                      'tab': item.label,
+                                      'index': index,
+                                      'selected': isSelected,
+                                    },
+                                  );
+                                  if (index == _items.length - 1) {
+                                    ClientLogService.instance.action(
+                                      'Открыто меню Ещё',
+                                      data: {'source': 'bottom_navigation'},
+                                    );
+                                    showBlurredModalBottomSheet<void>(
+                                      context: context,
+                                      backgroundColor: Colors.transparent,
+                                      barrierColor: Colors.black.withValues(
+                                        alpha: 0.22,
+                                      ),
+                                      useSafeArea: true,
+                                      isScrollControlled: true,
+                                      builder: (_) => const MoreSheet(),
+                                    );
+                                  } else {
+                                    widget.onTap(index);
+                                  }
                                 },
                               );
-                              if (index == _items.length - 1) {
-                                ClientLogService.instance.action(
-                                  'Открыто меню Ещё',
-                                  data: {'source': 'bottom_navigation'},
-                                );
-                                showBlurredModalBottomSheet<void>(
-                                  context: context,
-                                  backgroundColor: Colors.transparent,
-                                  barrierColor: Colors.black.withValues(
-                                    alpha: 0.22,
-                                  ),
-                                  useSafeArea: true,
-                                  isScrollControlled: true,
-                                  builder: (_) => const MoreSheet(),
-                                );
-                              } else {
-                                widget.onTap(index);
-                              }
                             },
-                          );
-                        },
-                      ),
-                  ],
-                );
-              },
-            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -349,10 +412,12 @@ class _BottomNavSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scale = _compactShellScale(context);
+    final radius = 24 * scale;
     return Container(
-      height: 68,
+      height: 68 * scale,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.14),
@@ -363,13 +428,13 @@ class _BottomNavSurface extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(radius),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.97),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -454,7 +519,7 @@ class _BottomNavButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   key: ValueKey('${icon.codePoint}-$isSelected'),
-                  size: isSelected ? 25 : 23,
+                  size: size * (isSelected ? 0.50 : 0.46),
                   color: isSelected ? Colors.white : context.brandPrimary,
                 ),
               ),

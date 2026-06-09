@@ -1,14 +1,17 @@
 # Design
 
 ## Source of truth
-- Status: Draft
-- Last refreshed: 2026-06-03
+- Status: Active
+- Last refreshed: 2026-06-08
 - Primary product surfaces: `2a-user` mobile/web client cabinet, especially main home dashboard, tracks/assemblies, photo reports, and shell menus.
 - Evidence reviewed:
   - `lib/src/features/home/presentation/home_screen.dart` — current dashboard content, stats, warehouse block, promo banner, digest tabs.
   - `lib/src/features/tracks/presentation/tracks_screen.dart` — tracks/assemblies archive, mode switch, filters/search/sort, bulk selection, track and assembly cards.
   - `lib/src/features/photos/presentation/photos_screen.dart` — photo reports archive, grouped photo grid, fullscreen viewer entrypoint, loading/error/empty states.
   - `lib/src/core/ui/app_colors.dart` — agent brand colors via `context.brandPrimary`, `context.brandSecondary`, neutral app background.
+  - `lib/src/core/ui/app_layout.dart` — shared responsive breakpoints, shell obstruction metrics, content/modal max widths.
+  - `lib/src/features/shell/presentation/app_shell.dart` — floating top bar, mobile bottom navigation, desktop side navigation.
+  - `lib/src/app/widgets/app_scaffold.dart` — root-route scaffold and shared floating top menu constraints.
   - `lib/src/features/profile/data/profile_provider.dart` — agent banner/warehouse fields and active client context.
 
 ## Brand
@@ -27,7 +30,7 @@
 - Key contexts of use: mobile-first, one-handed use, intermittent connectivity, returning users who need fast status checks.
 
 ## Information architecture
-- Primary navigation: bottom navigation remains the main app shell; the `Ещё` tab opens a premium quick-action sheet, not a dense full-screen menu.
+- Primary navigation: mobile and tablet portrait use bottom navigation; iPad landscape, macOS, and desktop web use a left side rail plus the same floating top menu. The `Ещё` entry opens a premium quick-action sheet, not a dense full-screen menu.
 - Core routes/screens: home, tracks, invoices, photos, profile/more.
 - Content hierarchy: floating shell navigation -> greeting/client identity -> primary action -> summary metrics -> optional promo/warehouse -> secondary no-code track search -> latest updates digest; tracks screen uses brand archive header -> view mode control -> compact action controls -> virtualized track/assembly list -> load/end state; photos screen uses brand archive header -> date groups -> virtualized photo grid -> load/end state; invoices screen uses brand archive header -> inline search/filter controls -> invoice cards focused on invoice number and USD amount -> detail sheet with summary, cargo, calculation, bonus, and media sections; client-code switcher adds per-code operational counters for quick account choice; More sheet groups secondary actions into quick actions, tools, account, materials, and diagnostics.
 
@@ -45,8 +48,8 @@
 - Imagery/iconography: Material/Cupertino operational icons; icons support scanning but do not replace labels.
 
 ## Components
-- Existing components to reuse: `AppToast`, `AppCachedMediaImage`, `EmptyState`, `TutorialScreenWrapper`, agent brand color extension.
-- New/changed components: home header card with clipped animated glow backdrop, primary add-track CTA, compact modern stat cards, warehouse action card, secondary no-code search card, digest card/tabs/items, premium tracks/assemblies header, mode switch, action controls, state cards and list cards, premium action bottom sheets for track/assembly tasks, premium invoices header/search/filter/card/detail sheet, premium profile header/hero/cards, premium notifications sheet/cards, premium support chat bubbles/composer/attachment sheet, premium photo reports archive header/date divider/thumbnail grid, premium floating top menu and bottom navigation, premium client-code switcher sheet with compact per-code stats, premium More quick-action sheet.
+- Existing components to reuse: `AppToast`, `AppCachedMediaImage`, `EmptyState`, `TutorialScreenWrapper`, `AppLayout`, agent brand color extension.
+- New/changed components: adaptive shell with mobile bottom navigation and desktop side rail, constrained root-route scaffold, constrained branded modal surface, home header card with clipped animated glow backdrop, primary add-track CTA, compact modern stat cards, warehouse action card, secondary no-code search card, digest card/tabs/items, premium tracks/assemblies header, mode switch, action controls, state cards and list cards, premium action bottom sheets for track/assembly tasks, premium invoices header/search/filter/card/detail sheet, premium profile header/hero/cards, premium notifications sheet/cards, premium support chat bubbles/composer/attachment sheet, premium photo reports archive header/date divider/thumbnail grid, premium floating top menu and bottom navigation, premium client-code switcher sheet with compact per-code stats, premium More quick-action sheet.
 - Variants and states: loading/error/empty digest cards; selected/unselected digest tabs; tappable/non-tappable stat cards; tracks/assemblies loading skeleton, retry card, empty card, end-of-list pill, selected track card, status/action chips, raised bulk-selection action bar; photo reports loading skeleton, retry card, empty card, end-of-list pill, video thumbnail state; client-code stat chips show loading, count, and error placeholders.
 - Token/component ownership: keep changes local to `home_screen.dart` unless a pattern is reused on 2+ screens.
 
@@ -58,9 +61,13 @@
 - Reduced motion and sensory considerations: motion is short and non-essential.
 
 ## Responsive behavior
-- Supported breakpoints/devices: iPhone/Android mobile first, Flutter web cabinet widths.
-- Layout adaptations: stat grid uses flexible rows; digest tabs horizontally scroll instead of squeezing text; photo reports grid uses fewer larger columns on mobile and more columns on wider web; bottom navigation keeps compact icons and expands only the active item label.
-- Touch/hover differences: touch-first; no hover-only affordances.
+- Supported breakpoints/devices:
+  - Mobile: `< 600px`, touch-first, one-column content, bottom navigation.
+  - Tablet portrait: `600–1023px`, centered content up to ~760px, bottom navigation constrained to a comfortable width.
+  - iPad landscape / desktop: `>= 1024px` or `>= 840px` when landscape, left side rail replaces bottom navigation, bottom obstruction is removed, content is centered.
+  - Wide desktop/web/Mac: `>= 1440px`, content max width increases but operational cards never stretch edge-to-edge.
+- Layout adaptations: shell pages are constrained through `AppLayout.constrainNavigationContent`; root routes through `AppScaffold` are constrained through `AppLayout.constrainContent`; stat grids/cards should use 2–4 columns only when the local content width supports it; digest tabs horizontally scroll instead of squeezing text; photo reports grid uses fewer larger columns on mobile and more columns on wider web; all modal sheets are constrained to tablet/desktop modal widths instead of spanning the whole monitor.
+- Touch/hover differences: touch actions remain primary; desktop may show tooltips and hover/InkWell states but must not rely on hover-only controls. Side navigation labels are always visible enough to identify sections.
 
 ## Interaction states
 - Loading: neutral rounded card with spinner or premium skeleton on list-heavy screens.

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../core/logging/client_log_service.dart';
+import '../core/ui/app_layout.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
@@ -180,19 +181,27 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'calculator',
         path: '/calculator',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Калькулятор доставки',
-          child: CalculatorScreen(),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Калькулятор доставки',
+            child: CalculatorScreen(),
+          ),
         ),
       ),
       GoRoute(
         name: 'search-nocode',
         path: '/search-nocode',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => AppScaffold(
-          title: 'Поиск по трек-номеру',
-          child: TrackSearchNoCodeScreen(
-            initialQuery: state.uri.queryParameters['query'],
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          AppScaffold(
+            title: 'Поиск по трек-номеру',
+            child: TrackSearchNoCodeScreen(
+              initialQuery: state.uri.queryParameters['query'],
+            ),
           ),
         ),
       ),
@@ -200,7 +209,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'payment-chat',
         path: '/payment-chat',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           String? initialMessage;
           String? invoiceId;
           String? invoiceNumber;
@@ -224,17 +233,21 @@ final routerProvider = Provider<GoRouter>((ref) {
             initialMessage = state.extra as String?;
           }
 
-          return AppScaffold(
-            title: 'Чат по оплате',
-            child: PaymentChatScreen(
-              initialMessage: initialMessage,
-              invoiceId: invoiceId,
-              invoiceNumber: invoiceNumber,
-              amount: amount,
-              totalCostCny: totalCostCny,
-              totalCostRub: totalCostRub,
-              clientRubRate: clientRubRate,
-              clientYuanRate: clientYuanRate,
+          return _adaptivePage(
+            context,
+            state,
+            AppScaffold(
+              title: 'Чат по оплате',
+              child: PaymentChatScreen(
+                initialMessage: initialMessage,
+                invoiceId: invoiceId,
+                invoiceNumber: invoiceNumber,
+                amount: amount,
+                totalCostCny: totalCostCny,
+                totalCostRub: totalCostRub,
+                clientRubRate: clientRubRate,
+                clientYuanRate: clientYuanRate,
+              ),
             ),
           );
         },
@@ -243,18 +256,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'news',
         path: '/news',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            const AppScaffold(title: 'Новости', child: NewsListScreen()),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(title: 'Новости', child: NewsListScreen()),
+        ),
         routes: [
           GoRoute(
             name: 'news-detail',
             path: ':slug',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final slug = state.pathParameters['slug'] ?? '';
-              return AppScaffold(
-                title: 'Статья',
-                child: NewsDetailScreen(slug: slug),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Статья',
+                  child: NewsDetailScreen(slug: slug),
+                ),
               );
             },
           ),
@@ -264,25 +284,35 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'profile',
         path: '/profile',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            const AppScaffold(title: 'Профиль', child: ProfileScreen()),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(title: 'Профиль', child: ProfileScreen()),
+        ),
       ),
       GoRoute(
         name: 'rules',
         path: '/rules',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            const AppScaffold(title: 'Правила', child: RulesScreen()),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(title: 'Правила', child: RulesScreen()),
+        ),
         routes: [
           GoRoute(
             name: 'rule-detail',
             path: ':slug',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final slug = state.pathParameters['slug'] ?? '';
-              return AppScaffold(
-                title: 'Правило',
-                child: RuleDetailScreen(slug: slug),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Правило',
+                  child: RuleDetailScreen(slug: slug),
+                ),
               );
             },
           ),
@@ -292,42 +322,61 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'referral',
         path: '/referral',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Реферальная программа',
-          child: ReferralScreen(),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Реферальная программа',
+            child: ReferralScreen(),
+          ),
         ),
       ),
       GoRoute(
         name: 'tariffs',
         path: '/tariffs',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            const AppScaffold(title: 'Тарифы', child: TariffsScreen()),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(title: 'Тарифы', child: TariffsScreen()),
+        ),
       ),
       // SP Finance routes
       GoRoute(
         name: 'sp-finance',
         path: '/sp-finance',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Совместные покупки',
-          child: SpV2PurchasesScreen(),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Совместные покупки',
+            child: SpV2PurchasesScreen(),
+          ),
         ),
         routes: [
           GoRoute(
             name: 'sp-v2-purchase-detail',
             path: 'purchases/:id',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final id = int.tryParse(state.pathParameters['id'] ?? '');
               if (id == null) {
-                return const _InvalidLinkScreen(
-                  reason: 'Некорректный ID совместной покупки',
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(
+                    reason: 'Некорректный ID совместной покупки',
+                  ),
                 );
               }
-              return AppScaffold(
-                title: 'Совместная покупка',
-                child: SpV2PurchaseDetailScreen(purchaseId: id),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Совместная покупка',
+                  child: SpV2PurchaseDetailScreen(purchaseId: id),
+                ),
               );
             },
           ),
@@ -335,19 +384,25 @@ final routerProvider = Provider<GoRouter>((ref) {
             name: 'sp-assembly-detail',
             path: 'assemblies/:id',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               // PU-S6: int.tryParse с invalid screen вместо int.parse,
               // чтобы кривой URL (`/sp-finance/assemblies/abc`) не валил
               // приложение exception'ом, а показывал понятную ошибку.
               final id = int.tryParse(state.pathParameters['id'] ?? '');
               if (id == null) {
-                return const _InvalidLinkScreen(
-                  reason: 'Некорректный ID сборки',
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(reason: 'Некорректный ID сборки'),
                 );
               }
-              return AppScaffold(
-                title: 'Детали сборки',
-                child: SpAssemblyDetailScreen(assemblyId: id),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Детали сборки',
+                  child: SpAssemblyDetailScreen(assemblyId: id),
+                ),
               );
             },
           ),
@@ -355,12 +410,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             name: 'sp-track-edit',
             path: 'tracks/:id',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               // PU-S6: int.tryParse и для path id, и для query assemblyId.
               final id = int.tryParse(state.pathParameters['id'] ?? '');
               if (id == null) {
-                return const _InvalidLinkScreen(
-                  reason: 'Некорректный ID трека',
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(reason: 'Некорректный ID трека'),
                 );
               }
               // PU-H4: assemblyId можно передать как query (?assemblyId=42),
@@ -376,15 +433,23 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ? extraAssemblyId
                   : queryAssemblyId;
               if (assemblyId == null) {
-                return const _InvalidLinkScreen(
-                  reason:
-                      'Не указана сборка для трека. '
-                      'Откройте трек из карточки сборки.',
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(
+                    reason:
+                        'Не указана сборка для трека. '
+                        'Откройте трек из карточки сборки.',
+                  ),
                 );
               }
-              return AppScaffold(
-                title: 'Редактирование трека',
-                child: SpTrackEditScreen(trackId: id, assemblyId: assemblyId),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Редактирование трека',
+                  child: SpTrackEditScreen(trackId: id, assemblyId: assemblyId),
+                ),
               );
             },
           ),
@@ -395,20 +460,28 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'purchase-blanks',
         path: '/purchase-blanks',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AppScaffold(
-          title: 'Выкуп по бланку',
-          child: PurchaseBlanksScreen(),
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Выкуп по бланку',
+            child: PurchaseBlanksScreen(),
+          ),
         ),
         routes: [
           GoRoute(
             name: 'purchase-blank-detail',
             path: ':id',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final id = int.parse(state.pathParameters['id']!);
-              return AppScaffold(
-                title: 'Бланк #$id',
-                child: PurchaseBlankDetailScreen(blankId: id),
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Бланк #$id',
+                  child: PurchaseBlankDetailScreen(blankId: id),
+                ),
               );
             },
           ),
@@ -417,6 +490,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+Page<void> _adaptivePage(
+  BuildContext context,
+  GoRouterState state,
+  Widget child,
+) {
+  if (AppLayout.useSideNavigation(context)) {
+    return NoTransitionPage<void>(key: state.pageKey, child: child);
+  }
+
+  return MaterialPage<void>(key: state.pageKey, child: child);
+}
 
 /// Notifier that triggers router refresh when auth state changes
 class _AuthRefreshNotifier extends ChangeNotifier {

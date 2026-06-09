@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io' as io;
 import 'package:cronet_http/cronet_http.dart';
 import 'package:cupertino_http/cupertino_http.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../logging/client_log_service.dart';
 
@@ -114,16 +116,21 @@ class _NativeHttpAdapter implements HttpClientAdapter {
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      _clientKind = 'android_cronet';
-      final engine = CronetEngine.build(
-        cacheMode: CacheMode.memory,
-        cacheMaxSize: 2 * 1024 * 1024,
-        enableHttp2: true,
-        enableQuic: true,
-      );
-      final client = CronetClient.fromCronetEngine(engine, closeEngine: true);
-      _logClientCreated();
-      return _client = client;
+      try {
+        _clientKind = 'android_cronet';
+        final engine = CronetEngine.build(
+          cacheMode: CacheMode.memory,
+          cacheMaxSize: 2 * 1024 * 1024,
+          enableHttp2: true,
+          enableQuic: true,
+        );
+        final client = CronetClient.fromCronetEngine(engine, closeEngine: true);
+        _logClientCreated();
+        return _client = client;
+      } catch (error, stackTrace) {
+        _logClientInitFailed(error, stackTrace);
+        return _client = _createAndroidFallbackClient();
+      }
     }
 
     // createNativeHttpAdapter() must prevent unsupported platforms from using
@@ -144,6 +151,42 @@ class _NativeHttpAdapter implements HttpClientAdapter {
         'targetPlatform': defaultTargetPlatform.name,
       },
     );
+  }
+
+  void _logClientInitFailed(Object error, StackTrace stackTrace) {
+    ClientLogService.instance.add(
+      type: 'native_http_adapter_init_failed',
+      level: 'warning',
+      message:
+          'Cronet недоступен на устройстве, переключаемся на стандартный Android HTTP',
+      data: {
+        'client': _clientKind,
+        'targetPlatform': defaultTargetPlatform.name,
+        'error': error.toString(),
+        'stack': stackTrace.toString().split('\n').take(6).join('\n'),
+      },
+    );
+    unawaited(
+      ClientLogService.instance.captureNonFatal(
+        'Cronet недоступен на Android, включён fallback HTTP',
+        error: error,
+        stackTrace: stackTrace,
+        data: {
+          'client': _clientKind,
+          'targetPlatform': defaultTargetPlatform.name,
+        },
+      ),
+    );
+    debugPrint(
+      '[NativeHttpAdapter] Cronet init failed, using IOClient: $error',
+    );
+  }
+
+  http.Client _createAndroidFallbackClient() {
+    _clientKind = 'android_dart_io_fallback';
+    final client = IOClient(io.HttpClient());
+    _logClientCreated();
+    return client;
   }
 
   Future<Uint8List> _collectRequestBody(
