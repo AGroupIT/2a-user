@@ -33,6 +33,7 @@ class Assembly {
   final String? transportCompanyName; // Название транспортной компании
   final bool hasFragileGoods;
   final String placePreference;
+  final String packagingRemoval;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -62,6 +63,7 @@ class Assembly {
     this.transportCompanyName,
     this.hasFragileGoods = false,
     this.placePreference = 'unspecified',
+    this.packagingRemoval = 'none',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -114,6 +116,7 @@ class Assembly {
       hasFragileGoods:
           json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
       placePreference: json['placePreference']?.toString() ?? 'unspecified',
+      packagingRemoval: json['packagingRemoval']?.toString() ?? 'none',
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -255,6 +258,7 @@ class AssembliesApiService {
     List<int>? packagingTypeIds,
     bool hasFragileGoods = false,
     String placePreference = 'unspecified',
+    String packagingRemoval = 'none',
     bool hasInsurance = false,
     double? insuranceAmount,
     List<int>? trackIds,
@@ -274,6 +278,7 @@ class AssembliesApiService {
             'packagingTypeIds': packagingTypeIds,
           'hasFragileGoods': hasFragileGoods,
           'placePreference': placePreference,
+          'packagingRemoval': packagingRemoval,
           'hasInsurance': hasInsurance,
           if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
           if (trackIds != null && trackIds.isNotEmpty) 'trackIds': trackIds,

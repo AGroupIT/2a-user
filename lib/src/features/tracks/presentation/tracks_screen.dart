@@ -1689,10 +1689,86 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
   }
 
+  /// Подтверждение снятия упаковки: что именно снимаем + согласие с рисками.
+  Future<bool> _confirmPackagingRemoval(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Снятие упаковки')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Что мы снимем:',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '• внешние фабричные коробки\n'
+                '• лишний скотч\n'
+                '• мятый картон',
+                style: TextStyle(height: 1.4),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Внутреннюю розничную упаковку товара мы НЕ трогаем.',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.30),
+                  ),
+                ),
+                child: const Text(
+                  'Я прошу удалить лишнюю упаковку на усмотрение компании. '
+                  'Риски повреждения товара из-за уменьшения защитных слоёв беру на себя.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.brandPrimary,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Подтверждаю'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
     bool hasFragileGoods = false;
     String? placePreference;
+    String packagingRemoval = 'none';
     String selectedInsurance = 'no';
     String? insuranceAmount;
 
@@ -1827,6 +1903,51 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   fontWeight: FontWeight.w800,
                 ),
                 onSelected: (_) => setSheetState(() => placePreference = value),
+              );
+            }
+
+            Widget packagingRemovalChip({
+              required String value,
+              required String label,
+            }) {
+              final selected = packagingRemoval == value;
+              return ChoiceChip(
+                selected: selected,
+                showCheckmark: selected,
+                checkmarkColor: Colors.white,
+                selectedColor: context.brandPrimary,
+                backgroundColor: Colors.white,
+                side: BorderSide(
+                  color: selected
+                      ? context.brandPrimary
+                      : context.brandPrimary.withValues(alpha: 0.36),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                labelPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                label: Text(label),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : context.brandPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+                onSelected: (_) async {
+                  if (value == 'none') {
+                    setSheetState(() => packagingRemoval = 'none');
+                    return;
+                  }
+                  if (packagingRemoval == value) return;
+                  final confirmed = await _confirmPackagingRemoval(
+                    sheetContext,
+                  );
+                  if (confirmed) {
+                    setSheetState(() => packagingRemoval = value);
+                  }
+                },
               );
             }
 
@@ -2215,6 +2336,46 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             onChanged: (value) =>
                                 setSheetState(() => hasFragileGoods = value),
                           ),
+                          const Divider(height: 18),
+                          const Text(
+                            'Снять упаковку',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              packagingRemovalChip(
+                                value: 'none',
+                                label: 'Не снимать',
+                              ),
+                              packagingRemovalChip(
+                                value: 'transport_only',
+                                label: 'Только транспортировочную',
+                              ),
+                              packagingRemovalChip(
+                                value: 'all',
+                                label: 'Снять всю',
+                              ),
+                            ],
+                          ),
+                          if (packagingRemoval != 'none') ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Снимаем внешние фабричные коробки, лишний скотч и мятый картон. Внутреннюю розничную упаковку товара не трогаем. Снятие может изменить стоимость доставки по тарифу.',
+                              style: TextStyle(
+                                color: Colors.black45,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
                           const Divider(height: 18),
                           const Text(
                             'Количество мест',
@@ -2824,6 +2985,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         packagingTypeIds: selectedPackingIds.toList(),
         hasFragileGoods: hasFragileGoods,
         placePreference: placePreference!,
+        packagingRemoval: packagingRemoval,
         hasInsurance: selectedInsurance == 'yes',
         insuranceAmount: selectedInsurance == 'yes' && insuranceAmount != null
             ? double.tryParse(insuranceAmount!)

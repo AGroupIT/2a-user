@@ -10,6 +10,14 @@
 - Flutter state management — см. правила в глобальных инструкциях
 - Команды: flutter analyze, flutter test, dart format
 
+## Качество кода (из аудита 2026-06-15)
+
+- **Размер файлов.** Есть god-файлы: `features/tracks/presentation/tracks_screen.dart` ~11.8k строк, `home`-экран ~3.3k, `sp_v2_purchase_detail_screen.dart` ~7.3k. Не наращивай их; новые виджеты >~800 строк выноси отдельно. Перед правкой больших файлов — `gitnexus_impact`.
+- **`core/network/api_client.dart` (~1425 строк) — монолит** (токены + Dio + retry + fallback URL). Меняй точечно и осторожно; обработку ошибок не дублируй, а используй `core/utils/error_utils.dart` (`getErrorInfo`/`isNetworkError`). Конфиг — `core/network/api_config.dart`.
+- **Тексты только в UI через `tr(context, ru:…, zh:…)`.** Никакого русского хардкода в data-слое. Локализация ведётся inline (без `.arb`), на обоих языках обязательно.
+- **Валидация форм.** Сейчас разрознена по экранам (login/register) без единого подхода. Новую валидацию делай централизованно и переиспользуемо, с двуязычными сообщениями.
+- **Тесты.** Покрытие низкое (~5%). Под новую логику добавляй unit-тесты (как минимум для providers/models и сетевого слоя).
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

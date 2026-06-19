@@ -1002,9 +1002,17 @@ class ApiClient {
       return _readTokenFromPrefs();
     }
 
-    // На мобильных платформах сначала читаем быстрый mirror из SharedPreferences.
-    // Это критично для старых Android/Huawei/Xiaomi: обращение к Keystore может
-    // запускать миграцию FlutterSecureStorage и блокировать старт на несколько секунд.
+    // iOS Keychain достаточно стабилен, поэтому для iOS сначала пробуем
+    // защищённое хранилище и только потом legacy mirror. Android оставляем на
+    // быстром mirror: на части старых Huawei/Xiaomi Keystore может запускать
+    // долгую миграцию FlutterSecureStorage и блокировать старт.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final secureToken = await _readTokenFromSecureStorage();
+      if (secureToken != null && secureToken.isNotEmpty) {
+        return secureToken;
+      }
+    }
+
     final mirroredToken = await _readTokenFromPrefs();
     if (mirroredToken != null && mirroredToken.isNotEmpty) {
       if (kDebugMode) {
@@ -1053,8 +1061,11 @@ class ApiClient {
           .timeout(const Duration(seconds: 5));
       if (token != null && token.isNotEmpty) {
         // Делаем best-effort копию в SharedPreferences, чтобы следующие старты
-        // больше не зависели от Android Keystore/Keychain.
-        unawaited(_writeTokenToPrefs(token));
+        // Android больше не зависели от Keystore. На iOS mirror не создаём:
+        // Keychain должен оставаться единственным постоянным хранилищем токена.
+        if (defaultTargetPlatform != TargetPlatform.iOS) {
+          unawaited(_writeTokenToPrefs(token));
+        }
         return token;
       }
     } catch (e) {
@@ -1141,7 +1152,26 @@ class ApiClient {
       return;
     }
 
-    // На мобильных платформах сначала пишем быстрый mirror в SharedPreferences.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final secureSaved = await _writeTokenToSecureStorage(token);
+      if (secureSaved) {
+        // Если пользователь обновился со старой версии с mirror — убираем копию
+        // из SharedPreferences, чтобы на iOS токен оставался только в Keychain.
+        await _removeTokenFromPrefs();
+        return;
+      }
+
+      // Fallback на случай редкой транзиентной ошибки Keychain: лучше сохранить
+      // сессию, чем сломать вход. Следующий успешный secure read/write удалит mirror.
+      await _writeTokenToPrefs(token);
+      ClientLogService.instance.action(
+        'Токен сохранён',
+        data: {'storage': 'prefs_mirror_fallback'},
+      );
+      return;
+    }
+
+    // На Android сначала пишем быстрый mirror в SharedPreferences.
     // Причина: на части устройств чтение/запись SecureStorage бывает транзиентно
     // недоступно (Keychain/Keystore). Без mirror это выглядит как "слёт авторизации"
     // или как долгий вход после обновления приложения.
@@ -1153,10 +1183,10 @@ class ApiClient {
 
     // SecureStorage синхронизируем best-effort в фоне, чтобы вход не ждал
     // Android Keystore/EncryptedSharedPreferences.
-    unawaited(_writeTokenToSecureStorage(token));
+    unawaited(_writeTokenToSecureStorage(token).then((_) {}));
   }
 
-  Future<void> _writeTokenToSecureStorage(String token) async {
+  Future<bool> _writeTokenToSecureStorage(String token) async {
     try {
       // Таймаут 5 сек: при первой записи после переустановки EncryptedSharedPreferences
       // может зависнуть на Android при генерации ключей шифрования.
@@ -1168,6 +1198,7 @@ class ApiClient {
         data: {'storage': 'secure_storage'},
       );
       debugPrint('Token saved to SecureStorage');
+      return true;
     } catch (e) {
       ClientLogService.instance.add(
         type: 'storage_error',
@@ -1176,6 +1207,7 @@ class ApiClient {
         data: {'error': e.toString()},
       );
       debugPrint('Error/timeout saving token to SecureStorage: $e');
+      return false;
     }
   }
 
