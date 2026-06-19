@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+import '../utils/safe_url_launcher.dart';
 
 /// Виджет для отображения Quill Delta JSON контента
 class QuillDeltaViewer extends StatelessWidget {
@@ -178,7 +179,7 @@ class QuillDeltaViewer extends StatelessWidget {
           style: style,
           recognizer: TapGestureRecognizer()
             ..onTap = () {
-              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              launchSafeExternalUrl(url);
             },
         );
       }

@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -26,6 +25,7 @@ import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/file_download_helper.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../../core/utils/safe_url_launcher.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
@@ -1185,12 +1185,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                             ),
                           ),
                           onTapLink: (text, href, title) {
-                            if (href != null) {
-                              launchUrl(
-                                Uri.parse(href),
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
+                            launchSafeExternalUrl(href);
                           },
                         ),
                       if (message.content.isNotEmpty &&

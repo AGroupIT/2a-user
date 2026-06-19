@@ -1167,6 +1167,11 @@ class _PromoSlider extends StatelessWidget {
             _designHeight *
             (useCompactDesktopBanner ? rawScale * 0.5 : rawScale);
         final radius = BorderRadius.circular(10 * scale);
+        final maxTextWidth = (_textBlockWidth * scale).clamp(0.0, width);
+        final minTextWidth = (180.0 * scale).clamp(0.0, maxTextWidth);
+        final textWidth = (width * 0.45)
+            .clamp(minTextWidth, maxTextWidth)
+            .toDouble();
 
         return SizedBox(
           width: width,
@@ -1221,10 +1226,7 @@ class _PromoSlider extends StatelessWidget {
                         children: [
                           if (eyebrow != null)
                             SizedBox(
-                              width: (width * 0.45).clamp(
-                                180.0,
-                                _textBlockWidth * scale,
-                              ),
+                              width: textWidth,
                               child: Text(
                                 eyebrow,
                                 style: TextStyle(
@@ -1241,10 +1243,7 @@ class _PromoSlider extends StatelessWidget {
                             SizedBox(height: 10 * scale),
                           if (title != null)
                             SizedBox(
-                              width: (width * 0.45).clamp(
-                                180.0,
-                                _textBlockWidth * scale,
-                              ),
+                              width: textWidth,
                               child: Text(
                                 title,
                                 style: TextStyle(
@@ -1262,10 +1261,7 @@ class _PromoSlider extends StatelessWidget {
                             SizedBox(height: 10 * scale),
                           if (description != null)
                             SizedBox(
-                              width: (width * 0.45).clamp(
-                                180.0,
-                                _textBlockWidth * scale,
-                              ),
+                              width: textWidth,
                               child: Text(
                                 description,
                                 style: TextStyle(

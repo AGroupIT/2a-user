@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io' as io;
 import 'package:cronet_http/cronet_http.dart';
-import 'package:cupertino_http/cupertino_http.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -23,9 +22,11 @@ class _NativeHttpAdapter implements HttpClientAdapter {
   int _activeRequests = 0;
 
   static bool get isSupportedPlatform {
-    return defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.android;
+    // На iOS/macOS `cupertino_http` может бросать StateError/JNI-подобные
+    // ошибки при lifecycle resetConnections, когда URLSession ещё считает
+    // запрос живым. Для Apple-платформ оставляем штатный Dio/dart:io adapter;
+    // native stack используем только на Android, где нужен Cronet fallback.
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 
   @override
@@ -107,14 +108,6 @@ class _NativeHttpAdapter implements HttpClientAdapter {
     final existing = _client;
     if (existing != null) return existing;
 
-    if (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      _clientKind = 'cupertino_urlsession';
-      final client = CupertinoClient.defaultSessionConfiguration();
-      _logClientCreated();
-      return _client = client;
-    }
-
     if (defaultTargetPlatform == TargetPlatform.android) {
       try {
         _clientKind = 'android_cronet';
@@ -165,17 +158,6 @@ class _NativeHttpAdapter implements HttpClientAdapter {
         'error': error.toString(),
         'stack': stackTrace.toString().split('\n').take(6).join('\n'),
       },
-    );
-    unawaited(
-      ClientLogService.instance.captureNonFatal(
-        'Cronet недоступен на Android, включён fallback HTTP',
-        error: error,
-        stackTrace: stackTrace,
-        data: {
-          'client': _clientKind,
-          'targetPlatform': defaultTargetPlatform.name,
-        },
-      ),
     );
     debugPrint(
       '[NativeHttpAdapter] Cronet init failed, using IOClient: $error',

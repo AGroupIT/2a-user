@@ -3996,6 +3996,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 await ref
                     .read(paginatedTracksProvider(clientCode))
                     .updateFilters(filterParams);
+                if (!mounted) return;
                 ref.invalidate(assembliesListProvider(clientCode));
                 // Очищаем оптимистичные Map-записи для треков у которых
                 // сервер уже подтвердил данные (вопросы, фото-запросы)

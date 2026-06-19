@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -24,6 +23,7 @@ import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/safe_url_launcher.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../notifications/domain/notification_item.dart';
 import '../../shell/application/shell_branch_provider.dart';
@@ -766,12 +766,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                             ),
                           ),
                           onTapLink: (text, href, title) {
-                            if (href != null) {
-                              launchUrl(
-                                Uri.parse(href),
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
+                            launchSafeExternalUrl(href);
                           },
                         ),
                       if (message.content.isNotEmpty &&
