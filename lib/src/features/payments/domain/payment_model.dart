@@ -60,7 +60,8 @@ enum PaymentStatus {
 enum PaymentProvider {
   pally,
   usdtTrc20,
-  manual;
+  manual,
+  bankQr;
 
   static PaymentProvider fromString(String provider) {
     switch (provider.toLowerCase()) {
@@ -70,6 +71,8 @@ enum PaymentProvider {
         return PaymentProvider.usdtTrc20;
       case 'manual':
         return PaymentProvider.manual;
+      case 'bank_qr':
+        return PaymentProvider.bankQr;
       default:
         return PaymentProvider.pally;
     }
@@ -83,6 +86,8 @@ enum PaymentProvider {
         return 'USDT TRC20';
       case PaymentProvider.manual:
         return 'Ручной';
+      case PaymentProvider.bankQr:
+        return 'Банковский QR (₽)';
     }
   }
 
@@ -94,7 +99,8 @@ enum PaymentMethod {
   bankCard,
   sbp,
   crypto,
-  other;
+  other,
+  bankQr;
 
   static PaymentMethod? fromString(String? method) {
     if (method == null) return null;
@@ -107,6 +113,8 @@ enum PaymentMethod {
         return PaymentMethod.crypto;
       case 'other':
         return PaymentMethod.other;
+      case 'bank_qr':
+        return PaymentMethod.bankQr;
       default:
         return null;
     }
@@ -122,6 +130,8 @@ enum PaymentMethod {
         return 'Криптовалюта';
       case PaymentMethod.other:
         return 'Другое';
+      case PaymentMethod.bankQr:
+        return 'Банковский QR';
     }
   }
 }
