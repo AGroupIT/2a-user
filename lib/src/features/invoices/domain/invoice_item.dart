@@ -44,6 +44,11 @@ class InvoiceItem {
   final double? insurancePercentClient;
   final double? insuranceCostClient;
   final String? tkWaybillPhotoUrl;
+  // Bank QR (рубли) Sprint4: доступность и активный платёж по банковскому QR.
+  final bool bankQrPaymentAvailable;
+  final int? bankQrPaymentId;
+  final String? paymentProvider;
+  final String? paymentMethod;
   final List<StatusTimelineEntry> statusHistory;
 
   const InvoiceItem({
@@ -90,6 +95,10 @@ class InvoiceItem {
     this.insurancePercentClient,
     this.insuranceCostClient,
     this.tkWaybillPhotoUrl,
+    this.bankQrPaymentAvailable = false,
+    this.bankQrPaymentId,
+    this.paymentProvider,
+    this.paymentMethod,
     this.statusHistory = const [],
   });
 
@@ -360,6 +369,10 @@ class InvoiceItem {
             ).let((v) => v > 0 ? v : null)
           : null,
       tkWaybillPhotoUrl: json['tkWaybillPhotoUrl'] as String?,
+      bankQrPaymentAvailable: json['bankQrPaymentAvailable'] == true,
+      bankQrPaymentId: (json['bankQrPaymentId'] as num?)?.toInt(),
+      paymentProvider: json['paymentProvider'] as String?,
+      paymentMethod: json['paymentMethod'] as String?,
       statusHistory: statusHistory,
     );
   }

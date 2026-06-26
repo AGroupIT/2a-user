@@ -18,6 +18,8 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/clipboard_helper.dart';
+import '../../../core/utils/locale_text.dart';
+import '../../payments/presentation/bank_qr_payment_screen.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../photos/domain/photo_item.dart';
@@ -2123,6 +2125,24 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       widget.item.status.toLowerCase() == 'unpaid' ||
       widget.item.status.toLowerCase() == 'pending';
 
+  // Bank QR Sprint4: открыть экран оплаты в рублях; по успешной отправке чека
+  // обновить список и закрыть лист счёта.
+  Future<void> _openBankQr(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final changed = await navigator.push<bool>(
+      MaterialPageRoute(
+        builder: (_) => BankQrPaymentScreen(
+          invoiceId: widget.item.id,
+          invoiceNumber: widget.item.invoiceNumber,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      widget.onBonusApplied(); // переиспользуем как refresh списка счетов
+      if (navigator.canPop()) navigator.pop();
+    }
+  }
+
   List<PhotoItem> _scalePhotoItems(InvoiceItem item) {
     final date = item.updatedAt ?? item.createdAt ?? DateTime.now();
     return item.scalePhotoUrls
@@ -2284,10 +2304,23 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           },
         ),
         footer: _isUnpaid
-            ? _InvoicePrimaryButton(
-                label: 'Перейти к оплате',
-                icon: Icons.payment_rounded,
-                onTap: widget.onPay,
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _InvoicePrimaryButton(
+                    label: tr(context, ru: 'Оплатить в юанях', zh: '用人民币支付'),
+                    icon: Icons.payment_rounded,
+                    onTap: widget.onPay,
+                  ),
+                  // Bank QR Sprint4: вторая кнопка — только если доступна QR-оплата.
+                  if (widget.item.bankQrPaymentAvailable) ...[
+                    const SizedBox(height: 8),
+                    _InvoiceSecondaryButton(
+                      label: tr(context, ru: 'Оплатить в рублях', zh: '用卢布支付'),
+                      onTap: () => _openBankQr(context),
+                    ),
+                  ],
+                ],
               )
             : _InvoiceSecondaryButton(
                 label: 'Закрыть',
