@@ -1,0 +1,598 @@
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_toast.dart';
+import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/locale_text.dart';
+import '../../clients/application/client_codes_controller.dart';
+import '../data/self_buyout_models.dart';
+import '../data/self_buyout_service.dart';
+import 'self_buyout_ui.dart';
+
+const _imgExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
+
+String _mimeForExt(String ext) {
+  switch (ext.toLowerCase()) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+double _round2(double x) => (x * 100).roundToDouble() / 100;
+
+/// Модалка создания заявки самовыкупа. Возвращает созданную заявку (pop).
+class SelfBuyoutCreateSheet extends ConsumerStatefulWidget {
+  final SelfBuyoutAvailability availability;
+  const SelfBuyoutCreateSheet({super.key, required this.availability});
+
+  @override
+  ConsumerState<SelfBuyoutCreateSheet> createState() =>
+      _SelfBuyoutCreateSheetState();
+}
+
+class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
+  final _cnyCtrl = TextEditingController();
+  final _rubCtrl = TextEditingController();
+  final _reqCtrl = TextEditingController();
+  bool _syncing = false;
+  String _enteredIn = 'cny';
+
+  Uint8List? _fileBytes;
+  String? _fileName;
+  String? _fileMime;
+  bool _warningAccepted = false;
+  bool _submitting = false;
+
+  double get _rate => widget.availability.clientCnyRubRate ?? 0;
+
+  @override
+  void dispose() {
+    _cnyCtrl.dispose();
+    _rubCtrl.dispose();
+    _reqCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onCnyChanged(String v) {
+    if (_syncing) return;
+    _enteredIn = 'cny';
+    final cny = double.tryParse(v.replaceAll(',', '.')) ?? 0;
+    _syncing = true;
+    _rubCtrl.text = cny > 0 && _rate > 0
+        ? _round2(cny * _rate).toStringAsFixed(2)
+        : '';
+    _syncing = false;
+    setState(() {});
+  }
+
+  void _onRubChanged(String v) {
+    if (_syncing) return;
+    _enteredIn = 'rub';
+    final rub = double.tryParse(v.replaceAll(',', '.')) ?? 0;
+    _syncing = true;
+    _cnyCtrl.text = rub > 0 && _rate > 0
+        ? _round2(rub / _rate).toStringAsFixed(2)
+        : '';
+    _syncing = false;
+    setState(() {});
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: _imgExt,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.first;
+      final bytes = f.bytes ?? await f.xFile.readAsBytes();
+      final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
+      if (!_imgExt.contains(ext)) {
+        if (mounted) {
+          AppToast.show(
+            context,
+            tr(context, ru: 'Неподдерживаемый формат', zh: '不支持的格式'),
+            isError: true,
+          );
+        }
+        return;
+      }
+      setState(() {
+        _fileBytes = bytes;
+        _fileName = f.name;
+        _fileMime = _mimeForExt(ext);
+      });
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          tr(context, ru: 'Не удалось выбрать файл', zh: '无法选择文件'),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  String? _validate() {
+    final cny = double.tryParse(_cnyCtrl.text.replaceAll(',', '.')) ?? 0;
+    final rub = double.tryParse(_rubCtrl.text.replaceAll(',', '.')) ?? 0;
+    if (cny <= 0 || rub <= 0) {
+      return tr(context, ru: 'Введите сумму', zh: '请输入金额');
+    }
+    final min = widget.availability.minRub;
+    final max = widget.availability.maxRub;
+    if (min != null && rub < min) {
+      return tr(
+        context,
+        ru: 'Минимум ${min.toStringAsFixed(0)} ₽',
+        zh: '最低 ${min.toStringAsFixed(0)} ₽',
+      );
+    }
+    if (max != null && rub > max) {
+      return tr(
+        context,
+        ru: 'Максимум ${max.toStringAsFixed(0)} ₽',
+        zh: '最高 ${max.toStringAsFixed(0)} ₽',
+      );
+    }
+    final activeCodeId = ref.read(activeClientCodeIdProvider);
+    if (activeCodeId == null) {
+      return tr(
+        context,
+        ru: 'Выберите код клиента в верхнем меню',
+        zh: '请在顶部菜单选择客户代码',
+      );
+    }
+    if (_fileBytes == null && _reqCtrl.text.trim().isEmpty) {
+      return tr(
+        context,
+        ru: 'Укажите реквизиты или QR для перевода',
+        zh: '请提供转账二维码或收款信息',
+      );
+    }
+    if (!_warningAccepted) {
+      return tr(context, ru: 'Подтвердите условия', zh: '请确认条款');
+    }
+    return null;
+  }
+
+  Future<void> _submit() async {
+    final err = _validate();
+    if (err != null) {
+      AppToast.show(context, err, isError: true);
+      return;
+    }
+    setState(() => _submitting = true);
+    final activeCodeId = ref.read(activeClientCodeIdProvider);
+    final amount = _enteredIn == 'cny'
+        ? double.parse(_cnyCtrl.text.replaceAll(',', '.'))
+        : double.parse(_rubCtrl.text.replaceAll(',', '.'));
+    try {
+      final created = await ref
+          .read(selfBuyoutServiceProvider)
+          .createRequest(
+            clientCodeId: activeCodeId!,
+            amountEnteredIn: _enteredIn,
+            amount: amount,
+            transferRequisitesText: _reqCtrl.text.trim(),
+            warningAccepted: true,
+            fileBytes: _fileBytes,
+            fileName: _fileName,
+            fileMime: _fileMime,
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(created);
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      final reason = e.response?.data is Map
+          ? e.response?.data['error']?.toString()
+          : null;
+      AppToast.show(
+        context,
+        reason ?? tr(context, ru: 'Не удалось создать заявку', zh: '无法创建申请'),
+        isError: true,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final activeCode = ref.watch(activeClientCodeProvider);
+    final rateStr = _rate > 0 ? _rate.toStringAsFixed(2) : '—';
+
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHandle(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: SelfBuyoutGradientHeader(
+                icon: Icons.add_card_rounded,
+                title: tr(context, ru: 'Новая заявка', zh: '新申请'),
+                subtitle: tr(
+                  context,
+                  ru: 'Самовыкуп — помощь с юанями',
+                  zh: '自助代购 — 人民币支持',
+                ),
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _rateCard(rateStr),
+                    const SizedBox(height: 12),
+                    _converterCard(),
+                    const SizedBox(height: 12),
+                    _activeCodeCard(activeCode),
+                    const SizedBox(height: 12),
+                    _requisitesCard(),
+                    const SizedBox(height: 12),
+                    _warningCard(),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
+              child: SelfBuyoutPrimaryButton(
+                label: tr(context, ru: 'Создать заявку', zh: '创建申请'),
+                icon: Icons.check_rounded,
+                isLoading: _submitting,
+                onTap: _submitting ? null : _submit,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _card({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: context.brandPrimary, size: 17),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _rateCard(String rateStr) {
+    return _card(
+      icon: Icons.currency_exchange_rounded,
+      title: tr(context, ru: 'Текущий курс', zh: '当前汇率'),
+      child: Row(
+        children: [
+          Text(
+            '1 RMB = $rateStr ₽',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const Spacer(),
+          if (widget.availability.rateDate != null)
+            Text(
+              widget.availability.rateDate!,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _converterCard() {
+    return _card(
+      icon: Icons.swap_vert_rounded,
+      title: tr(context, ru: 'Сумма', zh: '金额'),
+      child: Column(
+        children: [
+          _amountField(
+            controller: _cnyCtrl,
+            label: tr(context, ru: 'Нужно юаней (RMB)', zh: '需要人民币 (RMB)'),
+            onChanged: _onCnyChanged,
+          ),
+          const SizedBox(height: 10),
+          _amountField(
+            controller: _rubCtrl,
+            label: tr(context, ru: 'К оплате рублей (₽)', zh: '应付卢布 (₽)'),
+            onChanged: _onRubChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _amountField({
+    required TextEditingController controller,
+    required String label,
+    required ValueChanged<String> onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontFamily: 'Gilroy',
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: AppColors.textSecondary,
+          fontFamily: 'Gilroy',
+          fontWeight: FontWeight.w700,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: context.brandPrimary.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _activeCodeCard(String? activeCode) {
+    return _card(
+      icon: Icons.qr_code_rounded,
+      title: tr(context, ru: 'Код клиента', zh: '客户代码'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                activeCode ?? tr(context, ru: 'Код не выбран', zh: '未选择客户代码'),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Text(
+              tr(context, ru: 'из верхнего меню', zh: '来自顶部菜单'),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _requisitesCard() {
+    return _card(
+      icon: Icons.account_balance_wallet_rounded,
+      title: tr(context, ru: 'Куда перевести юани', zh: '人民币转入哪里'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _reqCtrl,
+            maxLines: 3,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: InputDecoration(
+              hintText: tr(
+                context,
+                ru: 'Реквизиты или комментарий',
+                zh: '收款信息或备注',
+              ),
+              hintStyle: const TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontWeight: FontWeight.w600,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SelfBuyoutSecondaryButton(
+            label: _fileBytes == null
+                ? tr(context, ru: 'Приложить QR/изображение', zh: '附上二维码/图片')
+                : tr(context, ru: 'Заменить изображение', zh: '更换图片'),
+            icon: Icons.qr_code_2_rounded,
+            onTap: _pickImage,
+          ),
+          if (_fileBytes != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.memory(_fileBytes!, height: 120, fit: BoxFit.cover),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _warningCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.30),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr(
+              context,
+              ru: 'Оплата по заявке принимается только с карт физических лиц граждан РФ. Если хотите оплатить как ИП/юрлицо или картой банка другой страны — напишите менеджеру в чат поддержки. Если оплата будет произведена не в день создания заявки, расчёт может быть пересчитан по актуальному курсу на день оплаты. После поступления юаней у вас есть 14 дней, чтобы оформить доставку товаров на наш склад в Китае. Иначе мы не сможем впредь оказывать помощь в самовыкупе.',
+              zh: '仅接受俄罗斯公民个人银行卡付款。如需以个体户/法人或他国银行卡付款，请通过客服聊天联系经理。如果未在创建申请当天付款，金额可能会按付款当天的最新汇率重新计算。人民币到账后，您有 14 天时间安排货物送达我们在中国的仓库，否则我们将无法继续提供自助代购协助。',
+            ),
+            style: const TextStyle(
+              color: Color(0xFF92400E),
+              fontFamily: 'Gilroy',
+              fontSize: 12.5,
+              height: 1.35,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => setState(() => _warningAccepted = !_warningAccepted),
+            borderRadius: BorderRadius.circular(10),
+            child: Row(
+              children: [
+                Icon(
+                  _warningAccepted
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  color: context.brandPrimary,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    tr(context, ru: 'Я понимаю условия', zh: '我已了解条款'),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

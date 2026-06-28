@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/invoices/data/invoices_provider.dart';
+import '../../features/self_buyout/data/self_buyout_service.dart';
 import '../../features/news/data/news_provider.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/photos/data/photos_provider.dart';
@@ -150,6 +151,13 @@ void _handleDeltaType(Ref ref, String type) {
       // Инвалидируем детальные провайдеры (family) — нужно для мгновенного
       // обновления открытого инвойса, например, на экране оплаты.
       ref.invalidate(invoiceByIdProvider);
+      return;
+
+    case 'self_buyout':
+      // F2-1: заявка самовыкупа изменилась (статус/чек/подтверждение) —
+      // обновляем список и доступность.
+      ref.invalidate(selfBuyoutRequestsProvider);
+      ref.invalidate(selfBuyoutAvailabilityProvider);
       return;
 
     case 'news':

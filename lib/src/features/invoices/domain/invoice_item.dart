@@ -29,6 +29,7 @@ class InvoiceItem {
   final double totalCostCny; // к оплате в ¥
   final double totalCostRub; // к оплате в ₽
   final double? clientRubRate; // курс $/₽
+  final double? clientCnyRubRate; // курс RMB/₽ для новых счетов
   final double? clientYuanRate; // курс $/¥
   final double? photoReportCoefficient;
   final int totalTracks;
@@ -83,6 +84,7 @@ class InvoiceItem {
     this.totalCostCny = 0,
     required this.totalCostRub,
     this.clientRubRate,
+    this.clientCnyRubRate,
     this.clientYuanRate,
     this.photoReportCoefficient,
     this.totalTracks = 0,
@@ -338,6 +340,9 @@ class InvoiceItem {
       totalCostRub: _parseDouble(json['totalCostRUB']),
       clientRubRate: json['clientRubRate'] != null
           ? _parseDouble(json['clientRubRate']).let((v) => v > 0 ? v : null)
+          : null,
+      clientCnyRubRate: json['clientCnyRubRate'] != null
+          ? _parseDouble(json['clientCnyRubRate']).let((v) => v > 0 ? v : null)
           : null,
       clientYuanRate: json['clientYuanRate'] != null
           ? _parseDouble(json['clientYuanRate']).let((v) => v > 0 ? v : null)

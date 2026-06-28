@@ -10,25 +10,9 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/locale_text.dart';
-import '../data/bank_qr_payment.dart';
-
-/// Bank QR — модалка оплаты счёта в рублях.
-///
-/// На открытии стартует QR-платёж, показывает сумму/QR/назначение,
-/// принимает чек и после «Я оплатил» переводит счёт в «На проверке».
-class BankQrPaymentSheet extends ConsumerStatefulWidget {
-  final String invoiceId;
-  final String invoiceNumber;
-
-  const BankQrPaymentSheet({
-    super.key,
-    required this.invoiceId,
-    required this.invoiceNumber,
-  });
-
-  @override
-  ConsumerState<BankQrPaymentSheet> createState() => _BankQrPaymentSheetState();
-}
+import '../data/self_buyout_models.dart';
+import '../data/self_buyout_service.dart';
+import 'self_buyout_ui.dart';
 
 const _allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf'];
 
@@ -52,15 +36,31 @@ String _mimeForExt(String ext) {
   }
 }
 
-class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
+/// Модалка оплаты заявки самовыкупа в рублях: стартует QR, принимает чек.
+class SelfBuyoutQrSheet extends ConsumerStatefulWidget {
+  final int requestId;
+  final String requestNumber;
+  final double cnyAmount;
+
+  const SelfBuyoutQrSheet({
+    super.key,
+    required this.requestId,
+    required this.requestNumber,
+    required this.cnyAmount,
+  });
+
+  @override
+  ConsumerState<SelfBuyoutQrSheet> createState() => _SelfBuyoutQrSheetState();
+}
+
+class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
   bool _loading = true;
   String? _error;
-  BankQrPaymentResult? _result;
+  SelfBuyoutPaymentInfo? _result;
 
   Uint8List? _fileBytes;
   String? _fileName;
   String? _fileMime;
-
   bool _uploading = false;
 
   @override
@@ -75,9 +75,8 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
       _error = null;
     });
     try {
-      final res = await ref
-          .read(bankQrPaymentServiceProvider)
-          .startBankQrPayment(widget.invoiceId);
+      final res =
+          await ref.read(selfBuyoutServiceProvider).startBankQr(widget.requestId);
       if (!mounted) return;
       if (res == null) {
         setState(() {
@@ -90,16 +89,11 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
         _result = res;
         _loading = false;
       });
-    } on DioException catch (e) {
+    } on DioException {
       if (!mounted) return;
-      final reason = e.response?.data is Map
-          ? (e.response?.data['reason']?.toString())
-          : null;
       setState(() {
         _loading = false;
-        _error = reason != null
-            ? tr(context, ru: 'QR-оплата недоступна', zh: 'QR 支付不可用')
-            : tr(context, ru: 'Ошибка сети. Повторите.', zh: '网络错误，请重试');
+        _error = tr(context, ru: 'Оплата недоступна. Повторите.', zh: '支付不可用，请重试');
       });
     }
   }
@@ -147,9 +141,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
     if (res == null || bytes == null || _uploading) return;
     setState(() => _uploading = true);
     try {
-      final upload = await ref
-          .read(bankQrPaymentServiceProvider)
-          .uploadBankQrReceipt(
+      final ok = await ref.read(selfBuyoutServiceProvider).uploadReceipt(
             paymentId: res.paymentId,
             bytes: bytes,
             fileName: _fileName ?? 'receipt',
@@ -157,7 +149,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
           );
       if (!mounted) return;
       setState(() => _uploading = false);
-      if (upload == null) {
+      if (!ok) {
         AppToast.show(
           context,
           tr(context, ru: 'Не удалось отправить чек', zh: '无法发送凭证'),
@@ -184,7 +176,6 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
-
     return SafeArea(
       top: false,
       bottom: false,
@@ -203,7 +194,15 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             const SheetHandle(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: _BankQrHeader(invoiceNumber: widget.invoiceNumber),
+              child: SelfBuyoutGradientHeader(
+                icon: Icons.qr_code_2_rounded,
+                title: tr(context, ru: 'Оплата в рублях', zh: '卢布支付'),
+                subtitle: tr(
+                  context,
+                  ru: 'Заявка ${widget.requestNumber}',
+                  zh: '申请 ${widget.requestNumber}',
+                ),
+              ),
             ),
             Flexible(
               child: SingleChildScrollView(
@@ -211,10 +210,17 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: _loading
-                    ? const _BankQrLoadingCard()
+                    ? _SelfBuyoutCard(
+                        icon: Icons.hourglass_empty_rounded,
+                        title: tr(context, ru: 'Готовим QR', zh: '正在生成二维码'),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 22),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      )
                     : _error != null
-                    ? _buildError()
-                    : _buildContent(),
+                        ? _buildError()
+                        : _buildContent(),
               ),
             ),
             Padding(
@@ -228,7 +234,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   }
 
   Widget _buildError() {
-    return _BankQrSectionCard(
+    return _SelfBuyoutCard(
       icon: Icons.error_outline_rounded,
       title: tr(context, ru: 'Оплата недоступна', zh: '支付不可用'),
       child: Column(
@@ -246,7 +252,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             ),
           ),
           const SizedBox(height: 14),
-          _BankQrPrimaryButton(
+          SelfBuyoutPrimaryButton(
             label: tr(context, ru: 'Повторить', zh: '重试'),
             icon: Icons.refresh_rounded,
             onTap: _start,
@@ -261,7 +267,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _BankQrSectionCard(
+        _SelfBuyoutCard(
           icon: Icons.qr_code_2_rounded,
           title: tr(context, ru: 'QR для оплаты', zh: '付款二维码'),
           child: Column(
@@ -272,17 +278,8 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.black.withValues(alpha: 0.04),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 24,
-                        spreadRadius: -16,
-                        offset: const Offset(0, 14),
-                      ),
-                    ],
+                    border:
+                        Border.all(color: Colors.black.withValues(alpha: 0.04)),
                   ),
                   child: QrImageView(
                     data: res.qrPayload,
@@ -301,17 +298,23 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
               ),
               const SizedBox(height: 10),
               Text(
-                tr(
-                  context,
-                  ru: 'Отсканируйте QR в приложении банка',
-                  zh: '在银行应用中扫描二维码',
+                '${res.amountRub.toStringAsFixed(2)} ₽',
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                res.purpose,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontFamily: 'Gilroy',
-                  fontSize: 12.5,
-                  height: 1.2,
+                  fontSize: 12,
+                  height: 1.25,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -319,7 +322,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
           ),
         ),
         const SizedBox(height: 12),
-        _BankQrSectionCard(
+        _SelfBuyoutCard(
           icon: Icons.upload_file_rounded,
           title: tr(context, ru: 'Чек об оплате', zh: '付款凭证'),
           child: Column(
@@ -328,8 +331,8 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
               Text(
                 tr(
                   context,
-                  ru: 'Оплатите по QR, приложите чек и нажмите «Я оплатил». После этого счёт уйдёт сотруднику на проверку.',
-                  zh: '扫码付款后上传凭证并点击「我已付款」。账单会提交给工作人员审核。',
+                  ru: 'Оплатите по QR, приложите чек и нажмите «Я оплатил». Заявка уйдёт сотруднику на проверку.',
+                  zh: '扫码付款后上传凭证并点击「我已付款」，申请将提交审核。',
                 ),
                 style: const TextStyle(
                   color: AppColors.textSecondary,
@@ -340,13 +343,9 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              _BankQrSecondaryButton(
+              SelfBuyoutSecondaryButton(
                 label: _fileBytes == null
-                    ? tr(
-                        context,
-                        ru: 'Приложить чек (фото/PDF)',
-                        zh: '附上凭证（图片/PDF）',
-                      )
+                    ? tr(context, ru: 'Приложить чек (фото/PDF)', zh: '附上凭证（图片/PDF）')
                     : tr(context, ru: 'Заменить чек', zh: '更换凭证'),
                 icon: Icons.attach_file_rounded,
                 onTap: _uploading ? null : _pickFile,
@@ -364,20 +363,20 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
 
   Widget _buildFooter() {
     if (_loading) {
-      return _BankQrPrimaryButton(
+      return SelfBuyoutPrimaryButton(
         label: tr(context, ru: 'Подготовка QR…', zh: '正在生成二维码…'),
         icon: Icons.hourglass_empty_rounded,
         onTap: null,
       );
     }
     if (_error != null) {
-      return _BankQrSecondaryButton(
+      return SelfBuyoutSecondaryButton(
         label: tr(context, ru: 'Закрыть', zh: '关闭'),
         icon: Icons.close_rounded,
         onTap: () => Navigator.of(context).pop(false),
       );
     }
-    return _BankQrPrimaryButton(
+    return SelfBuyoutPrimaryButton(
       label: tr(context, ru: 'Я оплатил', zh: '我已付款'),
       icon: Icons.check_circle_outline_rounded,
       isLoading: _uploading,
@@ -408,11 +407,8 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             ),
             clipBehavior: Clip.antiAlias,
             child: isPdf
-                ? const Icon(
-                    Icons.picture_as_pdf_rounded,
-                    size: 28,
-                    color: Colors.redAccent,
-                  )
+                ? const Icon(Icons.picture_as_pdf_rounded,
+                    size: 28, color: Colors.redAccent)
                 : Image.memory(bytes, fit: BoxFit.cover),
           ),
           const SizedBox(width: 12),
@@ -434,10 +430,10 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             onPressed: _uploading
                 ? null
                 : () => setState(() {
-                    _fileBytes = null;
-                    _fileName = null;
-                    _fileMime = null;
-                  }),
+                      _fileBytes = null;
+                      _fileName = null;
+                      _fileMime = null;
+                    }),
             icon: const Icon(Icons.close_rounded),
             color: AppColors.textSecondary,
           ),
@@ -447,110 +443,12 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   }
 }
 
-class _BankQrHeader extends StatelessWidget {
-  final String invoiceNumber;
-
-  const _BankQrHeader({required this.invoiceNumber});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: context.brandGradient,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: context.brandPrimary.withValues(alpha: 0.18),
-            blurRadius: 22,
-            spreadRadius: -12,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            ),
-            child: const Icon(
-              Icons.qr_code_2_rounded,
-              color: Colors.white,
-              size: 25,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tr(context, ru: 'Оплата в рублях', zh: '卢布支付'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Gilroy',
-                    fontSize: 21,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.25,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  tr(
-                    context,
-                    ru: 'Счёт $invoiceNumber',
-                    zh: '账单 $invoiceNumber',
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xE6FFFFFF),
-                    fontFamily: 'Gilroy',
-                    fontSize: 12.8,
-                    height: 1.15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BankQrLoadingCard extends StatelessWidget {
-  const _BankQrLoadingCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return _BankQrSectionCard(
-      icon: Icons.hourglass_empty_rounded,
-      title: tr(context, ru: 'Готовим QR', zh: '正在生成二维码'),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 22),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-    );
-  }
-}
-
-class _BankQrSectionCard extends StatelessWidget {
+class _SelfBuyoutCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final Widget child;
 
-  const _BankQrSectionCard({
+  const _SelfBuyoutCard({
     required this.icon,
     required this.title,
     required this.child,
@@ -592,7 +490,6 @@ class _BankQrSectionCard extends StatelessWidget {
                     fontSize: 14.5,
                     height: 1.05,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -0.05,
                   ),
                 ),
               ),
@@ -601,144 +498,6 @@ class _BankQrSectionCard extends StatelessWidget {
           const SizedBox(height: 10),
           child,
         ],
-      ),
-    );
-  }
-}
-
-class _BankQrPrimaryButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool isLoading;
-
-  const _BankQrPrimaryButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.isLoading = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null && !isLoading;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          height: 50,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            gradient: enabled ? context.brandGradient : null,
-            color: enabled ? null : const Color(0xFFE9ECEF),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: context.brandPrimary.withValues(alpha: 0.18),
-                      blurRadius: 18,
-                      spreadRadius: -10,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
-          ),
-          child: isLoading
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(Colors.white),
-                  ),
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontFamily: 'Gilroy',
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BankQrSecondaryButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  const _BankQrSecondaryButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 140),
-          opacity: enabled ? 1 : 0.52,
-          child: Container(
-            height: 50,
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: context.brandPrimary.withValues(alpha: 0.34),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: context.brandPrimary, size: 18),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: context.brandPrimary,
-                      fontFamily: 'Gilroy',
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -30,6 +30,7 @@ import '../features/referral/presentation/referral_screen.dart';
 import '../features/tariffs/presentation/tariffs_screen.dart';
 import '../features/purchase_blanks/presentation/purchase_blank_detail_screen.dart';
 import '../features/purchase_blanks/presentation/purchase_blanks_screen.dart';
+import '../features/self_buyout/presentation/self_buyout_screen.dart';
 import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
 import 'widgets/app_scaffold.dart';
@@ -456,6 +457,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       // Purchase Blanks routes
+      GoRoute(
+        name: 'self-buyout',
+        path: '/self-buyout',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Самовыкуп',
+            child: SelfBuyoutScreen(),
+          ),
+        ),
+      ),
       GoRoute(
         name: 'purchase-blanks',
         path: '/purchase-blanks',

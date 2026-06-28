@@ -18,6 +18,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../self_buyout/data/self_buyout_service.dart';
 import '../../clients/presentation/client_switcher_sheet.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../notifications/presentation/notifications_sheet.dart';
@@ -153,31 +154,40 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
       ),
       ..._primaryItems.skip(1),
     ];
-    const serviceItems = <_SideNavEntry>[
-      _SideNavEntry(
+    final selfBuyoutAvailable =
+        ref.watch(selfBuyoutAvailabilityProvider).asData?.value.available ?? false;
+    final serviceItems = <_SideNavEntry>[
+      const _SideNavEntry(
         icon: Icons.person_rounded,
         selectedIcon: Icons.person_rounded,
         label: 'Профиль',
         route: '/profile',
       ),
-      _SideNavEntry(
+      const _SideNavEntry(
         icon: Icons.account_balance_wallet_rounded,
         selectedIcon: Icons.account_balance_wallet_rounded,
         label: 'Оплата',
         route: '/payment-chat',
       ),
-      _SideNavEntry(
+      const _SideNavEntry(
         icon: Icons.calculate_rounded,
         selectedIcon: Icons.calculate_rounded,
         label: 'Калькулятор',
         route: '/calculator',
       ),
-      _SideNavEntry(
+      const _SideNavEntry(
         icon: Icons.description_rounded,
         selectedIcon: Icons.description_rounded,
         label: 'Выкуп',
         route: '/purchase-blanks',
       ),
+      if (selfBuyoutAvailable)
+        const _SideNavEntry(
+          icon: Icons.savings_rounded,
+          selectedIcon: Icons.savings_rounded,
+          label: 'Самовыкуп',
+          route: '/self-buyout',
+        ),
       _SideNavEntry(
         icon: Icons.shopping_bag_rounded,
         selectedIcon: Icons.shopping_bag_rounded,

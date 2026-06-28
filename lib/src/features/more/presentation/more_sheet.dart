@@ -16,6 +16,7 @@ import '../../clients/application/client_codes_controller.dart';
 import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
+import '../../self_buyout/data/self_buyout_service.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
@@ -149,6 +150,16 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
     final profile = profileAsync.asData?.value;
     final isProfileLoading = profile == null && profileAsync.isLoading;
     final bottomSafe = MediaQuery.paddingOf(context).bottom;
+    // Самовыкуп не скрываем молча, если временно недоступен только из-за курса.
+    final selfBuyoutAvailability = ref
+        .watch(selfBuyoutAvailabilityProvider)
+        .asData
+        ?.value;
+    final selfBuyoutAvailable = selfBuyoutAvailability?.available ?? false;
+    final selfBuyoutWaitingForRates = _isSelfBuyoutWaitingForRates(
+      selfBuyoutAvailability?.reason,
+    );
+    final showSelfBuyout = selfBuyoutAvailable || selfBuyoutWaitingForRates;
 
     return Container(
       constraints: BoxConstraints(
@@ -223,6 +234,18 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           subtitle: 'Загрузить бланк на выкуп товаров',
                           iconColor: const Color(0xFFFF5722),
                           onTap: () => _go(context, '/purchase-blanks'),
+                        ),
+                        if (showSelfBuyout)
+                          _MoreMenuTile(
+                            icon: Icons.savings_rounded,
+                          title: 'Самовыкуп',
+                          subtitle: selfBuyoutWaitingForRates
+                              ? 'Заявки доступны, создание после обновления курсов'
+                              : 'Помощь с юанями для самостоятельной покупки',
+                          iconColor: selfBuyoutWaitingForRates
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFF10B981),
+                          onTap: () => _go(context, '/self-buyout'),
                         ),
                         _MoreMenuTile(
                           icon: Icons.shopping_bag_rounded,
@@ -768,4 +791,10 @@ class _MoreMenuTile extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _isSelfBuyoutWaitingForRates(String? reason) {
+  return reason == 'rate_stale' ||
+      reason == 'no_rate' ||
+      reason == 'rate_invalid';
 }
