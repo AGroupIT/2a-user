@@ -126,12 +126,20 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
     super.dispose();
   }
 
+  String _safeCurrentPath(BuildContext context) {
+    try {
+      return GoRouterState.of(context).uri.path;
+    } catch (_) {
+      return GoRouter.of(context).routeInformationProvider.value.uri.path;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final expanded = ref.watch(desktopSideNavExpandedProvider);
     final top = MediaQuery.paddingOf(context).top;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final currentPath = GoRouterState.of(context).uri.path;
+    final currentPath = _safeCurrentPath(context);
     final clientCode = ref.watch(activeClientCodeProvider);
     ref.watch(notificationsControllerProvider);
     final unreadNotifications = ref.watch(unreadNotificationsCountProvider);
@@ -155,7 +163,8 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
       ..._primaryItems.skip(1),
     ];
     final selfBuyoutAvailable =
-        ref.watch(selfBuyoutAvailabilityProvider).asData?.value.available ?? false;
+        ref.watch(selfBuyoutAvailabilityProvider).asData?.value.available ??
+        false;
     final serviceItems = <_SideNavEntry>[
       const _SideNavEntry(
         icon: Icons.person_rounded,
@@ -563,7 +572,6 @@ class _SideNavSection extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
   });
-
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
@@ -637,7 +645,6 @@ class _SideNavSurface extends StatelessWidget {
   final Widget child;
 
   const _SideNavSurface({required this.expanded, required this.child});
-
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
@@ -705,7 +712,6 @@ class _SideNavButton extends StatelessWidget {
     this.hasBadge = false,
     this.attention = false,
   });
-
   @override
   Widget build(BuildContext context) {
     final contentColor = selected ? Colors.white : const Color(0xFF3A3F4B);
@@ -856,7 +862,6 @@ class _SideNavIcon extends StatelessWidget {
     required this.loading,
     required this.color,
   });
-
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -879,7 +884,6 @@ class _CollapseButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _CollapseButton({required this.expanded, required this.onTap});
-
   @override
   Widget build(BuildContext context) {
     return _SideNavButton(
@@ -1000,7 +1004,6 @@ class _ClientCodeDot extends StatelessWidget {
   final Color color;
 
   const _ClientCodeDot({required this.color});
-
   @override
   Widget build(BuildContext context) {
     return Container(

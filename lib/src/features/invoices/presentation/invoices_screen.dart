@@ -1752,7 +1752,9 @@ class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
         '🇷🇺 К оплате: ${money.format(item.totalCostRub.round())} ₽',
       );
     }
-    if (item.clientRubRate != null || item.clientCnyRubRate != null || item.clientYuanRate != null) {
+    if (item.clientRubRate != null ||
+        item.clientCnyRubRate != null ||
+        item.clientYuanRate != null) {
       buffer.writeln('');
       if (item.clientRubRate != null) {
         buffer.writeln(
@@ -2159,6 +2161,78 @@ class _InvoicePaymentReviewBanner extends StatelessWidget {
   }
 }
 
+class _InvoiceBankQrRateBanner extends StatelessWidget {
+  const _InvoiceBankQrRateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4EF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              Icons.currency_exchange_rounded,
+              color: context.brandPrimary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr(
+                    context,
+                    ru: 'Оплата в рублях временно недоступна',
+                    zh: '卢布支付暂不可用',
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14.5,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  tr(
+                    context,
+                    ru: 'Оплатить счёт в рублях можно будет после обновления курса валют на текущий день. Пока можно выбрать оплату через менеджера.',
+                    zh: '当天汇率更新后即可使用卢布支付。目前可选择通过经理付款。',
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.8,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Детальный лист счёта ─────────────────────────────────────────────────────
 
 class _InvoiceDetailSheet extends ConsumerStatefulWidget {
@@ -2441,6 +2515,12 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final showBonusSection =
         _isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
     final isPaymentReview = item.status.toLowerCase() == 'payment_review';
+    final showBankQrRateBanner =
+        _isUnpaid &&
+        !item.bankQrPaymentAvailable &&
+        (item.bankQrPaymentUnavailableReason == 'rate_stale' ||
+            item.bankQrPaymentUnavailableReason == 'no_rate' ||
+            item.bankQrPaymentUnavailableReason == 'rate_invalid');
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -2510,6 +2590,10 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           children: [
             if (isPaymentReview) ...[
               const _InvoicePaymentReviewBanner(),
+              const SizedBox(height: 12),
+            ],
+            if (showBankQrRateBanner) ...[
+              const _InvoiceBankQrRateBanner(),
               const SizedBox(height: 12),
             ],
             _buildPlainInfoBlock([

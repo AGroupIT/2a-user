@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,7 +30,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   late final AnimationController _ambientController;
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _showPasswordLogin = false;
+  bool _showPasswordLogin = kIsWeb;
   bool _passkeyAvailable = false;
   bool _passkeyAvailabilityChecked = false;
 
@@ -56,6 +57,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (kIsWeb) return;
       _loadPasskeyAvailability();
     });
   }
@@ -71,6 +73,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _loadPasskeyAvailability() async {
+    if (kIsWeb) {
+      if (!mounted) return;
+      setState(() {
+        _passkeyAvailable = false;
+        _passkeyAvailabilityChecked = true;
+      });
+      return;
+    }
+
     // На старых Android проверка passkeys может поднимать Google Play Services
     // и заметно блокировать первые кадры. Даём экрану входа сначала отрисоваться.
     await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -202,6 +213,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _maybeOfferPasskeyEnrollment(
     Map<String, dynamic> userData,
   ) async {
+    if (kIsWeb) return;
+
     var passkeyAvailable = _passkeyAvailable;
     if (!_passkeyAvailabilityChecked) {
       passkeyAvailable = await ref

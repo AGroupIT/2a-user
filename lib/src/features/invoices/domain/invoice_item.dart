@@ -47,6 +47,7 @@ class InvoiceItem {
   final String? tkWaybillPhotoUrl;
   // Bank QR (рубли) Sprint4: доступность и активный платёж по банковскому QR.
   final bool bankQrPaymentAvailable;
+  final String? bankQrPaymentUnavailableReason;
   final int? bankQrPaymentId;
   final String? paymentProvider;
   final String? paymentMethod;
@@ -98,6 +99,7 @@ class InvoiceItem {
     this.insuranceCostClient,
     this.tkWaybillPhotoUrl,
     this.bankQrPaymentAvailable = false,
+    this.bankQrPaymentUnavailableReason,
     this.bankQrPaymentId,
     this.paymentProvider,
     this.paymentMethod,
@@ -375,6 +377,8 @@ class InvoiceItem {
           : null,
       tkWaybillPhotoUrl: json['tkWaybillPhotoUrl'] as String?,
       bankQrPaymentAvailable: json['bankQrPaymentAvailable'] == true,
+      bankQrPaymentUnavailableReason:
+          json['bankQrPaymentUnavailableReason'] as String?,
       bankQrPaymentId: (json['bankQrPaymentId'] as num?)?.toInt(),
       paymentProvider: json['paymentProvider'] as String?,
       paymentMethod: json['paymentMethod'] as String?,
