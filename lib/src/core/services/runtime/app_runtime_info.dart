@@ -20,11 +20,11 @@ class AppRuntimeSnapshot {
 
   Map<String, String> toHeaders() {
     return {
-      'X-App-Version': appVersion,
-      'X-Build-Number': buildNumber,
-      'X-Platform': platform,
-      'X-Device': device,
-      'X-OS-Version': osVersion,
+      'X-App-Version': _safeHttpHeaderValue(appVersion),
+      'X-Build-Number': _safeHttpHeaderValue(buildNumber),
+      'X-Platform': _safeHttpHeaderValue(platform),
+      'X-Device': _safeHttpHeaderValue(device),
+      'X-OS-Version': _safeHttpHeaderValue(osVersion),
     };
   }
 
@@ -56,16 +56,20 @@ class AppRuntimeInfo {
       appVersion: info.version,
       buildNumber: info.buildNumber,
       platform: getPlatformNameImpl(),
-      device: _trimHeader(platformInfo.device),
-      osVersion: _trimHeader(platformInfo.osVersion),
+      device: platformInfo.device.trim(),
+      osVersion: platformInfo.osVersion.trim(),
     );
   }
 
   Future<Map<String, String>> headers() async => (await snapshot()).toHeaders();
+}
 
-  String _trimHeader(String value) {
-    final trimmed = value.trim();
-    if (trimmed.length <= 160) return trimmed;
-    return trimmed.substring(0, 160);
-  }
+String _safeHttpHeaderValue(String value) {
+  final ascii = value
+      .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final safe = ascii.isEmpty ? 'unknown' : ascii;
+  if (safe.length <= 160) return safe;
+  return safe.substring(0, 160).trimRight();
 }
