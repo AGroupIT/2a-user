@@ -12,6 +12,7 @@ class InvoiceItem {
   final String? arrivalStatus;
   final String? tariffName;
   final double? tariffBaseCost;
+  final String? tariffPricingType;
   final int placesCount;
   final double density;
   final double weight;
@@ -19,6 +20,7 @@ class InvoiceItem {
   final String? calculationMethod;
   final List<PackagingItem> packagings;
   final List<InvoicePackagingUsage> packagingUsage;
+  final List<InvoiceTariffPackagingSurcharge> tariffPackagingSurcharges;
   final double? packagingCostTotal;
   final double? transshipmentCost;
   final double? insuranceCost;
@@ -68,6 +70,7 @@ class InvoiceItem {
     this.statusColor,
     this.tariffName,
     this.tariffBaseCost,
+    this.tariffPricingType,
     required this.placesCount,
     required this.density,
     required this.weight,
@@ -80,6 +83,7 @@ class InvoiceItem {
     this.shippingCost,
     this.packagings = const [],
     this.packagingUsage = const [],
+    this.tariffPackagingSurcharges = const [],
     this.packagingCostTotal,
     this.totalCostUsd = 0,
     this.totalCostCny = 0,
@@ -136,6 +140,38 @@ class InvoiceItem {
       .where((name) => name.isNotEmpty)
       .toSet()
       .join(', ');
+
+  List<InvoiceTariffPackagingSurcharge> get applicablePackagingSurcharges {
+    if (tariffPricingType == 'density' ||
+        tariffPackagingSurcharges.isEmpty ||
+        packagingUsage.isEmpty) {
+      return const [];
+    }
+    final usageIds = packagingUsage
+        .map((row) => row.packagingTypeId)
+        .where((id) => id > 0)
+        .toSet();
+    if (usageIds.isEmpty) return const [];
+    return tariffPackagingSurcharges
+        .where(
+          (row) =>
+              row.isActive &&
+              row.amount > 0 &&
+              usageIds.contains(row.packagingTypeId),
+        )
+        .toList(growable: false);
+  }
+
+  double get packagingSurchargePerKg =>
+      applicablePackagingSurcharges.fold(0, (sum, row) => sum + row.amount);
+
+  double get packagingSurchargeTotal {
+    final photoCoeff =
+        photoReportCoefficient != null && photoReportCoefficient! > 0
+        ? photoReportCoefficient!
+        : 1.0;
+    return packagingSurchargePerKg * weight * photoCoeff;
+  }
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
     final status = json['status'] as String? ?? 'unknown';
@@ -228,6 +264,19 @@ class InvoiceItem {
               .toList()
         : <InvoicePackagingUsage>[];
 
+    final rawPackagingSurcharges = tariff?['packagingSurcharges'];
+    final tariffPackagingSurcharges = rawPackagingSurcharges is List
+        ? rawPackagingSurcharges
+              .whereType<Map>()
+              .map(
+                (row) => InvoiceTariffPackagingSurcharge.fromJson(
+                  Map<String, dynamic>.from(row),
+                ),
+              )
+              .where((row) => row.packagingTypeId > 0 && row.amount > 0)
+              .toList()
+        : <InvoiceTariffPackagingSurcharge>[];
+
     int totalTracks = 0;
     int tracksWithPhoto = 0;
     final invoiceBoxIds = <int>{};
@@ -312,6 +361,7 @@ class InvoiceItem {
       statusColor: statusColor,
       tariffName: tariffName,
       tariffBaseCost: tariffBaseCost,
+      tariffPricingType: tariff?['pricingType'] as String?,
       placesCount: json['placesCount'] as int? ?? 0,
       density: _parseDouble(json['density']),
       weight: _parseDouble(json['weight']),
@@ -334,6 +384,7 @@ class InvoiceItem {
           : null,
       packagings: packagings,
       packagingUsage: packagingUsage,
+      tariffPackagingSurcharges: tariffPackagingSurcharges,
       packagingCostTotal: _parseDouble(
         json['packagingCost'],
       ).let((v) => v > 0 ? v : null),
@@ -396,6 +447,61 @@ class InvoiceItem {
 
 extension _DoubleLetExt on double {
   T let<T>(T Function(double) f) => f(this);
+}
+
+/// Доплата к цене доставки тарифа при наличии определённой упаковки.
+class InvoiceTariffPackagingSurcharge {
+  final int packagingTypeId;
+  final String? packagingNameRu;
+  final String? packagingNameZh;
+  final double amount;
+  final bool isActive;
+
+  const InvoiceTariffPackagingSurcharge({
+    required this.packagingTypeId,
+    this.packagingNameRu,
+    this.packagingNameZh,
+    required this.amount,
+    this.isActive = true,
+  });
+
+  factory InvoiceTariffPackagingSurcharge.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    double parseDouble(dynamic value) {
+      if (value == null) return 0;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    final packagingType = json['packagingType'];
+    final packagingTypeMap = packagingType is Map
+        ? Map<String, dynamic>.from(packagingType)
+        : null;
+    return InvoiceTariffPackagingSurcharge(
+      packagingTypeId: parseInt(json['packagingTypeId']),
+      packagingNameRu:
+          json['packagingNameRu'] as String? ??
+          packagingTypeMap?['nameRu'] as String?,
+      packagingNameZh:
+          json['packagingNameZh'] as String? ??
+          packagingTypeMap?['nameZh'] as String?,
+      amount: parseDouble(json['amount']),
+      isActive: json['isActive'] as bool? ?? true,
+    );
+  }
+
+  String displayName() {
+    final name = packagingNameRu?.trim();
+    return name == null || name.isEmpty ? 'Упаковка' : name;
+  }
 }
 
 /// Элемент упаковки с названием и стоимостью

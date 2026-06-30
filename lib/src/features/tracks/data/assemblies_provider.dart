@@ -25,6 +25,7 @@ class Assembly {
   final List<AssemblyTrack> tracks;
   final String? scalePhotoUrl;
   final String? comment;
+  final String? goodsDescription;
   final String?
   deliveryMethod; // Способ доставки: self_pickup или transport_company
   final String? recipientName; // Имя получателя (для ТК)
@@ -56,6 +57,7 @@ class Assembly {
     this.tracks = const [],
     this.scalePhotoUrl,
     this.comment,
+    this.goodsDescription,
     this.deliveryMethod,
     this.recipientName,
     this.recipientPhone,
@@ -108,6 +110,7 @@ class Assembly {
       tracks: tracks,
       scalePhotoUrl: json['scalePhotoUrl'] as String?,
       comment: json['comment'] as String?,
+      goodsDescription: json['goodsDescription'] as String?,
       deliveryMethod: json['deliveryMethod'] as String?,
       recipientName: json['recipientName'] as String?,
       recipientPhone: json['recipientPhone'] as String?,
@@ -261,6 +264,7 @@ class AssembliesApiService {
     String packagingRemoval = 'none',
     bool hasInsurance = false,
     double? insuranceAmount,
+    String? goodsDescription,
     List<int>? trackIds,
   }) async {
     try {
@@ -281,6 +285,8 @@ class AssembliesApiService {
           'packagingRemoval': packagingRemoval,
           'hasInsurance': hasInsurance,
           if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
+          if (goodsDescription != null && goodsDescription.trim().isNotEmpty)
+            'goodsDescription': goodsDescription.trim(),
           if (trackIds != null && trackIds.isNotEmpty) 'trackIds': trackIds,
         },
       );
@@ -503,19 +509,38 @@ final packagingTypesProvider = FutureProvider<List<PackagingType>>((ref) async {
   }
 });
 
+DateTime? _parseDate(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String && value.trim().isNotEmpty) {
+    return DateTime.tryParse(value);
+  }
+  return null;
+}
+
 /// Модель тарифа
 class Tariff {
   final int id;
   final String name;
   final double baseCost;
+  final double? packagingRemovalTransportPrice;
+  final double? packagingRemovalAllPrice;
   final bool isActive;
+  final bool isCurrentlyActive;
+  final DateTime? validFrom;
+  final DateTime? validTo;
   final bool requiresProductInfo;
 
   const Tariff({
     required this.id,
     required this.name,
     required this.baseCost,
+    this.packagingRemovalTransportPrice,
+    this.packagingRemovalAllPrice,
     this.isActive = true,
+    this.isCurrentlyActive = true,
+    this.validFrom,
+    this.validTo,
     this.requiresProductInfo = false,
   });
 
@@ -526,7 +551,20 @@ class Tariff {
       baseCost: json['baseCost'] != null
           ? double.tryParse(json['baseCost'].toString()) ?? 0
           : 0,
+      packagingRemovalTransportPrice:
+          json['packagingRemovalTransportPrice'] != null
+          ? double.tryParse(json['packagingRemovalTransportPrice'].toString())
+          : null,
+      packagingRemovalAllPrice: json['packagingRemovalAllPrice'] != null
+          ? double.tryParse(json['packagingRemovalAllPrice'].toString())
+          : null,
       isActive: json['isActive'] as bool? ?? true,
+      isCurrentlyActive:
+          json['isCurrentlyActive'] as bool? ??
+          json['isActive'] as bool? ??
+          true,
+      validFrom: _parseDate(json['validFrom']),
+      validTo: _parseDate(json['validTo']),
       requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
     );
   }

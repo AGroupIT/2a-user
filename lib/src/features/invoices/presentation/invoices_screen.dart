@@ -2649,6 +2649,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                   'Тариф за кг',
                   '\$${item.clientPricePerKg!.toStringAsFixed(2)}/кг',
                 ),
+              if (item.packagingSurchargePerKg > 0)
+                _buildPackagingSurchargeBlock(context, item),
               if (item.photoReportCoefficient != null &&
                   item.photoReportCoefficient! > 1.0)
                 _buildInfoRow(
@@ -3003,6 +3005,45 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
               textAlign: TextAlign.right,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPackagingSurchargeBlock(BuildContext context, InvoiceItem item) {
+    final perKg = item.packagingSurchargePerKg;
+    final total = item.packagingSurchargeTotal;
+    final details = item.applicablePackagingSurcharges
+        .map(
+          (row) =>
+              '${row.displayName()} +\$${row.amount.toStringAsFixed(2)}/кг',
+        )
+        .join(', ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildInfoRow(
+            context,
+            'Доплата за упаковку',
+            '+\$${perKg.toStringAsFixed(2)}/кг',
+          ),
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              total > 0
+                  ? '$details · в доставке ≈ \$${total.toStringAsFixed(2)}'
+                  : details,
+              style: const TextStyle(
+                color: Color(0xFF888888),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
+          ],
         ],
       ),
     );

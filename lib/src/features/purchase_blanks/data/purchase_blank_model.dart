@@ -61,11 +61,13 @@ enum PurchaseBlankStatus {
 
   /// Клиент может отменить бланк
   bool get isCancellableByClient =>
-      this == PurchaseBlankStatus.newBlank || this == PurchaseBlankStatus.submitted;
+      this == PurchaseBlankStatus.newBlank ||
+      this == PurchaseBlankStatus.submitted;
 
   /// Бланк завершён (финальный статус)
   bool get isFinal =>
-      this == PurchaseBlankStatus.completed || this == PurchaseBlankStatus.cancelled;
+      this == PurchaseBlankStatus.completed ||
+      this == PurchaseBlankStatus.cancelled;
 }
 
 // ─── Товар в бланке ──────────────────────────────────────
@@ -89,7 +91,9 @@ class PurchaseBlankItem {
   // Заполняет сотрудник (2a-admin)
   final String? trackNumber;
   final double? commission;
-  final double? itemTotal; // totalPrice + commission
+  final double? chinaShippingCostYuan;
+  final List<String> chinaShippingProofUrls;
+  final double? itemTotal; // totalPrice + commission + доставка по Китаю
 
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -107,13 +111,19 @@ class PurchaseBlankItem {
     this.totalPrice = 0,
     this.trackNumber,
     this.commission,
+    this.chinaShippingCostYuan,
+    this.chinaShippingProofUrls = const [],
     this.itemTotal,
     required this.createdAt,
     required this.updatedAt,
   });
 
   /// Есть ли данные сотрудника
-  bool get hasEmployeeData => trackNumber != null || commission != null;
+  bool get hasEmployeeData =>
+      trackNumber != null ||
+      commission != null ||
+      chinaShippingCostYuan != null ||
+      chinaShippingProofUrls.isNotEmpty;
 
   factory PurchaseBlankItem.fromJson(Map<String, dynamic> json) {
     final photoUrlsRaw = json['photoUrls'];
@@ -125,6 +135,15 @@ class PurchaseBlankItem {
         // Может быть JSON-строкой
         photoUrls = [];
       } catch (_) {}
+    }
+
+    final chinaShippingProofUrlsRaw = json['chinaShippingProofUrls'];
+    List<String> chinaShippingProofUrls = [];
+    if (chinaShippingProofUrlsRaw is List) {
+      chinaShippingProofUrls = chinaShippingProofUrlsRaw
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     return PurchaseBlankItem(
@@ -140,6 +159,9 @@ class PurchaseBlankItem {
       totalPrice: (json['totalPrice'] as num?)?.toDouble() ?? 0.0,
       trackNumber: json['trackNumber'] as String?,
       commission: (json['commission'] as num?)?.toDouble(),
+      chinaShippingCostYuan: (json['chinaShippingCostYuan'] as num?)
+          ?.toDouble(),
+      chinaShippingProofUrls: chinaShippingProofUrls,
       itemTotal: (json['itemTotal'] as num?)?.toDouble(),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
@@ -151,13 +173,13 @@ class PurchaseBlankItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'productName': productName,
-        'productUrl': productUrl,
-        if (characteristics != null) 'characteristics': characteristics,
-        'quantity': quantity,
-        'unitPrice': unitPrice,
-        'photoUrls': photoUrls,
-      };
+    'productName': productName,
+    'productUrl': productUrl,
+    if (characteristics != null) 'characteristics': characteristics,
+    'quantity': quantity,
+    'unitPrice': unitPrice,
+    'photoUrls': photoUrls,
+  };
 
   PurchaseBlankItem copyWith({
     int? id,
@@ -172,6 +194,8 @@ class PurchaseBlankItem {
     double? totalPrice,
     String? trackNumber,
     double? commission,
+    double? chinaShippingCostYuan,
+    List<String>? chinaShippingProofUrls,
     double? itemTotal,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -189,6 +213,10 @@ class PurchaseBlankItem {
       totalPrice: totalPrice ?? this.totalPrice,
       trackNumber: trackNumber ?? this.trackNumber,
       commission: commission ?? this.commission,
+      chinaShippingCostYuan:
+          chinaShippingCostYuan ?? this.chinaShippingCostYuan,
+      chinaShippingProofUrls:
+          chinaShippingProofUrls ?? this.chinaShippingProofUrls,
       itemTotal: itemTotal ?? this.itemTotal,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -257,7 +285,8 @@ class PurchaseBlank {
       agentId: json['agentId'] as int? ?? 0,
       conversationId: json['conversationId'] as int?,
       status: PurchaseBlankStatus.fromCode(
-          json['status'] as String? ?? 'new_blank'),
+        json['status'] as String? ?? 'new_blank',
+      ),
       commissionPercent: (json['commissionPercent'] as num?)?.toDouble(),
       usdToCny: (json['usdToCny'] as num?)?.toDouble(),
       usdToRub: (json['usdToRub'] as num?)?.toDouble(),
@@ -271,8 +300,7 @@ class PurchaseBlank {
           ? DateTime.tryParse(json['updatedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
       items: itemsJson
-          .map((e) =>
-              PurchaseBlankItem.fromJson(e as Map<String, dynamic>))
+          .map((e) => PurchaseBlankItem.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }

@@ -37,6 +37,9 @@ class UserDeliveryTariff {
   final String? prohibitedItems;
   final List<UserWeightTier> weightTiers;
   final bool isActive;
+  final bool isCurrentlyActive;
+  final DateTime? validFrom;
+  final DateTime? validTo;
   final bool requiresProductInfo;
 
   const UserDeliveryTariff({
@@ -47,6 +50,9 @@ class UserDeliveryTariff {
     this.prohibitedItems,
     this.weightTiers = const [],
     this.isActive = true,
+    this.isCurrentlyActive = true,
+    this.validFrom,
+    this.validTo,
     this.requiresProductInfo = false,
   });
 
@@ -63,6 +69,12 @@ class UserDeliveryTariff {
               .toList() ??
           [],
       isActive: json['isActive'] as bool? ?? true,
+      isCurrentlyActive:
+          json['isCurrentlyActive'] as bool? ??
+          json['isActive'] as bool? ??
+          true,
+      validFrom: _parseDate(json['validFrom']),
+      validTo: _parseDate(json['validTo']),
       requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
     );
   }
@@ -208,6 +220,15 @@ final publicDefaultTariffsProvider = FutureProvider<List<UserDeliveryTariff>>((
 // ============================================================
 // Helpers
 // ============================================================
+
+DateTime? _parseDate(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String && value.trim().isNotEmpty) {
+    return DateTime.tryParse(value);
+  }
+  return null;
+}
 
 double _parse(dynamic v) {
   if (v == null) return 0.0;

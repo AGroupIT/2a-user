@@ -319,6 +319,8 @@ class TrackAssembly {
   final double? insuranceAmount;
 
   // Способ получения
+  final String? goodsDescription; // Общее описание товаров в сборке
+
   final String? deliveryMethod; // 'self_pickup' или 'transport_company'
   final String? recipientName;
   final String? recipientPhone;
@@ -352,6 +354,7 @@ class TrackAssembly {
     this.placePreference = 'unspecified',
     this.hasInsurance = false,
     this.insuranceAmount,
+    this.goodsDescription,
     this.deliveryMethod,
     this.recipientName,
     this.recipientPhone,
@@ -428,6 +431,7 @@ class TrackAssembly {
       hasInsurance:
           json['hasInsurance'] == true || json['hasInsurance'] == 'true',
       insuranceAmount: parseDouble(json['insuranceAmount']),
+      goodsDescription: json['goodsDescription']?.toString(),
       deliveryMethod: json['deliveryMethod']?.toString(),
       recipientName: json['recipientName']?.toString(),
       recipientPhone: json['recipientPhone']?.toString(),

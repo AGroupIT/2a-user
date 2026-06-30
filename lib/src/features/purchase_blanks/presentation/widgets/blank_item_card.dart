@@ -241,6 +241,98 @@ class BlankItemCard extends StatelessWidget {
             ),
           ),
 
+          if ((item.chinaShippingCostYuan != null &&
+                  item.chinaShippingCostYuan! > 0) ||
+              item.chinaShippingProofUrls.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: context.brandPrimary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.local_shipping_outlined,
+                          size: 16,
+                          color: context.brandPrimary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            item.chinaShippingCostYuan != null &&
+                                    item.chinaShippingCostYuan! > 0
+                                ? 'Доставка по Китаю ¥${item.chinaShippingCostYuan!.toStringAsFixed(2)}'
+                                : 'Подтверждение доставки по Китаю',
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontFamily: 'Gilroy',
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (item.chinaShippingProofUrls.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 76,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: item.chinaShippingProofUrls.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: CachedNetworkImage(
+                                imageUrl: ApiConfig.getMediaUrl(
+                                  item.chinaShippingProofUrls[i],
+                                ),
+                                width: 76,
+                                height: 76,
+                                fit: BoxFit.cover,
+                                placeholder: (_, _) => Container(
+                                  width: 76,
+                                  height: 76,
+                                  color: Colors.grey.shade100,
+                                  child: const Icon(
+                                    Icons.receipt_long_rounded,
+                                    color: Colors.grey,
+                                    size: 22,
+                                  ),
+                                ),
+                                errorWidget: (_, _, _) => Container(
+                                  width: 76,
+                                  height: 76,
+                                  color: Colors.grey.shade100,
+                                  child: const Icon(
+                                    Icons.broken_image_rounded,
+                                    color: Colors.grey,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           // ── Данные сотрудника ──────────────────────────
           if (item.hasEmployeeData) ...[
             Padding(
@@ -269,6 +361,13 @@ class BlankItemCard extends StatelessWidget {
                         icon: Icons.percent_rounded,
                         label:
                             'Комиссия ¥${item.commission!.toStringAsFixed(2)}',
+                      ),
+                    if (item.chinaShippingCostYuan != null &&
+                        item.chinaShippingCostYuan! > 0)
+                      _MiniFact(
+                        icon: Icons.local_shipping_rounded,
+                        label:
+                            'Доставка ¥${item.chinaShippingCostYuan!.toStringAsFixed(2)}',
                       ),
                     if (item.itemTotal != null)
                       _MiniFact(

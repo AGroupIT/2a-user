@@ -346,6 +346,11 @@ class _PurchaseBlankDetailScreenState
   // ── Финансовая секция ──────────────────────────────────────
 
   Widget _buildFinanceSection(BuildContext context, PurchaseBlank blank) {
+    final chinaShippingTotal = blank.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.chinaShippingCostYuan ?? 0),
+    );
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: PurchaseBlankUi.cardDecoration(),
@@ -422,6 +427,13 @@ class _PurchaseBlankDetailScreenState
                       ? '${blank.commissionPercent!.toStringAsFixed(1)}%'
                       : '—',
                   isEmpty: blank.commissionPercent == null,
+                ),
+                _FinanceRow(
+                  label: 'Доставка по Китаю',
+                  value: chinaShippingTotal > 0
+                      ? '¥${chinaShippingTotal.toStringAsFixed(2)}'
+                      : '—',
+                  isEmpty: chinaShippingTotal <= 0,
                 ),
                 _FinanceRow(
                   label: 'Курс USD/CNY',
