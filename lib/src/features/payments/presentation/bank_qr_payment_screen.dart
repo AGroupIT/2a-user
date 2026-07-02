@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/file_download_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/bank_qr_payment.dart';
 
@@ -62,6 +64,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   String? _fileMime;
 
   bool _uploading = false;
+  bool _downloadingQr = false;
 
   @override
   void initState() {
@@ -101,6 +104,68 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             ? tr(context, ru: 'QR-оплата недоступна', zh: 'QR 支付不可用')
             : tr(context, ru: 'Ошибка сети. Повторите.', zh: '网络错误，请重试');
       });
+    }
+  }
+
+  String get _qrFileName {
+    final safeNumber = widget.invoiceNumber
+        .replaceAll(RegExp(r'[^A-Za-z0-9а-яА-ЯёЁ_-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    return '2a_invoice_${safeNumber.isEmpty ? widget.invoiceId : safeNumber}_qr.png';
+  }
+
+  Future<void> _downloadQr() async {
+    final res = _result;
+    if (res == null || _downloadingQr) return;
+    setState(() => _downloadingQr = true);
+    try {
+      final painter = QrPainter(
+        data: res.qrPayload,
+        version: QrVersions.auto,
+        gapless: true,
+      );
+      const imageSize = 1024.0;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawColor(Colors.white, BlendMode.src);
+      painter.paint(canvas, const Size(imageSize, imageSize));
+      final image = await recorder.endRecording().toImage(
+        imageSize.toInt(),
+        imageSize.toInt(),
+      );
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (!mounted) return;
+      if (data == null) {
+        AppToast.show(
+          context,
+          tr(context, ru: 'Не удалось подготовить QR', zh: '无法生成二维码'),
+          isError: true,
+        );
+        return;
+      }
+      final ok = await downloadFile(
+        bytes: data.buffer.asUint8List(),
+        fileName: _qrFileName,
+      );
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        ok
+            ? tr(context, ru: 'QR-код сохранён', zh: '二维码已保存')
+            : tr(context, ru: 'Не удалось скачать QR', zh: '无法下载二维码'),
+        isError: !ok,
+      );
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          tr(context, ru: 'Не удалось скачать QR', zh: '无法下载二维码'),
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingQr = false);
     }
   }
 
@@ -314,6 +379,14 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                   height: 1.2,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(height: 12),
+              _BankQrSecondaryButton(
+                label: _downloadingQr
+                    ? tr(context, ru: 'Готовим файл…', zh: '正在准备文件…')
+                    : tr(context, ru: 'Скачать QR-код', zh: '下载二维码'),
+                icon: Icons.download_rounded,
+                onTap: _downloadingQr ? null : _downloadQr,
               ),
             ],
           ),

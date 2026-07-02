@@ -2598,7 +2598,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               _outlinedInput(
                                 context,
                                 goodsDescriptionController,
-                                hint: 'Опишите товары в сборке',
+                                hint: 'Пример:\n'
+                                    'Джинсы 4 шт\n'
+                                    'Кроссовки белые Nike 2 шт\n'
+                                    'Розовый слон 1 шт\n'
+                                    'Детский комбинезон 2 шт',
                                 keyboardType: TextInputType.multiline,
                                 maxLines: 4,
                                 onChanged: (value) => setSheetState(
