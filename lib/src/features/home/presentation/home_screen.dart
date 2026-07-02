@@ -1167,11 +1167,14 @@ class _PromoSlider extends StatelessWidget {
             _designHeight *
             (useCompactDesktopBanner ? rawScale * 0.5 : rawScale);
         final radius = BorderRadius.circular(10 * scale);
-        final maxTextWidth = (_textBlockWidth * scale).clamp(0.0, width);
-        final minTextWidth = (180.0 * scale).clamp(0.0, maxTextWidth);
-        final textWidth = (width * 0.45)
-            .clamp(minTextWidth, maxTextWidth)
-            .toDouble();
+        final maxTextWidth = (_textBlockWidth * scale).clamp(0.0, width).toDouble();
+        final minTextWidth = maxTextWidth <= 0
+            ? 0.0
+            : (180.0 * scale).clamp(0.0, maxTextWidth).toDouble();
+        final desiredTextWidth = width * 0.45;
+        final textWidth = maxTextWidth <= minTextWidth
+            ? maxTextWidth
+            : desiredTextWidth.clamp(minTextWidth, maxTextWidth).toDouble();
 
         return SizedBox(
           width: width,

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/foundation.dart';
@@ -5,10 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../tariffs/data/tariffs_provider.dart';
 import '../data/auth_provider.dart';
 import '../data/passkey_auth_service.dart';
@@ -131,15 +136,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
         setState(() => _isLoading = false);
 
-        // Показываем ошибку из authProvider
+        // Показываем ошибку из authProvider или запускаем подтверждение звонком.
         final authState = ref.read(authProvider);
+        final challenge = authState.loginVerificationChallenge;
         final errorMessage = authState.error ?? 'Ошибка авторизации';
         debugPrint('❌ Login failed: $errorMessage');
 
-        // Ждём завершения анимации loader'а перед показом SnackBar
+        // Ждём завершения анимации loader'а перед показом UI ошибки.
         await Future.delayed(const Duration(milliseconds: 100));
 
-        if (mounted) {
+        if (!mounted) return;
+        if (challenge != null) {
+          await _showLoginVerificationSheet(challenge);
+        } else {
           _showError(errorMessage);
         }
       } else {
@@ -294,6 +303,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ),
       );
     }
+  }
+
+  Future<void> _showLoginVerificationSheet(
+    LoginVerificationChallenge challenge,
+  ) async {
+    await showBlurredModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _LoginVerificationSheet(challenge: challenge),
+    );
   }
 
   void _showError(String message) {
@@ -737,6 +757,428 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LoginVerificationSheet extends ConsumerStatefulWidget {
+  final LoginVerificationChallenge challenge;
+
+  const _LoginVerificationSheet({required this.challenge});
+
+  @override
+  ConsumerState<_LoginVerificationSheet> createState() =>
+      _LoginVerificationSheetState();
+}
+
+class _LoginVerificationSheetState
+    extends ConsumerState<_LoginVerificationSheet> {
+  LoginVerificationRequestInfo? _requestInfo;
+  Timer? _pollTimer;
+  Timer? _countdownTimer;
+  int _secondsLeft = 0;
+  bool _requesting = false;
+  bool _checking = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _cancelTimers();
+    super.dispose();
+  }
+
+  void _cancelTimers() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+  }
+
+  Future<void> _requestCall() async {
+    if (_requesting) return;
+    _cancelTimers();
+    setState(() {
+      _requesting = true;
+      _error = null;
+      _requestInfo = null;
+      _secondsLeft = 0;
+    });
+
+    try {
+      final info = await ref
+          .read(authProvider.notifier)
+          .requestLoginVerification(
+            login: widget.challenge.login,
+            domain: widget.challenge.domain,
+          );
+      if (!mounted) return;
+      final expiresAt = info.expiresAt;
+      setState(() {
+        _requestInfo = info;
+        _secondsLeft = expiresAt == null
+            ? 300
+            : expiresAt
+                  .difference(DateTime.now())
+                  .inSeconds
+                  .clamp(1, 300)
+                  .toInt();
+        _requesting = false;
+      });
+      _startPolling();
+      _startCountdown();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _requesting = false;
+        _error = _extractDioMessage(e, 'Не удалось начать проверку звонком');
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _requesting = false;
+        _error = 'Не удалось начать проверку звонком';
+      });
+    }
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _verifyCall();
+    });
+  }
+
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_secondsLeft > 0) {
+        setState(() => _secondsLeft--);
+      } else {
+        _cancelTimers();
+        setState(() {
+          _error = 'Время проверки истекло. Запросите новый звонок.';
+          _requestInfo = null;
+        });
+      }
+    });
+  }
+
+  Future<void> _verifyCall({bool showPendingMessage = false}) async {
+    final info = _requestInfo;
+    if (info == null || _checking) return;
+
+    _checking = true;
+    try {
+      final result = await ref
+          .read(authProvider.notifier)
+          .verifyLoginVerification(checkId: info.checkId);
+      if (!mounted) return;
+      if (result.loggedIn) {
+        _cancelTimers();
+        HapticFeedback.heavyImpact();
+        Navigator.of(context).pop(true);
+        return;
+      }
+      if (result.expired) {
+        _cancelTimers();
+        setState(() {
+          _requestInfo = null;
+          _error = 'Время проверки истекло. Запросите новый звонок.';
+        });
+      } else if (showPendingMessage) {
+        setState(() => _error = 'Звонок пока не подтверждён');
+      }
+    } on DioException catch (e) {
+      if (showPendingMessage && mounted) {
+        setState(() {
+          _error = _extractDioMessage(e, 'Не удалось проверить звонок');
+        });
+      }
+    } catch (_) {
+      if (showPendingMessage && mounted) {
+        setState(() => _error = 'Не удалось проверить звонок');
+      }
+    } finally {
+      _checking = false;
+    }
+  }
+
+  Future<void> _makeCall() async {
+    final callPhone = _requestInfo?.callPhone;
+    if (callPhone == null || callPhone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: callPhone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  String _formatCountdown() {
+    final minutes = _secondsLeft ~/ 60;
+    final seconds = _secondsLeft % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _extractDioMessage(DioException e, String fallback) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final value = data['error'] ?? data['message'];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return fallback;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AuthVisuals.primary(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final info = _requestInfo;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.security_rounded,
+                      color: accent,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Подтвердите вход',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Это защита от подбора пароля',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _InfoBox(
+                icon: Icons.lock_clock_rounded,
+                color: Colors.orange.shade700,
+                background: Colors.orange.shade50,
+                border: Colors.orange.shade100,
+                text: widget.challenge.maskedPhone == null
+                    ? widget.challenge.message
+                    : '${widget.challenge.message}\nЗвонок должен быть выполнен с номера ${widget.challenge.maskedPhone}.',
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                _InfoBox(
+                  icon: Icons.error_outline_rounded,
+                  color: Colors.red.shade700,
+                  background: Colors.red.shade50,
+                  border: Colors.red.shade100,
+                  text: _error!,
+                ),
+              ],
+              const SizedBox(height: 18),
+              if (info == null) ...[
+                FilledButton.icon(
+                  onPressed: _requesting ? null : _requestCall,
+                  style: AuthVisuals.primaryButtonStyle(context),
+                  icon: _requesting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.phone_callback_rounded, size: 18),
+                  label: const Text('Получить номер для звонка'),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: accent.withValues(alpha: 0.2)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Позвоните на номер:',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        info.callPhonePretty,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.timer_outlined,
+                            size: 18,
+                            color: Color(0xFF6B7280),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Осталось: ${_formatCountdown()}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF374151),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _makeCall,
+                  style: AuthVisuals.primaryButtonStyle(context),
+                  icon: const Icon(Icons.call_rounded, size: 18),
+                  label: const Text('Позвонить'),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _checking
+                      ? null
+                      : () => _verifyCall(showPendingMessage: true),
+                  style: AuthVisuals.outlinedButtonStyle(context),
+                  icon: _checking
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: accent,
+                          ),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Проверить'),
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: _requesting ? null : _requestCall,
+                  child: const Text('Запросить звонок заново'),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Звонок бесплатный. После соединения можете сразу положить трубку. Мы проверим звонок автоматически.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoBox extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final Color border;
+  final String text;
+
+  const _InfoBox({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.border,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

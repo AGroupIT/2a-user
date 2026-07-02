@@ -37,6 +37,54 @@ const _kClientIdKey = 'client_id';
 const _kClientNameKey = 'client_name';
 const _kClientDataKey = 'client_data';
 
+class LoginVerificationChallenge {
+  final String login;
+  final String domain;
+  final String message;
+  final String? maskedPhone;
+  final DateTime? lockedUntil;
+  final int? remainingSeconds;
+  final int? attemptsLimit;
+
+  const LoginVerificationChallenge({
+    required this.login,
+    required this.domain,
+    required this.message,
+    this.maskedPhone,
+    this.lockedUntil,
+    this.remainingSeconds,
+    this.attemptsLimit,
+  });
+}
+
+class LoginVerificationRequestInfo {
+  final String checkId;
+  final String callPhone;
+  final String callPhonePretty;
+  final String? maskedPhone;
+  final DateTime? expiresAt;
+
+  const LoginVerificationRequestInfo({
+    required this.checkId,
+    required this.callPhone,
+    required this.callPhonePretty,
+    this.maskedPhone,
+    this.expiresAt,
+  });
+}
+
+class LoginVerificationStatus {
+  final bool confirmed;
+  final bool expired;
+  final bool loggedIn;
+
+  const LoginVerificationStatus({
+    required this.confirmed,
+    required this.expired,
+    required this.loggedIn,
+  });
+}
+
 class AuthState {
   final bool isLoggedIn;
   final String? userEmail;
@@ -46,6 +94,7 @@ class AuthState {
   final int? clientId;
   final String? clientName;
   final Map<String, dynamic>? clientData;
+  final LoginVerificationChallenge? loginVerificationChallenge;
 
   const AuthState({
     this.isLoggedIn = false,
@@ -56,6 +105,7 @@ class AuthState {
     this.clientId,
     this.clientName,
     this.clientData,
+    this.loginVerificationChallenge,
   });
 
   AuthState copyWith({
@@ -68,6 +118,8 @@ class AuthState {
     int? clientId,
     String? clientName,
     Map<String, dynamic>? clientData,
+    LoginVerificationChallenge? loginVerificationChallenge,
+    bool clearLoginVerificationChallenge = false,
   }) {
     return AuthState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
@@ -78,6 +130,9 @@ class AuthState {
       clientId: clientId ?? this.clientId,
       clientName: clientName ?? this.clientName,
       clientData: clientData ?? this.clientData,
+      loginVerificationChallenge: clearLoginVerificationChallenge
+          ? null
+          : (loginVerificationChallenge ?? this.loginVerificationChallenge),
     );
   }
 }
@@ -265,7 +320,11 @@ class AuthNotifier extends Notifier<AuthState> {
   }) async {
     _initialLoadDone =
         true; // Предотвращаем перезапись state от _loadAuthState()
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearLoginVerificationChallenge: true,
+    );
 
     try {
       final response = await _apiClient.post(
@@ -367,8 +426,42 @@ class AuthNotifier extends Notifier<AuthState> {
     } on DioException catch (e) {
       String errorMessage;
 
+      final responseData = e.response?.data;
+      final responseMap = responseData is Map<String, dynamic>
+          ? responseData
+          : responseData is Map
+          ? Map<String, dynamic>.from(responseData)
+          : null;
+      final responseCode = responseMap?['code'] as String?;
+
       // Специфичные ошибки авторизации
-      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+      if (e.response?.statusCode == 423 &&
+          responseCode == 'LOGIN_VERIFICATION_REQUIRED') {
+        errorMessage =
+            responseMap?['error'] as String? ??
+            'Слишком много неверных попыток. Подтвердите вход звонком.';
+        state = state.copyWith(
+          isLoading: false,
+          error: errorMessage,
+          loginVerificationChallenge: LoginVerificationChallenge(
+            login: email,
+            domain: domain,
+            message: errorMessage,
+            maskedPhone: responseMap?['maskedPhone'] as String?,
+            lockedUntil: DateTime.tryParse(
+              responseMap?['lockedUntil'] as String? ?? '',
+            ),
+            remainingSeconds: responseMap?['remainingSeconds'] is int
+                ? responseMap!['remainingSeconds'] as int
+                : null,
+            attemptsLimit: responseMap?['attemptsLimit'] is int
+                ? responseMap!['attemptsLimit'] as int
+                : null,
+          ),
+        );
+        return false;
+      } else if (e.response?.statusCode == 401 ||
+          e.response?.statusCode == 403) {
         errorMessage = 'Неверный email или пароль';
       } else if (e.response?.statusCode == 404) {
         errorMessage = 'Пользователь не найден. Проверьте данные для входа';
@@ -381,7 +474,11 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('Login error: $e');
       debugPrint('Error message shown to user: $errorMessage');
 
-      state = state.copyWith(isLoading: false, error: errorMessage);
+      state = state.copyWith(
+        isLoading: false,
+        error: errorMessage,
+        clearLoginVerificationChallenge: true,
+      );
       return false;
     } catch (e, stackTrace) {
       debugPrint('Login error: $e');
@@ -396,6 +493,56 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(isLoading: false, error: 'Произошла ошибка: $e');
       return false;
     }
+  }
+
+  Future<LoginVerificationRequestInfo> requestLoginVerification({
+    required String login,
+    required String domain,
+  }) async {
+    final response = await _apiClient.post(
+      '/login/verification/request',
+      data: {'login': login, 'domain': domain},
+    );
+    final data = response.data as Map<String, dynamic>;
+    final checkId = data['checkId'] as String?;
+    final callPhone = data['callPhone'] as String?;
+    if (checkId == null || callPhone == null) {
+      throw StateError('Некорректный ответ проверки входа');
+    }
+    return LoginVerificationRequestInfo(
+      checkId: checkId,
+      callPhone: callPhone,
+      callPhonePretty: data['callPhonePretty'] as String? ?? callPhone,
+      maskedPhone: data['maskedPhone'] as String?,
+      expiresAt: DateTime.tryParse(data['expiresAt'] as String? ?? ''),
+    );
+  }
+
+  Future<LoginVerificationStatus> verifyLoginVerification({
+    required String checkId,
+  }) async {
+    final response = await _apiClient.post(
+      '/login/verification/verify',
+      data: {'checkId': checkId},
+    );
+    final data = response.data as Map<String, dynamic>;
+    final confirmed = data['confirmed'] == true;
+    final expired = data['expired'] == true;
+    var loggedIn = false;
+
+    if (confirmed) {
+      final token = data['token'] as String?;
+      final userData = data['user'] as Map<String, dynamic>?;
+      if (token != null && userData != null) {
+        loggedIn = await loginWithData(token: token, userData: userData);
+      }
+    }
+
+    return LoginVerificationStatus(
+      confirmed: confirmed,
+      expired: expired,
+      loggedIn: loggedIn,
+    );
   }
 
   /// Авторизация по данным от password-reset (после подтверждения по звонку)
