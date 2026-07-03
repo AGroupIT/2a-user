@@ -2906,30 +2906,35 @@ class _InvoicePaymentContent extends StatelessWidget {
     required this.isLoading,
   });
 
+  static double? _metadataDouble(Map<String, dynamic> metadata, String key) {
+    final value = metadata[key];
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.trim().replaceAll(',', '.'));
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = isMe ? Colors.white : Colors.black87;
     final subColor = isMe ? Colors.white70 : Colors.black54;
-    final meta = message.metadata!;
+    final meta = message.metadata ?? const <String, dynamic>{};
 
     // Актуальные данные из invoice, fallback на metadata
     final invoiceNumber =
         invoice?.invoiceNumber ?? meta['invoiceNumber']?.toString() ?? '—';
     final statusName = invoice?.statusName ?? invoice?.status ?? '—';
     final totalUsd =
-        invoice?.totalCostUsd ?? (meta['amount'] as num?)?.toDouble() ?? 0.0;
+        invoice?.totalCostUsd ?? _metadataDouble(meta, 'amount') ?? 0.0;
     final totalCny =
-        invoice?.totalCostCny ??
-        (meta['totalCostCny'] as num?)?.toDouble() ??
-        0.0;
+        invoice?.totalCostCny ?? _metadataDouble(meta, 'totalCostCny') ?? 0.0;
     final totalRub =
-        invoice?.totalCostRub ??
-        (meta['totalCostRub'] as num?)?.toDouble() ??
-        0.0;
+        invoice?.totalCostRub ?? _metadataDouble(meta, 'totalCostRub') ?? 0.0;
     final rubRate =
-        invoice?.clientRubRate ?? (meta['clientRubRate'] as num?)?.toDouble();
+        invoice?.clientRubRate ?? _metadataDouble(meta, 'clientRubRate');
     final yuanRate =
-        invoice?.clientYuanRate ?? (meta['clientYuanRate'] as num?)?.toDouble();
+        invoice?.clientYuanRate ?? _metadataDouble(meta, 'clientYuanRate');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

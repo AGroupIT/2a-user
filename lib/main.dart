@@ -101,24 +101,12 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   if (_isFlutterCacheDatabaseNoise(exType, exValue, joinedFrames)) return null;
 
   // Сетевые сбои у клиентов ожидаемы: плохой интернет, VPN, DPI, China/RF routes.
-  // Их оставляем в breadcrumbs, но не создаём отдельные issues.
-  const networkErrors = {
-    'SocketException',
-    '_ClientSocketException',
-    '_HttpException',
-    'ClientException',
-    'HandshakeException',
-    'TlsException',
-    '_TlsException',
-    'HttpException',
-    'HttpExceptionWithStatus',
-    'TimeoutException',
-    'WebSocketException',
-    'DioException',
-    'HTTPClientError',
-    'OSError',
-  };
-  if (!keepHttpError && networkErrors.contains(exType)) return null;
+  // Их оставляем в breadcrumbs, но не создаём отдельные issues. На Flutter Web
+  // dart2js/Sentry иногда присылают тип как `minified:*`, поэтому проверяем не
+  // только exceptionType, но и текст/стек ошибки.
+  if (!keepHttpError && _isClientNetworkNoise(exType, exValue, joinedFrames)) {
+    return null;
+  }
 
   // Ошибки файловой системы — stale пути, удалённые кеш-файлы и т.п.
   // Обычно приходят из FileImage._loadAsync для превью фото из кеша.
@@ -143,13 +131,7 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   if (exValue.contains('DiagnosticsProperty') && hasNoisyStack) return null;
 
   if (!keepHttpError &&
-      (exValue.contains('Connection refused') ||
-          exValue.contains('Connection reset') ||
-          exValue.contains('Connection closed') ||
-          exValue.contains('Connection timed out') ||
-          exValue.contains('Network is unreachable') ||
-          exValue.contains('Software caused connection abort') ||
-          exValue.contains('No such file or directory') ||
+      (exValue.contains('No such file or directory') ||
           exValue.contains('Cannot open file'))) {
     return null;
   }
@@ -171,6 +153,58 @@ SentryEvent? _filterSentryEvent(SentryEvent event, Hint hint) {
   event.tags!['app'] = SentryConfig.appName;
 
   return event;
+}
+
+bool _isClientNetworkNoise(
+  String exceptionType,
+  String exceptionValue,
+  String joinedFrames,
+) {
+  const networkErrorTypes = {
+    'SocketException',
+    '_ClientSocketException',
+    '_HttpException',
+    'ClientException',
+    'HandshakeException',
+    'TlsException',
+    '_TlsException',
+    'HttpException',
+    'HttpExceptionWithStatus',
+    'TimeoutException',
+    'WebSocketException',
+    'DioException',
+    'HTTPClientError',
+    'OSError',
+  };
+  if (networkErrorTypes.contains(exceptionType)) return true;
+
+  final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames'
+      .toLowerCase();
+  const networkMarkers = [
+    'dioexception',
+    'connection timeout',
+    'connectiontimeout',
+    'connection timed out',
+    'connection error',
+    'connectionerror',
+    'connection refused',
+    'connection reset',
+    'connection closed',
+    'the request connection took longer',
+    'network is unreachable',
+    'software caused connection abort',
+    'failed host lookup',
+    'xmlhttprequest error',
+    'websocketexception',
+    'websocket connection',
+    'socketexception',
+    'clientexception',
+    'handshakeexception',
+    'tlsexception',
+    'timeoutexception',
+  ];
+
+  return networkMarkers.any(normalized.contains);
 }
 
 bool _isOpaqueWebScriptError(SentryEvent event, String exceptionValue) {
@@ -223,19 +257,27 @@ bool _isFlutterWebEngineNoise(
 
   if (exceptionType == 'LateInitializationError' &&
       value == "Field '' has not been initialized." &&
-      (normalized.contains('offscanvas') ||
+      normalized.contains('main.dart.js') &&
+      (normalized.contains('offscreencanvas') ||
+          normalized.contains('offscanvas') ||
           normalized.contains('offscreen_canvas') ||
+          normalized.contains('offscreen canvas') ||
           normalized.contains('clipboard') ||
           normalized.contains('font_fallback') ||
-          normalized.contains('fontfallback'))) {
+          normalized.contains('fontfallback') ||
+          normalized.contains('object.b') ||
+          normalized.contains('tear_off') ||
+          normalized.contains('kg.'))) {
     return true;
   }
 
   return exceptionType == 'NoSuchMethodError' &&
       value.contains('Null check operator used on a null value') &&
       (normalized.contains('canvaskit') ||
+          normalized.contains('offscreencanvas') ||
           normalized.contains('offscanvas') ||
-          normalized.contains('offscreen_canvas'));
+          normalized.contains('offscreen_canvas') ||
+          normalized.contains('offscreen canvas'));
 }
 
 bool _isFlutterTextInputSelectionNoise(
@@ -255,9 +297,7 @@ bool _isFlutterNoticesAssetNoise(
 ) {
   if (!kIsWeb) return false;
   final normalized = '$exceptionType\n$exceptionValue\n$joinedFrames';
-  return normalized.contains('Unable to load asset: "NOTICES"') &&
-      (normalized.contains('process_text.dart') ||
-          normalized.contains('DefaultProcessTextService'));
+  return normalized.toLowerCase().contains('unable to load asset: "notices"');
 }
 
 bool _isFlutterCacheDatabaseNoise(
