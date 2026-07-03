@@ -1710,8 +1710,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         ? '\$${fallbackPrice.toStringAsFixed(2)} / кг'
         : null;
     final priceSource = isRemoveAll
-        ? 'Снятие вся упаковка'
-        : 'Снятие транспортировочная';
+        ? 'Снятие всей упаковки'
+        : 'Снятие транспортировочной упаковки';
 
     final result = await showBlurredModalBottomSheet<bool>(
       context: context,
@@ -1740,8 +1740,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               _TrackSheetNoticeCard(
                 icon: Icons.inventory_2_outlined,
                 text: isRemoveAll
-                    ? 'Удаляем всю лишнюю упаковку, которую можно безопасно снять без повреждения товара.'
-                    : 'Удаляем только транспортировочную упаковку: внешние фабричные коробки, лишний скотч и мятый картон. Внутреннюю розничную упаковку не трогаем.',
+                    ? 'Снимаем вообще всю упаковку, которую можно безопасно снять: транспортировочную, внешнюю, заводскую/розничную и внутренние защитные материалы. Товар может остаться без оригинальной упаковки.'
+                    : 'Снимаем только транспортировочную упаковку: внешние коробки/мешки продавца, лишний скотч и мятый картон. Заводскую/розничную упаковку товара не вскрываем.',
                 color: context.brandPrimary,
               ),
               const SizedBox(height: 10),
@@ -1756,9 +1756,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 const SizedBox(height: 10),
               ],
               _TrackSheetNoticeCard(
+                icon: Icons.error_outline_rounded,
+                text:
+                    'Если продавец изначально отправил неполный комплект, не тот товар или товар с несоответствием, после удаления оригинальной/транспортировочной упаковки доказать это будет невозможно.',
+                color: Colors.deepOrange.shade700,
+              ),
+              const SizedBox(height: 10),
+              _TrackSheetNoticeCard(
                 icon: Icons.warning_amber_rounded,
                 text:
-                    'Я прошу удалить лишнюю упаковку на усмотрение компании. Риски повреждения товара из-за уменьшения защитных слоёв беру на себя.',
+                    'Я прошу удалить упаковку на усмотрение компании. Риски повреждения товара из-за уменьшения защитных слоёв и невозможности доказать претензию продавцу беру на себя.',
                 color: Colors.orange.shade800,
               ),
               const SizedBox(height: 14),
@@ -1786,6 +1793,33 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     return result ?? false;
+  }
+
+  String? _packagingRemovalPriceText(Tariff? tariff, String removal) {
+    if (tariff == null || removal == 'none') return null;
+    final specialPrice = removal == 'all'
+        ? tariff.packagingRemovalAllPrice
+        : tariff.packagingRemovalTransportPrice;
+    final price = specialPrice != null && specialPrice > 0
+        ? specialPrice
+        : tariff.baseCost;
+    if (price <= 0) return null;
+    return '\$${price.toStringAsFixed(2)} / кг';
+  }
+
+  String _packagingRemovalInlineText({
+    required String removal,
+    required String? priceText,
+  }) {
+    final pricePart = priceText == null
+        ? 'Цена доставки будет рассчитана по выбранному тарифу.'
+        : 'Цена доставки по выбранному тарифу: $priceText.';
+
+    if (removal == 'all') {
+      return 'Будет снята вся упаковка: транспортировочная, внешняя, заводская/розничная и внутренние защитные материалы, если это безопасно для товара. $pricePart';
+    }
+
+    return 'Будет снята только транспортировочная упаковка: внешние коробки/мешки продавца, лишний скотч и мятый картон. Заводскую/розничную упаковку товара не вскрываем. $pricePart';
   }
 
   Future<void> _showCreateGroupSheet(BuildContext context) async {
@@ -1825,7 +1859,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
-            const stepTitles = ['Груз', 'Упаковка', 'Тариф', 'Итог'];
+            const stepTitles = ['Тариф', 'Груз', 'Упаковка', 'Итог'];
             final primaryPackagingTypes = packagingTypes
                 .where((p) => p.isPrimary)
                 .toList();
@@ -1903,6 +1937,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             final productInfoRequirementSatisfied =
                 !requiresAssemblyGoodsDescription ||
                 hasAssemblyGoodsDescription;
+            final packagingRemovalPriceText = _packagingRemovalPriceText(
+              selectedTariff,
+              packagingRemoval,
+            );
 
             final canSubmit =
                 placePreference != null &&
@@ -1913,14 +1951,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     (selectedInsurance == 'yes' &&
                         insuranceAmount?.isNotEmpty == true));
             final canContinue = switch (currentStep) {
-              0 => placePreference != null,
-              1 => hasPrimaryPackaging,
-              2 =>
+              0 =>
                 selectedTariff != null &&
                     productInfoRequirementSatisfied &&
                     (selectedInsurance == 'no' ||
                         (selectedInsurance == 'yes' &&
                             insuranceAmount?.isNotEmpty == true)),
+              1 => placePreference != null,
+              2 => hasPrimaryPackaging,
               _ => canSubmit,
             };
 
@@ -2139,9 +2177,22 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             }
 
             Widget tariffOptionTile(Tariff tariff, {required bool selected}) {
+              final transportRemovalPrice = _packagingRemovalPriceText(
+                tariff,
+                'transport_only',
+              );
+              final allRemovalPrice = _packagingRemovalPriceText(tariff, 'all');
               return InkWell(
                 borderRadius: BorderRadius.circular(14),
-                onTap: () => setSheetState(() => selectedTariff = tariff),
+                onTap: () => setSheetState(() {
+                  selectedTariff = tariff;
+                  // Цена снятия упаковки зависит от тарифа. Если тариф поменяли
+                  // после подтверждения снятия — просим выбрать вариант заново,
+                  // чтобы клиент видел и подтверждал уже актуальную цену.
+                  if (packagingRemoval != 'none') {
+                    packagingRemoval = 'none';
+                  }
+                }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   padding: const EdgeInsets.all(12),
@@ -2200,6 +2251,23 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               const SizedBox(height: 5),
                               Text(
                                 '\$${tariff.baseCost.toStringAsFixed(2)} / кг',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            if (transportRemovalPrice != null ||
+                                allRemovalPrice != null) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                [
+                                  if (transportRemovalPrice != null)
+                                    'снять транспортировочную — $transportRemovalPrice',
+                                  if (allRemovalPrice != null)
+                                    'снять всю — $allRemovalPrice',
+                                ].join('; '),
                                 style: const TextStyle(
                                   color: Colors.black54,
                                   fontSize: 12,
@@ -2271,7 +2339,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
             Widget buildWizardFooter() {
               Widget? notice;
-              if (currentStep == 1) {
+              if (currentStep == 2) {
                 notice = _TrackSheetNoticeCard(
                   icon: Icons.info_outline_rounded,
                   text:
@@ -2340,7 +2408,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               icon: Icons.inventory_2_rounded,
               title: 'Создать сборку',
               subtitle:
-                  'Настройте упаковку, тариф и отправку ${_selectedTracks.length} треков',
+                  'Настройте тариф, упаковку и отправку ${_selectedTracks.length} треков',
               keyboardAware: true,
               scrollController: createAssemblyScrollController,
               pinnedChild: buildStepIndicator(),
@@ -2350,7 +2418,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (currentStep == 0)
+                  if (currentStep == 1)
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
@@ -2371,7 +2439,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               const SizedBox(width: 8),
                               const Expanded(
                                 child: Text(
-                                  '1. Описание товаров',
+                                  '2. Описание товаров',
                                   style: TextStyle(
                                     color: Colors.black87,
                                     fontSize: 14,
@@ -2430,9 +2498,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           ),
                           if (packagingRemoval != 'none') ...[
                             const SizedBox(height: 8),
-                            const Text(
-                              'Снимаем внешние фабричные коробки, лишний скотч и мятый картон. Внутреннюю розничную упаковку товара не трогаем. Снятие может изменить стоимость доставки по тарифу.',
-                              style: TextStyle(
+                            Text(
+                              _packagingRemovalInlineText(
+                                removal: packagingRemoval,
+                                priceText: packagingRemovalPriceText,
+                              ),
+                              style: const TextStyle(
                                 color: Colors.black45,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -2508,10 +2579,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 16),
-                  if (currentStep == 2) ...[
+                  if (currentStep == 1) const SizedBox(height: 16),
+                  if (currentStep == 0) ...[
                     const Text(
-                      '3. Тариф и страховка',
+                      '1. Тариф и страховка',
                       style: TextStyle(
                         color: Colors.black54,
                         fontSize: 13,
@@ -2598,7 +2669,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               _outlinedInput(
                                 context,
                                 goodsDescriptionController,
-                                hint: 'Пример:\n'
+                                hint:
+                                    'Пример:\n'
                                     'Джинсы 4 шт\n'
                                     'Кроссовки белые Nike 2 шт\n'
                                     'Розовый слон 1 шт\n'
@@ -2616,9 +2688,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     const Divider(height: 24),
                   ],
                   // ── Тип упаковки ──
-                  if (currentStep == 1) ...[
+                  if (currentStep == 2) ...[
                     const Text(
-                      '2. Упаковка',
+                      '3. Упаковка',
                       style: TextStyle(
                         color: Colors.black54,
                         fontSize: 13,
@@ -2770,7 +2842,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                       ),
                     ),
                   ],
-                  if (currentStep == 2) ...[
+                  if (currentStep == 0) ...[
                     // ── Страховка ──
                     Row(
                       children: [
@@ -2846,6 +2918,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           _SummaryLine(
                             label: 'Хрупкий груз',
                             value: hasFragileGoods ? 'Да' : 'Нет',
+                          ),
+                          _SummaryLine(
+                            label: 'Снятие упаковки',
+                            value: switch (packagingRemoval) {
+                              'transport_only' =>
+                                'Только транспортировочную${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
+                              'all' =>
+                                'Снять всю${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
+                              _ => 'Не снимать',
+                            },
                           ),
                           _SummaryLine(
                             label: 'Места',
