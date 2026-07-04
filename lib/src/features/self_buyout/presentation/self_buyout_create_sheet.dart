@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
@@ -92,7 +93,29 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     setState(() {});
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _setPickedImage({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final ext = fileName.split('.').last.toLowerCase();
+    if (!_imgExt.contains(ext)) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        tr(context, ru: 'Неподдерживаемый формат', zh: '不支持的格式'),
+        isError: true,
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _fileBytes = bytes;
+      _fileName = fileName;
+      _fileMime = _mimeForExt(ext);
+    });
+  }
+
+  Future<void> _pickImageFromFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -100,24 +123,13 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
       final f = result.files.first;
       final bytes = f.bytes ?? await f.xFile.readAsBytes();
+      if (!mounted) return;
       final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
-      if (!_imgExt.contains(ext)) {
-        if (mounted) {
-          AppToast.show(
-            context,
-            tr(context, ru: 'Неподдерживаемый формат', zh: '不支持的格式'),
-            isError: true,
-          );
-        }
-        return;
-      }
-      setState(() {
-        _fileBytes = bytes;
-        _fileName = f.name;
-        _fileMime = _mimeForExt(ext);
-      });
+      final fileName = f.name.contains('.') ? f.name : '${f.name}.$ext';
+      await _setPickedImage(bytes: bytes, fileName: fileName);
     } catch (_) {
       if (mounted) {
         AppToast.show(
@@ -126,6 +138,77 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           isError: true,
         );
       }
+    }
+  }
+
+  Future<void> _pickImageFromPhotos() async {
+    try {
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+      if (!mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      await _setPickedImage(bytes: bytes, fileName: picked.name);
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          tr(context, ru: 'Не удалось выбрать фото', zh: '无法选择照片'),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    FocusScope.of(context).unfocus();
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_library_rounded,
+                  color: AppColors.brandOrange,
+                ),
+                title: Text(
+                  tr(context, ru: 'Выбрать из фото', zh: '从相册选择'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop('photos'),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.folder_rounded,
+                  color: AppColors.brandOrange,
+                ),
+                title: Text(
+                  tr(context, ru: 'Выбрать из файлов', zh: '从文件选择'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop('files'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || source == null) return;
+    if (source == 'photos') {
+      await _pickImageFromPhotos();
+    } else if (source == 'files') {
+      await _pickImageFromFiles();
     }
   }
 
