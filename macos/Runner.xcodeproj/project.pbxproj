@@ -493,9 +493,9 @@
 			baseConfigurationReference = DFE22554E3D157A4486BF63E /* Pods-RunnerTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 55;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.2.23;
+				MARKETING_VERSION = 1.2.24;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.twoalogisticcabineuser.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -508,9 +508,9 @@
 			baseConfigurationReference = 25F034284CAEA2582BD4DA25 /* Pods-RunnerTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 55;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.2.23;
+				MARKETING_VERSION = 1.2.24;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.twoalogisticcabineuser.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -523,9 +523,9 @@
 			baseConfigurationReference = DABFD5A44967ABE76F74652F /* Pods-RunnerTests.profile.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 55;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.2.23;
+				MARKETING_VERSION = 1.2.24;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.twoalogisticcabineuser.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
