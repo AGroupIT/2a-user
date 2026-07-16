@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,12 +11,14 @@ import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
 import '../core/services/app_language_service.dart';
 import '../core/services/app_performance_monitor.dart';
+import '../core/services/update_gate_provider.dart';
 import '../core/services/chat_presence_service.dart';
 import '../core/services/delta_sync_provider.dart';
 import '../core/services/websocket_provider.dart';
 import '../core/ui/app_colors.dart';
 import '../core/ui/app_layout.dart';
 import '../core/ui/app_toast.dart';
+import '../core/ui/app_update_gate.dart';
 import '../core/ui/demo_mode_banner.dart';
 import '../features/auth/application/sentry_context_provider.dart';
 import '../features/auth/data/auth_provider.dart';
@@ -40,6 +44,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AppPerformanceMonitor.instance.start();
+    _setupAppUpdateRequiredHandler();
     // Инициализируем обработчик push уведомлений
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initializePushNotificationsHandler(
@@ -47,6 +52,15 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         onNavigate: _handleNotificationNavigation,
       );
       _setupUnauthorizedHandler();
+      unawaited(
+        ref.read(appUpdateGateProvider.notifier).check(reason: 'startup'),
+      );
+    });
+  }
+
+  void _setupAppUpdateRequiredHandler() {
+    ref.read(apiClientProvider).setOnAppUpdateRequiredCallback((payload) {
+      ref.read(appUpdateGateProvider.notifier).requireFromServer(payload);
     });
   }
 
@@ -158,6 +172,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           .read(apiClientProvider)
           .resetConnections(reason: 'app_resumed', force: false);
       ref.read(webSocketServiceProvider).forceReconnect(reason: 'app_resumed');
+      unawaited(
+        ref.read(appUpdateGateProvider.notifier).check(reason: 'resume'),
+      );
       Future.microtask(() {
         if (!mounted) return;
         if (!ref.read(authProvider).isLoggedIn) return;
@@ -252,7 +269,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         final content = _CompactTextScale(
           child: child ?? const SizedBox.shrink(),
         );
-        return Stack(children: [content, const DemoModeBanner()]);
+        return AppUpdateGate(
+          child: Stack(children: [content, const DemoModeBanner()]),
+        );
       },
     );
   }

@@ -11,12 +11,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/sentry_config.dart';
 import '../logging/client_log_service.dart';
+import '../services/app_distribution.dart';
 import '../services/runtime/app_runtime_info.dart';
 import 'api_config.dart';
 import 'native_http_adapter.dart';
 
 /// Callback для обработки 401 ошибки (unauthorized)
 typedef OnUnauthorizedCallback = void Function();
+
+/// Callback для глобальной блокировки устаревшей версии по HTTP 426.
+typedef OnAppUpdateRequiredCallback =
+    void Function(Map<String, dynamic> payload);
 
 /// Провайдер для ApiClient
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -58,10 +63,17 @@ class ApiClient {
   // Callback для обработки 401 unauthorized
   OnUnauthorizedCallback? _onUnauthorized;
   bool _unauthorizedCallbackScheduled = false;
+  OnAppUpdateRequiredCallback? _onAppUpdateRequired;
+  bool _appUpdateCallbackScheduled = false;
 
   /// Установить callback для обработки 401 ошибки
   void setOnUnauthorizedCallback(OnUnauthorizedCallback callback) {
     _onUnauthorized = callback;
+  }
+
+  /// Установить callback для обязательного обновления приложения.
+  void setOnAppUpdateRequiredCallback(OnAppUpdateRequiredCallback callback) {
+    _onAppUpdateRequired = callback;
   }
 
   ApiClient() {
@@ -404,6 +416,23 @@ class ApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
+        if (error.response?.statusCode == 426) {
+          final payload = _appUpdatePayload(error.response?.data);
+          if (payload?['code'] == 'APP_UPDATE_REQUIRED') {
+            ClientLogService.instance.add(
+              type: 'app_update_required',
+              level: 'warning',
+              message: 'Backend потребовал обязательное обновление приложения',
+              requestId: _requestId(error.requestOptions),
+              data: {
+                'path': _safeRequestPath(error.requestOptions),
+                'method': error.requestOptions.method,
+              },
+            );
+            _scheduleAppUpdateRequiredCallback(payload!);
+          }
+        }
+
         // Если 401 (unauthorized), вызываем callback
         // НО только если это НЕ запрос на /login (т.к. там 401 = неверный пароль)
         // и только если запрос был реально аутентифицирован (отправляли Authorization).
@@ -475,6 +504,30 @@ class ApiClient {
     }
   }
 
+  void _scheduleAppUpdateRequiredCallback(Map<String, dynamic> payload) {
+    if (_appUpdateCallbackScheduled) return;
+    _appUpdateCallbackScheduled = true;
+
+    void run() {
+      try {
+        _onAppUpdateRequired?.call(payload);
+      } finally {
+        _appUpdateCallbackScheduled = false;
+      }
+    }
+
+    final scheduler = SchedulerBinding.instance;
+    if (scheduler.schedulerPhase == SchedulerPhase.idle) {
+      Future.microtask(run);
+    } else {
+      scheduler.addPostFrameCallback((_) => run());
+    }
+  }
+
+  Map<String, dynamic>? _appUpdatePayload(Object? value) {
+    return value is Map ? Map<String, dynamic>.from(value) : null;
+  }
+
   bool _hasAuthorizationHeader(RequestOptions options) {
     for (final entry in options.headers.entries) {
       if (entry.key.toLowerCase() == 'authorization') return true;
@@ -491,6 +544,7 @@ class ApiClient {
         options.extra['client_log_request_id'] = requestId;
         options.extra['client_log_started_at'] = startedAt;
         options.headers['X-Request-ID'] = requestId;
+        options.headers['X-App-Distribution'] = appDistribution;
         final operation = _businessOperation(options);
         if (operation != null) {
           options.extra['client_log_operation'] = operation;

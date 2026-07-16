@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_config.dart';
+import 'app_distribution.dart';
 import '../ui/app_colors.dart';
 import '../ui/app_toast.dart';
 
@@ -19,6 +20,7 @@ class UpdateInfo {
   final String latestVersion;
   final String minVersion;
   final String downloadUrl;
+  final String storeUrl;
   final String rustoreUrl;
   final int size;
   final String sha256;
@@ -29,6 +31,7 @@ class UpdateInfo {
     required this.latestVersion,
     required this.minVersion,
     required this.downloadUrl,
+    required this.storeUrl,
     required this.rustoreUrl,
     required this.size,
     required this.sha256,
@@ -38,6 +41,9 @@ class UpdateInfo {
 }
 
 class UpdateService {
+  static const defaultRustoreUrl =
+      'https://apps.rustore.ru/app/com.twoalogistic.user';
+
   static final _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 10),
@@ -48,23 +54,22 @@ class UpdateService {
   static bool _isDialogShowing = false;
   static const _kDismissedVersionKey = 'update_dismissed_version';
   static const _kDismissedAtKey = 'update_dismissed_at';
-  static const _distribution = String.fromEnvironment(
-    'APP_DISTRIBUTION',
-    defaultValue: 'direct',
-  );
 
-  static bool get isRustoreDistribution => _distribution == 'rustore';
+  static bool get isRustoreDistribution => isRuStoreDistribution;
 
-  static bool get isDirectDistribution => _distribution == 'direct';
+  static bool get isDirectDistribution => !isRuStoreDistribution;
+
+  static bool get supportsUpdateCheck {
+    if (kIsWeb) return false;
+    return Platform.isAndroid || Platform.isIOS;
+  }
 
   /// Check for update and return [UpdateInfo] if available.
   static Future<UpdateInfo?> checkForUpdate({
     bool rethrowErrors = false,
   }) async {
     try {
-      if (kIsWeb) return null;
-      if (!Platform.isAndroid && !Platform.isIOS) return null;
-      if (Platform.isAndroid && isRustoreDistribution) return null;
+      if (!supportsUpdateCheck) return null;
 
       final info = await PackageInfo.fromPlatform();
       final currentStr = info.buildNumber.isNotEmpty
@@ -76,8 +81,8 @@ class UpdateService {
       final response = await _dio.get(
         '${ApiConfig.baseUrl}/app-version?app=user',
       );
-      final data = response.data as Map<String, dynamic>;
-      final cfg = data[platform] as Map<String, dynamic>?;
+      final data = _stringMap(response.data);
+      final cfg = _platformConfig(data, platform);
       if (cfg == null) return null;
 
       final minVersionStr = cfg['minVersion'] as String? ?? '0.0.0';
@@ -97,8 +102,9 @@ class UpdateService {
         latestVersion: latestVersionStr,
         minVersion: minVersionStr,
         downloadUrl: downloadUrl,
-        rustoreUrl: cfg['rustoreUrl'] as String? ?? '',
-        size: cfg['size'] as int? ?? 0,
+        storeUrl: cfg['storeUrl'] as String? ?? '',
+        rustoreUrl: _rustoreUrl(cfg['rustoreUrl']),
+        size: _intValue(cfg['size']),
         sha256: cfg['sha256'] as String? ?? '',
         changelog: cfg['changelog'] as String? ?? '',
         isForced: isForced,
@@ -112,9 +118,8 @@ class UpdateService {
 
   /// Manual update check from "Ещё" / desktop side menu.
   ///
-  /// Важно: RuStore-сборки не должны скачивать APK с нашего сервера.
-  /// Для них показываем только понятное сообщение, чтобы модерация RuStore
-  /// не отклонила AAB за альтернативный механизм обновления.
+  /// Важно: RuStore-сборки не скачивают APK с нашего сервера, а открывают
+  /// страницу приложения в RuStore.
   static Future<void> manualCheckAndPrompt(BuildContext context) async {
     if (_isDialogShowing) return;
 
@@ -127,14 +132,6 @@ class UpdateService {
       _showSnackBar(
         context,
         'Проверка обновлений доступна только в приложении.',
-      );
-      return;
-    }
-
-    if (Platform.isAndroid && isRustoreDistribution) {
-      _showSnackBar(
-        context,
-        'Эта сборка обновляется через RuStore. Скачивание APK здесь отключено.',
       );
       return;
     }
@@ -202,6 +199,100 @@ class UpdateService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDismissedVersionKey, version);
     await prefs.setInt(_kDismissedAtKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static Future<bool> isDismissedRecently(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    final dismissed = prefs.getString(_kDismissedVersionKey);
+    final dismissedAt = prefs.getInt(_kDismissedAtKey) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return dismissed == version &&
+        now - dismissedAt < const Duration(hours: 24).inMilliseconds;
+  }
+
+  static UpdateInfo? fromServerPayload(Map<String, dynamic> payload) {
+    final rawUpdate = payload['update'];
+    final data = rawUpdate is Map ? _stringMap(rawUpdate) : payload;
+    final minVersion = data['minVersion'] as String? ?? '0.0.0';
+    final latestVersion = data['latestVersion'] as String? ?? minVersion;
+    if (minVersion.isEmpty && latestVersion.isEmpty) return null;
+
+    return UpdateInfo(
+      latestVersion: latestVersion,
+      minVersion: minVersion,
+      downloadUrl: ApiConfig.rewriteToCurrentHost(
+        data['downloadUrl'] as String? ?? '',
+      ),
+      storeUrl: data['storeUrl'] as String? ?? '',
+      rustoreUrl: _rustoreUrl(data['rustoreUrl']),
+      size: _intValue(data['size']),
+      sha256: data['sha256'] as String? ?? '',
+      changelog: data['changelog'] as String? ?? '',
+      isForced: true,
+    );
+  }
+
+  static bool usesExternalStore(UpdateInfo update) {
+    if (!supportsUpdateCheck) return false;
+    return Platform.isIOS ||
+        (Platform.isAndroid && isRustoreDistribution) ||
+        update.downloadUrl.isEmpty;
+  }
+
+  static Future<bool> openExternalUpdate(UpdateInfo update) async {
+    final url = Platform.isIOS
+        ? update.storeUrl
+        : (update.rustoreUrl.isNotEmpty
+              ? update.rustoreUrl
+              : (update.storeUrl.isNotEmpty
+                    ? update.storeUrl
+                    : defaultRustoreUrl));
+    return openExternalUrl(url);
+  }
+
+  static Future<bool> openSupport() {
+    return openExternalUrl('https://t.me/twoa_manager');
+  }
+
+  static Future<bool> openExternalUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || !await canLaunchUrl(uri)) {
+      return false;
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  static Map<String, dynamic>? _platformConfig(
+    Map<String, dynamic> manifest,
+    String platform,
+  ) {
+    if (platform == 'ios') return _nullableStringMap(manifest['ios']);
+
+    final channelKeys = isRustoreDistribution
+        ? const ['androidRustore', 'android_rustore']
+        : const ['androidDirect', 'android_direct'];
+    for (final key in channelKeys) {
+      final config = _nullableStringMap(manifest[key]);
+      if (config != null) return config;
+    }
+    return _nullableStringMap(manifest['android']);
+  }
+
+  static Map<String, dynamic> _stringMap(Object? value) {
+    return Map<String, dynamic>.from(value as Map);
+  }
+
+  static Map<String, dynamic>? _nullableStringMap(Object? value) {
+    return value is Map ? Map<String, dynamic>.from(value) : null;
+  }
+
+  static int _intValue(Object? value) {
+    return value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+  }
+
+  static String _rustoreUrl(Object? value) {
+    final url = value is String ? value.trim() : '';
+    return url.isEmpty ? defaultRustoreUrl : url;
   }
 
   static void _showSnackBar(
@@ -603,7 +694,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     context,
                     _t(context, 'Открыть App Store', '打开 App Store'),
                     filled: true,
-                    onPressed: () {}, // TODO: storeUrl
+                    onPressed: () =>
+                        UpdateService.openExternalUpdate(widget.update),
                   )
                 else ...[
                   // Android: in-app download (primary)
@@ -621,7 +713,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       context,
                       _t(context, 'Открыть RuStore', '打开 RuStore'),
                       filled: !hasDownload,
-                      onPressed: () => _openUrl(widget.update.rustoreUrl),
+                      onPressed: () => UpdateService.openExternalUrl(
+                        widget.update.rustoreUrl,
+                      ),
                     ),
                   ],
                 ],
@@ -695,13 +789,5 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ),
             ),
     );
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    // Using url_launcher would require import; use platform channel instead
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 }

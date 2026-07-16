@@ -11,7 +11,6 @@ import 'package:intl/intl.dart';
 import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/services/showcase_service.dart';
-import '../../../core/services/update_service.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
@@ -60,9 +59,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _checkAndShowTermsDialog();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) UpdateService.checkAndPrompt(context);
-    });
   }
 
   @override

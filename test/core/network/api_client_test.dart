@@ -143,6 +143,24 @@ void main() {
     });
   });
 
+  group('ApiClient - Required Update Callback', () {
+    test(
+      'should allow setting required update callback without calling it',
+      () {
+        final apiClient = ApiClient();
+        var callbackCalled = false;
+
+        expect(
+          () => apiClient.setOnAppUpdateRequiredCallback((payload) {
+            callbackCalled = true;
+          }),
+          returnsNormally,
+        );
+        expect(callbackCalled, false);
+      },
+    );
+  });
+
   group('ApiClient - Platform Detection', () {
     test('should work on current platform', () {
       final apiClient = ApiClient();
