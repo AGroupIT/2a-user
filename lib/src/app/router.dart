@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,8 +8,10 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import '../core/logging/client_log_service.dart';
 import '../core/ui/app_layout.dart';
 import '../features/auth/data/auth_provider.dart';
+import '../features/auth/data/partner_link_provider.dart';
 import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/auth/presentation/partner_link_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/invoices/presentation/invoices_screen.dart';
@@ -52,6 +56,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoading = authState.isLoading;
       final isLoggedIn = authState.isLoggedIn;
       final isSplashRoute = state.matchedLocation == '/splash';
+      final isPartnerLinkRoute = state.matchedLocation.startsWith(
+        '/partner-connect/',
+      );
+      final routePartnerToken = isPartnerLinkRoute
+          ? state.pathParameters['token']
+          : null;
+      final partnerLinkState = ref.read(partnerLinkProvider);
+      if (routePartnerToken != null &&
+          routePartnerToken != partnerLinkState.token) {
+        unawaited(
+          Future<void>.microtask(
+            () => ref
+                .read(partnerLinkProvider.notifier)
+                .captureToken(routePartnerToken),
+          ),
+        );
+      }
+      final pendingPartnerToken =
+          routePartnerToken ??
+          (partnerLinkState.hasPendingToken ? partnerLinkState.token : null);
       final isAuthRoute =
           state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
@@ -67,7 +91,10 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Done loading, redirect from splash to appropriate screen
       if (isSplashRoute) {
-        return isLoggedIn ? '/' : '/login';
+        if (!isLoggedIn) return '/login';
+        return pendingPartnerToken != null
+            ? '/partner-connect/$pendingPartnerToken'
+            : '/';
       }
 
       // Not logged in and not on auth route - redirect to login
@@ -77,7 +104,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Logged in but on auth route - redirect to home
       if (isLoggedIn && isAuthRoute) {
-        return '/';
+        return pendingPartnerToken != null
+            ? '/partner-connect/$pendingPartnerToken'
+            : '/';
+      }
+
+      // Токен мог быть восстановлен после cold start уже на домашнем роуте.
+      // Завершаем привязку до загрузки бизнес-экранов.
+      if (isLoggedIn && pendingPartnerToken != null && !isPartnerLinkRoute) {
+        return '/partner-connect/$pendingPartnerToken';
       }
 
       return null;
@@ -105,6 +140,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'forgot-password',
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        name: 'partner-connect',
+        path: '/partner-connect/:token',
+        builder: (context, state) =>
+            PartnerLinkScreen(token: state.pathParameters['token'] ?? ''),
       ),
 
       StatefulShellRoute.indexedStack(
@@ -464,10 +505,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(
-            title: 'Самовыкуп',
-            child: SelfBuyoutScreen(),
-          ),
+          const AppScaffold(title: 'Самовыкуп', child: SelfBuyoutScreen()),
         ),
       ),
       GoRoute(
@@ -521,6 +559,9 @@ Page<void> _adaptivePage(
 class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(this._ref) {
     _ref.listen(authProvider, (_, _) {
+      notifyListeners();
+    });
+    _ref.listen(partnerLinkProvider, (_, _) {
       notifyListeners();
     });
   }

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../data/partner_link_provider.dart';
 import '../data/registration_provider.dart';
 import 'auth_visuals.dart';
 
@@ -355,6 +356,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
+    final partnerLink = ref.read(partnerLinkProvider);
     final success = await ref
         .read(registrationProvider.notifier)
         .register(
@@ -364,8 +366,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           password: _passwordCtrl.text,
           confirmPassword: _confirmPasswordCtrl.text,
           phoneVerificationToken: _confirmedPhoneVerificationToken!,
-          agentCode: _agentCodeCtrl.text,
+          agentCode: partnerLink.hasPendingToken ? null : _agentCodeCtrl.text,
           referralCode: _referralCodeCtrl.text,
+          partnerLinkToken: partnerLink.hasPendingToken
+              ? partnerLink.token
+              : null,
         );
 
     if (!mounted) return;
@@ -387,6 +392,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(registrationProvider);
+    final partnerLinkActive = ref.watch(
+      partnerLinkProvider.select((value) => value.hasPendingToken),
+    );
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -429,7 +437,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             switchInCurve: Curves.easeOutCubic,
                             switchOutCurve: Curves.easeInCubic,
                             transitionBuilder: _stepTransition,
-                            child: _buildCurrentStep(state),
+                            child: _buildCurrentStep(
+                              state,
+                              partnerLinkActive: partnerLinkActive,
+                            ),
                           ),
                         ],
                       ),
@@ -552,11 +563,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  Widget _buildCurrentStep(RegistrationState state) {
+  Widget _buildCurrentStep(
+    RegistrationState state, {
+    required bool partnerLinkActive,
+  }) {
     return switch (_currentStep) {
       _RegistrationStep.contacts => _buildContactsStep(state),
       _RegistrationStep.password => _buildPasswordStep(state),
-      _RegistrationStep.codes => _buildCodesStep(state),
+      _RegistrationStep.codes => _buildCodesStep(
+        state,
+        partnerLinkActive: partnerLinkActive,
+      ),
     };
   }
 
@@ -673,7 +690,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  Widget _buildCodesStep(RegistrationState state) {
+  Widget _buildCodesStep(
+    RegistrationState state, {
+    required bool partnerLinkActive,
+  }) {
     return Column(
       key: const ValueKey('codes-step'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -681,26 +701,53 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         _buildStepTitle(
           icon: Icons.card_giftcard_rounded,
           title: 'Коды и привязка',
-          subtitle: 'Если кодов нет — просто оставьте поля пустыми.',
+          subtitle: partnerLinkActive
+              ? 'Агент 2a-logistic.ru и код PL- будут назначены автоматически.'
+              : 'Если кодов нет — просто оставьте поля пустыми.',
         ),
         const SizedBox(height: 18),
-        _buildTextField(
-          controller: _agentCodeCtrl,
-          label: 'Код агента',
-          hint: 'Код агента',
-          prefixIcon: Icons.badge_rounded,
-          textCapitalization: TextCapitalization.characters,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Если кода нет, оставьте поле пустым.',
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.25,
-            color: AppColors.textSecondary.withValues(alpha: 0.9),
-            fontWeight: FontWeight.w500,
+        if (partnerLinkActive)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AuthVisuals.primary(context).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AuthVisuals.primary(context).withValues(alpha: 0.2),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.verified_user_rounded, size: 21),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Регистрация по защищённой ссылке партнёра: агент и префикс нельзя изменить.',
+                    style: TextStyle(fontSize: 13, height: 1.3),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          _buildTextField(
+            controller: _agentCodeCtrl,
+            label: 'Код агента',
+            hint: 'Код агента',
+            prefixIcon: Icons.badge_rounded,
+            textCapitalization: TextCapitalization.characters,
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'Если кода нет, оставьте поле пустым.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.25,
+              color: AppColors.textSecondary.withValues(alpha: 0.9),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         _buildTextField(
           controller: _referralCodeCtrl,

@@ -13,6 +13,7 @@ import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/utils/error_utils.dart';
 import '../data/auth_provider.dart';
+import '../data/partner_link_provider.dart';
 import 'auth_visuals.dart';
 
 /// Этапы восстановления пароля
@@ -66,7 +67,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   void initState() {
     super.initState();
-    final detectedDomain = AgentDomainResolver.currentAgentDomain;
+    final detectedDomain = ref.read(partnerLinkProvider).hasPendingToken
+        ? partnerLinkAgentDomain
+        : AgentDomainResolver.currentAgentDomain;
     if (detectedDomain != null) {
       _domainCtrl.text = detectedDomain;
     }
@@ -110,7 +113,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   /// Валидация домена компании
   String? _validateDomain() {
-    final domain = _domainCtrl.text.trim();
+    final domain = _effectiveDomain;
 
     if (domain.isEmpty) {
       return 'Введите домен компании';
@@ -118,6 +121,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     return null;
   }
+
+  String get _effectiveDomain => ref.read(partnerLinkProvider).hasPendingToken
+      ? partnerLinkAgentDomain
+      : _domainCtrl.text.trim();
 
   /// Получить телефон в формате для SMS.RU: 79XXXXXXXXX
   String _getPhoneForApi() {
@@ -145,7 +152,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     });
 
     final phone = _getPhoneForApi();
-    final domain = _domainCtrl.text.trim();
+    final domain = _effectiveDomain;
 
     try {
       final apiClient = ref.read(apiClientProvider);
@@ -360,6 +367,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final partnerLinkActive = ref.watch(
+      partnerLinkProvider.select((value) => value.hasPendingToken),
+    );
+    if (partnerLinkActive && _domainCtrl.text != partnerLinkAgentDomain) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _domainCtrl.text == partnerLinkAgentDomain) return;
+        _domainCtrl.text = partnerLinkAgentDomain;
+      });
+    }
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
 
@@ -443,7 +459,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    AuthFormCard(child: _buildContent()),
+                    AuthFormCard(
+                      child: _buildContent(
+                        partnerLinkActive: partnerLinkActive,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -525,10 +545,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     }
   }
 
-  Widget _buildContent() {
+  Widget _buildContent({required bool partnerLinkActive}) {
     switch (_currentStep) {
       case ResetStep.enterPhone:
-        return _buildPhoneStep();
+        return _buildPhoneStep(partnerLinkActive: partnerLinkActive);
       case ResetStep.waitingCall:
         return _buildCallStep();
       case ResetStep.enterPassword:
@@ -538,7 +558,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     }
   }
 
-  Widget _buildPhoneStep() {
+  Widget _buildPhoneStep({required bool partnerLinkActive}) {
     final hasPhoneError = _phoneError != null;
     final hasDomainError = _domainError != null;
     final accent = AuthVisuals.primary(context);
@@ -546,53 +566,75 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Поле домена компании
-        const Text(
-          'Домен компании',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF333333),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: hasDomainError
-                  ? Colors.red.shade400
-                  : const Color(0xFFE0E0E0),
+        if (partnerLinkActive)
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: accent.withValues(alpha: 0.18)),
             ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: TextField(
-            controller: _domainCtrl,
-            keyboardType: TextInputType.text,
-            textInputAction: TextInputAction.next,
-            onChanged: (_) {
-              if (_domainError != null) {
-                setState(() => _domainError = null);
-              }
-            },
-            decoration: InputDecoration(
-              hintText: 'example-company',
-              hintStyle: const TextStyle(
-                color: Color(0xFFAAAAAA),
-                fontSize: 14,
-              ),
-              prefixIcon: Icon(
-                Icons.business_rounded,
-                color: hasDomainError ? Colors.red.shade400 : accent,
-                size: 20,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
+            child: const Row(
+              children: [
+                Icon(Icons.business_rounded, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Восстановление аккаунта 2a-logistic.ru',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          const Text(
+            'Домен компании',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF333333),
             ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: hasDomainError
+                    ? Colors.red.shade400
+                    : const Color(0xFFE0E0E0),
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TextField(
+              controller: _domainCtrl,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.next,
+              onChanged: (_) {
+                if (_domainError != null) {
+                  setState(() => _domainError = null);
+                }
+              },
+              decoration: InputDecoration(
+                hintText: 'example-company',
+                hintStyle: const TextStyle(
+                  color: Color(0xFFAAAAAA),
+                  fontSize: 14,
+                ),
+                prefixIcon: Icon(
+                  Icons.business_rounded,
+                  color: hasDomainError ? Colors.red.shade400 : accent,
+                  size: 20,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
         if (hasDomainError) ...[
           const SizedBox(height: 8),
           Text(

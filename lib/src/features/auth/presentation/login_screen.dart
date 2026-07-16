@@ -17,6 +17,7 @@ import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../tariffs/data/tariffs_provider.dart';
 import '../data/auth_provider.dart';
 import '../data/passkey_auth_service.dart';
+import '../data/partner_link_provider.dart';
 import 'auth_visuals.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -101,7 +102,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _loginWithPassword() async {
-    if (_domainCtrl.text.isEmpty ||
+    final partnerLinkActive = ref.read(partnerLinkProvider).hasPendingToken;
+    final effectiveDomain = partnerLinkActive
+        ? partnerLinkAgentDomain
+        : _domainCtrl.text.trim();
+    if (effectiveDomain.isEmpty ||
         _loginCtrl.text.isEmpty ||
         _passwordCtrl.text.isEmpty) {
       _showError('Заполните все поля');
@@ -118,7 +123,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           .read(authProvider.notifier)
           .login(
             email: _loginCtrl.text.trim(),
-            domain: _domainCtrl.text.trim(),
+            domain: effectiveDomain,
             password: _passwordCtrl.text,
             beforeComplete: (userData) async {
               if (!mounted) return;
@@ -375,6 +380,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    final partnerLinkActive = ref.watch(
+      partnerLinkProvider.select((value) => value.hasPendingToken),
+    );
+    if (partnerLinkActive && _domainCtrl.text != partnerLinkAgentDomain) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _domainCtrl.text == partnerLinkAgentDomain) return;
+        _domainCtrl.text = partnerLinkAgentDomain;
+      });
+    }
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -465,7 +479,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 switchOutCurve: Curves.easeInCubic,
                                 transitionBuilder: _verticalRevealTransition,
                                 child: _showPasswordLogin
-                                    ? _buildPasswordFields()
+                                    ? _buildPasswordFields(
+                                        partnerLinkActive: partnerLinkActive,
+                                      )
                                     : const SizedBox(
                                         key: ValueKey('password-fields-hidden'),
                                         height: 12,
@@ -561,19 +577,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildPasswordFields() {
+  Widget _buildPasswordFields({required bool partnerLinkActive}) {
     return Column(
       key: const ValueKey('password-fields'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 18),
-        _buildTextField(
-          controller: _domainCtrl,
-          label: 'Домен партнёра',
-          hint: 'example-company',
-          prefixIcon: Icons.business_rounded,
-          keyboardType: TextInputType.url,
-        ),
+        if (partnerLinkActive)
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: AuthVisuals.primary(context).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(
+                color: AuthVisuals.primary(context).withValues(alpha: 0.18),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.business_rounded, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Вход в аккаунт 2a-logistic.ru',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          _buildTextField(
+            controller: _domainCtrl,
+            label: 'Домен партнёра',
+            hint: 'example-company',
+            prefixIcon: Icons.business_rounded,
+            keyboardType: TextInputType.url,
+          ),
         const SizedBox(height: 16),
         _buildTextField(
           controller: _passwordCtrl,

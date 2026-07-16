@@ -49,6 +49,7 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     required String phoneVerificationToken,
     String? agentCode,
     String? referralCode,
+    String? partnerLinkToken,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
 
@@ -66,6 +67,8 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
             'agentCode': agentCode.trim(),
           if (referralCode != null && referralCode.isNotEmpty)
             'referralCode': referralCode.trim().toUpperCase(),
+          if (partnerLinkToken != null && partnerLinkToken.trim().isNotEmpty)
+            'partnerLinkToken': partnerLinkToken.trim(),
         },
       );
 
@@ -109,7 +112,8 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
         final msg = e.response?.data?['error'] as String?;
         errorMessage = msg ?? 'Проверьте введённые данные';
       } else {
-        errorMessage = 'Ошибка сети. Попробуйте позже';
+        final msg = e.response?.data?['error'] as String?;
+        errorMessage = msg ?? 'Ошибка сети. Попробуйте позже';
       }
 
       state = state.copyWith(isLoading: false, error: errorMessage);
