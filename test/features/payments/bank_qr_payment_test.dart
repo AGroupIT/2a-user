@@ -6,6 +6,7 @@ import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/data/bank_qr_payment.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/domain/payment_model.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/presentation/bank_qr_payment_screen.dart';
+import 'package:twoalogisticcabineuser/src/features/payments/presentation/payment_receipt_picker.dart';
 import 'package:twoalogisticcabineuser/src/features/invoices/domain/invoice_item.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_models.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_service.dart';
@@ -120,6 +121,43 @@ void main() {
       expect(find.text('Я оплатил'), findsOneWidget);
       expect(tester.widget<InkWell>(_paidButtonInkWell()).onTap, isNull);
       expect(service.uploadCalls, 0);
+    });
+
+    testWidgets('выбор чека предлагает галерею и файлы', (tester) async {
+      final service = _FakeBankQrPaymentService();
+
+      await tester.pumpApp(
+        const BankQrPaymentSheet(invoiceId: '1', invoiceNumber: 'QR-1'),
+        overrides: [bankQrPaymentServiceProvider.overrideWithValue(service)],
+      );
+      await tester.pumpAndSettle();
+
+      final attachButton = find.text('Приложить чек (фото/PDF)');
+      await tester.ensureVisible(attachButton);
+      await tester.pumpAndSettle();
+      await tester.tap(attachButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Приложить чек'), findsOneWidget);
+      expect(find.text('Галерея'), findsOneWidget);
+      expect(find.text('Файлы'), findsOneWidget);
+    });
+  });
+
+  group('Форматы чеков', () {
+    test('определяет расширение без ложного значения у имени без точки', () {
+      expect(paymentReceiptExtension('receipt.PDF'), 'pdf');
+      expect(paymentReceiptExtension('receipt'), isNull);
+      expect(
+        paymentReceiptExtension('receipt', explicitExtension: 'JPG'),
+        'jpg',
+      );
+    });
+
+    test('возвращает корректные MIME-типы', () {
+      expect(paymentReceiptMimeType('jpeg'), 'image/jpeg');
+      expect(paymentReceiptMimeType('heic'), 'image/heic');
+      expect(paymentReceiptMimeType('pdf'), 'application/pdf');
     });
   });
 

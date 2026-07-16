@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -10,9 +9,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
-import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/gallery_image_save_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/bank_qr_payment.dart';
+import 'payment_receipt_picker.dart';
 
 /// Bank QR — модалка оплаты счёта в рублях.
 ///
@@ -30,28 +30,6 @@ class BankQrPaymentSheet extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<BankQrPaymentSheet> createState() => _BankQrPaymentSheetState();
-}
-
-const _allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf'];
-
-String _mimeForExt(String ext) {
-  switch (ext.toLowerCase()) {
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'png':
-      return 'image/png';
-    case 'webp':
-      return 'image/webp';
-    case 'heic':
-      return 'image/heic';
-    case 'heif':
-      return 'image/heif';
-    case 'pdf':
-      return 'application/pdf';
-    default:
-      return 'application/octet-stream';
-  }
 }
 
 class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
@@ -144,23 +122,35 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
         );
         return;
       }
-      final ok = await downloadFile(
+      final saveResult = await saveImageToGallery(
         bytes: data.buffer.asUint8List(),
         fileName: _qrFileName,
       );
       if (!mounted) return;
+      final successMessage = switch (saveResult.destination) {
+        SavedImageDestination.gallery => tr(
+          context,
+          ru: 'QR-код сохранён в галерею',
+          zh: '二维码已保存到相册',
+        ),
+        SavedImageDestination.download => tr(
+          context,
+          ru: 'QR-код скачан',
+          zh: '二维码已下载',
+        ),
+      };
       AppToast.show(
         context,
-        ok
-            ? tr(context, ru: 'QR-код сохранён', zh: '二维码已保存')
-            : tr(context, ru: 'Не удалось скачать QR', zh: '无法下载二维码'),
-        isError: !ok,
+        saveResult.success
+            ? successMessage
+            : tr(context, ru: 'Не удалось сохранить QR', zh: '无法保存二维码'),
+        isError: !saveResult.success,
       );
     } catch (_) {
       if (mounted) {
         AppToast.show(
           context,
-          tr(context, ru: 'Не удалось скачать QR', zh: '无法下载二维码'),
+          tr(context, ru: 'Не удалось сохранить QR', zh: '无法保存二维码'),
           isError: true,
         );
       }
@@ -169,41 +159,14 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
     }
   }
 
-  Future<void> _pickFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: _allowedExt,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final f = result.files.first;
-      final bytes = f.bytes ?? await f.xFile.readAsBytes();
-      final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
-      if (!_allowedExt.contains(ext)) {
-        if (mounted) {
-          AppToast.show(
-            context,
-            tr(context, ru: 'Неподдерживаемый формат файла', zh: '不支持的文件格式'),
-            isError: true,
-          );
-        }
-        return;
-      }
-      setState(() {
-        _fileBytes = bytes;
-        _fileName = f.name;
-        _fileMime = _mimeForExt(ext);
-      });
-    } catch (_) {
-      if (mounted) {
-        AppToast.show(
-          context,
-          tr(context, ru: 'Не удалось выбрать файл', zh: '无法选择文件'),
-          isError: true,
-        );
-      }
-    }
+  Future<void> _pickReceipt() async {
+    final receipt = await pickPaymentReceipt(context);
+    if (!mounted || receipt == null) return;
+    setState(() {
+      _fileBytes = receipt.bytes;
+      _fileName = receipt.fileName;
+      _fileMime = receipt.mimeType;
+    });
   }
 
   Future<void> _confirmPaid() async {
@@ -384,8 +347,8 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
               _BankQrSecondaryButton(
                 label: _downloadingQr
                     ? tr(context, ru: 'Готовим файл…', zh: '正在准备文件…')
-                    : tr(context, ru: 'Скачать QR-код', zh: '下载二维码'),
-                icon: Icons.download_rounded,
+                    : tr(context, ru: 'Сохранить QR-код', zh: '保存二维码'),
+                icon: Icons.save_alt_rounded,
                 onTap: _downloadingQr ? null : _downloadQr,
               ),
             ],
@@ -422,7 +385,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                       )
                     : tr(context, ru: 'Заменить чек', zh: '更换凭证'),
                 icon: Icons.attach_file_rounded,
-                onTap: _uploading ? null : _pickFile,
+                onTap: _uploading ? null : _pickReceipt,
               ),
               if (_fileBytes != null) ...[
                 const SizedBox(height: 10),

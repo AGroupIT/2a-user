@@ -345,52 +345,33 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
     }
   }
 
-  /// Выбрать изображение из галереи (используем file_picker для обхода iOS HDR проблемы)
+  /// Выбрать изображение из системной галереи.
   Future<void> _pickImageFromGallery() async {
-    debugPrint('📷 [Gallery] Starting file picker for images...');
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        allowCompression: false,
-        compressionQuality: 0,
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+        requestFullMetadata: false,
       );
+      if (image == null) return;
 
-      debugPrint(
-        '📷 [Gallery] FilePicker returned: ${result != null ? "${result.files.length} files" : "null/cancelled"}',
-      );
-
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        debugPrint('📷 [Gallery] File: ${file.name}, size: ${file.size}');
-
-        final bytes = await file.xFile.readAsBytes();
-
-        if (bytes.isEmpty) {
-          debugPrint('📷 [Gallery] ERROR: could not read file bytes');
-          if (mounted) {
-            _showErrorSnackbar(
-              tr(context, ru: 'Не удалось прочитать файл', zh: '无法读取文件'),
-            );
-          }
-          return;
+      final bytes = await image.readAsBytes();
+      if (bytes.isEmpty) {
+        if (mounted) {
+          _showErrorSnackbar(
+            tr(context, ru: 'Не удалось прочитать изображение', zh: '无法读取图片'),
+          );
         }
-
-        debugPrint('📷 [Gallery] Read ${bytes.length} bytes');
-
-        final fileName = file.name.isNotEmpty
-            ? file.name
-            : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-        debugPrint(
-          '📷 [Gallery] Uploading $fileName (${bytes.length} bytes)...',
-        );
-        await _uploadFileFromBytes(bytes, fileName);
-        debugPrint('📷 [Gallery] Upload completed');
+        return;
       }
-    } catch (e, stack) {
-      debugPrint('📷 [Gallery] ERROR: $e');
-      debugPrint('📷 [Gallery] Stack: $stack');
+
+      final fileName = image.name.isNotEmpty
+          ? image.name
+          : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await _uploadFileFromBytes(bytes, fileName);
+    } catch (e) {
       if (mounted) {
         _showErrorSnackbar(
           '${tr(context, ru: 'Ошибка при выборе изображения', zh: '选择图片时出错')}: $e',

@@ -26,6 +26,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Нужен доступ для сохранения QR-кодов оплаты в галерею</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Нужен доступ к галерее для выбора чека об оплате</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
