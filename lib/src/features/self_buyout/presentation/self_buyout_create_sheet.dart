@@ -58,7 +58,6 @@ class SelfBuyoutCreateSheet extends ConsumerStatefulWidget {
 class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
   final _cnyCtrl = TextEditingController();
   final _rubCtrl = TextEditingController();
-  final _reqCtrl = TextEditingController();
   bool _syncing = false;
   String _enteredIn = 'cny';
 
@@ -76,16 +75,9 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
   bool get _isCorrection => widget.correctionRequest != null;
 
   @override
-  void initState() {
-    super.initState();
-    _reqCtrl.text = widget.correctionRequest?.transferRequisitesText ?? '';
-  }
-
-  @override
   void dispose() {
     _cnyCtrl.dispose();
     _rubCtrl.dispose();
-    _reqCtrl.dispose();
     super.dispose();
   }
 
@@ -234,11 +226,11 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
 
   String? _validate() {
     if (_isCorrection) {
-      if (_fileBytes == null && _reqCtrl.text.trim().isEmpty) {
+      if (_fileBytes == null) {
         return tr(
           context,
-          ru: 'Укажите новые реквизиты или QR для перевода',
-          zh: '请提供新的收款信息或二维码',
+          ru: 'Приложите новое изображение QR или реквизитов',
+          zh: '请上传新的二维码或收款信息图片',
         );
       }
       return null;
@@ -273,11 +265,11 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
         zh: '请在顶部菜单选择客户代码',
       );
     }
-    if (_fileBytes == null && _reqCtrl.text.trim().isEmpty) {
+    if (_fileBytes == null) {
       return tr(
         context,
-        ru: 'Укажите реквизиты или QR для перевода',
-        zh: '请提供转账二维码或收款信息',
+        ru: 'Приложите изображение QR или реквизитов',
+        zh: '请上传二维码或收款信息图片',
       );
     }
     if (!_warningAccepted) {
@@ -299,10 +291,9 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
       final result = correctionRequest != null
           ? await service.correctTransferRequisites(
               requestId: correctionRequest.id,
-              transferRequisitesText: _reqCtrl.text.trim(),
-              fileBytes: _fileBytes,
-              fileName: _fileName,
-              fileMime: _fileMime,
+              fileBytes: _fileBytes!,
+              fileName: _fileName!,
+              fileMime: _fileMime!,
             )
           : await service.createRequest(
               clientCodeId: ref.read(activeClientCodeIdProvider)!,
@@ -310,11 +301,10 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
               amount: _enteredIn == 'cny'
                   ? double.parse(_cnyCtrl.text.replaceAll(',', '.'))
                   : double.parse(_rubCtrl.text.replaceAll(',', '.')),
-              transferRequisitesText: _reqCtrl.text.trim(),
               warningAccepted: true,
-              fileBytes: _fileBytes,
-              fileName: _fileName,
-              fileMime: _fileMime,
+              fileBytes: _fileBytes!,
+              fileName: _fileName!,
+              fileMime: _fileMime!,
             );
       if (!mounted) return;
       Navigator.of(context).pop(result);
@@ -416,7 +406,7 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
               child: SelfBuyoutPrimaryButton(
                 label: correctionRequest == null
                     ? tr(context, ru: 'Создать заявку', zh: '创建申请')
-                    : tr(context, ru: 'Отправить исправления', zh: '提交修改'),
+                    : tr(context, ru: 'Отправить на рассмотрение', zh: '提交审核'),
                 icon: correctionRequest == null
                     ? Icons.check_rounded
                     : Icons.send_rounded,
@@ -625,41 +615,18 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _reqCtrl,
-            maxLines: 3,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'Gilroy',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+          Text(
+            tr(
+              context,
+              ru: 'Загрузите изображение QR-кода или реквизитов получателя.',
+              zh: '请上传收款人的二维码或收款信息图片。',
             ),
-            decoration: InputDecoration(
-              hintText: tr(
-                context,
-                ru: 'Реквизиты или комментарий',
-                zh: '收款信息或备注',
-              ),
-              hintStyle: const TextStyle(
-                color: AppColors.textSecondary,
-                fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w600,
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.all(12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 13,
+              height: 1.3,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 10),
@@ -703,8 +670,8 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           Text(
             tr(
               context,
-              ru: 'Повторно платить не нужно. После отправки партнёр получит обновлённые реквизиты по этой же заявке.',
-              zh: '无需再次付款。提交后，合作伙伴将在同一申请中收到更新后的收款信息。',
+              ru: 'Повторно платить не нужно. После загрузки правильного изображения заявка вернётся партнёру на рассмотрение.',
+              zh: '无需再次付款。上传正确图片后，申请将重新交由合作伙伴审核。',
             ),
             style: const TextStyle(
               color: AppColors.textSecondary,

@@ -38,7 +38,6 @@ class _FakeSelfBuyoutService extends SelfBuyoutService {
 
   int detailCalls = 0;
   int correctionCalls = 0;
-  String? correctedRequisitesText;
 
   @override
   Future<SelfBuyoutAvailability> getAvailability() async =>
@@ -86,13 +85,11 @@ class _FakeSelfBuyoutService extends SelfBuyoutService {
   @override
   Future<SelfBuyoutRequest> correctTransferRequisites({
     required int requestId,
-    String? transferRequisitesText,
-    Uint8List? fileBytes,
-    String? fileName,
-    String? fileMime,
+    required Uint8List fileBytes,
+    required String fileName,
+    required String fileMime,
   }) async {
     correctionCalls++;
-    correctedRequisitesText = transferRequisitesText;
     return const SelfBuyoutRequest(
       id: 6,
       requestNumber: 'SB-PL-01-07-16-002',
@@ -102,7 +99,7 @@ class _FakeSelfBuyoutService extends SelfBuyoutService {
       paymentRubAmount: 2400,
       clientCnyRubRate: 12,
       amountEnteredIn: 'cny',
-      transferRequisitesText: 'correct-account',
+      hasTransferQr: true,
     );
   }
 }
@@ -219,13 +216,49 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Оплата уже подтверждена'), findsOneWidget);
-    expect(find.text('Отправить исправления'), findsOneWidget);
+    expect(find.text('Отправить на рассмотрение'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Приложить QR/изображение'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'correct-account');
-    await tester.tap(find.text('Отправить исправления'));
+    await tester.tap(find.text('Отправить на рассмотрение'));
     await tester.pumpAndSettle();
 
-    expect(service.correctionCalls, 1);
-    expect(service.correctedRequisitesText, 'correct-account');
+    expect(
+      find.text('Приложите новое изображение QR или реквизитов'),
+      findsOneWidget,
+    );
+    expect(service.correctionCalls, 0);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('full partner cancellation does not show correction action', (
+    tester,
+  ) async {
+    final service = _FakeSelfBuyoutService(
+      detail: const SelfBuyoutDetail(
+        request: _cancelledRequest,
+        cancellation: SelfBuyoutCancellation(
+          source: 'partner',
+          reason: 'Операция полностью отменена',
+          reasonCode: 'other',
+          canCorrectRequisites: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [selfBuyoutServiceProvider.overrideWithValue(service)],
+        child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('SB-PL-01-07-16-002').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Операция полностью отменена'), findsOneWidget);
+    expect(find.text('Исправить реквизиты'), findsNothing);
+    expect(find.text('Закрыть'), findsOneWidget);
   });
 }

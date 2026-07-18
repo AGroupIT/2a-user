@@ -59,36 +59,31 @@ class SelfBuyoutService {
     return path.startsWith('/') ? path : '/$path';
   }
 
-  /// Создать заявку. transferQr — опциональное изображение реквизитов.
+  /// Создать заявку с обязательным изображением QR/реквизитов.
   Future<SelfBuyoutRequest> createRequest({
     required int clientCodeId,
     required String amountEnteredIn, // cny | rub
     required double amount,
-    String? transferRequisitesText,
     required bool warningAccepted,
-    Uint8List? fileBytes,
-    String? fileName,
-    String? fileMime,
+    required Uint8List fileBytes,
+    required String fileName,
+    required String fileMime,
   }) async {
     final map = <String, dynamic>{
       'clientCodeId': clientCodeId.toString(),
       'amountEnteredIn': amountEnteredIn,
       'amount': amount.toString(),
       'warningAccepted': warningAccepted.toString(),
-      if (transferRequisitesText != null && transferRequisitesText.isNotEmpty)
-        'transferRequisitesText': transferRequisitesText,
     };
-    if (fileBytes != null) {
-      final parts = (fileMime ?? 'image/jpeg').split('/');
-      map['transferQr'] = MultipartFile.fromBytes(
-        fileBytes,
-        filename: fileName ?? 'transfer-qr',
-        contentType: MediaType(
-          parts.isNotEmpty ? parts[0] : 'image',
-          parts.length > 1 ? parts[1] : 'jpeg',
-        ),
-      );
-    }
+    final parts = fileMime.split('/');
+    map['transferQr'] = MultipartFile.fromBytes(
+      fileBytes,
+      filename: fileName,
+      contentType: MediaType(
+        parts.isNotEmpty ? parts[0] : 'image',
+        parts.length > 1 ? parts[1] : 'jpeg',
+      ),
+    );
     final formData = FormData.fromMap(map);
     final res = await _apiClient.post(
       '/client/self-buyout/requests',
@@ -102,26 +97,21 @@ class SelfBuyoutService {
 
   Future<SelfBuyoutRequest> correctTransferRequisites({
     required int requestId,
-    String? transferRequisitesText,
-    Uint8List? fileBytes,
-    String? fileName,
-    String? fileMime,
+    required Uint8List fileBytes,
+    required String fileName,
+    required String fileMime,
   }) async {
+    final parts = fileMime.split('/');
     final map = <String, dynamic>{
-      if (transferRequisitesText != null && transferRequisitesText.isNotEmpty)
-        'transferRequisitesText': transferRequisitesText,
-    };
-    if (fileBytes != null) {
-      final parts = (fileMime ?? 'image/jpeg').split('/');
-      map['transferQr'] = MultipartFile.fromBytes(
+      'transferQr': MultipartFile.fromBytes(
         fileBytes,
-        filename: fileName ?? 'transfer-qr',
+        filename: fileName,
         contentType: MediaType(
           parts.isNotEmpty ? parts[0] : 'image',
           parts.length > 1 ? parts[1] : 'jpeg',
         ),
-      );
-    }
+      ),
+    };
     final res = await _apiClient.patch(
       '/client/self-buyout/requests/$requestId/transfer-requisites',
       data: FormData.fromMap(map),

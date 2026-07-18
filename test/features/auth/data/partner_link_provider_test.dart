@@ -48,6 +48,7 @@ void main() {
 
     final state = container.read(partnerLinkProvider);
     expect(state.phase, PartnerLinkPhase.completed);
+    expect(state.token, token);
     expect(state.clientCode, 'PL-1001');
     expect(state.hasPendingToken, isFalse);
     expect(apiClient.requestedPaths, [

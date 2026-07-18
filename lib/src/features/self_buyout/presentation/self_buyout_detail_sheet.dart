@@ -383,8 +383,8 @@ class _SelfBuyoutDetailSheetState extends ConsumerState<SelfBuyoutDetailSheet> {
             Text(
               tr(
                 context,
-                ru: 'Оплата сохранена. Исправьте QR или текстовые реквизиты — повторно платить не нужно.',
-                zh: '付款记录已保留。请修改二维码或收款信息，无需再次付款。',
+                ru: 'Партнёр указал, что реквизиты неверны. Загрузите правильное изображение QR или реквизитов и повторно отправьте эту заявку.',
+                zh: '合作伙伴指出收款信息有误。请上传正确的二维码或收款信息图片并重新提交申请。',
               ),
               style: TextStyle(
                 color: context.brandPrimary,

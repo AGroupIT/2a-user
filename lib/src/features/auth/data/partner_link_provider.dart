@@ -179,6 +179,7 @@ class PartnerLinkNotifier extends Notifier<PartnerLinkState> {
       }
       state = PartnerLinkState(
         phase: PartnerLinkPhase.completed,
+        token: token,
         partnerName: state.partnerName,
         clientCode: clientCode,
       );
