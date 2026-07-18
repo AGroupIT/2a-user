@@ -74,6 +74,41 @@ void main() {
     expect(container.read(partnerLinkProvider).phase, PartnerLinkPhase.error);
     expect(apiClient.requestedPaths, isEmpty);
   });
+
+  test(
+    'после отказа от невалидной ссылки роут не захватывает её повторно',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final apiClient = _PartnerLinkApiClient(getStatusCode: 404);
+      final container = ProviderContainer(
+        overrides: [apiClientProvider.overrideWithValue(apiClient)],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(partnerLinkProvider.notifier);
+
+      expect(await notifier.captureToken(token), isTrue);
+      expect(await notifier.validate(), isFalse);
+      expect(container.read(partnerLinkProvider).phase, PartnerLinkPhase.error);
+
+      await notifier.clear();
+
+      final dismissed = container.read(partnerLinkProvider);
+      expect(dismissed.hasPendingToken, isFalse);
+      expect(dismissed.shouldCaptureRouteToken(token), isFalse);
+      expect(dismissed.pendingTokenForRoute(token), isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('pending_partner_link_token_v1'), isNull);
+
+      const newToken =
+          'new_abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-1234';
+      expect(dismissed.shouldCaptureRouteToken(newToken), isTrue);
+      expect(dismissed.pendingTokenForRoute(newToken), newToken);
+      expect(await notifier.captureToken(newToken), isTrue);
+      expect(container.read(partnerLinkProvider).token, newToken);
+      expect(container.read(partnerLinkProvider).hasPendingToken, isTrue);
+    },
+  );
 }
 
 Future<PartnerLinkState> _waitForState(
@@ -90,6 +125,9 @@ Future<PartnerLinkState> _waitForState(
 }
 
 class _PartnerLinkApiClient extends ApiClient {
+  _PartnerLinkApiClient({this.getStatusCode = 200});
+
+  final int getStatusCode;
   final requestedPaths = <String>[];
 
   @override
@@ -99,6 +137,18 @@ class _PartnerLinkApiClient extends ApiClient {
     Options? options,
   }) async {
     requestedPaths.add(path);
+    if (getStatusCode != 200) {
+      final requestOptions = RequestOptions(path: path);
+      throw DioException.badResponse(
+        statusCode: getStatusCode,
+        requestOptions: requestOptions,
+        response: Response<dynamic>(
+          requestOptions: requestOptions,
+          statusCode: getStatusCode,
+          data: {'error': 'Сессия привязки не найдена'},
+        ),
+      );
+    }
     return Response<T>(
       requestOptions: RequestOptions(path: path),
       statusCode: 200,

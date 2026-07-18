@@ -25,6 +25,7 @@ class PartnerLinkState {
   const PartnerLinkState({
     this.phase = PartnerLinkPhase.loading,
     this.token,
+    this.dismissedToken,
     this.partnerName,
     this.clientCode,
     this.error,
@@ -32,6 +33,7 @@ class PartnerLinkState {
 
   final PartnerLinkPhase phase;
   final String? token;
+  final String? dismissedToken;
   final String? partnerName;
   final String? clientCode;
   final String? error;
@@ -41,10 +43,21 @@ class PartnerLinkState {
       phase != PartnerLinkPhase.idle &&
       phase != PartnerLinkPhase.completed;
 
+  bool shouldCaptureRouteToken(String routeToken) =>
+      routeToken != token && routeToken != dismissedToken;
+
+  String? pendingTokenForRoute(String? routeToken) {
+    if (routeToken != null) {
+      return routeToken == dismissedToken ? null : routeToken;
+    }
+    return hasPendingToken ? token : null;
+  }
+
   PartnerLinkState copyWith({
     PartnerLinkPhase? phase,
     String? token,
     bool clearToken = false,
+    String? dismissedToken,
     String? partnerName,
     String? clientCode,
     String? error,
@@ -53,6 +66,7 @@ class PartnerLinkState {
     return PartnerLinkState(
       phase: phase ?? this.phase,
       token: clearToken ? null : (token ?? this.token),
+      dismissedToken: dismissedToken ?? this.dismissedToken,
       partnerName: partnerName ?? this.partnerName,
       clientCode: clientCode ?? this.clientCode,
       error: clearError ? null : (error ?? this.error),
@@ -180,13 +194,17 @@ class PartnerLinkNotifier extends Notifier<PartnerLinkState> {
 
   Future<void> clear() async {
     _capturedDuringRestore = true;
+    final dismissedToken = state.token;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_partnerLinkTokenKey);
     } catch (error) {
       debugPrint('Partner link cleanup failed: $error');
     }
-    state = const PartnerLinkState(phase: PartnerLinkPhase.idle);
+    state = PartnerLinkState(
+      phase: PartnerLinkPhase.idle,
+      dismissedToken: dismissedToken,
+    );
   }
 
   String _messageFromError(Object error, String fallback) {

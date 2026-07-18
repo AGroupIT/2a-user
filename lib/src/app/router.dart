@@ -64,7 +64,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           : null;
       final partnerLinkState = ref.read(partnerLinkProvider);
       if (routePartnerToken != null &&
-          routePartnerToken != partnerLinkState.token) {
+          partnerLinkState.shouldCaptureRouteToken(routePartnerToken)) {
         unawaited(
           Future<void>.microtask(
             () => ref
@@ -73,9 +73,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         );
       }
-      final pendingPartnerToken =
-          routePartnerToken ??
-          (partnerLinkState.hasPendingToken ? partnerLinkState.token : null);
+      final pendingPartnerToken = partnerLinkState.pendingTokenForRoute(
+        routePartnerToken,
+      );
       final isAuthRoute =
           state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
