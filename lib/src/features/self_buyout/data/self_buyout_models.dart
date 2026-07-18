@@ -35,7 +35,8 @@ class SelfBuyoutAvailability {
       clientCnyRubRate: (rate?['clientCnyRubRate'] as num?)?.toDouble(),
       minRub: (limits?['minRub'] as num?)?.toDouble(),
       maxRub: (limits?['maxRub'] as num?)?.toDouble(),
-      deliveryDeadlineDays: (json['deliveryDeadlineDays'] as num?)?.toInt() ?? 14,
+      deliveryDeadlineDays:
+          (json['deliveryDeadlineDays'] as num?)?.toInt() ?? 14,
     );
   }
 
@@ -151,6 +152,102 @@ class SelfBuyoutPaymentInfo {
       qrPayload: json['qrPayload']?.toString() ?? '',
       receiptStatus: receipt?['status']?.toString(),
       receiptRejectReason: receipt?['rejectReason']?.toString(),
+    );
+  }
+}
+
+class SelfBuyoutTransferProof {
+  final int id;
+  final String fileName;
+  final String mimeType;
+  final int size;
+  final String? externalId;
+  final String? comment;
+  final DateTime? createdAt;
+  final String fileUrl;
+
+  const SelfBuyoutTransferProof({
+    required this.id,
+    required this.fileName,
+    required this.mimeType,
+    required this.size,
+    this.externalId,
+    this.comment,
+    this.createdAt,
+    required this.fileUrl,
+  });
+
+  factory SelfBuyoutTransferProof.fromJson(Map<String, dynamic> json) {
+    return SelfBuyoutTransferProof(
+      id: (json['id'] as num).toInt(),
+      fileName: json['fileName']?.toString() ?? 'transfer-proof',
+      mimeType: json['mimeType']?.toString() ?? 'application/octet-stream',
+      size: (json['size'] as num?)?.toInt() ?? 0,
+      externalId: json['externalId']?.toString(),
+      comment: json['comment']?.toString(),
+      createdAt: json['createdAt'] == null
+          ? null
+          : DateTime.tryParse(json['createdAt'].toString()),
+      fileUrl: json['fileUrl']?.toString() ?? '',
+    );
+  }
+}
+
+class SelfBuyoutCancellation {
+  final String source;
+  final String reason;
+  final String? reasonCode;
+  final bool canCorrectRequisites;
+
+  const SelfBuyoutCancellation({
+    required this.source,
+    required this.reason,
+    this.reasonCode,
+    this.canCorrectRequisites = false,
+  });
+
+  factory SelfBuyoutCancellation.fromJson(Map<String, dynamic> json) {
+    return SelfBuyoutCancellation(
+      source: json['source']?.toString() ?? 'unknown',
+      reason: json['reason']?.toString() ?? '',
+      reasonCode: json['reasonCode']?.toString(),
+      canCorrectRequisites: json['canCorrectRequisites'] == true,
+    );
+  }
+}
+
+class SelfBuyoutDetail {
+  final SelfBuyoutRequest request;
+  final SelfBuyoutPaymentInfo? payment;
+  final List<SelfBuyoutTransferProof> transferProofs;
+  final SelfBuyoutCancellation? cancellation;
+
+  const SelfBuyoutDetail({
+    required this.request,
+    this.payment,
+    this.transferProofs = const [],
+    this.cancellation,
+  });
+
+  factory SelfBuyoutDetail.fromJson(Map<String, dynamic> json) {
+    final paymentJson = json['payment'];
+    final cancellationJson = json['cancellation'];
+    return SelfBuyoutDetail(
+      request: SelfBuyoutRequest.fromJson(
+        json['request'] as Map<String, dynamic>,
+      ),
+      payment: paymentJson is Map<String, dynamic>
+          ? SelfBuyoutPaymentInfo.fromDetailJson(paymentJson)
+          : null,
+      transferProofs:
+          (json['transferProofs'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(SelfBuyoutTransferProof.fromJson)
+              .toList() ??
+          const [],
+      cancellation: cancellationJson is Map<String, dynamic>
+          ? SelfBuyoutCancellation.fromJson(cancellationJson)
+          : null,
     );
   }
 }

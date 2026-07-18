@@ -38,8 +38,17 @@ double _round2(double x) => (x * 100).roundToDouble() / 100;
 
 /// Модалка создания заявки самовыкупа. Возвращает созданную заявку (pop).
 class SelfBuyoutCreateSheet extends ConsumerStatefulWidget {
-  final SelfBuyoutAvailability availability;
-  const SelfBuyoutCreateSheet({super.key, required this.availability});
+  final SelfBuyoutAvailability? availability;
+  final SelfBuyoutRequest? correctionRequest;
+
+  const SelfBuyoutCreateSheet({super.key, required this.availability})
+    : correctionRequest = null;
+
+  const SelfBuyoutCreateSheet.correctRequisites({
+    super.key,
+    required this.correctionRequest,
+  }) : availability = null,
+       assert(correctionRequest != null);
 
   @override
   ConsumerState<SelfBuyoutCreateSheet> createState() =>
@@ -59,7 +68,18 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
   bool _warningAccepted = false;
   bool _submitting = false;
 
-  double get _rate => widget.availability.clientCnyRubRate ?? 0;
+  double get _rate =>
+      widget.correctionRequest?.clientCnyRubRate ??
+      widget.availability?.clientCnyRubRate ??
+      0;
+
+  bool get _isCorrection => widget.correctionRequest != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _reqCtrl.text = widget.correctionRequest?.transferRequisitesText ?? '';
+  }
 
   @override
   void dispose() {
@@ -213,13 +233,24 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
   }
 
   String? _validate() {
+    if (_isCorrection) {
+      if (_fileBytes == null && _reqCtrl.text.trim().isEmpty) {
+        return tr(
+          context,
+          ru: 'Укажите новые реквизиты или QR для перевода',
+          zh: '请提供新的收款信息或二维码',
+        );
+      }
+      return null;
+    }
+
     final cny = double.tryParse(_cnyCtrl.text.replaceAll(',', '.')) ?? 0;
     final rub = double.tryParse(_rubCtrl.text.replaceAll(',', '.')) ?? 0;
     if (cny <= 0 || rub <= 0) {
       return tr(context, ru: 'Введите сумму', zh: '请输入金额');
     }
-    final min = widget.availability.minRub;
-    final max = widget.availability.maxRub;
+    final min = widget.availability!.minRub;
+    final max = widget.availability!.maxRub;
     if (min != null && rub < min) {
       return tr(
         context,
@@ -262,25 +293,31 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
       return;
     }
     setState(() => _submitting = true);
-    final activeCodeId = ref.read(activeClientCodeIdProvider);
-    final amount = _enteredIn == 'cny'
-        ? double.parse(_cnyCtrl.text.replaceAll(',', '.'))
-        : double.parse(_rubCtrl.text.replaceAll(',', '.'));
     try {
-      final created = await ref
-          .read(selfBuyoutServiceProvider)
-          .createRequest(
-            clientCodeId: activeCodeId!,
-            amountEnteredIn: _enteredIn,
-            amount: amount,
-            transferRequisitesText: _reqCtrl.text.trim(),
-            warningAccepted: true,
-            fileBytes: _fileBytes,
-            fileName: _fileName,
-            fileMime: _fileMime,
-          );
+      final service = ref.read(selfBuyoutServiceProvider);
+      final correctionRequest = widget.correctionRequest;
+      final result = correctionRequest != null
+          ? await service.correctTransferRequisites(
+              requestId: correctionRequest.id,
+              transferRequisitesText: _reqCtrl.text.trim(),
+              fileBytes: _fileBytes,
+              fileName: _fileName,
+              fileMime: _fileMime,
+            )
+          : await service.createRequest(
+              clientCodeId: ref.read(activeClientCodeIdProvider)!,
+              amountEnteredIn: _enteredIn,
+              amount: _enteredIn == 'cny'
+                  ? double.parse(_cnyCtrl.text.replaceAll(',', '.'))
+                  : double.parse(_rubCtrl.text.replaceAll(',', '.')),
+              transferRequisitesText: _reqCtrl.text.trim(),
+              warningAccepted: true,
+              fileBytes: _fileBytes,
+              fileName: _fileName,
+              fileMime: _fileMime,
+            );
       if (!mounted) return;
-      Navigator.of(context).pop(created);
+      Navigator.of(context).pop(result);
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -289,7 +326,14 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           : null;
       AppToast.show(
         context,
-        reason ?? tr(context, ru: 'Не удалось создать заявку', zh: '无法创建申请'),
+        reason ??
+            (_isCorrection
+                ? tr(
+                    context,
+                    ru: 'Не удалось обновить реквизиты',
+                    zh: '无法更新收款信息',
+                  )
+                : tr(context, ru: 'Не удалось создать заявку', zh: '无法创建申请')),
         isError: true,
       );
     }
@@ -301,6 +345,7 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final activeCode = ref.watch(activeClientCodeProvider);
     final rateStr = _rate > 0 ? _rate.toStringAsFixed(2) : '—';
+    final correctionRequest = widget.correctionRequest;
 
     return SafeArea(
       top: false,
@@ -321,12 +366,20 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SelfBuyoutGradientHeader(
-                icon: Icons.add_card_rounded,
-                title: tr(context, ru: 'Новая заявка', zh: '新申请'),
+                icon: correctionRequest == null
+                    ? Icons.add_card_rounded
+                    : Icons.edit_rounded,
+                title: correctionRequest == null
+                    ? tr(context, ru: 'Новая заявка', zh: '新申请')
+                    : tr(context, ru: 'Исправить реквизиты', zh: '修改收款信息'),
                 subtitle: tr(
                   context,
-                  ru: 'Самовыкуп — помощь с юанями',
-                  zh: '自助代购 — 人民币支持',
+                  ru: correctionRequest == null
+                      ? 'Самовыкуп — помощь с юанями'
+                      : correctionRequest.requestNumber,
+                  zh: correctionRequest == null
+                      ? '自助代购 — 人民币支持'
+                      : correctionRequest.requestNumber,
                 ),
               ),
             ),
@@ -338,15 +391,22 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _rateCard(rateStr),
-                    const SizedBox(height: 12),
-                    _converterCard(),
-                    const SizedBox(height: 12),
-                    _activeCodeCard(activeCode),
-                    const SizedBox(height: 12),
+                    if (correctionRequest == null) ...[
+                      _rateCard(rateStr),
+                      const SizedBox(height: 12),
+                      _converterCard(),
+                      const SizedBox(height: 12),
+                      _activeCodeCard(activeCode),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      _correctionSummaryCard(correctionRequest),
+                      const SizedBox(height: 12),
+                    ],
                     _requisitesCard(),
-                    const SizedBox(height: 12),
-                    _warningCard(),
+                    if (correctionRequest == null) ...[
+                      const SizedBox(height: 12),
+                      _warningCard(),
+                    ],
                   ],
                 ),
               ),
@@ -354,8 +414,12 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
               child: SelfBuyoutPrimaryButton(
-                label: tr(context, ru: 'Создать заявку', zh: '创建申请'),
-                icon: Icons.check_rounded,
+                label: correctionRequest == null
+                    ? tr(context, ru: 'Создать заявку', zh: '创建申请')
+                    : tr(context, ru: 'Отправить исправления', zh: '提交修改'),
+                icon: correctionRequest == null
+                    ? Icons.check_rounded
+                    : Icons.send_rounded,
                 isLoading: _submitting,
                 onTap: _submitting ? null : _submit,
               ),
@@ -430,9 +494,9 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             ),
           ),
           const Spacer(),
-          if (widget.availability.rateDate != null)
+          if (widget.availability?.rateDate != null)
             Text(
-              widget.availability.rateDate!,
+              widget.availability!.rateDate!,
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontFamily: 'Gilroy',
@@ -613,6 +677,43 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
               child: Image.memory(_fileBytes!, height: 120, fit: BoxFit.cover),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _correctionSummaryCard(SelfBuyoutRequest request) {
+    return _card(
+      icon: Icons.paid_outlined,
+      title: tr(context, ru: 'Оплата уже подтверждена', zh: '付款已确认'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${request.requestedCnyAmount.toStringAsFixed(2)} RMB · '
+            '${request.paymentRubAmount.toStringAsFixed(2)} ₽',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            tr(
+              context,
+              ru: 'Повторно платить не нужно. После отправки партнёр получит обновлённые реквизиты по этой же заявке.',
+              zh: '无需再次付款。提交后，合作伙伴将在同一申请中收到更新后的收款信息。',
+            ),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 12.5,
+              height: 1.3,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );

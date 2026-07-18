@@ -9,6 +9,7 @@ import '../../purchase_blanks/presentation/purchase_blank_ui.dart';
 import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
 import 'self_buyout_create_sheet.dart';
+import 'self_buyout_detail_sheet.dart';
 import 'self_buyout_qr_sheet.dart';
 import 'self_buyout_ui.dart';
 
@@ -278,9 +279,43 @@ class SelfBuyoutScreen extends ConsumerWidget {
     WidgetRef ref,
     SelfBuyoutRequest r,
   ) async {
-    // Продолжить оплату для незавершённых статусов.
-    if (r.status == 'new' || r.status == 'awaiting_payment') {
-      await _openQr(context, ref, r);
+    final action = await showBlurredModalBottomSheet<SelfBuyoutDetailAction>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (_) => SelfBuyoutDetailSheet(request: r),
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case SelfBuyoutDetailAction.continuePayment:
+        await _openQr(context, ref, r);
+      case SelfBuyoutDetailAction.correctRequisites:
+        await _correctRequisites(context, ref, r);
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _correctRequisites(
+    BuildContext context,
+    WidgetRef ref,
+    SelfBuyoutRequest request,
+  ) async {
+    final corrected = await showBlurredModalBottomSheet<SelfBuyoutRequest>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (_) =>
+          SelfBuyoutCreateSheet.correctRequisites(correctionRequest: request),
+    );
+    if (corrected != null) {
+      ref.invalidate(selfBuyoutRequestsProvider);
     }
   }
 
@@ -361,6 +396,12 @@ class _RequestCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
                   ),
                 ],
               ),
