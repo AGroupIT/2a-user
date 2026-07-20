@@ -341,14 +341,19 @@ try:
 except Exception:
     data = {}
 
-data[section] = {
-    'minVersion': '1.0.0',
+section_data = data.get(section)
+if not isinstance(section_data, dict):
+    section_data = {}
+
+section_data.update({
     'latestVersion': latest_version,
     'downloadUrl': download_url,
     'size': int(size),
     'sha256': sha256,
     'changelog': base64.b64decode(changelog_b64).decode('utf-8'),
-}
+})
+section_data.setdefault('minVersion', '1.0.0')
+data[section] = section_data
 
 if 'ios' not in data:
     data['ios'] = {'minVersion': '1.0.0', 'latestVersion': latest_version, 'storeUrl': ''}
