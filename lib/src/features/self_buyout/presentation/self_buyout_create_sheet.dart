@@ -36,6 +36,11 @@ String _mimeForExt(String ext) {
 
 double _round2(double x) => (x * 100).roundToDouble() / 100;
 
+String _formatAmount(double value) => value
+    .toStringAsFixed(2)
+    .replaceFirst(RegExp(r'\.00$'), '')
+    .replaceFirst(RegExp(r'(\.\d)0$'), r'$1');
+
 /// Модалка создания заявки самовыкупа. Возвращает созданную заявку (pop).
 class SelfBuyoutCreateSheet extends ConsumerStatefulWidget {
   final SelfBuyoutAvailability? availability;
@@ -241,20 +246,13 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     if (cny <= 0 || rub <= 0) {
       return tr(context, ru: 'Введите сумму', zh: '请输入金额');
     }
-    final min = widget.availability!.minRub;
-    final max = widget.availability!.maxRub;
-    if (min != null && rub < min) {
+    final availability = widget.availability!;
+    if (availability.isBelowMinimum(cny)) {
+      final min = availability.minCny!;
       return tr(
         context,
-        ru: 'Минимум ${min.toStringAsFixed(0)} ₽',
-        zh: '最低 ${min.toStringAsFixed(0)} ₽',
-      );
-    }
-    if (max != null && rub > max) {
-      return tr(
-        context,
-        ru: 'Максимум ${max.toStringAsFixed(0)} ₽',
-        zh: '最高 ${max.toStringAsFixed(0)} ₽',
+        ru: 'Минимальная сумма самовыкупа — ${_formatAmount(min)} ¥',
+        zh: '自助代购最低金额为 ${_formatAmount(min)} ¥',
       );
     }
     final activeCodeId = ref.read(activeClientCodeIdProvider);
@@ -311,9 +309,19 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      final reason = e.response?.data is Map
-          ? e.response?.data['error']?.toString()
-          : null;
+      final data = e.response?.data is Map
+          ? e.response?.data as Map
+          : const <dynamic, dynamic>{};
+      final code = data['code']?.toString();
+      final serverMinCny = (data['minCny'] as num?)?.toDouble();
+      final reason =
+          code == 'SELF_BUYOUT_AMOUNT_BELOW_MINIMUM' && serverMinCny != null
+          ? tr(
+              context,
+              ru: 'Минимальная сумма самовыкупа — ${_formatAmount(serverMinCny)} ¥',
+              zh: '自助代购最低金额为 ${_formatAmount(serverMinCny)} ¥',
+            )
+          : data['error']?.toString();
       AppToast.show(
         context,
         reason ??
@@ -505,6 +513,10 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
       title: tr(context, ru: 'Сумма', zh: '金额'),
       child: Column(
         children: [
+          if ((widget.availability?.minCny ?? 0) > 0) ...[
+            _minimumAmountNotice(widget.availability!.minCny!),
+            const SizedBox(height: 10),
+          ],
           _amountField(
             controller: _cnyCtrl,
             label: tr(context, ru: 'Нужно юаней (RMB)', zh: '需要人民币 (RMB)'),
@@ -515,6 +527,64 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             controller: _rubCtrl,
             label: tr(context, ru: 'К оплате рублей (₽)', zh: '应付卢布 (₽)'),
             onChanged: _onRubChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _minimumAmountNotice(double minCny) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: context.brandPrimary.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: context.brandPrimary,
+            size: 20,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr(
+                    context,
+                    ru: 'Минимум — ${_formatAmount(minCny)} ¥',
+                    zh: '最低金额 — ${_formatAmount(minCny)} ¥',
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  tr(
+                    context,
+                    ru: 'Можно указать любую большую сумму — верхнего лимита нет.',
+                    zh: '可输入任意更高金额，不设上限。',
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.5,
+                    height: 1.3,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

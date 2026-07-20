@@ -7,8 +7,7 @@ class SelfBuyoutAvailability {
   final String? requisitesSource;
   final String? rateDate;
   final double? clientCnyRubRate;
-  final double? minRub;
-  final double? maxRub;
+  final double? minCny;
   final int deliveryDeadlineDays;
 
   const SelfBuyoutAvailability({
@@ -18,27 +17,35 @@ class SelfBuyoutAvailability {
     this.requisitesSource,
     this.rateDate,
     this.clientCnyRubRate,
-    this.minRub,
-    this.maxRub,
+    this.minCny,
     this.deliveryDeadlineDays = 14,
   });
 
   factory SelfBuyoutAvailability.fromJson(Map<String, dynamic> json) {
     final rate = json['rate'] as Map<String, dynamic>?;
     final limits = json['limits'] as Map<String, dynamic>?;
+    final cnyRubRate = (rate?['clientCnyRubRate'] as num?)?.toDouble();
+    final explicitMinCny = (limits?['minCny'] as num?)?.toDouble();
+    final legacyMinRub = (limits?['minRub'] as num?)?.toDouble();
     return SelfBuyoutAvailability(
       available: json['available'] == true,
       reason: json['reason']?.toString(),
       disabledReason: json['disabledReason']?.toString(),
       requisitesSource: json['requisitesSource']?.toString(),
       rateDate: rate?['date']?.toString(),
-      clientCnyRubRate: (rate?['clientCnyRubRate'] as num?)?.toDouble(),
-      minRub: (limits?['minRub'] as num?)?.toDouble(),
-      maxRub: (limits?['maxRub'] as num?)?.toDouble(),
+      clientCnyRubRate: cnyRubRate,
+      minCny:
+          explicitMinCny ??
+          (legacyMinRub != null && cnyRubRate != null && cnyRubRate > 0
+              ? legacyMinRub / cnyRubRate
+              : null),
       deliveryDeadlineDays:
           (json['deliveryDeadlineDays'] as num?)?.toInt() ?? 14,
     );
   }
+
+  bool isBelowMinimum(double cnyAmount) =>
+      minCny != null && minCny! > 0 && cnyAmount < minCny!;
 
   static const unavailable = SelfBuyoutAvailability(available: false);
 }
