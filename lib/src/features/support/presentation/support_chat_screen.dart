@@ -720,54 +720,57 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen>
                       // Текст сообщения (если это не просто "Файл")
                       if (message.content.isNotEmpty &&
                           message.content != 'Файл')
-                        MarkdownBody(
-                          data: message.content.replaceAll('\n', '  \n'),
-                          selectable: true,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 15,
-                              height: 1.4,
-                              color: isMe ? Colors.white : Colors.black87,
+                        SelectionArea(
+                          child: MarkdownBody(
+                            data: message.content.replaceAll('\n', '  \n'),
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.4,
+                                color: isMe ? Colors.white : Colors.black87,
+                              ),
+                              strong: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.4,
+                                fontWeight: FontWeight.bold,
+                                color: isMe ? Colors.white : Colors.black87,
+                              ),
+                              em: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.4,
+                                fontStyle: FontStyle.italic,
+                                color: isMe ? Colors.white : Colors.black87,
+                              ),
+                              a: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                height: 1.4,
+                                color: isMe
+                                    ? Colors.white
+                                    : context.brandPrimary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              code: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 14,
+                                color: isMe ? Colors.white : Colors.black87,
+                                backgroundColor: isMe
+                                    ? Colors.white.withValues(alpha: 0.2)
+                                    : Colors.grey.withValues(alpha: 0.2),
+                              ),
+                              listBullet: TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                color: isMe ? Colors.white : Colors.black87,
+                              ),
                             ),
-                            strong: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 15,
-                              height: 1.4,
-                              fontWeight: FontWeight.bold,
-                              color: isMe ? Colors.white : Colors.black87,
-                            ),
-                            em: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 15,
-                              height: 1.4,
-                              fontStyle: FontStyle.italic,
-                              color: isMe ? Colors.white : Colors.black87,
-                            ),
-                            a: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 15,
-                              height: 1.4,
-                              color: isMe ? Colors.white : context.brandPrimary,
-                              decoration: TextDecoration.underline,
-                            ),
-                            code: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 14,
-                              color: isMe ? Colors.white : Colors.black87,
-                              backgroundColor: isMe
-                                  ? Colors.white.withValues(alpha: 0.2)
-                                  : Colors.grey.withValues(alpha: 0.2),
-                            ),
-                            listBullet: TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 15,
-                              color: isMe ? Colors.white : Colors.black87,
-                            ),
+                            onTapLink: (text, href, title) {
+                              launchSafeExternalUrl(href);
+                            },
                           ),
-                          onTapLink: (text, href, title) {
-                            launchSafeExternalUrl(href);
-                          },
                         ),
                       if (message.content.isNotEmpty &&
                           message.content != 'Файл')
