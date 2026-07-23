@@ -14,6 +14,7 @@ class ShopSearchParams {
   final Marketplace marketplace;
   final int page;
   final int pageSize;
+  final String? cursor;
   final String? categoryId;
   final String orderBy;
   final double? minPrice;
@@ -21,9 +22,10 @@ class ShopSearchParams {
 
   const ShopSearchParams({
     required this.query,
-    this.marketplace = Marketplace.poizon,
+    this.marketplace = Marketplace.alibaba1688,
     this.page = 0,
     this.pageSize = 20,
+    this.cursor,
     this.categoryId,
     this.orderBy = 'Default',
     this.minPrice,
@@ -35,6 +37,7 @@ class ShopSearchParams {
     Marketplace? marketplace,
     int? page,
     int? pageSize,
+    String? cursor,
     String? categoryId,
     String? orderBy,
     double? minPrice,
@@ -45,6 +48,7 @@ class ShopSearchParams {
       marketplace: marketplace ?? this.marketplace,
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
+      cursor: cursor ?? this.cursor,
       categoryId: categoryId ?? this.categoryId,
       orderBy: orderBy ?? this.orderBy,
       minPrice: minPrice ?? this.minPrice,
@@ -58,16 +62,19 @@ class ShopSearchParams {
     Marketplace? marketplace,
     int? page,
     int? pageSize,
+    String? cursor,
     String? categoryId,
     String? orderBy,
     bool resetMinPrice = false,
     bool resetMaxPrice = false,
+    bool resetCursor = false,
   }) {
     return ShopSearchParams(
       query: query ?? this.query,
       marketplace: marketplace ?? this.marketplace,
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
+      cursor: resetCursor ? null : cursor ?? this.cursor,
       categoryId: categoryId ?? this.categoryId,
       orderBy: orderBy ?? this.orderBy,
       minPrice: resetMinPrice ? null : minPrice,
@@ -83,13 +90,24 @@ class ShopSearchParams {
           marketplace == other.marketplace &&
           page == other.page &&
           pageSize == other.pageSize &&
+          cursor == other.cursor &&
           categoryId == other.categoryId &&
           orderBy == other.orderBy &&
           minPrice == other.minPrice &&
           maxPrice == other.maxPrice;
 
   @override
-  int get hashCode => Object.hash(query, marketplace, page, pageSize, categoryId, orderBy, minPrice, maxPrice);
+  int get hashCode => Object.hash(
+    query,
+    marketplace,
+    page,
+    pageSize,
+    cursor,
+    categoryId,
+    orderBy,
+    minPrice,
+    maxPrice,
+  );
 }
 
 /// Результат поиска
@@ -98,24 +116,26 @@ class ShopSearchResult {
   final int total;
   final int page;
   final int pageSize;
+  final String? nextCursor;
 
   const ShopSearchResult({
     this.items = const [],
     this.total = 0,
     this.page = 0,
     this.pageSize = 20,
+    this.nextCursor,
   });
 }
 
 /// Выбранная площадка
 final selectedMarketplaceProvider =
     NotifierProvider<SelectedMarketplaceNotifier, Marketplace>(
-  SelectedMarketplaceNotifier.new,
-);
+      SelectedMarketplaceNotifier.new,
+    );
 
 class SelectedMarketplaceNotifier extends Notifier<Marketplace> {
   @override
-  Marketplace build() => Marketplace.poizon;
+  Marketplace build() => Marketplace.alibaba1688;
 
   void select(Marketplace marketplace) {
     state = marketplace;
@@ -123,82 +143,113 @@ class SelectedMarketplaceNotifier extends Notifier<Marketplace> {
 }
 
 /// Поиск товаров
-final shopSearchProvider = FutureProvider.family<ShopSearchResult, ShopSearchParams>((ref, params) async {
-  final apiClient = ref.read(apiClientProvider);
+final shopSearchProvider =
+    FutureProvider.family<ShopSearchResult, ShopSearchParams>((
+      ref,
+      params,
+    ) async {
+      final apiClient = ref.read(apiClientProvider);
 
-  try {
-    final queryParameters = <String, dynamic>{
-      'q': params.query,
-      'provider': params.marketplace.apiKey,
-      'page': params.page,
-      'pageSize': params.pageSize,
-      'orderBy': params.orderBy,
-    };
-    if (params.categoryId != null && params.categoryId!.isNotEmpty) {
-      queryParameters['categoryId'] = params.categoryId;
-    }
-    if (params.minPrice != null) {
-      queryParameters['minPrice'] = params.minPrice;
-    }
-    if (params.maxPrice != null) {
-      queryParameters['maxPrice'] = params.maxPrice;
-    }
+      try {
+        final queryParameters = <String, dynamic>{
+          'q': params.query,
+          'provider': params.marketplace.apiKey,
+          'page': params.page,
+          'pageSize': params.pageSize,
+          'orderBy': params.orderBy,
+        };
+        if (params.categoryId != null && params.categoryId!.isNotEmpty) {
+          queryParameters['categoryId'] = params.categoryId;
+        }
+        if (params.minPrice != null) {
+          queryParameters['minPrice'] = params.minPrice;
+        }
+        if (params.maxPrice != null) {
+          queryParameters['maxPrice'] = params.maxPrice;
+        }
+        if (params.cursor != null && params.cursor!.isNotEmpty) {
+          queryParameters['cursor'] = params.cursor;
+        }
 
-    final response = await apiClient.get(
-      '/shop/search',
-      queryParameters: queryParameters,
-    );
+        final response = await apiClient.get(
+          '/shop/search',
+          queryParameters: queryParameters,
+        );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final itemsJson = data['items'] as List<dynamic>? ?? [];
+        if (response.statusCode == 200 && response.data != null) {
+          final data = response.data as Map<String, dynamic>;
+          final itemsJson = data['items'] as List<dynamic>? ?? [];
 
-      return ShopSearchResult(
-        items: itemsJson
-            .map((json) => ShopItem.fromJson(json as Map<String, dynamic>))
-            .toList(),
-        total: data['total'] as int? ?? 0,
-        page: data['page'] as int? ?? 0,
-        pageSize: data['pageSize'] as int? ?? 20,
-      );
-    }
-    return const ShopSearchResult();
-  } on DioException catch (e) {
-    debugPrint('Error searching shop items: $e');
-    return const ShopSearchResult();
-  }
-});
-
-/// Детали товара
-final shopItemDetailProvider = FutureProvider.family<ShopItemDetail?, String>((ref, itemId) async {
-  final apiClient = ref.read(apiClientProvider);
-
-  try {
-    final response = await apiClient.get('/shop/item/$itemId');
-
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final itemJson = data['item'] as Map<String, dynamic>?;
-      if (itemJson != null) {
-        return ShopItemDetail.fromJson(itemJson);
+          return ShopSearchResult(
+            items: itemsJson
+                .map((json) => ShopItem.fromJson(json as Map<String, dynamic>))
+                .toList(),
+            total: data['total'] as int? ?? 0,
+            page: data['page'] as int? ?? 0,
+            pageSize: data['pageSize'] as int? ?? 20,
+            nextCursor:
+                data['nextCursor']?.toString() ?? data['cursor']?.toString(),
+          );
+        }
+        return const ShopSearchResult();
+      } on DioException catch (e) {
+        debugPrint('Error searching shop items: $e');
+        return const ShopSearchResult();
       }
-    }
-    return null;
-  } on DioException catch (e) {
-    debugPrint('Error loading shop item detail: $e');
-    return null;
-  }
-});
+    });
+
+class ShopItemDetailParams {
+  const ShopItemDetailParams({required this.itemId, required this.marketplace});
+
+  final String itemId;
+  final Marketplace marketplace;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShopItemDetailParams &&
+          itemId == other.itemId &&
+          marketplace == other.marketplace;
+
+  @override
+  int get hashCode => Object.hash(itemId, marketplace);
+}
+
+/// Детали товара. Provider входит в ключ, чтобы одинаковые числовые SKU
+/// разных площадок не разделяли Riverpod cache.
+final shopItemDetailProvider =
+    FutureProvider.family<ShopItemDetail?, ShopItemDetailParams>((
+      ref,
+      params,
+    ) async {
+      final apiClient = ref.read(apiClientProvider);
+
+      try {
+        final response = await apiClient.get(
+          '/shop/item/${params.itemId}',
+          queryParameters: {'provider': params.marketplace.apiKey},
+        );
+
+        if (response.statusCode == 200 && response.data != null) {
+          final data = response.data as Map<String, dynamic>;
+          final itemJson = data['item'] as Map<String, dynamic>?;
+          if (itemJson != null) {
+            return ShopItemDetail.fromJson(itemJson);
+          }
+        }
+        return null;
+      } on DioException catch (e) {
+        debugPrint('Error loading shop item detail: $e');
+        return null;
+      }
+    });
 
 /// Параметры запроса категорий
 class ShopCategoryParams {
   final Marketplace marketplace;
   final String? parentId;
 
-  const ShopCategoryParams({
-    required this.marketplace,
-    this.parentId,
-  });
+  const ShopCategoryParams({required this.marketplace, this.parentId});
 
   @override
   bool operator ==(Object other) =>
@@ -212,33 +263,39 @@ class ShopCategoryParams {
 }
 
 /// Категории
-final shopCategoriesProvider = FutureProvider.family<List<ShopCategory>, ShopCategoryParams>((ref, params) async {
-  final apiClient = ref.read(apiClientProvider);
+final shopCategoriesProvider =
+    FutureProvider.family<List<ShopCategory>, ShopCategoryParams>((
+      ref,
+      params,
+    ) async {
+      final apiClient = ref.read(apiClientProvider);
 
-  try {
-    final queryParameters = <String, dynamic>{
-      'provider': params.marketplace.apiKey,
-    };
-    if (params.parentId != null && params.parentId!.isNotEmpty) {
-      queryParameters['parentId'] = params.parentId;
-    }
+      try {
+        final queryParameters = <String, dynamic>{
+          'provider': params.marketplace.apiKey,
+        };
+        if (params.parentId != null && params.parentId!.isNotEmpty) {
+          queryParameters['parentId'] = params.parentId;
+        }
 
-    final response = await apiClient.get(
-      '/shop/categories',
-      queryParameters: queryParameters,
-    );
+        final response = await apiClient.get(
+          '/shop/categories',
+          queryParameters: queryParameters,
+        );
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final categoriesJson = data['categories'] as List<dynamic>? ?? [];
+        if (response.statusCode == 200 && response.data != null) {
+          final data = response.data as Map<String, dynamic>;
+          final categoriesJson = data['categories'] as List<dynamic>? ?? [];
 
-      return categoriesJson
-          .map((json) => ShopCategory.fromJson(json as Map<String, dynamic>))
-          .toList();
-    }
-    return [];
-  } on DioException catch (e) {
-    debugPrint('Error loading shop categories: $e');
-    return [];
-  }
-});
+          return categoriesJson
+              .map(
+                (json) => ShopCategory.fromJson(json as Map<String, dynamic>),
+              )
+              .toList();
+        }
+        return [];
+      } on DioException catch (e) {
+        debugPrint('Error loading shop categories: $e');
+        return [];
+      }
+    });

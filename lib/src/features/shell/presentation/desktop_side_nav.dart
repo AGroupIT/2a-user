@@ -25,6 +25,7 @@ import '../../notifications/presentation/notifications_sheet.dart';
 import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
+import '../../shop/data/shop_availability_provider.dart';
 
 class DesktopSideNavExpandedNotifier extends Notifier<bool> {
   @override
@@ -165,6 +166,13 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
     final selfBuyoutAvailable =
         ref.watch(selfBuyoutAvailabilityProvider).asData?.value.available ??
         false;
+    final marketplaceAvailable =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .hasBrowsablePlatform ??
+        false;
     final serviceItems = <_SideNavEntry>[
       const _SideNavEntry(
         icon: Icons.person_rounded,
@@ -190,6 +198,13 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
         label: 'Выкуп',
         route: '/purchase-blanks',
       ),
+      if (marketplaceAvailable)
+        const _SideNavEntry(
+          icon: Icons.storefront_rounded,
+          selectedIcon: Icons.storefront_rounded,
+          label: 'Маркетплейсы',
+          route: '/shop',
+        ),
       if (selfBuyoutAvailable)
         const _SideNavEntry(
           icon: Icons.savings_rounded,

@@ -8,14 +8,20 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/purchase_provider.dart';
+import '../data/shop_availability_provider.dart';
 import '../data/shop_provider.dart';
-import '../domain/purchase_list.dart' show SkuProperty;
+import '../domain/marketplace.dart';
 import '../domain/shop_item_detail.dart';
 
 class ShopItemDetailScreen extends ConsumerStatefulWidget {
   final String itemId;
+  final Marketplace marketplace;
 
-  const ShopItemDetailScreen({super.key, required this.itemId});
+  const ShopItemDetailScreen({
+    super.key,
+    required this.itemId,
+    required this.marketplace,
+  });
 
   @override
   ConsumerState<ShopItemDetailScreen> createState() =>
@@ -33,6 +39,8 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
   void _initDefaults(ShopItemDetail item) {
     if (_initialized) return;
     _initialized = true;
+    _quantity = item.minOrderQuantity ?? 1;
+    if (_quantity < 1) _quantity = 1;
 
     // Select first option for each configurator group
     for (final entry in item.configuratorGroups.entries) {
@@ -49,7 +57,11 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detailAsync = ref.watch(shopItemDetailProvider(widget.itemId));
+    final detailParams = ShopItemDetailParams(
+      itemId: widget.itemId,
+      marketplace: widget.marketplace,
+    );
+    final detailAsync = ref.watch(shopItemDetailProvider(detailParams));
 
     return detailAsync.when(
       data: (item) {
@@ -107,7 +119,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
             const SizedBox(height: 16),
             TextButton(
               onPressed: () =>
-                  ref.invalidate(shopItemDetailProvider(widget.itemId)),
+                  ref.invalidate(shopItemDetailProvider(detailParams)),
               child: const Text('Повторить'),
             ),
           ],
@@ -163,8 +175,12 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
               // 3. Configurator (variations)
               if (item.configuratorGroups.isNotEmpty)
                 ...item.configuratorGroups.entries.map(
-                  (entry) =>
-                      _buildConfigSection(context, entry.key, entry.value),
+                  (entry) => _buildConfigSection(
+                    context,
+                    item,
+                    entry.key,
+                    entry.value,
+                  ),
                 ),
 
               // 4. Price (of selected SKU)
@@ -247,6 +263,26 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
   Widget _buildBottomBar(BuildContext context, ShopItemDetail item) {
     final selectedSku = _getSelectedConfiguredItem(item);
     final displayPrice = selectedSku?.priceDisplay ?? item.priceDisplay;
+    final minimumQuantity = (item.minOrderQuantity ?? 1) > 0
+        ? item.minOrderQuantity ?? 1
+        : 1;
+    final availableQuantity = selectedSku?.quantity ?? item.quantity;
+    final canDecrease = _quantity > minimumQuantity;
+    final canIncrease =
+        availableQuantity == null || _quantity < availableQuantity;
+    final hasRequiredSku =
+        item.configuratorGroups.isEmpty || selectedSku != null;
+    final purchaseListAvailable =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .canUsePurchaseList(item.provider) ??
+        false;
+    final canAdd =
+        purchaseListAvailable &&
+        hasRequiredSku &&
+        (availableQuantity == null || availableQuantity >= minimumQuantity);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return Positioned(
@@ -287,14 +323,14 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       GestureDetector(
-                        onTap: _quantity > 1
+                        onTap: canDecrease
                             ? () => setState(() => _quantity--)
                             : null,
                         child: Container(
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
-                            color: _quantity > 1
+                            color: canDecrease
                                 ? Colors.grey.shade200
                                 : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(8),
@@ -302,7 +338,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                           child: Icon(
                             Icons.remove,
                             size: 16,
-                            color: _quantity > 1
+                            color: canDecrease
                                 ? AppColors.textPrimary
                                 : Colors.grey.shade400,
                           ),
@@ -320,18 +356,24 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => setState(() => _quantity++),
+                        onTap: canIncrease
+                            ? () => setState(() => _quantity++)
+                            : null,
                         child: Container(
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
+                            color: canIncrease
+                                ? Colors.grey.shade200
+                                : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.add,
                             size: 16,
-                            color: AppColors.textPrimary,
+                            color: canIncrease
+                                ? AppColors.textPrimary
+                                : Colors.grey.shade400,
                           ),
                         ),
                       ),
@@ -343,7 +385,9 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
             const SizedBox(width: 12),
             // Add to list button
             FilledButton.icon(
-              onPressed: _isAddingToList ? null : () => _addToList(item),
+              onPressed: _isAddingToList || !canAdd
+                  ? null
+                  : () => _addToList(item),
               icon: _isAddingToList
                   ? const SizedBox(
                       width: 18,
@@ -355,7 +399,11 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                     )
                   : const Icon(Icons.add_shopping_cart, size: 20),
               label: Text(
-                _isAddingToList ? 'Добавляем...' : 'В список выкупа',
+                _isAddingToList
+                    ? 'Добавляем...'
+                    : purchaseListAvailable
+                    ? 'В список выкупа'
+                    : 'Выкуп готовится',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -399,41 +447,21 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
         listId = (data['list'] as Map<String, dynamic>)['id'] as int;
       }
 
-      // 2. Build sku properties from selected configurators
-      final skuProps = <Map<String, String>>[];
-      for (final entry in item.configuratorGroups.entries) {
-        for (final attr in entry.value) {
-          if (_selectedConfigs[attr.pid] == attr.vid) {
-            skuProps.add(
-              SkuProperty(
-                name: entry.key,
-                value: attr.value,
-              ).toJson().map((k, v) => MapEntry(k, v.toString())),
-            );
-          }
-        }
-      }
-
       final selectedSku = _getSelectedConfiguredItem(item);
 
-      // 3. Add item
+      // 2. Backend reloads the selected provider and creates a trusted
+      // price/SKU snapshot. Client-supplied price is never accepted.
       await apiClient.post(
         '/shop/purchase-lists/$listId/items',
         data: {
           'externalItemId': item.id,
           'provider': item.provider,
-          'title': item.title,
-          'imageUrl': item.mainImage,
-          'price': selectedSku?.price ?? item.price,
-          'currency': item.currency,
           'quantity': _quantity,
           'skuId': selectedSku?.id,
-          'skuProperties': skuProps,
-          'externalUrl': item.externalUrl,
         },
       );
 
-      // 4. Refresh providers
+      // 3. Refresh providers
       ref.invalidate(activePurchaseListProvider);
 
       if (mounted) {
@@ -684,6 +712,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
 
   Widget _buildConfigSection(
     BuildContext context,
+    ShopItemDetail item,
     String propertyName,
     List<ItemAttribute> options,
   ) {
@@ -712,6 +741,16 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                 onTap: () {
                   setState(() {
                     _selectedConfigs[attr.pid] = attr.vid;
+                    final selectedSku = _getSelectedConfiguredItem(item);
+                    final minimum = (item.minOrderQuantity ?? 1) > 0
+                        ? item.minOrderQuantity ?? 1
+                        : 1;
+                    if (_quantity < minimum) _quantity = minimum;
+                    if (selectedSku != null &&
+                        selectedSku.quantity >= minimum &&
+                        _quantity > selectedSku.quantity) {
+                      _quantity = selectedSku.quantity;
+                    }
                   });
                 },
                 child: Container(

@@ -17,6 +17,7 @@ import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
+import '../../shop/data/shop_availability_provider.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
@@ -160,6 +161,13 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
       selfBuyoutAvailability?.reason,
     );
     final showSelfBuyout = selfBuyoutAvailable || selfBuyoutWaitingForRates;
+    final showMarketplaces =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .hasBrowsablePlatform ??
+        false;
 
     return Container(
       constraints: BoxConstraints(
@@ -235,18 +243,26 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           iconColor: const Color(0xFFFF5722),
                           onTap: () => _go(context, '/purchase-blanks'),
                         ),
+                        if (showMarketplaces)
+                          _MoreMenuTile(
+                            icon: Icons.storefront_rounded,
+                            title: 'Маркетплейсы',
+                            subtitle: 'Каталоги 1688, JD и список выкупа',
+                            iconColor: const Color(0xFFFF6A00),
+                            onTap: () => _go(context, '/shop'),
+                          ),
                         if (showSelfBuyout)
                           _MoreMenuTile(
                             icon: Icons.savings_rounded,
-                          title: 'Самовыкуп',
-                          subtitle: selfBuyoutWaitingForRates
-                              ? 'Заявки доступны, создание после обновления курсов'
-                              : 'Помощь с юанями для самостоятельной покупки',
-                          iconColor: selfBuyoutWaitingForRates
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFF10B981),
-                          onTap: () => _go(context, '/self-buyout'),
-                        ),
+                            title: 'Самовыкуп',
+                            subtitle: selfBuyoutWaitingForRates
+                                ? 'Заявки доступны, создание после обновления курсов'
+                                : 'Помощь с юанями для самостоятельной покупки',
+                            iconColor: selfBuyoutWaitingForRates
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF10B981),
+                            onTap: () => _go(context, '/self-buyout'),
+                          ),
                         _MoreMenuTile(
                           icon: Icons.shopping_bag_rounded,
                           title: 'Совместные покупки',

@@ -1,37 +1,37 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ui/app_colors.dart';
-import '../../data/shop_provider.dart';
 import '../../domain/marketplace.dart';
 
-class MarketplaceSelector extends ConsumerWidget {
-  final ValueChanged<Marketplace>? onChanged;
+class MarketplaceSelector extends StatelessWidget {
+  final List<Marketplace> marketplaces;
+  final Marketplace selected;
+  final ValueChanged<Marketplace> onChanged;
 
-  const MarketplaceSelector({super.key, this.onChanged});
+  const MarketplaceSelector({
+    super.key,
+    required this.marketplaces,
+    required this.selected,
+    required this.onChanged,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(selectedMarketplaceProvider);
-
+  Widget build(BuildContext context) {
     return SizedBox(
       height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: Marketplace.values.length,
+        itemCount: marketplaces.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final mp = Marketplace.values[index];
+          final mp = marketplaces[index];
           final isSelected = mp == selected;
 
           return ChoiceChip(
             label: Text(mp.displayName),
             selected: isSelected,
-            onSelected: (_) {
-              ref.read(selectedMarketplaceProvider.notifier).select(mp);
-              onChanged?.call(mp);
-            },
+            onSelected: (_) => onChanged(mp),
             selectedColor: context.brandPrimary,
             backgroundColor: Colors.white,
             labelStyle: TextStyle(

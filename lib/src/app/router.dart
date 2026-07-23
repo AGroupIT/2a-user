@@ -25,6 +25,13 @@ import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/track_search_no_code_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
+import '../features/shop/domain/marketplace.dart';
+import '../features/shop/presentation/marketplace_access_gate.dart';
+import '../features/shop/presentation/purchase_list_detail_screen.dart';
+import '../features/shop/presentation/purchase_list_screen.dart';
+import '../features/shop/presentation/purchase_lists_screen.dart';
+import '../features/shop/presentation/shop_item_detail_screen.dart';
+import '../features/shop/presentation/shop_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
 import '../features/sp_finance/presentation/sp_v2_purchase_detail_screen.dart';
@@ -382,6 +389,101 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(title: 'Тарифы', child: TariffsScreen()),
         ),
+      ),
+      GoRoute(
+        name: 'shop',
+        path: '/shop',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Маркетплейсы',
+            child: MarketplaceAccessGate(child: ShopScreen()),
+          ),
+        ),
+        routes: [
+          GoRoute(
+            name: 'shop-item',
+            path: 'item/:itemId',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final marketplace =
+                  Marketplace.fromApiKey(
+                    state.uri.queryParameters['provider'] ?? '',
+                  ) ??
+                  Marketplace.alibaba1688;
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Товар ${marketplace.displayName}',
+                  child: MarketplaceAccessGate(
+                    platformCode: marketplace.apiKey,
+                    child: ShopItemDetailScreen(
+                      itemId: state.pathParameters['itemId'] ?? '',
+                      marketplace: marketplace,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          GoRoute(
+            name: 'shop-cart',
+            path: 'cart',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) => _adaptivePage(
+              context,
+              state,
+              const AppScaffold(
+                title: 'Список выкупа',
+                child: MarketplaceAccessGate(
+                  requirePurchaseList: true,
+                  child: PurchaseListScreen(),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            name: 'shop-purchases',
+            path: 'purchases',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) => _adaptivePage(
+              context,
+              state,
+              const AppScaffold(
+                title: 'История заявок',
+                child: PurchaseListsScreen(),
+              ),
+            ),
+          ),
+          GoRoute(
+            name: 'shop-purchase-detail',
+            path: 'purchases/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(
+                    reason: 'Некорректный ID заявки на выкуп',
+                  ),
+                );
+              }
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Заявка на выкуп',
+                  child: PurchaseListDetailScreen(listId: id),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       // SP Finance routes
       GoRoute(

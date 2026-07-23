@@ -21,8 +21,7 @@ class PurchaseListsScreen extends ConsumerWidget {
     return listsAsync.when(
       data: (lists) {
         // Filter out drafts — only show submitted+
-        final submitted =
-            lists.where((l) => l.status != 'draft').toList();
+        final submitted = lists.where((l) => l.status != 'draft').toList();
 
         if (submitted.isEmpty) {
           return ListView(
@@ -31,15 +30,18 @@ class PurchaseListsScreen extends ConsumerWidget {
               Text(
                 'Мои заявки',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 60),
               Center(
                 child: Column(
                   children: [
-                    Icon(Icons.receipt_long_outlined,
-                        size: 64, color: Colors.grey.shade300),
+                    Icon(
+                      Icons.receipt_long_outlined,
+                      size: 64,
+                      color: Colors.grey.shade300,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Нет заявок',
@@ -53,8 +55,10 @@ class PurchaseListsScreen extends ConsumerWidget {
                     Text(
                       'Заявки появятся после отправки списка выкупа',
                       textAlign: TextAlign.center,
-                      style:
-                          TextStyle(fontSize: 14, color: Colors.grey.shade400),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade400,
+                      ),
                     ),
                   ],
                 ),
@@ -69,38 +73,46 @@ class PurchaseListsScreen extends ConsumerWidget {
             TutorialStep(
               icon: Icons.receipt_long_rounded,
               title: 'Мои заявки',
-              description: 'Здесь хранятся все ваши отправленные заявки на выкуп. Каждая заявка — это список товаров из магазина.',
+              description:
+                  'Здесь хранятся все ваши отправленные заявки на выкуп. Каждая заявка — это список товаров из магазина.',
             ),
             TutorialStep(
               icon: Icons.info_rounded,
               title: 'Статус заявки',
-              description: 'Статус показывает, на каком этапе находится заявка: новая, в обработке, выкуплена или отменена.',
+              description:
+                  'Статус показывает, на каком этапе находится заявка: новая, в обработке, выкуплена или отменена.',
             ),
             TutorialStep(
               icon: Icons.touch_app_rounded,
               title: 'Детали заявки',
-              description: 'Нажмите на заявку, чтобы увидеть список товаров, их количество и итоговые суммы.',
+              description:
+                  'Нажмите на заявку, чтобы увидеть список товаров, их количество и итоговые суммы.',
             ),
           ],
           child: ListView(
-          padding: EdgeInsets.fromLTRB(
-              16, topPad * 0.7 + 16, 16, 24 + bottomPad),
-          children: [
-            Text(
-              'Мои заявки',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 16,
+              16,
+              24 + bottomPad,
             ),
-            const SizedBox(height: 16),
-            ...submitted.map(
-              (list) => _PurchaseListCard(
-                list: list,
-                onTap: () => context.push('/shop/purchases/${list.id}'),
+            children: [
+              Text(
+                'Мои заявки',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-          ],
-        ));
+              const SizedBox(height: 16),
+              ...submitted.map(
+                (list) => _PurchaseListCard(
+                  list: list,
+                  onTap: () => context.push('/shop/purchases/${list.id}'),
+                ),
+              ),
+            ],
+          ),
+        );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
@@ -171,29 +183,69 @@ class _PurchaseListCard extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.shopping_bag_outlined,
-                      size: 16, color: Colors.grey.shade500),
+                  Icon(
+                    Icons.shopping_bag_outlined,
+                    size: 16,
+                    color: Colors.grey.shade500,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '${list.totalItems} товаров',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                   const SizedBox(width: 16),
-                  Icon(Icons.calendar_today_outlined,
-                      size: 14, color: Colors.grey.shade500),
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 14,
+                    color: Colors.grey.shade500,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     _formatDate(list.submittedAt ?? list.createdAt),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
               ),
+              if (list.marketplaceOrder != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF0E8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        list.marketplaceOrder!.platform.toUpperCase(),
+                        style: TextStyle(
+                          color: AppColors.brandOrange,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        list.marketplaceOrder!.statusDisplay,
+                        style: const TextStyle(
+                          color: AppColors.brandOrange,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '¥${list.marketplaceOrder!.payableCny.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
               if (list.items.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 // Preview images
@@ -201,8 +253,7 @@ class _PurchaseListCard extends StatelessWidget {
                   height: 44,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount:
-                        list.items.length > 5 ? 5 : list.items.length,
+                    itemCount: list.items.length > 5 ? 5 : list.items.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 6),
                     itemBuilder: (context, index) {
                       if (index == 4 && list.items.length > 5) {
@@ -228,8 +279,8 @@ class _PurchaseListCard extends StatelessWidget {
                       final item = list.items[index];
                       return ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: item.imageUrl != null &&
-                                item.imageUrl!.isNotEmpty
+                        child:
+                            item.imageUrl != null && item.imageUrl!.isNotEmpty
                             ? CachedNetworkImage(
                                 imageUrl: item.imageUrl!,
                                 width: 44,
@@ -240,16 +291,18 @@ class _PurchaseListCard extends StatelessWidget {
                                 width: 44,
                                 height: 44,
                                 color: Colors.grey.shade100,
-                                child: Icon(Icons.image_outlined,
-                                    size: 20, color: Colors.grey.shade300),
+                                child: Icon(
+                                  Icons.image_outlined,
+                                  size: 20,
+                                  color: Colors.grey.shade300,
+                                ),
                               ),
                       );
                     },
                   ),
                 ),
               ],
-              if (list.managerNote != null &&
-                  list.managerNote!.isNotEmpty) ...[
+              if (list.managerNote != null && list.managerNote!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
@@ -261,8 +314,11 @@ class _PurchaseListCard extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.comment_outlined,
-                          size: 16, color: Colors.blue.shade400),
+                      Icon(
+                        Icons.comment_outlined,
+                        size: 16,
+                        color: Colors.blue.shade400,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -298,25 +354,17 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (Color bg, Color fg, String label) = switch (status) {
       'submitted' => (
-          Colors.orange.shade100,
-          Colors.orange.shade800,
-          'Отправлена'
-        ),
-      'processing' => (
-          Colors.blue.shade100,
-          Colors.blue.shade800,
-          'В работе'
-        ),
+        Colors.orange.shade100,
+        Colors.orange.shade800,
+        'Отправлена',
+      ),
+      'processing' => (Colors.blue.shade100, Colors.blue.shade800, 'В работе'),
       'completed' => (
-          Colors.green.shade100,
-          Colors.green.shade800,
-          'Выполнена'
-        ),
-      'cancelled' => (
-          Colors.grey.shade200,
-          Colors.grey.shade600,
-          'Отменена'
-        ),
+        Colors.green.shade100,
+        Colors.green.shade800,
+        'Выполнена',
+      ),
+      'cancelled' => (Colors.grey.shade200, Colors.grey.shade600, 'Отменена'),
       _ => (Colors.grey.shade200, Colors.grey.shade600, status),
     };
 
@@ -328,11 +376,7 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
       ),
     );
   }
