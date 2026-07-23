@@ -9,12 +9,12 @@ class MarketplaceAccessGate extends ConsumerWidget {
   const MarketplaceAccessGate({
     super.key,
     required this.child,
-    this.platformCode = '1688',
+    this.platformCode,
     this.requirePurchaseList = false,
   });
 
   final Widget child;
-  final String platformCode;
+  final String? platformCode;
   final bool requirePurchaseList;
 
   @override
@@ -24,15 +24,27 @@ class MarketplaceAccessGate extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => _UnavailableMarketplace(
         reason: 'availability_unavailable',
+        platformCode: platformCode,
         onRetry: () => ref.invalidate(shopAvailabilityProvider),
       ),
       data: (value) {
-        final allowed = requirePurchaseList
-            ? value.canUsePurchaseList(platformCode)
-            : value.canBrowse(platformCode);
+        final selected = platformCode == null
+            ? null
+            : value.platform(platformCode!);
+        final allowed = platformCode == null
+            ? requirePurchaseList
+                  ? value.platforms.any(
+                      (platform) => value.canUsePurchaseList(platform.code),
+                    )
+                  : value.hasBrowsablePlatform
+            : requirePurchaseList
+            ? value.canUsePurchaseList(platformCode!)
+            : value.canBrowse(platformCode!);
         if (allowed) return child;
         return _UnavailableMarketplace(
-          reason: value.platform(platformCode)?.reason ?? value.reason,
+          reason: selected?.reason ?? value.reason,
+          platformCode: selected?.code ?? platformCode,
+          platformName: selected?.nameRu,
           onRetry: () => ref.invalidate(shopAvailabilityProvider),
         );
       },
@@ -41,23 +53,41 @@ class MarketplaceAccessGate extends ConsumerWidget {
 }
 
 class _UnavailableMarketplace extends StatelessWidget {
-  const _UnavailableMarketplace({required this.reason, required this.onRetry});
+  const _UnavailableMarketplace({
+    required this.reason,
+    required this.onRetry,
+    this.platformCode,
+    this.platformName,
+  });
 
   final String? reason;
   final VoidCallback onRetry;
+  final String? platformCode;
+  final String? platformName;
 
   @override
   Widget build(BuildContext context) {
+    final marketplace = platformName?.trim().isNotEmpty == true
+        ? platformName!
+        : platformCode?.toUpperCase() ?? 'маркетплейсы';
     final text = switch (reason) {
       'agent_marketplaces_disabled' || 'agent_platform_disabled' =>
-        'Ваш агент пока не подключил каталог 1688 для клиентов.',
-      'client_inactive' => 'Каталог 1688 недоступен для неактивного аккаунта.',
+        'Ваш агент пока не подключил каталог $marketplace для клиентов.',
+      'client_inactive' =>
+        'Каталог $marketplace недоступен для неактивного аккаунта.',
       'platform_disabled_globally' ||
       'integration_unhealthy' ||
       'integration_not_ready' ||
-      'system_disabled' => 'Интеграция с 1688 ещё готовится к запуску.',
-      _ => 'Не удалось проверить доступность каталога 1688.',
+      'system_disabled' => 'Интеграция с $marketplace ещё готовится к запуску.',
+      _ => 'Не удалось проверить доступность маркетплейсов.',
     };
+    final isJd = platformCode == 'jd';
+    final badge = platformCode == null
+        ? '2A'
+        : isJd
+        ? 'JD'
+        : platformCode!;
+    final accent = isJd ? const Color(0xFFE1251B) : const Color(0xFFFF6A00);
 
     return Center(
       child: SingleChildScrollView(
@@ -86,21 +116,23 @@ class _UnavailableMarketplace extends StatelessWidget {
                   height: 60,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF6A00).withValues(alpha: 0.12),
+                    color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    '1688',
+                  child: Text(
+                    badge,
                     style: TextStyle(
-                      color: Color(0xFFFF6A00),
+                      color: accent,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Каталог 1688',
+                Text(
+                  platformCode == null
+                      ? 'Каталоги маркетплейсов'
+                      : 'Каталог $marketplace',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,

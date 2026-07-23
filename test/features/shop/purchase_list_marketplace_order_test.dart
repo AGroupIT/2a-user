@@ -55,4 +55,17 @@ void main() {
       'SF123',
     );
   });
+
+  test('marketplace order preserves JD platform code', () {
+    final order = MarketplaceOrderSummary.fromJson({
+      'id': 12,
+      'platform': 'jd',
+      'status': 'previewed',
+      'totals': {'payable': '99.90', 'freight': '0', 'currency': 'CNY'},
+      'groups': <dynamic>[],
+    });
+
+    expect(order.platform, 'jd');
+    expect(order.statusDisplay, 'Рассчитан');
+  });
 }

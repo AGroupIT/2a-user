@@ -25,6 +25,7 @@ import '../features/rules/presentation/rules_screen.dart';
 import '../features/search/presentation/track_search_no_code_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
 import '../features/calculator/presentation/calculator_screen.dart';
+import '../features/shop/domain/marketplace.dart';
 import '../features/shop/presentation/marketplace_access_gate.dart';
 import '../features/shop/presentation/purchase_list_detail_screen.dart';
 import '../features/shop/presentation/purchase_list_screen.dart';
@@ -397,7 +398,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           context,
           state,
           const AppScaffold(
-            title: 'Каталог 1688',
+            title: 'Маркетплейсы',
             child: MarketplaceAccessGate(child: ShopScreen()),
           ),
         ),
@@ -406,18 +407,27 @@ final routerProvider = Provider<GoRouter>((ref) {
             name: 'shop-item',
             path: 'item/:itemId',
             parentNavigatorKey: _rootNavigatorKey,
-            pageBuilder: (context, state) => _adaptivePage(
-              context,
-              state,
-              AppScaffold(
-                title: 'Товар 1688',
-                child: MarketplaceAccessGate(
-                  child: ShopItemDetailScreen(
-                    itemId: state.pathParameters['itemId'] ?? '',
+            pageBuilder: (context, state) {
+              final marketplace =
+                  Marketplace.fromApiKey(
+                    state.uri.queryParameters['provider'] ?? '',
+                  ) ??
+                  Marketplace.alibaba1688;
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Товар ${marketplace.displayName}',
+                  child: MarketplaceAccessGate(
+                    platformCode: marketplace.apiKey,
+                    child: ShopItemDetailScreen(
+                      itemId: state.pathParameters['itemId'] ?? '',
+                      marketplace: marketplace,
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           GoRoute(
             name: 'shop-cart',

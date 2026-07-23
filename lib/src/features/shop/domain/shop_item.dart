@@ -93,5 +93,6 @@ class ShopItem {
     return 0.0;
   }
 
-  String get priceDisplay => '¥${price.toStringAsFixed(0)}';
+  String get priceDisplay =>
+      price > 0 ? '¥${price.toStringAsFixed(0)}' : 'Цена уточняется';
 }

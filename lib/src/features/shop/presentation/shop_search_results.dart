@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_layout.dart';
 import '../data/shop_provider.dart';
+import '../domain/marketplace.dart';
 import '../domain/shop_item.dart';
 import 'widgets/shop_item_card.dart';
 
@@ -20,10 +21,13 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
   final List<ShopItem> _allItems = [];
   int _currentPage = 0;
   int _total = 0;
+  String? _nextCursor;
+  String? _currentCursor;
   bool _isLoadingMore = false;
 
   /// The base params (without page) — used to detect when search changes
-  ShopSearchParams get _baseParams => widget.params.copyWith(page: 0);
+  ShopSearchParams get _baseParams =>
+      widget.params.copyWithReset(page: 0, resetCursor: true);
 
   ShopSearchParams? _lastBaseParams;
 
@@ -42,6 +46,8 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
       _allItems.clear();
       _currentPage = 0;
       _total = 0;
+      _nextCursor = null;
+      _currentCursor = null;
       _isLoadingMore = false;
     }
   }
@@ -54,6 +60,7 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
       _allItems.addAll(result.items);
     }
     _total = result.total;
+    _nextCursor = result.nextCursor;
     _currentPage = page;
     _isLoadingMore = false;
   }
@@ -63,6 +70,7 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
     if (_allItems.length >= _total) return;
     setState(() {
       _isLoadingMore = true;
+      _currentCursor = _nextCursor;
       _currentPage++;
     });
   }
@@ -70,7 +78,10 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
   @override
   Widget build(BuildContext context) {
     // Always watch the current page
-    final params = widget.params.copyWith(page: _currentPage);
+    final params = widget.params.copyWith(
+      page: _currentPage,
+      cursor: _currentCursor,
+    );
     final searchAsync = ref.watch(shopSearchProvider(params));
 
     return searchAsync.when(
@@ -102,7 +113,10 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
           );
         }
 
-        final hasMore = _allItems.length < _total;
+        final hasMore =
+            _allItems.length < _total &&
+            (widget.params.marketplace != Marketplace.jd ||
+                _nextCursor?.isNotEmpty == true);
 
         return NotificationListener<ScrollNotification>(
           onNotification: (notification) {
@@ -120,7 +134,10 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
       loading: () {
         if (_allItems.isNotEmpty) {
           // Already have items, show them + loading at bottom
-          final hasMore = _allItems.length < _total;
+          final hasMore =
+              _allItems.length < _total &&
+              (widget.params.marketplace != Marketplace.jd ||
+                  _nextCursor?.isNotEmpty == true);
           return NotificationListener<ScrollNotification>(
             onNotification: (notification) => false,
             child: _buildGrid(context, hasMore: hasMore),
@@ -191,7 +208,12 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
             return ShopItemCard(
               item: item,
               onTap: () {
-                context.push('/shop/item/${item.id}');
+                context.push(
+                  Uri(
+                    path: '/shop/item/${item.id}',
+                    queryParameters: {'provider': item.provider},
+                  ).toString(),
+                );
               },
             );
           },

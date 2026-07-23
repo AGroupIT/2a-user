@@ -81,7 +81,8 @@ class ConfiguredItem {
     return 0.0;
   }
 
-  String get priceDisplay => '¥${price.toStringAsFixed(0)}';
+  String get priceDisplay =>
+      price > 0 ? '¥${price.toStringAsFixed(0)}' : 'Цена уточняется';
 }
 
 class ShopItemDetail {
@@ -174,7 +175,8 @@ class ShopItemDetail {
     return 0.0;
   }
 
-  String get priceDisplay => '¥${price.toStringAsFixed(0)}';
+  String get priceDisplay =>
+      price > 0 ? '¥${price.toStringAsFixed(0)}' : 'Цена уточняется';
 
   List<ItemAttribute> get configuratorAttributes =>
       attributes.where((a) => a.isConfigurator).toList();

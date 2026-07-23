@@ -14,6 +14,7 @@ class ShopSearchParams {
   final Marketplace marketplace;
   final int page;
   final int pageSize;
+  final String? cursor;
   final String? categoryId;
   final String orderBy;
   final double? minPrice;
@@ -24,6 +25,7 @@ class ShopSearchParams {
     this.marketplace = Marketplace.alibaba1688,
     this.page = 0,
     this.pageSize = 20,
+    this.cursor,
     this.categoryId,
     this.orderBy = 'Default',
     this.minPrice,
@@ -35,6 +37,7 @@ class ShopSearchParams {
     Marketplace? marketplace,
     int? page,
     int? pageSize,
+    String? cursor,
     String? categoryId,
     String? orderBy,
     double? minPrice,
@@ -45,6 +48,7 @@ class ShopSearchParams {
       marketplace: marketplace ?? this.marketplace,
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
+      cursor: cursor ?? this.cursor,
       categoryId: categoryId ?? this.categoryId,
       orderBy: orderBy ?? this.orderBy,
       minPrice: minPrice ?? this.minPrice,
@@ -58,16 +62,19 @@ class ShopSearchParams {
     Marketplace? marketplace,
     int? page,
     int? pageSize,
+    String? cursor,
     String? categoryId,
     String? orderBy,
     bool resetMinPrice = false,
     bool resetMaxPrice = false,
+    bool resetCursor = false,
   }) {
     return ShopSearchParams(
       query: query ?? this.query,
       marketplace: marketplace ?? this.marketplace,
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
+      cursor: resetCursor ? null : cursor ?? this.cursor,
       categoryId: categoryId ?? this.categoryId,
       orderBy: orderBy ?? this.orderBy,
       minPrice: resetMinPrice ? null : minPrice,
@@ -83,6 +90,7 @@ class ShopSearchParams {
           marketplace == other.marketplace &&
           page == other.page &&
           pageSize == other.pageSize &&
+          cursor == other.cursor &&
           categoryId == other.categoryId &&
           orderBy == other.orderBy &&
           minPrice == other.minPrice &&
@@ -94,6 +102,7 @@ class ShopSearchParams {
     marketplace,
     page,
     pageSize,
+    cursor,
     categoryId,
     orderBy,
     minPrice,
@@ -107,12 +116,14 @@ class ShopSearchResult {
   final int total;
   final int page;
   final int pageSize;
+  final String? nextCursor;
 
   const ShopSearchResult({
     this.items = const [],
     this.total = 0,
     this.page = 0,
     this.pageSize = 20,
+    this.nextCursor,
   });
 }
 
@@ -156,6 +167,9 @@ final shopSearchProvider =
         if (params.maxPrice != null) {
           queryParameters['maxPrice'] = params.maxPrice;
         }
+        if (params.cursor != null && params.cursor!.isNotEmpty) {
+          queryParameters['cursor'] = params.cursor;
+        }
 
         final response = await apiClient.get(
           '/shop/search',
@@ -173,6 +187,8 @@ final shopSearchProvider =
             total: data['total'] as int? ?? 0,
             page: data['page'] as int? ?? 0,
             pageSize: data['pageSize'] as int? ?? 20,
+            nextCursor:
+                data['nextCursor']?.toString() ?? data['cursor']?.toString(),
           );
         }
         return const ShopSearchResult();
@@ -182,29 +198,51 @@ final shopSearchProvider =
       }
     });
 
-/// Детали товара
-final shopItemDetailProvider = FutureProvider.family<ShopItemDetail?, String>((
-  ref,
-  itemId,
-) async {
-  final apiClient = ref.read(apiClientProvider);
+class ShopItemDetailParams {
+  const ShopItemDetailParams({required this.itemId, required this.marketplace});
 
-  try {
-    final response = await apiClient.get('/shop/item/$itemId');
+  final String itemId;
+  final Marketplace marketplace;
 
-    if (response.statusCode == 200 && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
-      final itemJson = data['item'] as Map<String, dynamic>?;
-      if (itemJson != null) {
-        return ShopItemDetail.fromJson(itemJson);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShopItemDetailParams &&
+          itemId == other.itemId &&
+          marketplace == other.marketplace;
+
+  @override
+  int get hashCode => Object.hash(itemId, marketplace);
+}
+
+/// Детали товара. Provider входит в ключ, чтобы одинаковые числовые SKU
+/// разных площадок не разделяли Riverpod cache.
+final shopItemDetailProvider =
+    FutureProvider.family<ShopItemDetail?, ShopItemDetailParams>((
+      ref,
+      params,
+    ) async {
+      final apiClient = ref.read(apiClientProvider);
+
+      try {
+        final response = await apiClient.get(
+          '/shop/item/${params.itemId}',
+          queryParameters: {'provider': params.marketplace.apiKey},
+        );
+
+        if (response.statusCode == 200 && response.data != null) {
+          final data = response.data as Map<String, dynamic>;
+          final itemJson = data['item'] as Map<String, dynamic>?;
+          if (itemJson != null) {
+            return ShopItemDetail.fromJson(itemJson);
+          }
+        }
+        return null;
+      } on DioException catch (e) {
+        debugPrint('Error loading shop item detail: $e');
+        return null;
       }
-    }
-    return null;
-  } on DioException catch (e) {
-    debugPrint('Error loading shop item detail: $e');
-    return null;
-  }
-});
+    });
 
 /// Параметры запроса категорий
 class ShopCategoryParams {

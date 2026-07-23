@@ -161,8 +161,12 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
       selfBuyoutAvailability?.reason,
     );
     final showSelfBuyout = selfBuyoutAvailable || selfBuyoutWaitingForRates;
-    final showMarketplace1688 =
-        ref.watch(shopAvailabilityProvider).asData?.value.canBrowse('1688') ??
+    final showMarketplaces =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .hasBrowsablePlatform ??
         false;
 
     return Container(
@@ -239,11 +243,11 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           iconColor: const Color(0xFFFF5722),
                           onTap: () => _go(context, '/purchase-blanks'),
                         ),
-                        if (showMarketplace1688)
+                        if (showMarketplaces)
                           _MoreMenuTile(
                             icon: Icons.storefront_rounded,
-                            title: 'Каталог 1688',
-                            subtitle: 'Поиск товаров и список выкупа',
+                            title: 'Маркетплейсы',
+                            subtitle: 'Каталоги 1688, JD и список выкупа',
                             iconColor: const Color(0xFFFF6A00),
                             onTap: () => _go(context, '/shop'),
                           ),

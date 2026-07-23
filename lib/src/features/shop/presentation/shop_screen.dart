@@ -11,10 +11,12 @@ import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../shell/presentation/app_shell.dart';
 import '../data/purchase_provider.dart';
+import '../data/shop_availability_provider.dart';
 import '../data/shop_provider.dart';
 import '../domain/marketplace.dart';
 import '../domain/shop_category.dart';
 import 'shop_search_results.dart';
+import 'widgets/marketplace_selector.dart';
 import 'widgets/shop_search_bar.dart';
 
 /// Сортировки каталога. Маппинг на официальный API задаёт backend-адаптер.
@@ -24,6 +26,12 @@ const _sortOptions = <(String, String)>[
   ('Price:Asc', 'Цена ↑'),
   ('Price:Desc', 'Цена ↓'),
   ('Volume:Desc', 'По популярности'),
+];
+
+const _jdSortOptions = <(String, String)>[
+  ('Default', 'По умолчанию'),
+  ('Modified:Desc', 'Недавно обновлённые'),
+  ('Modified:Asc', 'Сначала старые'),
 ];
 
 class ShopScreen extends ConsumerStatefulWidget {
@@ -46,6 +54,18 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       _searchQuery = query;
       _searchCategoryId = null;
       _searchCategoryName = null;
+    });
+  }
+
+  void _onMarketplaceChanged(Marketplace marketplace) {
+    ref.read(selectedMarketplaceProvider.notifier).select(marketplace);
+    setState(() {
+      _searchQuery = '';
+      _searchCategoryId = null;
+      _searchCategoryName = null;
+      _orderBy = 'Default';
+      _minPrice = null;
+      _maxPrice = null;
     });
   }
 
@@ -210,7 +230,24 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const marketplace = Marketplace.alibaba1688;
+    final availability = ref.watch(shopAvailabilityProvider).asData?.value;
+    final availableMarketplaces = Marketplace.values
+        .where(
+          (marketplace) => availability?.canBrowse(marketplace.apiKey) == true,
+        )
+        .toList(growable: false);
+    final selectedMarketplace = ref.watch(selectedMarketplaceProvider);
+    final marketplace = availableMarketplaces.contains(selectedMarketplace)
+        ? selectedMarketplace
+        : availableMarketplaces.isNotEmpty
+        ? availableMarketplaces.first
+        : Marketplace.alibaba1688;
+    final sortOptions = marketplace == Marketplace.jd
+        ? _jdSortOptions
+        : _sortOptions;
+    final effectiveOrderBy = sortOptions.any((option) => option.$1 == _orderBy)
+        ? _orderBy
+        : 'Default';
 
     final showSearchResults =
         _searchQuery.isNotEmpty || _searchCategoryId != null;
@@ -218,13 +255,13 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
     final cartCount = ref.watch(cartItemCountProvider);
 
     return TutorialScreenWrapper(
-      screenKey: 'shop',
+      screenKey: 'marketplaces',
       steps: const [
         TutorialStep(
           icon: Icons.store_rounded,
-          title: 'Каталог 1688',
+          title: 'Каталоги маркетплейсов',
           description:
-              'Поиск товаров на площадке 1688 и подготовка списка для выкупа.',
+              'Выберите доступную площадку, найдите товар и подготовьте список для выкупа.',
         ),
         TutorialStep(
           icon: Icons.search_rounded,
@@ -257,6 +294,15 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
             children: [
               const SizedBox(height: 70),
 
+              if (availableMarketplaces.isNotEmpty) ...[
+                MarketplaceSelector(
+                  marketplaces: availableMarketplaces,
+                  selected: marketplace,
+                  onChanged: _onMarketplaceChanged,
+                ),
+                const SizedBox(height: 8),
+              ],
+
               // Search bar
               ShopSearchBar(
                 onSearch: _onSearch,
@@ -281,7 +327,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
-                              value: _orderBy,
+                              value: effectiveOrderBy,
                               isExpanded: true,
                               icon: Icon(
                                 Icons.sort,
@@ -292,7 +338,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                                 fontSize: 13,
                                 color: Colors.grey.shade800,
                               ),
-                              items: _sortOptions
+                              items: sortOptions
                                   .map(
                                     (opt) => DropdownMenuItem(
                                       value: opt.$1,
@@ -309,50 +355,54 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // Filter button
-                      GestureDetector(
-                        onTap: _showFiltersSheet,
-                        child: Container(
-                          height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: (_minPrice != null || _maxPrice != null)
-                                ? context.brandPrimary.withValues(alpha: 0.1)
-                                : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(10),
-                            border: (_minPrice != null || _maxPrice != null)
-                                ? Border.all(
-                                    color: context.brandPrimary,
-                                    width: 1,
-                                  )
-                                : null,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.tune,
-                                size: 20,
-                                color: (_minPrice != null || _maxPrice != null)
-                                    ? context.brandPrimary
-                                    : Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _buildFilterLabel(),
-                                style: TextStyle(
-                                  fontSize: 13,
+                      if (marketplace != Marketplace.jd) ...[
+                        const SizedBox(width: 8),
+                        // Cloud Trade getSkuList does not support a price
+                        // predicate. Do not emulate it on a loaded page.
+                        GestureDetector(
+                          onTap: _showFiltersSheet,
+                          child: Container(
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: (_minPrice != null || _maxPrice != null)
+                                  ? context.brandPrimary.withValues(alpha: 0.1)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                              border: (_minPrice != null || _maxPrice != null)
+                                  ? Border.all(
+                                      color: context.brandPrimary,
+                                      width: 1,
+                                    )
+                                  : null,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.tune,
+                                  size: 20,
                                   color:
                                       (_minPrice != null || _maxPrice != null)
                                       ? context.brandPrimary
-                                      : Colors.grey.shade700,
+                                      : Colors.grey.shade600,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Text(
+                                  _buildFilterLabel(),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color:
+                                        (_minPrice != null || _maxPrice != null)
+                                        ? context.brandPrimary
+                                        : Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -401,10 +451,16 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           query: _searchQuery,
                           marketplace: marketplace,
                           categoryId: _searchCategoryId,
-                          orderBy: _orderBy,
+                          orderBy: effectiveOrderBy,
                           minPrice: _minPrice,
                           maxPrice: _maxPrice,
                         ),
+                      )
+                    : marketplace == Marketplace.jd
+                    ? const _MarketplaceSearchHint(
+                        title: 'Каталог JD',
+                        description:
+                            'Введите название товара. Каталог JD загружается из товарного канала, выданного компании 2A.',
                       )
                     : _CategoriesView(
                         marketplace: marketplace,
@@ -762,6 +818,68 @@ class _CategoryTile extends StatelessWidget {
             : Icon(Icons.search, size: 22, color: Colors.grey.shade400),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _MarketplaceSearchHint extends StatelessWidget {
+  const _MarketplaceSearchHint({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE1251B).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'JD',
+                  style: TextStyle(
+                    color: Color(0xFFE1251B),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  height: 1.4,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

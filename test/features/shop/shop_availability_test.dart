@@ -46,6 +46,31 @@ void main() {
     expect(availability.canUsePurchaseList('1688'), isFalse);
   });
 
+  test('JD may expose catalog while purchase workflow remains disabled', () {
+    final availability = MarketplaceAvailability.fromJson({
+      'available': true,
+      'platforms': [
+        {
+          'code': 'jd',
+          'nameRu': 'JD',
+          'nameZh': '京东',
+          'available': true,
+          'capabilities': {
+            'catalog': true,
+            'purchaseList': false,
+            'orderHistory': false,
+          },
+        },
+      ],
+    });
+
+    expect(availability.hasBrowsablePlatform, isTrue);
+    expect(availability.browsablePlatformCodes, ['jd']);
+    expect(availability.canBrowse('jd'), isTrue);
+    expect(availability.canUsePurchaseList('jd'), isFalse);
+    expect(availability.platform('jd')?.capabilities.orderHistory, isFalse);
+  });
+
   test('availability request fails closed on a network error', () async {
     final result = await ShopAvailabilityService(
       _FailingApiClient(),

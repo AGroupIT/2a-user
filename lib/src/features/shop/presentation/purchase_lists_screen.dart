@@ -219,8 +219,8 @@ class _PurchaseListCard extends StatelessWidget {
                         color: const Color(0xFFFFF0E8),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
-                        '1688',
+                      child: Text(
+                        list.marketplaceOrder!.platform.toUpperCase(),
                         style: TextStyle(
                           color: AppColors.brandOrange,
                           fontSize: 11,

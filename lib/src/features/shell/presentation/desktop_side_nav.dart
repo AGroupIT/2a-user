@@ -166,8 +166,12 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
     final selfBuyoutAvailable =
         ref.watch(selfBuyoutAvailabilityProvider).asData?.value.available ??
         false;
-    final marketplace1688Available =
-        ref.watch(shopAvailabilityProvider).asData?.value.canBrowse('1688') ??
+    final marketplaceAvailable =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .hasBrowsablePlatform ??
         false;
     final serviceItems = <_SideNavEntry>[
       const _SideNavEntry(
@@ -194,11 +198,11 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
         label: 'Выкуп',
         route: '/purchase-blanks',
       ),
-      if (marketplace1688Available)
+      if (marketplaceAvailable)
         const _SideNavEntry(
           icon: Icons.storefront_rounded,
           selectedIcon: Icons.storefront_rounded,
-          label: '1688',
+          label: 'Маркетплейсы',
           route: '/shop',
         ),
       if (selfBuyoutAvailable)

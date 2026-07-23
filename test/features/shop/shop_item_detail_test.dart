@@ -37,4 +37,27 @@ void main() {
     expect(item.findConfiguredItem({'20': '蓝色'})?.id, '991');
     expect(item.findConfiguredItem({'20': 'missing'}), isNull);
   });
+
+  test('JD Cloud Trade detail keeps provider and handles pending price', () {
+    final item = ShopItemDetail.fromJson({
+      'id': '100012345678',
+      'title': 'JD test product',
+      'provider': 'jd',
+      'price': {'original': 0, 'currency': 'CNY'},
+      'images': [
+        {
+          'url': 'https://img10.360buyimg.com/n1/test.jpg',
+          'small': 'https://img10.360buyimg.com/n1/test.jpg',
+          'medium': 'https://img10.360buyimg.com/n1/test.jpg',
+          'large': 'https://img10.360buyimg.com/n1/test.jpg',
+        },
+      ],
+      'configuredItems': <dynamic>[],
+    });
+
+    expect(item.provider, 'jd');
+    expect(item.id, '100012345678');
+    expect(item.priceDisplay, 'Цена уточняется');
+    expect(item.images.single.url, contains('360buyimg.com'));
+  });
 }

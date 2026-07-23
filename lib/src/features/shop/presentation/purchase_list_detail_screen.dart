@@ -242,8 +242,8 @@ class _MarketplaceOrderCard extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text(
-                  '1688',
+                child: Text(
+                  order.platform.toUpperCase(),
                   style: TextStyle(
                     color: AppColors.brandOrange,
                     fontSize: 11,
@@ -313,7 +313,7 @@ class _MarketplaceOrderCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '1688 #${external.externalOrderId}',
+                      '${order.platform.toUpperCase()} #${external.externalOrderId}',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),

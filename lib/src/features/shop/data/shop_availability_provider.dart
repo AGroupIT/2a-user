@@ -124,6 +124,14 @@ class MarketplaceAvailability {
         selected.available &&
         selected.capabilities.purchaseList;
   }
+
+  bool get hasBrowsablePlatform =>
+      platforms.any((platform) => canBrowse(platform.code));
+
+  List<String> get browsablePlatformCodes => platforms
+      .where((platform) => canBrowse(platform.code))
+      .map((platform) => platform.code)
+      .toList(growable: false);
 }
 
 class ShopAvailabilityService {

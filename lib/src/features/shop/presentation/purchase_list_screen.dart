@@ -177,7 +177,12 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
             onQuantityChanged: (newQty) =>
                 _updateQuantity(list.id, item.id, newQty),
             onDelete: () => _deleteItem(list.id, item.id),
-            onTap: () => context.push('/shop/item/${item.externalItemId}'),
+            onTap: () => context.push(
+              Uri(
+                path: '/shop/item/${item.externalItemId}',
+                queryParameters: {'provider': item.provider},
+              ).toString(),
+            ),
           ),
         ),
 

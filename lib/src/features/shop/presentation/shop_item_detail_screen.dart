@@ -8,13 +8,20 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/purchase_provider.dart';
+import '../data/shop_availability_provider.dart';
 import '../data/shop_provider.dart';
+import '../domain/marketplace.dart';
 import '../domain/shop_item_detail.dart';
 
 class ShopItemDetailScreen extends ConsumerStatefulWidget {
   final String itemId;
+  final Marketplace marketplace;
 
-  const ShopItemDetailScreen({super.key, required this.itemId});
+  const ShopItemDetailScreen({
+    super.key,
+    required this.itemId,
+    required this.marketplace,
+  });
 
   @override
   ConsumerState<ShopItemDetailScreen> createState() =>
@@ -50,7 +57,11 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detailAsync = ref.watch(shopItemDetailProvider(widget.itemId));
+    final detailParams = ShopItemDetailParams(
+      itemId: widget.itemId,
+      marketplace: widget.marketplace,
+    );
+    final detailAsync = ref.watch(shopItemDetailProvider(detailParams));
 
     return detailAsync.when(
       data: (item) {
@@ -108,7 +119,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
             const SizedBox(height: 16),
             TextButton(
               onPressed: () =>
-                  ref.invalidate(shopItemDetailProvider(widget.itemId)),
+                  ref.invalidate(shopItemDetailProvider(detailParams)),
               child: const Text('Повторить'),
             ),
           ],
@@ -261,7 +272,15 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
         availableQuantity == null || _quantity < availableQuantity;
     final hasRequiredSku =
         item.configuratorGroups.isEmpty || selectedSku != null;
+    final purchaseListAvailable =
+        ref
+            .watch(shopAvailabilityProvider)
+            .asData
+            ?.value
+            .canUsePurchaseList(item.provider) ??
+        false;
     final canAdd =
+        purchaseListAvailable &&
         hasRequiredSku &&
         (availableQuantity == null || availableQuantity >= minimumQuantity);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
@@ -380,7 +399,11 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                     )
                   : const Icon(Icons.add_shopping_cart, size: 20),
               label: Text(
-                _isAddingToList ? 'Добавляем...' : 'В список выкупа',
+                _isAddingToList
+                    ? 'Добавляем...'
+                    : purchaseListAvailable
+                    ? 'В список выкупа'
+                    : 'Выкуп готовится',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -426,11 +449,13 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
 
       final selectedSku = _getSelectedConfiguredItem(item);
 
-      // 2. Backend reloads 1688 and creates the trusted price/SKU snapshot.
+      // 2. Backend reloads the selected provider and creates a trusted
+      // price/SKU snapshot. Client-supplied price is never accepted.
       await apiClient.post(
         '/shop/purchase-lists/$listId/items',
         data: {
           'externalItemId': item.id,
+          'provider': item.provider,
           'quantity': _quantity,
           'skuId': selectedSku?.id,
         },
