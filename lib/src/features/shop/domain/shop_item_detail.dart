@@ -90,6 +90,7 @@ class ShopItemDetail {
   final String originalTitle;
   final String provider;
   final String description;
+  final int? minOrderQuantity;
   final double price;
   final String currency;
   final String mainImage;
@@ -112,6 +113,7 @@ class ShopItemDetail {
     this.originalTitle = '',
     this.provider = '',
     this.description = '',
+    this.minOrderQuantity,
     this.price = 0,
     this.currency = 'CNY',
     this.mainImage = '',
@@ -140,6 +142,7 @@ class ShopItemDetail {
       originalTitle: json['originalTitle'] as String? ?? '',
       provider: json['provider'] as String? ?? '',
       description: json['description'] as String? ?? '',
+      minOrderQuantity: json['minOrderQuantity'] as int?,
       price: _parseDouble(priceData?['original']),
       currency: priceData?['currency'] as String? ?? 'CNY',
       mainImage: json['mainImage'] as String? ?? '',

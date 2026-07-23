@@ -15,10 +15,9 @@ import '../data/shop_provider.dart';
 import '../domain/marketplace.dart';
 import '../domain/shop_category.dart';
 import 'shop_search_results.dart';
-import 'widgets/marketplace_selector.dart';
 import 'widgets/shop_search_bar.dart';
 
-/// Sort options supported by OT API
+/// Сортировки каталога. Маппинг на официальный API задаёт backend-адаптер.
 const _sortOptions = <(String, String)>[
   ('Default', 'По умолчанию'),
   ('TotalSales:Desc', 'По продажам'),
@@ -45,13 +44,6 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
   void _onSearch(String query) {
     setState(() {
       _searchQuery = query;
-      _searchCategoryId = null;
-      _searchCategoryName = null;
-    });
-  }
-
-  void _onMarketplaceChanged(Marketplace mp) {
-    setState(() {
       _searchCategoryId = null;
       _searchCategoryName = null;
     });
@@ -218,7 +210,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final marketplace = ref.watch(selectedMarketplaceProvider);
+    const marketplace = Marketplace.alibaba1688;
 
     final showSearchResults =
         _searchQuery.isNotEmpty || _searchCategoryId != null;
@@ -230,9 +222,9 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       steps: const [
         TutorialStep(
           icon: Icons.store_rounded,
-          title: 'Магазин',
+          title: 'Каталог 1688',
           description:
-              'Каталог товаров с китайских торговых площадок. Выберите площадку (Taobao, 1688, Poizon) вверху экрана.',
+              'Поиск товаров на площадке 1688 и подготовка списка для выкупа.',
         ),
         TutorialStep(
           icon: Icons.search_rounded,
@@ -264,10 +256,6 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
           Column(
             children: [
               const SizedBox(height: 70),
-
-              // Marketplace selector
-              MarketplaceSelector(onChanged: _onMarketplaceChanged),
-              const SizedBox(height: 12),
 
               // Search bar
               ShopSearchBar(
