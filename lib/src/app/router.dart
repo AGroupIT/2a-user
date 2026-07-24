@@ -14,6 +14,11 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/partner_link_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
 import '../features/home/presentation/home_screen.dart';
+import '../features/garage/presentation/garage_order_detail_screen.dart';
+import '../features/garage/presentation/garage_request_detail_screen.dart';
+import '../features/garage/presentation/garage_request_form_screen.dart';
+import '../features/garage/presentation/garage_screen.dart';
+import '../features/garage/presentation/garage_vehicle_form_screen.dart';
 import '../features/invoices/presentation/invoices_screen.dart';
 import '../features/news/presentation/news_detail_screen.dart';
 import '../features/news/presentation/news_list_screen.dart';
@@ -593,6 +598,142 @@ final routerProvider = Provider<GoRouter>((ref) {
                 AppScaffold(
                   title: 'Редактирование трека',
                   child: SpTrackEditScreen(trackId: id, assemblyId: assemblyId),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        name: 'garage',
+        path: '/garage',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(title: 'Гараж', child: GarageScreen()),
+        ),
+        routes: [
+          GoRoute(
+            name: 'garage-vehicle-create',
+            path: 'vehicles/new',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) => _adaptivePage(
+              context,
+              state,
+              const AppScaffold(
+                title: 'Новый автомобиль',
+                child: GarageVehicleFormScreen(),
+              ),
+            ),
+          ),
+          GoRoute(
+            name: 'garage-vehicle-edit',
+            path: 'vehicles/:id/edit',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(
+                    reason: 'Некорректный ID автомобиля',
+                  ),
+                );
+              }
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Автомобиль',
+                  child: GarageVehicleFormScreen(vehicleId: id),
+                ),
+              );
+            },
+          ),
+          GoRoute(
+            name: 'garage-request-create',
+            path: 'requests/new',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) => _adaptivePage(
+              context,
+              state,
+              AppScaffold(
+                title: 'Новая заявка',
+                child: GarageRequestFormScreen(
+                  initialVehicleId: int.tryParse(
+                    state.uri.queryParameters['vehicleId'] ?? '',
+                  ),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            name: 'garage-request-edit',
+            path: 'requests/:id/edit',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(reason: 'Некорректный ID заявки'),
+                );
+              }
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Редактирование заявки',
+                  child: GarageRequestFormScreen(requestId: id),
+                ),
+              );
+            },
+          ),
+          GoRoute(
+            name: 'garage-request-detail',
+            path: 'requests/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(reason: 'Некорректный ID заявки'),
+                );
+              }
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Заявка Гаража',
+                  child: GarageRequestDetailScreen(requestId: id),
+                ),
+              );
+            },
+          ),
+          GoRoute(
+            name: 'garage-order-detail',
+            path: 'orders/:id',
+            parentNavigatorKey: _rootNavigatorKey,
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) {
+                return _adaptivePage(
+                  context,
+                  state,
+                  const _InvalidLinkScreen(reason: 'Некорректный ID заказа'),
+                );
+              }
+              return _adaptivePage(
+                context,
+                state,
+                AppScaffold(
+                  title: 'Заказ Гаража',
+                  child: GarageOrderDetailScreen(orderId: id),
                 ),
               );
             },

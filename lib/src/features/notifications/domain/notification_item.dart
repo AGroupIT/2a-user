@@ -30,6 +30,9 @@ enum NotificationType {
 
   /// Новый счёт на оплату
   invoice,
+
+  /// Событие по заявке или заказу в Гараже
+  garage,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -53,6 +56,8 @@ extension NotificationTypeExtension on NotificationType {
         return 'Правила оказания услуг';
       case NotificationType.invoice:
         return 'Счёт';
+      case NotificationType.garage:
+        return 'Гараж';
     }
   }
 
@@ -76,6 +81,8 @@ extension NotificationTypeExtension on NotificationType {
         return Icons.description_rounded;
       case NotificationType.invoice:
         return Icons.receipt_long_rounded;
+      case NotificationType.garage:
+        return Icons.directions_car_filled_rounded;
     }
   }
 
@@ -97,6 +104,8 @@ extension NotificationTypeExtension on NotificationType {
         return '/rules';
       case NotificationType.invoice:
         return '/invoices';
+      case NotificationType.garage:
+        return '/garage';
     }
   }
 
@@ -154,6 +163,19 @@ extension NotificationTypeExtension on NotificationType {
           'invoice_status_changed',
           'invoice_paid',
           'invoice_arrival',
+        ];
+      case NotificationType.garage:
+        return const [
+          'garage_offer_ready',
+          'garage_status_changed',
+          'garage_employee_question',
+          'garage_employee_message',
+          'garage_payment_approved',
+          'garage_payment_rejected',
+          'garage_purchase_required',
+          'garage_offer_accepted',
+          'garage_client_question',
+          'garage_client_message',
         ];
     }
   }
@@ -275,9 +297,13 @@ class NotificationItem {
           data['trackCode'] as String? ??
           data['assemblyNumber'] as String? ??
           data['invoiceNumber'] as String? ??
+          data['requestNumber'] as String? ??
+          data['orderNumber'] as String? ??
           data['trackId']?.toString() ??
           data['assemblyId']?.toString() ??
-          data['invoiceId']?.toString(),
+          data['invoiceId']?.toString() ??
+          data['garageRequestId']?.toString() ??
+          data['garageOrderId']?.toString(),
       oldStatus: data['oldStatus'] as String? ?? data['old_status'] as String?,
       newStatus:
           data['newStatus'] as String? ??
@@ -313,6 +339,8 @@ class NotificationItem {
         'trackId',
         'assemblyId',
         'invoiceId',
+        'garageRequestId',
+        'garageOrderId',
       ]),
       oldStatus: _readString(data, const ['oldStatus', 'old_status']),
       newStatus: _readString(data, const ['newStatus', 'new_status', 'status']),
@@ -373,6 +401,10 @@ class NotificationItem {
   static NotificationType _parseNotificationType(String typeStr) {
     // Приводим к нижнему регистру для универсального сравнения
     final type = typeStr.toLowerCase().trim();
+
+    if (type == 'garage' || type.startsWith('garage_')) {
+      return NotificationType.garage;
+    }
 
     // Трек статусы (включая создание нового трека)
     if (type.contains('track') &&
@@ -475,6 +507,8 @@ class NotificationItem {
       case 'invoice_status_changed':
       case 'invoice_paid':
         return NotificationType.invoice;
+      case 'garage':
+        return NotificationType.garage;
       default:
         // Если тип не определён - пробуем определить по заголовку/телу в fromJson
         return NotificationType.trackStatus;
@@ -484,6 +518,10 @@ class NotificationItem {
   /// Определить тип уведомления по содержимому (заголовку и телу)
   static NotificationType _inferTypeFromContent(String title, String body) {
     final combined = '$title $body'.toLowerCase();
+
+    if (combined.contains('гараж') || combined.contains('garage')) {
+      return NotificationType.garage;
+    }
 
     // Сообщение от поддержки / чат
     if (combined.contains('сообщение от поддержки') ||
@@ -576,6 +614,16 @@ class NotificationItem {
       'invoiceNumber',
       'invoice_number',
     ]);
+    final garageRequestId = _readString(data, const [
+      'garageRequestId',
+      'garage_request_id',
+      'requestId',
+    ]);
+    final garageOrderId = _readString(data, const [
+      'garageOrderId',
+      'garage_order_id',
+      'orderId',
+    ]);
     final clientCodeQuery = <String, String>{
       if (clientCode != null) 'clientCode': clientCode,
     };
@@ -649,6 +697,14 @@ class NotificationItem {
           });
         }
         return '/invoices';
+      case NotificationType.garage:
+        if (garageRequestId != null) {
+          return '/garage/requests/$garageRequestId';
+        }
+        if (garageOrderId != null) {
+          return '/garage/orders/$garageOrderId';
+        }
+        return '/garage';
     }
   }
 

@@ -24,4 +24,47 @@ void main() {
 
     expect(availability.minCny, 100);
   });
+
+  test('availability parses exchange operator sleep status', () {
+    final availability = SelfBuyoutAvailability.fromJson({
+      'available': true,
+      'operatorStatus': {
+        'sleeping': false,
+        'working': true,
+        'reachable': true,
+        'updatedAt': '2026-07-24T11:59:00.000Z',
+        'checkedAt': '2026-07-24T12:00:00.000Z',
+      },
+    });
+
+    expect(availability.operatorSleeping, isFalse);
+    expect(availability.operatorWorking, isTrue);
+    expect(availability.operatorStatusReachable, isTrue);
+    expect(
+      availability.operatorStatusUpdatedAt,
+      DateTime.parse('2026-07-24T11:59:00.000Z'),
+    );
+    expect(
+      availability.operatorStatusCheckedAt,
+      DateTime.parse('2026-07-24T12:00:00.000Z'),
+    );
+  });
+
+  test('availability tolerates unavailable operator status', () {
+    final availability = SelfBuyoutAvailability.fromJson({
+      'available': true,
+      'operatorStatus': {
+        'sleeping': null,
+        'working': null,
+        'reachable': false,
+        'updatedAt': null,
+        'checkedAt': '2026-07-24T12:00:00.000Z',
+      },
+    });
+
+    expect(availability.available, isTrue);
+    expect(availability.operatorSleeping, isNull);
+    expect(availability.operatorWorking, isTrue);
+    expect(availability.operatorStatusReachable, isFalse);
+  });
 }

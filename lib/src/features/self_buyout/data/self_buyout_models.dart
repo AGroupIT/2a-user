@@ -9,6 +9,10 @@ class SelfBuyoutAvailability {
   final double? clientCnyRubRate;
   final double? minCny;
   final int deliveryDeadlineDays;
+  final bool? operatorSleeping;
+  final bool operatorStatusReachable;
+  final DateTime? operatorStatusUpdatedAt;
+  final DateTime? operatorStatusCheckedAt;
 
   const SelfBuyoutAvailability({
     required this.available,
@@ -19,11 +23,16 @@ class SelfBuyoutAvailability {
     this.clientCnyRubRate,
     this.minCny,
     this.deliveryDeadlineDays = 14,
+    this.operatorSleeping,
+    this.operatorStatusReachable = false,
+    this.operatorStatusUpdatedAt,
+    this.operatorStatusCheckedAt,
   });
 
   factory SelfBuyoutAvailability.fromJson(Map<String, dynamic> json) {
     final rate = json['rate'] as Map<String, dynamic>?;
     final limits = json['limits'] as Map<String, dynamic>?;
+    final operatorStatus = json['operatorStatus'] as Map<String, dynamic>?;
     final cnyRubRate = (rate?['clientCnyRubRate'] as num?)?.toDouble();
     final explicitMinCny = (limits?['minCny'] as num?)?.toDouble();
     final legacyMinRub = (limits?['minRub'] as num?)?.toDouble();
@@ -41,8 +50,18 @@ class SelfBuyoutAvailability {
               : null),
       deliveryDeadlineDays:
           (json['deliveryDeadlineDays'] as num?)?.toInt() ?? 14,
+      operatorSleeping: operatorStatus?['sleeping'] as bool?,
+      operatorStatusReachable: operatorStatus?['reachable'] == true,
+      operatorStatusUpdatedAt: DateTime.tryParse(
+        operatorStatus?['updatedAt']?.toString() ?? '',
+      ),
+      operatorStatusCheckedAt: DateTime.tryParse(
+        operatorStatus?['checkedAt']?.toString() ?? '',
+      ),
     );
   }
+
+  bool get operatorWorking => operatorSleeping != true;
 
   bool isBelowMinimum(double cnyAmount) =>
       minCny != null && minCny! > 0 && cnyAmount < minCny!;

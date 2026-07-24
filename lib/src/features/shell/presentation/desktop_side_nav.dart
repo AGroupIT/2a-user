@@ -18,6 +18,7 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../garage/application/garage_providers.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
 import '../../clients/presentation/client_switcher_sheet.dart';
 import '../../notifications/application/notifications_controller.dart';
@@ -173,6 +174,8 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
             ?.value
             .hasBrowsablePlatform ??
         false;
+    final garageAvailable =
+        ref.watch(garageAvailabilityProvider).asData?.value.available ?? false;
     final serviceItems = <_SideNavEntry>[
       const _SideNavEntry(
         icon: Icons.person_rounded,
@@ -211,6 +214,13 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
           selectedIcon: Icons.savings_rounded,
           label: 'Самовыкуп',
           route: '/self-buyout',
+        ),
+      if (garageAvailable)
+        const _SideNavEntry(
+          icon: Icons.garage_rounded,
+          selectedIcon: Icons.garage_rounded,
+          label: 'Гараж',
+          route: '/garage',
         ),
       _SideNavEntry(
         icon: Icons.shopping_bag_rounded,

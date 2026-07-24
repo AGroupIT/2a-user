@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/invoices/data/invoices_provider.dart';
+import '../../features/garage/application/garage_providers.dart';
 import '../../features/self_buyout/data/self_buyout_service.dart';
 import '../../features/news/data/news_provider.dart';
 import '../../features/notifications/application/notifications_controller.dart';
@@ -160,6 +161,29 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(selfBuyoutAvailabilityProvider);
       return;
 
+    case 'garage_requests':
+    case 'garage_request_messages':
+      ref.invalidate(garageRequestsProvider);
+      ref.invalidate(garageRequestProvider);
+      return;
+
+    case 'garage_orders':
+      ref.invalidate(garageOrdersProvider);
+      ref.invalidate(garageOrderProvider);
+      ref.invalidate(garageInvoiceProvider);
+      ref.invalidate(garageRequestsProvider);
+      ref.invalidate(garageRequestProvider);
+      return;
+
+    case 'currency_rates':
+      ref.invalidate(garageRequestsProvider);
+      ref.invalidate(garageRequestProvider);
+      ref.invalidate(garageOrdersProvider);
+      ref.invalidate(garageOrderProvider);
+      ref.invalidate(garageInvoiceProvider);
+      ref.invalidate(selfBuyoutAvailabilityProvider);
+      return;
+
     case 'news':
       ref.invalidate(newsListProvider);
       return;
@@ -228,6 +252,12 @@ void _invalidateAllFor(dynamic ref) {
   }
   ref.invalidate(invoicesDigestProvider);
   ref.invalidate(invoicesCountProvider);
+  ref.invalidate(garageAvailabilityProvider);
+  ref.invalidate(garageRequestsProvider);
+  ref.invalidate(garageRequestProvider);
+  ref.invalidate(garageOrdersProvider);
+  ref.invalidate(garageOrderProvider);
+  ref.invalidate(garageInvoiceProvider);
   ref.invalidate(newsListProvider);
   ref.invalidate(userTariffsProvider);
   ref.invalidate(rulesListProvider);

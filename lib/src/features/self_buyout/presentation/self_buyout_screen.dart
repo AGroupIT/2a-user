@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,11 +15,37 @@ import 'self_buyout_detail_sheet.dart';
 import 'self_buyout_qr_sheet.dart';
 import 'self_buyout_ui.dart';
 
-class SelfBuyoutScreen extends ConsumerWidget {
+class SelfBuyoutScreen extends ConsumerStatefulWidget {
   const SelfBuyoutScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SelfBuyoutScreen> createState() => _SelfBuyoutScreenState();
+}
+
+class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
+  Timer? _operatorStatusTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(selfBuyoutAvailabilityProvider);
+    });
+    _operatorStatusTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      ref.invalidate(selfBuyoutAvailabilityProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _operatorStatusTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final requestsAsync = ref.watch(selfBuyoutRequestsProvider);
     final availability = ref
         .watch(selfBuyoutAvailabilityProvider)
@@ -27,7 +55,14 @@ class SelfBuyoutScreen extends ConsumerWidget {
     final bottomPad = AppLayout.bottomScrollPadding(context);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(selfBuyoutRequestsProvider),
+      onRefresh: () async {
+        ref.invalidate(selfBuyoutRequestsProvider);
+        ref.invalidate(selfBuyoutAvailabilityProvider);
+        await Future.wait([
+          ref.read(selfBuyoutRequestsProvider.future),
+          ref.read(selfBuyoutAvailabilityProvider.future),
+        ]);
+      },
       color: context.brandPrimary,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -109,6 +144,8 @@ class SelfBuyoutScreen extends ConsumerWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          const SizedBox(height: 12),
+          _operatorStatus(context, availability),
           const SizedBox(height: 16),
           _heroButton(context, ref, canCreate, availability),
           if (!canCreate &&
@@ -125,6 +162,63 @@ class SelfBuyoutScreen extends ConsumerWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _operatorStatus(
+    BuildContext context,
+    SelfBuyoutAvailability? availability,
+  ) {
+    final isLoading = availability == null;
+    final sleeping = availability?.operatorSleeping;
+
+    final IconData icon;
+    final String label;
+    final Color accent;
+    if (isLoading) {
+      icon = Icons.sync_rounded;
+      label = tr(
+        context,
+        ru: 'Проверяем режим работы операторов',
+        zh: '正在检查客服工作状态',
+      );
+      accent = Colors.white;
+    } else if (sleeping == true) {
+      icon = Icons.bedtime_rounded;
+      label = tr(context, ru: 'Операторы сейчас отдыхают', zh: '客服当前休息中');
+      accent = const Color(0xFFFFD59A);
+    } else {
+      icon = Icons.support_agent_rounded;
+      label = tr(context, ru: 'Операторы сейчас работают', zh: '客服当前在线');
+      accent = const Color(0xFFB8F5D8);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: accent,
+                fontFamily: 'Gilroy',
+                fontSize: 12.5,
+                height: 1.2,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
         ],
       ),
     );

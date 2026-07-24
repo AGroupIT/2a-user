@@ -13,6 +13,7 @@ import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../garage/application/garage_providers.dart';
 import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
@@ -168,6 +169,8 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
             ?.value
             .hasBrowsablePlatform ??
         false;
+    final showGarage =
+        ref.watch(garageAvailabilityProvider).asData?.value.available ?? false;
 
     return Container(
       constraints: BoxConstraints(
@@ -262,6 +265,15 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                                 ? const Color(0xFFF59E0B)
                                 : const Color(0xFF10B981),
                             onTap: () => _go(context, '/self-buyout'),
+                          ),
+                        if (showGarage)
+                          _MoreMenuTile(
+                            icon: Icons.garage_rounded,
+                            title: 'Гараж',
+                            subtitle:
+                                'Автомобили, подбор запчастей, заказы и оплата',
+                            iconColor: const Color(0xFF3B82F6),
+                            onTap: () => _go(context, '/garage'),
                           ),
                         _MoreMenuTile(
                           icon: Icons.shopping_bag_rounded,

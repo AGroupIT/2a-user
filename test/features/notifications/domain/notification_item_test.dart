@@ -81,6 +81,26 @@ void main() {
       );
     });
 
+    test('keeps Garage aliases separate and opens Garage deep links', () {
+      final item = NotificationItem.fromPushData({
+        'type': 'garage_employee_question',
+        'entityId': '3',
+        'garageRequestId': '11',
+        'route': '/garage/requests/11',
+      });
+
+      expect(item.type, NotificationType.garage);
+      expect(item.type.displayName, 'Гараж');
+      expect(item.route, '/garage/requests/11');
+      expect(
+        NotificationItem.routeFromPushData({
+          'type': 'garage_payment_approved',
+          'garageOrderId': '44',
+        }),
+        '/garage/orders/44',
+      );
+    });
+
     test('encodes and decodes local notification tap payload', () {
       final payload = NotificationItem.tapPayloadFromPushData({
         'type': 'track_status_changed',

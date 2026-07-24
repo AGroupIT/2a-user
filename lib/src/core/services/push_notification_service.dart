@@ -648,6 +648,12 @@ class PushNotificationService {
           name: 'Счета',
           description: 'Уведомления о новых счетах на оплату',
         );
+      case NotificationType.garage:
+        return _ChannelConfig(
+          id: 'garage_channel',
+          name: 'Гараж',
+          description: 'Уведомления по заявкам и заказам автозапчастей',
+        );
     }
   }
 
@@ -702,6 +708,7 @@ class PushNotificationService {
   AndroidNotificationCategory _getCategoryForType(NotificationType type) {
     switch (type) {
       case NotificationType.chatMessage:
+      case NotificationType.garage:
         return AndroidNotificationCategory.message;
       case NotificationType.trackStatus:
       case NotificationType.assemblyStatus:

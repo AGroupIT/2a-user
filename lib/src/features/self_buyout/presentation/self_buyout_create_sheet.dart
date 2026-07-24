@@ -34,7 +34,7 @@ String _mimeForExt(String ext) {
   }
 }
 
-double _round2(double x) => (x * 100).roundToDouble() / 100;
+double _floorWhole(double x) => x.floorToDouble();
 
 String _formatAmount(double value) => value
     .toStringAsFixed(2)
@@ -92,7 +92,7 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     final cny = double.tryParse(v.replaceAll(',', '.')) ?? 0;
     _syncing = true;
     _rubCtrl.text = cny > 0 && _rate > 0
-        ? _round2(cny * _rate).toStringAsFixed(2)
+        ? _floorWhole(_floorWhole(cny) * _rate).toStringAsFixed(0)
         : '';
     _syncing = false;
     setState(() {});
@@ -104,7 +104,7 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     final rub = double.tryParse(v.replaceAll(',', '.')) ?? 0;
     _syncing = true;
     _cnyCtrl.text = rub > 0 && _rate > 0
-        ? _round2(rub / _rate).toStringAsFixed(2)
+        ? _floorWhole(_floorWhole(rub) / _rate).toStringAsFixed(0)
         : '';
     _syncing = false;
     setState(() {});
@@ -599,8 +599,8 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
     return TextField(
       controller: controller,
       onChanged: onChanged,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      keyboardType: const TextInputType.numberWithOptions(decimal: false),
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       style: const TextStyle(
         color: AppColors.textPrimary,
         fontFamily: 'Gilroy',
