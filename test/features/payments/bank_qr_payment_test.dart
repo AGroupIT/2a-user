@@ -2,8 +2,14 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/application/garage_providers.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/data/garage_repository.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_payment_sheet.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/data/bank_qr_payment.dart';
+import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/domain/payment_model.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/presentation/bank_qr_payment_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/presentation/payment_receipt_picker.dart';
@@ -11,16 +17,19 @@ import 'package:twoalogisticcabineuser/src/features/invoices/domain/invoice_item
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_models.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_service.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/presentation/self_buyout_qr_sheet.dart';
+import 'package:twoalogisticcabineuser/src/features/self_buyout/presentation/self_buyout_screen.dart';
 
 import '../../helpers/pump_app.dart';
 
 class _FakeBankQrPaymentService extends BankQrPaymentService {
   _FakeBankQrPaymentService() : super(ApiClient());
 
+  int startCalls = 0;
   int uploadCalls = 0;
 
   @override
   Future<BankQrPaymentResult?> startBankQrPayment(String invoiceId) async {
+    startCalls++;
     return const BankQrPaymentResult(
       paymentId: 101,
       invoiceId: 1,
@@ -52,10 +61,12 @@ class _FakeBankQrPaymentService extends BankQrPaymentService {
 class _FakeSelfBuyoutService extends SelfBuyoutService {
   _FakeSelfBuyoutService() : super(ApiClient());
 
+  int startCalls = 0;
   int uploadCalls = 0;
 
   @override
   Future<SelfBuyoutPaymentInfo?> startBankQr(int requestId) async {
+    startCalls++;
     return const SelfBuyoutPaymentInfo(
       paymentId: 202,
       status: 'pending',
@@ -78,6 +89,8 @@ class _FakeSelfBuyoutService extends SelfBuyoutService {
   }
 }
 
+class _MockGarageRepository extends Mock implements GarageRepository {}
+
 Finder _paidButtonInkWell() {
   return find.ancestor(
     of: find.text('Я оплатил'),
@@ -86,6 +99,129 @@ Finder _paidButtonInkWell() {
 }
 
 void main() {
+  const sleepingStatus = PaymentOperatorStatus(sleeping: true, reachable: true);
+  const workingStatus = PaymentOperatorStatus(sleeping: false, reachable: true);
+
+  group('Режим отдыха операторов оплаты', () {
+    test('статус парсится из общего backend-ответа', () {
+      final status = PaymentOperatorStatus.fromJson({
+        'operatorStatus': {
+          'sleeping': true,
+          'reachable': true,
+          'updatedAt': '2026-07-26T04:00:00.000Z',
+          'checkedAt': '2026-07-26T04:01:00.000Z',
+        },
+      });
+
+      expect(status.sleeping, isTrue);
+      expect(status.working, isFalse);
+      expect(status.reachable, isTrue);
+      expect(status.updatedAt, DateTime.parse('2026-07-26T04:00:00.000Z'));
+    });
+
+    testWidgets('счёт не запрашивает и не показывает QR во время отдыха', (
+      tester,
+    ) async {
+      final service = _FakeBankQrPaymentService();
+
+      await tester.pumpApp(
+        const BankQrPaymentSheet(invoiceId: '1', invoiceNumber: 'QR-1'),
+        overrides: [
+          bankQrPaymentServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(sleepingStatus),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Операторы оплаты сейчас отдыхают'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(service.startCalls, 0);
+    });
+
+    testWidgets('самовыкуп не запрашивает и не показывает QR во время отдыха', (
+      tester,
+    ) async {
+      final service = _FakeSelfBuyoutService();
+
+      await tester.pumpApp(
+        const SelfBuyoutQrSheet(
+          requestId: 1,
+          requestNumber: 'SB-1',
+          cnyAmount: 100,
+        ),
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(sleepingStatus),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Операторы оплаты сейчас отдыхают'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(service.startCalls, 0);
+    });
+
+    testWidgets(
+      'самовыкуп заменяет кнопку создания заявки уведомлением об отдыхе',
+      (tester) async {
+        final availability = SelfBuyoutAvailability.fromJson({
+          'available': true,
+          'rate': {'clientCnyRubRate': 12.5},
+          'limits': {'minCny': 100},
+        });
+
+        await tester.pumpApp(
+          const SelfBuyoutScreen(),
+          overrides: [
+            selfBuyoutAvailabilityProvider.overrideWith(
+              (ref) async => availability,
+            ),
+            selfBuyoutRequestsProvider.overrideWith(
+              (ref) async => const <SelfBuyoutRequest>[],
+            ),
+            paymentOperatorStatusProvider.overrideWith(
+              (ref) => Stream.value(sleepingStatus),
+            ),
+          ],
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Операторы оплаты сейчас отдыхают'), findsOneWidget);
+        expect(find.text('Создать заявку'), findsNothing);
+      },
+    );
+
+    testWidgets('Гараж не запрашивает и не показывает QR во время отдыха', (
+      tester,
+    ) async {
+      final repository = _MockGarageRepository();
+
+      await tester.pumpApp(
+        const GaragePaymentSheet(orderId: 10, orderNumber: 'GO-10'),
+        overrides: [
+          garageRepositoryProvider.overrideWithValue(repository),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(sleepingStatus),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Операторы оплаты сейчас отдыхают'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      verifyNever(
+        () => repository.startBankQrPayment(
+          any(),
+          idempotencyKey: any(named: 'idempotencyKey'),
+        ),
+      );
+    });
+  });
+
   group('Чек обязателен перед подтверждением оплаты', () {
     testWidgets('счёт: «Я оплатил» отключена без приложенного чека', (
       tester,
@@ -94,7 +230,12 @@ void main() {
 
       await tester.pumpApp(
         const BankQrPaymentSheet(invoiceId: '1', invoiceNumber: 'QR-1'),
-        overrides: [bankQrPaymentServiceProvider.overrideWithValue(service)],
+        overrides: [
+          bankQrPaymentServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(workingStatus),
+          ),
+        ],
       );
       await tester.pumpAndSettle();
 
@@ -114,7 +255,12 @@ void main() {
           requestNumber: 'SB-1',
           cnyAmount: 100,
         ),
-        overrides: [selfBuyoutServiceProvider.overrideWithValue(service)],
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(workingStatus),
+          ),
+        ],
       );
       await tester.pumpAndSettle();
 
@@ -128,7 +274,12 @@ void main() {
 
       await tester.pumpApp(
         const BankQrPaymentSheet(invoiceId: '1', invoiceNumber: 'QR-1'),
-        overrides: [bankQrPaymentServiceProvider.overrideWithValue(service)],
+        overrides: [
+          bankQrPaymentServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(workingStatus),
+          ),
+        ],
       );
       await tester.pumpAndSettle();
 

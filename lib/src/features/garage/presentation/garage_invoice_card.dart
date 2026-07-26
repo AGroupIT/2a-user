@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../payments/data/payment_operator_status.dart';
+import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../domain/garage_models.dart';
 import 'garage_ui.dart';
 
-class GarageInvoiceCard extends StatelessWidget {
+class GarageInvoiceCard extends ConsumerWidget {
   final GarageInvoice invoice;
   final GarageOrder order;
   final VoidCallback? onPay;
@@ -17,7 +20,12 @@ class GarageInvoiceCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final operatorsSleeping =
+        onPay != null &&
+        paymentOperatorStatusOrWorking(
+          ref.watch(paymentOperatorStatusProvider),
+        ).sleeping;
     return GarageCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -93,11 +101,14 @@ class GarageInvoiceCard extends StatelessWidget {
           ),
           if (onPay != null) ...[
             const SizedBox(height: 13),
-            GaragePrimaryButton(
-              label: 'Оплатить по Bank QR',
-              icon: Icons.qr_code_2_rounded,
-              onPressed: onPay,
-            ),
+            if (operatorsSleeping)
+              const PaymentOperatorSleepingNotice(compact: true)
+            else
+              GaragePrimaryButton(
+                label: 'Оплатить по Bank QR',
+                icon: Icons.qr_code_2_rounded,
+                onPressed: onPay,
+              ),
           ],
         ],
       ),

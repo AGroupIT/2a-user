@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../payments/data/payment_operator_status.dart';
+import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../purchase_blanks/presentation/purchase_blank_ui.dart';
 import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
@@ -14,6 +17,7 @@ import 'self_buyout_create_sheet.dart';
 import 'self_buyout_detail_sheet.dart';
 import 'self_buyout_qr_sheet.dart';
 import 'self_buyout_ui.dart';
+import 'self_buyout_verification_sheet.dart';
 
 class SelfBuyoutScreen extends ConsumerStatefulWidget {
   const SelfBuyoutScreen({super.key});
@@ -23,24 +27,24 @@ class SelfBuyoutScreen extends ConsumerStatefulWidget {
 }
 
 class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
-  Timer? _operatorStatusTimer;
+  Timer? _verificationStatusTimer;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _verificationStatusTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
-      ref.invalidate(selfBuyoutAvailabilityProvider);
-    });
-    _operatorStatusTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (!mounted) return;
-      ref.invalidate(selfBuyoutAvailabilityProvider);
+      final current = ref.read(selfBuyoutAvailabilityProvider).asData?.value;
+      if (current?.verification.isPending == true ||
+          current?.verification.isRejected == true) {
+        ref.invalidate(selfBuyoutAvailabilityProvider);
+      }
     });
   }
 
   @override
   void dispose() {
-    _operatorStatusTimer?.cancel();
+    _verificationStatusTimer?.cancel();
     super.dispose();
   }
 
@@ -51,6 +55,9 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
         .watch(selfBuyoutAvailabilityProvider)
         .asData
         ?.value;
+    final operatorStatus = paymentOperatorStatusOrWorking(
+      ref.watch(paymentOperatorStatusProvider),
+    );
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
 
@@ -58,9 +65,11 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
       onRefresh: () async {
         ref.invalidate(selfBuyoutRequestsProvider);
         ref.invalidate(selfBuyoutAvailabilityProvider);
+        ref.invalidate(paymentOperatorStatusProvider);
         await Future.wait([
           ref.read(selfBuyoutRequestsProvider.future),
           ref.read(selfBuyoutAvailabilityProvider.future),
+          ref.read(paymentOperatorStatusProvider.future),
         ]);
       },
       color: context.brandPrimary,
@@ -70,7 +79,7 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
         children: [
           const PurchaseBlankPageHeader(title: 'Самовыкуп'),
           const SizedBox(height: 12),
-          _hero(context, ref, availability),
+          _hero(context, ref, availability, operatorStatus.sleeping),
           const SizedBox(height: 18),
           requestsAsync.when(
             data: (rows) => _list(context, ref, rows),
@@ -90,8 +99,18 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     BuildContext context,
     WidgetRef ref,
     SelfBuyoutAvailability? availability,
+    bool operatorsSleeping,
   ) {
     final canCreate = availability?.available ?? false;
+    final verification = availability?.verification;
+    final reason = availability?.reason;
+    final showVerification =
+        verification != null &&
+        verification.required &&
+        !verification.isApproved &&
+        (reason == 'verification_required' ||
+            reason == 'verification_pending' ||
+            reason == 'verification_rejected');
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -144,11 +163,16 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 12),
-          _operatorStatus(context, availability),
           const SizedBox(height: 16),
-          _heroButton(context, ref, canCreate, availability),
-          if (!canCreate &&
+          if (showVerification)
+            _verificationPanel(context, ref, verification)
+          else if (operatorsSleeping)
+            const PaymentOperatorSleepingNotice(onGradient: true, compact: true)
+          else
+            _heroButton(context, ref, canCreate, availability),
+          if (!showVerification &&
+              !operatorsSleeping &&
+              !canCreate &&
               _availabilityMessage(context, availability) != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -167,58 +191,136 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     );
   }
 
-  Widget _operatorStatus(
+  Widget _verificationPanel(
     BuildContext context,
-    SelfBuyoutAvailability? availability,
+    WidgetRef ref,
+    SelfBuyoutVerification verification,
   ) {
-    final isLoading = availability == null;
-    final sleeping = availability?.operatorSleeping;
-
-    final IconData icon;
-    final String label;
-    final Color accent;
-    if (isLoading) {
-      icon = Icons.sync_rounded;
-      label = tr(
-        context,
-        ru: 'Проверяем режим работы операторов',
-        zh: '正在检查客服工作状态',
-      );
-      accent = Colors.white;
-    } else if (sleeping == true) {
-      icon = Icons.bedtime_rounded;
-      label = tr(context, ru: 'Операторы сейчас отдыхают', zh: '客服当前休息中');
-      accent = const Color(0xFFFFD59A);
-    } else {
-      icon = Icons.support_agent_rounded;
-      label = tr(context, ru: 'Операторы сейчас работают', zh: '客服当前在线');
-      accent = const Color(0xFFB8F5D8);
-    }
+    final rejected = verification.isRejected;
+    final pending = verification.isPending;
+    final title = pending
+        ? tr(context, ru: 'Данные отправлены на проверку', zh: '资料已提交审核')
+        : rejected
+        ? tr(context, ru: 'Проверка не пройдена', zh: '验证未通过')
+        : tr(context, ru: 'Нужна проверка', zh: '需要验证');
+    final description = pending
+        ? tr(
+            context,
+            ru: 'Ожидаем решения платёжного партнёра. Статус обновится автоматически.',
+            zh: '正在等待支付合作方审核，状态会自动更新。',
+          )
+        : rejected
+        ? (verification.rejectionReason?.trim().isNotEmpty == true
+              ? verification.rejectionReason!
+              : tr(
+                  context,
+                  ru: 'Партнёр не подтвердил доступ к самовыкупу.',
+                  zh: '合作方未批准自助代购权限。',
+                ))
+        : tr(
+            context,
+            ru: 'Перед первой заявкой подтвердите ФИО, телефон и Telegram.',
+            zh: '首次申请前，请验证姓名、电话和 Telegram。',
+          );
+    final accent = rejected
+        ? const Color(0xFFFFD1D1)
+        : pending
+        ? const Color(0xFFFFE0AD)
+        : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: accent),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                pending
+                    ? Icons.schedule_rounded
+                    : rejected
+                    ? Icons.gpp_bad_rounded
+                    : Icons.verified_user_outlined,
                 color: accent,
-                fontFamily: 'Gilroy',
-                fontSize: 12.5,
-                height: 1.2,
-                fontWeight: FontWeight.w800,
+                size: 21,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: accent,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!pending && verification.canSubmit) ...[
+            const SizedBox(height: 12),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _openVerification(context, ref, verification),
+                child: Container(
+                  height: 44,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        rejected
+                            ? Icons.refresh_rounded
+                            : Icons.verified_rounded,
+                        color: context.brandPrimary,
+                        size: 19,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        rejected
+                            ? tr(context, ru: 'Отправить повторно', zh: '重新提交')
+                            : tr(context, ru: 'Пройти проверку', zh: '开始验证'),
+                        style: TextStyle(
+                          color: context.brandPrimary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -250,6 +352,28 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
       return tr(context, ru: 'Самовыкуп временно недоступен.', zh: '自助代购暂不可用。');
     }
     return null;
+  }
+
+  Future<void> _openVerification(
+    BuildContext context,
+    WidgetRef ref,
+    SelfBuyoutVerification verification,
+  ) async {
+    final submitted = await showBlurredModalBottomSheet<SelfBuyoutVerification>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (_) => SelfBuyoutVerificationSheet(verification: verification),
+    );
+    if (submitted == null || !context.mounted) return;
+    ref.invalidate(selfBuyoutAvailabilityProvider);
+    AppToast.show(
+      context,
+      tr(context, ru: 'Данные отправлены на проверку', zh: '资料已提交审核'),
+    );
   }
 
   Widget _heroButton(
@@ -353,6 +477,8 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     WidgetRef ref,
     SelfBuyoutAvailability availability,
   ) async {
+    if (!await _ensurePaymentOperatorsWorking(context, ref)) return;
+    if (!context.mounted) return;
     final created = await showBlurredModalBottomSheet<SelfBuyoutRequest>(
       context: context,
       useRootNavigator: true,
@@ -418,6 +544,8 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     WidgetRef ref,
     SelfBuyoutRequest r,
   ) async {
+    if (!await _ensurePaymentOperatorsWorking(context, ref)) return;
+    if (!context.mounted) return;
     final changed = await showBlurredModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -434,6 +562,30 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     if (changed == true) {
       ref.invalidate(selfBuyoutRequestsProvider);
     }
+  }
+
+  Future<bool> _ensurePaymentOperatorsWorking(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final current = ref.read(paymentOperatorStatusProvider).asData?.value;
+    final status =
+        current ??
+        await ref.read(paymentOperatorStatusProvider.future) ??
+        PaymentOperatorStatus.workingFallback;
+    if (status.working) return true;
+    if (context.mounted) {
+      AppToast.show(
+        context,
+        tr(
+          context,
+          ru: 'Операторы оплаты сейчас отдыхают. QR временно недоступен.',
+          zh: '支付客服当前休息，二维码暂不可用。',
+        ),
+        isError: true,
+      );
+    }
+    return false;
   }
 }
 

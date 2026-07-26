@@ -1,5 +1,77 @@
 // Самовыкуп — модели данных клиента.
 
+class SelfBuyoutVerificationContact {
+  final String fullName;
+  final String phone;
+  final String telegram;
+
+  const SelfBuyoutVerificationContact({
+    this.fullName = '',
+    this.phone = '',
+    this.telegram = '',
+  });
+
+  factory SelfBuyoutVerificationContact.fromJson(Map<String, dynamic>? json) {
+    return SelfBuyoutVerificationContact(
+      fullName: json?['fullName']?.toString() ?? '',
+      phone: json?['phone']?.toString() ?? '',
+      telegram: json?['telegram']?.toString() ?? '',
+    );
+  }
+}
+
+class SelfBuyoutVerification {
+  final bool required;
+  final String status;
+  final int? verificationId;
+  final int? requestVersion;
+  final DateTime? submittedAt;
+  final DateTime? decidedAt;
+  final String? decisionSource;
+  final String? rejectionReason;
+  final bool canSubmit;
+  final SelfBuyoutVerificationContact contact;
+
+  const SelfBuyoutVerification({
+    this.required = false,
+    this.status = 'not_required',
+    this.verificationId,
+    this.requestVersion,
+    this.submittedAt,
+    this.decidedAt,
+    this.decisionSource,
+    this.rejectionReason,
+    this.canSubmit = false,
+    this.contact = const SelfBuyoutVerificationContact(),
+  });
+
+  static DateTime? _date(dynamic value) =>
+      value == null ? null : DateTime.tryParse(value.toString());
+
+  factory SelfBuyoutVerification.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const SelfBuyoutVerification();
+    return SelfBuyoutVerification(
+      required: json['required'] == true,
+      status: json['status']?.toString() ?? 'not_required',
+      verificationId: (json['verificationId'] as num?)?.toInt(),
+      requestVersion: (json['requestVersion'] as num?)?.toInt(),
+      submittedAt: _date(json['submittedAt']),
+      decidedAt: _date(json['decidedAt']),
+      decisionSource: json['decisionSource']?.toString(),
+      rejectionReason: json['rejectionReason']?.toString(),
+      canSubmit: json['canSubmit'] == true,
+      contact: SelfBuyoutVerificationContact.fromJson(
+        json['contact'] as Map<String, dynamic>?,
+      ),
+    );
+  }
+
+  bool get isRequired => required && status == 'required';
+  bool get isPending => required && status == 'pending';
+  bool get isRejected => required && status == 'rejected';
+  bool get isApproved => !required || status == 'approved';
+}
+
 class SelfBuyoutAvailability {
   final bool available;
   final String? reason;
@@ -13,6 +85,7 @@ class SelfBuyoutAvailability {
   final bool operatorStatusReachable;
   final DateTime? operatorStatusUpdatedAt;
   final DateTime? operatorStatusCheckedAt;
+  final SelfBuyoutVerification verification;
 
   const SelfBuyoutAvailability({
     required this.available,
@@ -27,6 +100,7 @@ class SelfBuyoutAvailability {
     this.operatorStatusReachable = false,
     this.operatorStatusUpdatedAt,
     this.operatorStatusCheckedAt,
+    this.verification = const SelfBuyoutVerification(),
   });
 
   factory SelfBuyoutAvailability.fromJson(Map<String, dynamic> json) {
@@ -57,6 +131,9 @@ class SelfBuyoutAvailability {
       ),
       operatorStatusCheckedAt: DateTime.tryParse(
         operatorStatus?['checkedAt']?.toString() ?? '',
+      ),
+      verification: SelfBuyoutVerification.fromJson(
+        json['verification'] as Map<String, dynamic>?,
       ),
     );
   }

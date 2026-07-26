@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../payments/data/payment_operator_status.dart';
+import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../payments/presentation/payment_receipt_picker.dart';
 import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
@@ -58,6 +60,19 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
   }
 
   Future<void> _start() async {
+    final current = ref.read(paymentOperatorStatusProvider).asData?.value;
+    final operatorStatus =
+        current ??
+        await ref.read(paymentOperatorStatusProvider.future) ??
+        PaymentOperatorStatus.workingFallback;
+    if (!mounted) return;
+    if (operatorStatus.sleeping) {
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -119,6 +134,9 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final operatorsSleeping = paymentOperatorStatusOrWorking(
+      ref.watch(paymentOperatorStatusProvider),
+    ).sleeping;
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.92,
@@ -172,7 +190,20 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
           Flexible(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(16, 4, 16, bottom + 18),
-              child: _loading
+              child: operatorsSleeping
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const PaymentOperatorSleepingNotice(),
+                        const SizedBox(height: 12),
+                        GarageSecondaryButton(
+                          label: 'Закрыть',
+                          icon: Icons.close_rounded,
+                          onPressed: () => Navigator.of(context).pop(false),
+                        ),
+                      ],
+                    )
+                  : _loading
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 70),
                       child: Center(child: CircularProgressIndicator()),

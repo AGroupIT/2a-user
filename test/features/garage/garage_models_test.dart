@@ -52,6 +52,22 @@ void main() {
       'needsEmployeeResponse': false,
       'needsClientResponse': true,
       'vehicleSnapshot': {'make': 'Toyota'},
+      'statusHistory': [
+        {
+          'id': 501,
+          'eventType': 'created',
+          'previousStatus': null,
+          'status': 'draft',
+          'changedAt': '2026-07-23T08:00:00.000Z',
+        },
+        {
+          'id': 502,
+          'eventType': 'submitted',
+          'oldStatus': 'draft',
+          'newStatus': 'new',
+          'createdAt': '2026-07-23T09:00:00.000Z',
+        },
+      ],
       'items': [
         {
           'id': 101,
@@ -70,7 +86,18 @@ void main() {
     expect(request.id, 11);
     expect(request.status, 'needs_clarification');
     expect(request.needsClientResponse, isTrue);
+    expect(request.statusHistory, hasLength(2));
+    expect(request.statusHistory.last.previousStatus, 'draft');
+    expect(request.statusHistory.last.status, 'new');
+    expect(
+      request.statusHistory.last.changedAt,
+      DateTime.parse('2026-07-23T09:00:00.000Z'),
+    );
     expect(request.items.single.preference, GaragePartPreference.original);
+    expect(
+      () => request.statusHistory.add(request.statusHistory.first),
+      throwsUnsupportedError,
+    );
     expect(
       () => request.items.add(request.items.single),
       throwsUnsupportedError,
@@ -289,6 +316,9 @@ void main() {
             'clientUnitPriceRub': '1250',
             'lineTotalCny': '200',
             'lineTotalRub': '2500',
+            'purchaseStatus': 'purchased',
+            'supplierOrderNumber': 'SUP-44',
+            'purchasedAt': '2026-07-25T09:30:00.000Z',
             'selectedOption': {
               'id': 501,
               'manufacturer': '丰田',
@@ -310,6 +340,12 @@ void main() {
       expect(order.refundState, 'not_refunded');
       expect(order.items, hasLength(1));
       expect(order.items.single.selectedOptionId, 501);
+      expect(order.items.single.purchaseStatus, 'purchased');
+      expect(order.items.single.supplierOrderNumber, 'SUP-44');
+      expect(
+        order.items.single.purchasedAt,
+        DateTime.parse('2026-07-25T09:30:00.000Z'),
+      );
       expect(order.items.single.manufacturer, '丰田');
       expect(order.items.single.manufacturerRu, 'Toyota');
       expect(order.items.single.partNumber, '04465-33480');

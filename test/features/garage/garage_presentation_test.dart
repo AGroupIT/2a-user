@@ -11,8 +11,10 @@ import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_i
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_order_detail_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_request_detail_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_request_form_screen.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_request_status_progress.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_ui.dart';
+import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
 
 void main() {
   test('Garage purchase result exposes only pending and purchased states', () {
@@ -21,6 +23,183 @@ void main() {
     expect(garagePurchaseStatus('unavailable'), 'pending');
     expect(garagePurchaseStatus('purchased'), 'purchased');
     expect(garageStatusLabel('purchased'), 'Куплено');
+  });
+
+  testWidgets(
+    'Garage status progress fits narrow width and expands exact history',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(320, 720));
+      final request = GarageRequest.fromJson({
+        'id': 11,
+        'requestNumber': 'GAR-A-01',
+        'vehicleId': 7,
+        'status': 'in_progress',
+        'createdAt': '2026-07-23T08:00:00.000Z',
+        'submittedAt': '2026-07-23T09:00:00.000Z',
+        'statusHistory': [
+          {
+            'id': 501,
+            'eventType': 'created',
+            'previousStatus': null,
+            'status': 'draft',
+            'changedAt': '2026-07-23T08:00:00.000Z',
+          },
+          {
+            'id': 502,
+            'eventType': 'submitted',
+            'previousStatus': 'draft',
+            'status': 'new',
+            'changedAt': '2026-07-23T09:00:00.000Z',
+          },
+          {
+            'id': 503,
+            'eventType': 'status_changed',
+            'previousStatus': 'new',
+            'status': 'in_progress',
+            'changedAt': '2026-07-24T10:15:00.000Z',
+          },
+        ],
+        'items': const <Map<String, dynamic>>[],
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: GarageRequestStatusProgress(
+                  request: request,
+                  statuses: const [],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      for (final code in canonicalGarageRequestStatusOrder) {
+        expect(
+          find.byKey(ValueKey('garage-status-segment-$code')),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.byKey(const ValueKey('garage-status-stage-draft')),
+        findsNothing,
+      );
+      expect(find.text('В работе'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('garage-status-toggle')));
+      await tester.pumpAndSettle();
+
+      for (final code in canonicalGarageRequestStatusOrder) {
+        expect(
+          find.byKey(ValueKey('garage-status-stage-$code')),
+          findsOneWidget,
+        );
+      }
+      final currentStageDate = tester.widget<Text>(
+        find.byKey(const ValueKey('garage-status-stage-in_progress-date')),
+      );
+      expect(currentStageDate.data, contains('24.07.2026'));
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(const ValueKey('garage-status-stage-paid')),
+            )
+            .opacity,
+        0.42,
+      );
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(const ValueKey('garage-status-stage-in_progress')),
+            )
+            .opacity,
+        1,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Garage detail tabs fill available width and scroll on mobile', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(760, 900));
+    final repository = _MockGarageRepository();
+    final request = GarageRequest.fromJson({
+      'id': 11,
+      'requestNumber': 'GAR-A-11',
+      'vehicleId': 7,
+      'status': 'new',
+      'vehicleSnapshot': {
+        'make': 'Toyota',
+        'model': 'Camry',
+        'modelYear': 2020,
+      },
+      'items': const <Map<String, dynamic>>[],
+    });
+    when(() => repository.getRequest(11)).thenAnswer((_) async => request);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeClientCodeProvider.overrideWithValue('A-001'),
+          garageRepositoryProvider.overrideWithValue(repository),
+          garageRequestStatusesProvider.overrideWith(
+            (ref) async => const <GarageRequestStatusDefinition>[],
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: GarageRequestDetailScreen(requestId: 11)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('garage-detail-tabs-fill')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('garage-detail-tabs-scroll')),
+      findsNothing,
+    );
+    final desktopRects = [
+      for (var index = 0; index < 4; index++)
+        tester.getRect(find.byKey(ValueKey('garage-detail-tab-$index'))),
+    ];
+    for (var index = 1; index < desktopRects.length; index++) {
+      expect(
+        (desktopRects[index].width - desktopRects.first.width).abs(),
+        lessThan(0.1),
+      );
+      expect(
+        desktopRects[index].left - desktopRects[index - 1].right,
+        closeTo(8, 0.1),
+      );
+    }
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pumpAndSettle();
+
+    final mobileScroll = find.byKey(
+      const ValueKey('garage-detail-tabs-scroll'),
+    );
+    expect(mobileScroll, findsOneWidget);
+    expect(find.byKey(const ValueKey('garage-detail-tabs-fill')), findsNothing);
+    expect(
+      tester.widget<SingleChildScrollView>(mobileScroll).scrollDirection,
+      Axis.horizontal,
+    );
+    for (var index = 0; index < 4; index++) {
+      expect(find.byKey(ValueKey('garage-detail-tab-$index')), findsOneWidget);
+    }
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Garage route remains closed when availability is false', (
@@ -144,12 +323,19 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: GarageInvoiceCard(
-            invoice: invoice,
-            order: order,
-            onPay: () => paid = true,
+      ProviderScope(
+        overrides: [
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: GarageInvoiceCard(
+              invoice: invoice,
+              order: order,
+              onPay: () => paid = true,
+            ),
           ),
         ),
       ),
@@ -325,21 +511,75 @@ void main() {
           garageRepositoryProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(
-          home: Scaffold(body: GarageRequestFormScreen(initialVehicleId: 7)),
+          home: Scaffold(body: GarageRequestFormScreen()),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
+    expect(
+      find.byType(DropdownButtonFormField<GaragePartPreference>),
+      findsNothing,
+    );
     expect(find.byKey(const ValueKey('garage-vehicle-picker')), findsOneWidget);
+    final labelRect = tester.getRect(find.text('Автомобиль *'));
+    final placeholderRect = tester.getRect(find.text('Выберите автомобиль'));
+    expect(labelRect.overlaps(placeholderRect), isFalse);
     await tester.tap(find.byKey(const ValueKey('garage-vehicle-picker')));
     await tester.pumpAndSettle();
-    expect(find.text('Выберите автомобиль'), findsOneWidget);
+    expect(find.text('Выберите автомобиль'), findsWidgets);
     expect(
       find.textContaining('Очень длинное название семейного автомобиля'),
       findsWidgets,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Garage part preference uses the standard selection modal', (
+    tester,
+  ) async {
+    var selected = GaragePartPreference.any;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              return Form(
+                child: GaragePartPreferencePickerField(
+                  key: const ValueKey('garage-part-preference-picker-test'),
+                  value: selected,
+                  onChanged: (value) => setState(() => selected = value),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byType(DropdownButtonFormField<GaragePartPreference>),
+      findsNothing,
+    );
+    expect(find.text('Любой подходящий'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('garage-part-preference-picker-test')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Выберите тип запчасти'), findsOneWidget);
+    expect(find.text('Оригинал'), findsOneWidget);
+    expect(find.text('Аналог'), findsOneWidget);
+    expect(find.text('Любой подходящий'), findsWidgets);
+
+    await tester.tap(find.text('Оригинал'));
+    await tester.pumpAndSettle();
+
+    expect(selected, GaragePartPreference.original);
+    expect(find.text('Оригинал'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -412,7 +652,7 @@ void main() {
     'Garage offer allows multiple variants of one item and quantity per variant',
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.binding.setSurfaceSize(const Size(700, 1800));
+      await tester.binding.setSurfaceSize(const Size(390, 1800));
       final repository = _MockGarageRepository();
       final request = GarageRequest.fromJson({
         'id': 11,
@@ -514,9 +754,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Запчасти'));
-      await tester.pumpAndSettle();
+      expect(find.widgetWithText(Tab, 'Запчасти'), findsNothing);
+      expect(find.text('Запчасти'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('garage-part-position-101')),
+        findsOneWidget,
+      );
+      expect(find.text('Тормозные колодки'), findsOneWidget);
+      expect(find.text('1 шт.'), findsOneWidget);
+      expect(find.text('любой'), findsOneWidget);
+      expect(find.text('Подобранные варианты'), findsOneWidget);
       expect(find.text('Toyota 04465-33480'), findsOneWidget);
+      final optionTitleRect = tester.getRect(find.text('Toyota 04465-33480'));
+      final optionTypeRect = tester.getRect(
+        find.byKey(const ValueKey('garage-option-501-type')),
+      );
+      final optionImageRect = tester.getRect(
+        find.byKey(const ValueKey('garage-option-501-image-0')),
+      );
+      expect(optionTypeRect.left, closeTo(optionTitleRect.left, 0.01));
+      expect(optionTypeRect.top, greaterThan(optionTitleRect.top));
+      expect(optionTypeRect.bottom, lessThan(optionImageRect.top));
       expect(find.text('Оригинальные тормозные колодки'), findsOneWidget);
       expect(find.text('Рекомендуем для ежедневной езды'), findsOneWidget);
       expect(
@@ -568,7 +826,7 @@ void main() {
     'Garage paid order keeps selected option image and hides empty refund',
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.binding.setSurfaceSize(const Size(390, 1000));
+      await tester.binding.setSurfaceSize(const Size(360, 1000));
       final repository = _MockGarageRepository();
       final order = GarageOrder.fromJson({
         'id': 45,
@@ -590,18 +848,40 @@ void main() {
             'requestItemId': 102,
             'partName': 'Масляный фильтр',
             'quantity': 2,
+            'clientUnitPriceCny': '50',
+            'clientUnitPriceRub': '625',
             'lineTotalCny': '100',
             'lineTotalRub': '1250',
-            'purchaseStatus': 'pending',
+            'purchaseStatus': 'purchased',
+            'supplierOrderNumber': 'CN-ORDER-45',
+            'purchasedAt': '2026-07-25T09:30:00.000Z',
             'selectedOption': {
               'id': 503,
               'manufacturer': 'Toyota',
               'partNumber': '90915-YZZD2',
+              'optionType': 'original',
+              'description': 'Фильтр для планового ТО',
               'imageUrl': '/uploads/garage-options/filter.jpg',
               'imageUrls': [
                 '/uploads/garage-options/filter.jpg',
                 '/uploads/garage-options/filter-box.jpg',
               ],
+            },
+          },
+          {
+            'id': 602,
+            'orderId': 45,
+            'requestItemId': 103,
+            'partName': 'Воздушный фильтр',
+            'quantity': 1,
+            'lineTotalCny': '0',
+            'lineTotalRub': '0',
+            'purchaseStatus': 'pending',
+            'selectedOption': {
+              'id': 504,
+              'manufacturer': 'Toyota',
+              'partNumber': '17801-0H050',
+              'optionType': 'analog',
             },
           },
         ],
@@ -636,6 +916,32 @@ void main() {
       expect(find.text('Оплачено'), findsOneWidget);
       expect(find.text('Выкупаем'), findsOneWidget);
       expect(find.text('Завершено'), findsOneWidget);
+      expect(find.text('Статус закупки'), findsNWidgets(2));
+      expect(find.text('Выкуплена'), findsOneWidget);
+      expect(find.text('Ожидает выкупа'), findsOneWidget);
+      expect(find.text('Номер заказа / трек'), findsOneWidget);
+      expect(find.text('CN-ORDER-45'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('garage-order-item-601-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('garage-order-item-601-price-summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('garage-order-financial-summary')),
+        findsOneWidget,
+      );
+      expect(find.text('Финансовая сводка'), findsOneWidget);
+      expect(find.text('Цена за ед.'), findsNWidgets(2));
+      expect(find.text('оригинал'), findsOneWidget);
+      expect(find.text('аналог'), findsOneWidget);
+      expect(find.text('Фильтр для планового ТО'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('garage-order-item-601-supplier-order')),
+        findsOneWidget,
+      );
 
       expect(
         find.byKey(const ValueKey('garage-order-item-601-image-1')),
@@ -754,8 +1060,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Запчасти'));
-      await tester.pumpAndSettle();
+      expect(find.widgetWithText(Tab, 'Запчасти'), findsNothing);
       final checkbox = tester.widget<Checkbox>(
         find.byKey(const ValueKey('garage-option-503-checkbox')),
       );

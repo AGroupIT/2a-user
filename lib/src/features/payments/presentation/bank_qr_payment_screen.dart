@@ -12,6 +12,8 @@ import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/gallery_image_save_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/bank_qr_payment.dart';
+import '../data/payment_operator_status.dart';
+import 'payment_operator_sleeping_notice.dart';
 import 'payment_receipt_picker.dart';
 
 /// Bank QR — модалка оплаты счёта в рублях.
@@ -47,10 +49,23 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   @override
   void initState() {
     super.initState();
-    _start();
+    Future<void>.microtask(_start);
   }
 
   Future<void> _start() async {
+    final current = ref.read(paymentOperatorStatusProvider).asData?.value;
+    final operatorStatus =
+        current ??
+        await ref.read(paymentOperatorStatusProvider.future) ??
+        PaymentOperatorStatus.workingFallback;
+    if (!mounted) return;
+    if (operatorStatus.sleeping) {
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -212,6 +227,9 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final operatorsSleeping = paymentOperatorStatusOrWorking(
+      ref.watch(paymentOperatorStatusProvider),
+    ).sleeping;
 
     return SafeArea(
       top: false,
@@ -238,7 +256,9 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: _loading
+                child: operatorsSleeping
+                    ? const PaymentOperatorSleepingNotice()
+                    : _loading
                     ? const _BankQrLoadingCard()
                     : _error != null
                     ? _buildError()
@@ -247,7 +267,13 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
-              child: _buildFooter(),
+              child: operatorsSleeping
+                  ? _BankQrSecondaryButton(
+                      label: tr(context, ru: 'Закрыть', zh: '关闭'),
+                      icon: Icons.close_rounded,
+                      onTap: () => Navigator.of(context).pop(false),
+                    )
+                  : _buildFooter(),
             ),
           ],
         ),

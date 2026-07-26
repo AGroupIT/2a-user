@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,10 +13,10 @@ import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
 import 'garage_conversation_card.dart';
 import 'garage_invoice_card.dart';
-import 'garage_media_image.dart';
 import 'garage_order_composition_card.dart';
 import 'garage_payment_sheet.dart';
-import 'garage_translated_text.dart';
+import 'garage_request_parts_card.dart';
+import 'garage_request_status_progress.dart';
 import 'garage_ui.dart';
 
 class GarageRequestDetailScreen extends ConsumerStatefulWidget {
@@ -43,7 +44,7 @@ class _GarageRequestDetailScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -333,18 +334,10 @@ class _GarageRequestDetailScreenState
                         _summary(value, requestStatuses),
                         const SizedBox(height: 12),
                         _vehicle(value),
+                        const SizedBox(height: 12),
+                        _parts(value),
                         const SizedBox(height: 14),
                         _actions(value),
-                      ],
-                    ),
-                    _tabBody(
-                      bottom: bottom,
-                      children: [
-                        _items(value),
-                        if (value.currentOffer != null) ...[
-                          const SizedBox(height: 12),
-                          _offer(value, value.currentOffer!),
-                        ],
                       ],
                     ),
                     _tabBody(
@@ -390,10 +383,88 @@ class _GarageRequestDetailScreenState
   }
 
   Widget _detailTabs() {
-    const tabs = ['Обзор', 'Запчасти', 'Счёт', 'Состав заказа', 'Общение'];
+    const tabs = ['Обзор', 'Счёт', 'Состав заказа', 'Общение'];
+    const gap = 8.0;
+    const minimumTabWidth = 96.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 720;
+        final labelStyle = const TextStyle(
+          fontFamily: 'Gilroy',
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+        );
+        final textScaler = MediaQuery.textScalerOf(context);
+        final tabWidths = [
+          for (final label in tabs)
+            math.max(
+              minimumTabWidth,
+              (TextPainter(
+                    text: TextSpan(text: label, style: labelStyle),
+                    textDirection: Directionality.of(context),
+                    textScaler: textScaler,
+                    maxLines: 1,
+                  )..layout()).width +
+                  32,
+            ),
+        ];
+        final availableWidth = constraints.maxWidth - 8;
+        final requiredWidth =
+            tabWidths.fold<double>(0, (sum, width) => sum + width) +
+            gap * (tabs.length - 1);
+        final scrollable = requiredWidth > availableWidth;
+
+        Widget tabButton(int index) {
+          final selected = _tabController.index == index;
+          return Semantics(
+            button: true,
+            selected: selected,
+            label: tabs[index],
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              height: 42,
+              decoration: BoxDecoration(
+                gradient: selected ? context.brandGradient : null,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: ValueKey('garage-detail-tab-$index'),
+                  onTap: selected
+                      ? null
+                      : () => _tabController.animateTo(index),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        style: labelStyle.copyWith(
+                          color: selected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontWeight: selected
+                              ? FontWeight.w900
+                              : FontWeight.w800,
+                        ),
+                        child: Text(
+                          tabs[index],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(4),
@@ -410,30 +481,39 @@ class _GarageRequestDetailScreenState
               ),
             ],
           ),
-          child: TabBar(
-            controller: _tabController,
-            isScrollable: compact,
-            tabAlignment: compact ? TabAlignment.start : TabAlignment.fill,
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            labelPadding: EdgeInsets.symmetric(horizontal: compact ? 16 : 6),
-            indicator: BoxDecoration(
-              gradient: context.brandGradient,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            labelColor: Colors.white,
-            unselectedLabelColor: AppColors.textSecondary,
-            labelStyle: const TextStyle(
-              fontFamily: 'Gilroy',
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontFamily: 'Gilroy',
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-            tabs: [for (final label in tabs) Tab(text: label)],
+          child: AnimatedBuilder(
+            animation: _tabController.animation!,
+            builder: (context, _) {
+              if (scrollable) {
+                return SingleChildScrollView(
+                  key: const ValueKey('garage-detail-tabs-scroll'),
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var index = 0; index < tabs.length; index++) ...[
+                        SizedBox(
+                          width: tabWidths[index],
+                          child: tabButton(index),
+                        ),
+                        if (index != tabs.length - 1)
+                          const SizedBox(width: gap),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              return Row(
+                key: const ValueKey('garage-detail-tabs-fill'),
+                children: [
+                  for (var index = 0; index < tabs.length; index++) ...[
+                    Expanded(child: tabButton(index)),
+                    if (index != tabs.length - 1) const SizedBox(width: gap),
+                  ],
+                ],
+              );
+            },
           ),
         );
       },
@@ -544,7 +624,10 @@ class _GarageRequestDetailScreenState
             ),
           ],
           const SizedBox(height: 14),
-          _RequestProgress(status: status, statuses: requestStatuses),
+          GarageRequestStatusProgress(
+            request: request,
+            statuses: requestStatuses,
+          ),
         ],
       ),
     );
@@ -597,52 +680,41 @@ class _GarageRequestDetailScreenState
     );
   }
 
-  Widget _items(GarageRequest request) {
-    return GarageCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Позиции · ${request.items.length}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'Gilroy',
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (var index = 0; index < request.items.length; index++) ...[
-            _RequestItemRow(item: request.items[index]),
-            if (index != request.items.length - 1) const Divider(height: 24),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _offer(GarageRequest request, GarageOffer offer) {
+  Widget _parts(GarageRequest request) {
+    final offer = request.currentOffer;
     final existingOrder = request.order;
-    final editable = existingOrder == null
-        ? offer.status == 'published' && !offer.isExpired
-        : _canEditGarageOrderSelection(existingOrder);
+    final editable =
+        offer != null &&
+        (existingOrder == null
+            ? offer.status == 'published' && !offer.isExpired
+            : _canEditGarageOrderSelection(existingOrder));
     return GarageCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Предложение по запчастям',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'Gilroy',
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Запчасти',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              GaragePartsBadge(
+                label:
+                    '${request.items.length} ${_partsCountLabel(request.items.length)}',
+              ),
+            ],
           ),
-          if (offer.validUntil != null) ...[
+          if (offer?.validUntil != null) ...[
             const SizedBox(height: 5),
             Text(
-              'Действует до ${_dateTime(offer.validUntil!)}',
+              'Предложение действует до ${_dateTime(offer!.validUntil!)}',
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontFamily: 'Gilroy',
@@ -652,64 +724,45 @@ class _GarageRequestDetailScreenState
             ),
           ],
           const SizedBox(height: 12),
-          for (final item in request.items) ...[
-            Text(
-              item.partName,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontFamily: 'Gilroy',
-                fontSize: 14.5,
-                fontWeight: FontWeight.w900,
-              ),
+          for (var index = 0; index < request.items.length; index++) ...[
+            GaragePartPositionCard(
+              item: request.items[index],
+              options:
+                  offer?.optionsFor(request.items[index].id) ??
+                  const <GaragePartOption>[],
+              hasPublishedOffer: offer != null,
+              selections: _selections,
+              enabled: editable && !_working,
+              onOptionChanged: (option, selected) {
+                setState(() {
+                  if (selected) {
+                    _selections[option.id] = GarageOfferSelection(
+                      requestItemId: request.items[index].id,
+                      optionId: option.id,
+                      quantity: 1,
+                    );
+                  } else {
+                    _selections.remove(option.id);
+                  }
+                });
+                _scheduleCalculation(request);
+              },
+              onQuantityChanged: (option, quantity) {
+                final current = _selections[option.id];
+                if (current == null) return;
+                setState(() {
+                  _selections[option.id] = current.copyWith(quantity: quantity);
+                });
+                _scheduleCalculation(request);
+              },
             ),
-            const SizedBox(height: 7),
-            if (offer.optionsFor(item.id).isEmpty)
-              const Text(
-                'Варианты ещё не добавлены',
-                style: TextStyle(color: AppColors.textSecondary),
-              )
-            else
-              Column(
-                children: [
-                  for (final option in offer.optionsFor(item.id))
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _GarageOptionChoiceCard(
-                        option: option,
-                        selected: _selections.containsKey(option.id),
-                        quantity: _selections[option.id]?.quantity ?? 1,
-                        enabled: editable && !_working,
-                        onChanged: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selections[option.id] = GarageOfferSelection(
-                                requestItemId: item.id,
-                                optionId: option.id,
-                                quantity: 1,
-                              );
-                            } else {
-                              _selections.remove(option.id);
-                            }
-                          });
-                          _scheduleCalculation(request);
-                        },
-                        onQuantityChanged: (quantity) {
-                          final current = _selections[option.id];
-                          if (current == null) return;
-                          setState(() {
-                            _selections[option.id] = current.copyWith(
-                              quantity: quantity,
-                            );
-                          });
-                          _scheduleCalculation(request);
-                        },
-                      ),
-                    ),
-                ],
-              ),
+            if (index != request.items.length - 1) const SizedBox(height: 10),
+          ],
+          if (offer != null) ...[
+            const SizedBox(height: 4),
             const Divider(height: 22),
           ],
-          if (_calculation != null) ...[
+          if (offer != null && _calculation != null) ...[
             GarageInfoRow(
               label: 'Товары',
               value: garageMoney(_calculation!.goodsTotalCny, '¥'),
@@ -730,7 +783,7 @@ class _GarageRequestDetailScreenState
               emphasized: true,
             ),
             const SizedBox(height: 12),
-          ] else if (existingOrder != null) ...[
+          ] else if (offer != null && existingOrder != null) ...[
             GarageInfoRow(
               label: 'Текущая сумма заказа',
               value:
@@ -754,7 +807,7 @@ class _GarageRequestDetailScreenState
             ),
             const SizedBox(height: 10),
           ],
-          if (editable) ...[
+          if (offer != null && editable) ...[
             GaragePrimaryButton(
               label: existingOrder == null
                   ? 'Купить выбранное'
@@ -763,7 +816,7 @@ class _GarageRequestDetailScreenState
               onPressed: () => _accept(request),
               loading: _working,
             ),
-          ] else if (existingOrder != null)
+          ] else if (offer != null && existingOrder != null)
             const Text(
               'Состав и количество зафиксированы после отправки оплаты.',
               style: TextStyle(
@@ -830,246 +883,6 @@ class _GarageRequestDetailScreenState
   }
 }
 
-class _GarageOptionChoiceCard extends StatelessWidget {
-  final GaragePartOption option;
-  final bool selected;
-  final int quantity;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-  final ValueChanged<int> onQuantityChanged;
-
-  const _GarageOptionChoiceCard({
-    required this.option,
-    required this.selected,
-    required this.quantity,
-    required this.enabled,
-    required this.onChanged,
-    required this.onQuantityChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final title = '${option.manufacturer} ${option.partNumber}'.trim();
-    final translatedTitle = option.manufacturerRu?.trim().isNotEmpty == true
-        ? '${option.manufacturerRu!.trim()} ${option.partNumber}'.trim()
-        : null;
-    return Material(
-      color: selected
-          ? context.brandPrimary.withValues(alpha: 0.08)
-          : const Color(0xFFF7F8FA),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: enabled ? () => onChanged(!selected) : null,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: selected ? context.brandPrimary : const Color(0xFFE4E7EC),
-              width: selected ? 1.5 : 1,
-            ),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (option.imageUrls.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(left: 48),
-                  child: GarageImageStrip(
-                    imagePaths: option.imageUrls,
-                    keyPrefix: 'garage-option-${option.id}',
-                    fallbackFileNamePrefix: 'garage-option-${option.id}',
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Checkbox(
-                    key: ValueKey('garage-option-${option.id}-checkbox'),
-                    value: selected,
-                    onChanged: enabled
-                        ? (value) => onChanged(value ?? false)
-                        : null,
-                    activeColor: context.brandPrimary,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GarageTranslatedText(
-                          title.isEmpty ? 'Вариант запчасти' : title,
-                          translatedText: translatedTitle,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        if (option.displayDescription != null) ...[
-                          const SizedBox(height: 4),
-                          GarageTranslatedText(
-                            option.description ?? option.displayDescription!,
-                            translatedText: option.descriptionRu,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                        if (option.displayEmployeeComment != null) ...[
-                          const SizedBox(height: 5),
-                          GarageTranslatedText(
-                            option.employeeComment ??
-                                option.displayEmployeeComment!,
-                            translatedText: option.employeeCommentRu,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 12.5,
-                              height: 1.25,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 7),
-                        Text(
-                          garageMoney(option.clientUnitPriceRub, '₽'),
-                          style: TextStyle(
-                            color: context.brandPrimary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          '${garageMoney(option.clientUnitPriceCny, '¥')} · ${_optionTypeLabel(option.optionType)}',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (selected) ...[
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Text(
-                                'Количество',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontFamily: 'Gilroy',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const Spacer(),
-                              _GarageQuantityControls(
-                                optionId: option.id,
-                                quantity: quantity,
-                                enabled: enabled,
-                                onChanged: onQuantityChanged,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GarageQuantityControls extends StatelessWidget {
-  final int optionId;
-  final int quantity;
-  final bool enabled;
-  final ValueChanged<int> onChanged;
-
-  const _GarageQuantityControls({
-    required this.optionId,
-    required this.quantity,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final canDecrease = enabled && quantity > 1;
-    final canIncrease = enabled && quantity < 999;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _quantityButton(
-          key: ValueKey('garage-option-$optionId-minus'),
-          icon: Icons.remove_rounded,
-          enabled: canDecrease,
-          onTap: () => onChanged(quantity - 1),
-        ),
-        SizedBox(
-          width: 42,
-          child: Text(
-            '$quantity',
-            key: ValueKey('garage-option-$optionId-quantity'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'Gilroy',
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        _quantityButton(
-          key: ValueKey('garage-option-$optionId-plus'),
-          icon: Icons.add_rounded,
-          enabled: canIncrease,
-          onTap: () => onChanged(quantity + 1),
-        ),
-      ],
-    );
-  }
-
-  Widget _quantityButton({
-    required Key key,
-    required IconData icon,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      key: key,
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: enabled ? const Color(0xFFE9EDF2) : const Color(0xFFF1F3F6),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          size: 17,
-          color: enabled ? AppColors.textPrimary : const Color(0xFFB6BDC8),
-        ),
-      ),
-    );
-  }
-}
-
 bool _canEditGarageOrderSelection(GarageOrder order) {
   return order.status == 'awaiting_payment' &&
       order.paidAt == null &&
@@ -1082,152 +895,16 @@ bool _canPayGarageOrder(GarageOrder order, GarageInvoice invoice) {
       {'unpaid', 'awaiting_payment'}.contains(invoice.status);
 }
 
-class _RequestItemRow extends StatelessWidget {
-  final GarageRequestItem item;
-
-  const _RequestItemRow({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: context.brandPrimary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '${item.orderNumber}',
-            style: TextStyle(
-              color: context.brandPrimary,
-              fontFamily: 'Gilroy',
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.partName,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontFamily: 'Gilroy',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                '${item.partNumber} · ${item.quantity} шт. · ${_preference(item.preference)}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontFamily: 'Gilroy',
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+String _partsCountLabel(int count) {
+  final mod100 = count % 100;
+  final mod10 = count % 10;
+  if (mod100 >= 11 && mod100 <= 14) {
+    return 'позиций';
   }
-}
-
-class _RequestProgress extends StatelessWidget {
-  final String status;
-  final List<GarageRequestStatusDefinition> statuses;
-
-  const _RequestProgress({required this.status, required this.statuses});
-
-  @override
-  Widget build(BuildContext context) {
-    final definitions = statuses.isEmpty
-        ? canonicalGarageRequestStatusOrder
-              .map(
-                (code) => GarageRequestStatusDefinition(
-                  code: code,
-                  nameRu: garageStatusLabel(code),
-                  color: null,
-                  sortOrder: canonicalGarageRequestStatusOrder.indexOf(code),
-                ),
-              )
-              .toList(growable: false)
-        : statuses;
-    final index = definitions.indexWhere(
-      (definition) => definition.code == status,
-    );
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var position = 0; position < definitions.length; position++) ...[
-            SizedBox(
-              width: 112,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: position <= index
-                          ? context.brandPrimary
-                          : const Color(0xFFE4E7EC),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    definitions[position].nameRu,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: position <= index
-                          ? context.brandPrimary
-                          : AppColors.textSecondary,
-                      fontFamily: 'Gilroy',
-                      fontSize: 11,
-                      height: 1.15,
-                      fontWeight: position == index
-                          ? FontWeight.w900
-                          : FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (position != definitions.length - 1) const SizedBox(width: 7),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-String _preference(GaragePartPreference preference) {
-  return switch (preference) {
-    GaragePartPreference.original => 'оригинал',
-    GaragePartPreference.analog => 'аналог',
-    GaragePartPreference.any => 'любой',
-    GaragePartPreference.unknown => 'не указано',
-  };
-}
-
-String _optionTypeLabel(String value) {
-  return switch (value.trim().toLowerCase()) {
-    'original' => 'оригинал',
-    'analog' || 'analogue' => 'аналог',
-    'used' => 'б/у',
-    'oem' => 'OEM',
-    final normalized when normalized.isNotEmpty => normalized,
-    _ => 'тип не указан',
+  return switch (mod10) {
+    1 => 'позиция',
+    2 || 3 || 4 => 'позиции',
+    _ => 'позиций',
   };
 }
 

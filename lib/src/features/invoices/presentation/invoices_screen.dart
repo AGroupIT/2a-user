@@ -19,7 +19,9 @@ import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/bank_qr_payment_screen.dart';
+import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../photos/domain/photo_item.dart';
@@ -2284,6 +2286,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
 
   // Bank QR: открываем оплату в рублях как вложенную модалку в стиле счёта.
   Future<void> _openBankQr() async {
+    if (!await _ensurePaymentOperatorsWorking()) return;
+    if (!mounted) return;
     if (_isUnpaid) {
       final choice = await _showBankQrAudienceWarning(context);
       if (!mounted || choice == null) return;
@@ -2292,6 +2296,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         return;
       }
     }
+    if (!await _ensurePaymentOperatorsWorking()) return;
+    if (!mounted) return;
 
     final invoiceSheetNavigator = Navigator.of(context);
     final changed = await showBlurredModalBottomSheet<bool>(
@@ -2310,6 +2316,27 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       widget.onBonusApplied();
       invoiceSheetNavigator.pop();
     }
+  }
+
+  Future<bool> _ensurePaymentOperatorsWorking() async {
+    final current = ref.read(paymentOperatorStatusProvider).asData?.value;
+    final status =
+        current ??
+        await ref.read(paymentOperatorStatusProvider.future) ??
+        PaymentOperatorStatus.workingFallback;
+    if (status.working) return true;
+    if (mounted) {
+      AppToast.show(
+        context,
+        tr(
+          context,
+          ru: 'Операторы оплаты сейчас отдыхают. QR временно недоступен.',
+          zh: '支付客服当前休息，二维码暂不可用。',
+        ),
+        isError: true,
+      );
+    }
+    return false;
   }
 
   Future<_BankQrAudienceChoice?> _showBankQrAudienceWarning(
@@ -2495,6 +2522,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final operatorsSleeping = paymentOperatorStatusOrWorking(
+      ref.watch(paymentOperatorStatusProvider),
+    ).sleeping;
     final df = DateFormat('dd MMM yyyy', 'ru');
     final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
@@ -2552,17 +2582,20 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_canOpenBankQr) ...[
-                    _InvoicePrimaryButton(
-                      label: tr(
-                        context,
-                        ru: _isUnpaid
-                            ? 'Оплатить в рублях'
-                            : 'Открыть QR оплаты',
-                        zh: _isUnpaid ? '用卢布支付' : '打开付款二维码',
+                    if (operatorsSleeping)
+                      const PaymentOperatorSleepingNotice(compact: true)
+                    else
+                      _InvoicePrimaryButton(
+                        label: tr(
+                          context,
+                          ru: _isUnpaid
+                              ? 'Оплатить в рублях'
+                              : 'Открыть QR оплаты',
+                          zh: _isUnpaid ? '用卢布支付' : '打开付款二维码',
+                        ),
+                        icon: Icons.qr_code_2_rounded,
+                        onTap: _openBankQr,
                       ),
-                      icon: Icons.qr_code_2_rounded,
-                      onTap: _openBankQr,
-                    ),
                     const SizedBox(height: 8),
                   ],
                   if (_isUnpaid)

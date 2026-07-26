@@ -416,28 +416,11 @@ class _PartCardState extends State<_PartCard> {
             validator: _validateExistUrl,
           ),
           const SizedBox(height: 11),
-          DropdownButtonFormField<GaragePartPreference>(
-            initialValue: draft.preference,
-            decoration: const InputDecoration(labelText: 'Предпочтение'),
-            items: const [
-              DropdownMenuItem(
-                value: GaragePartPreference.original,
-                child: Text('Оригинал'),
-              ),
-              DropdownMenuItem(
-                value: GaragePartPreference.analog,
-                child: Text('Аналог'),
-              ),
-              DropdownMenuItem(
-                value: GaragePartPreference.any,
-                child: Text('Любой подходящий'),
-              ),
-            ],
-            onChanged: widget.enabled
-                ? (value) => setState(
-                    () => draft.preference = value ?? GaragePartPreference.any,
-                  )
-                : null,
+          GaragePartPreferencePickerField(
+            key: ValueKey('garage-part-preference-picker-${widget.index}'),
+            value: draft.preference,
+            enabled: widget.enabled,
+            onChanged: (value) => setState(() => draft.preference = value),
           ),
           const SizedBox(height: 11),
           TextFormField(

@@ -34,6 +34,24 @@ class SelfBuyoutService {
         .toList();
   }
 
+  Future<SelfBuyoutVerification> submitVerification({
+    required String fullName,
+    required String phone,
+    required String telegram,
+  }) async {
+    final res = await _apiClient.post(
+      '/client/self-buyout/verification',
+      data: {
+        'fullName': fullName.trim(),
+        'phone': phone.trim(),
+        'telegram': telegram.trim(),
+      },
+    );
+    return SelfBuyoutVerification.fromJson(
+      res.data?['verification'] as Map<String, dynamic>?,
+    );
+  }
+
   Future<SelfBuyoutDetail> getDetail(int requestId) async {
     final res = await _apiClient.get('/client/self-buyout/requests/$requestId');
     return SelfBuyoutDetail.fromJson(res.data as Map<String, dynamic>);

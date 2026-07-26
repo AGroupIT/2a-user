@@ -67,4 +67,48 @@ void main() {
     expect(availability.operatorWorking, isTrue);
     expect(availability.operatorStatusReachable, isFalse);
   });
+
+  test('availability parses required self-buyout verification', () {
+    final availability = SelfBuyoutAvailability.fromJson({
+      'available': false,
+      'reason': 'verification_rejected',
+      'verification': {
+        'required': true,
+        'status': 'rejected',
+        'verificationId': 42,
+        'requestVersion': 2,
+        'submittedAt': '2026-07-26T01:00:00.000Z',
+        'decidedAt': '2026-07-26T02:00:00.000Z',
+        'decisionSource': 'partner_api',
+        'rejectionReason': 'Не удалось подтвердить клиента',
+        'canSubmit': true,
+        'contact': {
+          'fullName': 'Иванов Иван',
+          'phone': '+79991234567',
+          'telegram': '@ivanov',
+        },
+      },
+    });
+
+    expect(availability.verification.required, isTrue);
+    expect(availability.verification.isRejected, isTrue);
+    expect(availability.verification.canSubmit, isTrue);
+    expect(availability.verification.verificationId, 42);
+    expect(availability.verification.requestVersion, 2);
+    expect(
+      availability.verification.rejectionReason,
+      'Не удалось подтвердить клиента',
+    );
+    expect(availability.verification.contact.fullName, 'Иванов Иван');
+    expect(availability.verification.contact.phone, '+79991234567');
+    expect(availability.verification.contact.telegram, '@ivanov');
+  });
+
+  test('legacy availability without verification remains compatible', () {
+    final availability = SelfBuyoutAvailability.fromJson({'available': true});
+
+    expect(availability.verification.required, isFalse);
+    expect(availability.verification.status, 'not_required');
+    expect(availability.verification.isApproved, isTrue);
+  });
 }

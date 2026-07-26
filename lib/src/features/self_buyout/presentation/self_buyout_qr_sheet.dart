@@ -11,6 +11,8 @@ import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/gallery_image_save_helper.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../payments/data/payment_operator_status.dart';
+import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../payments/presentation/payment_receipt_picker.dart';
 import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
@@ -47,10 +49,23 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
   @override
   void initState() {
     super.initState();
-    _start();
+    Future<void>.microtask(_start);
   }
 
   Future<void> _start() async {
+    final current = ref.read(paymentOperatorStatusProvider).asData?.value;
+    final operatorStatus =
+        current ??
+        await ref.read(paymentOperatorStatusProvider.future) ??
+        PaymentOperatorStatus.workingFallback;
+    if (!mounted) return;
+    if (operatorStatus.sleeping) {
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -211,6 +226,9 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final operatorsSleeping = paymentOperatorStatusOrWorking(
+      ref.watch(paymentOperatorStatusProvider),
+    ).sleeping;
     return SafeArea(
       top: false,
       bottom: false,
@@ -244,7 +262,9 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: _loading
+                child: operatorsSleeping
+                    ? const PaymentOperatorSleepingNotice()
+                    : _loading
                     ? _SelfBuyoutCard(
                         icon: Icons.hourglass_empty_rounded,
                         title: tr(context, ru: 'Готовим QR', zh: '正在生成二维码'),
@@ -260,7 +280,13 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
-              child: _buildFooter(),
+              child: operatorsSleeping
+                  ? SelfBuyoutSecondaryButton(
+                      label: tr(context, ru: 'Закрыть', zh: '关闭'),
+                      icon: Icons.close_rounded,
+                      onTap: () => Navigator.of(context).pop(false),
+                    )
+                  : _buildFooter(),
             ),
           ],
         ),

@@ -118,9 +118,10 @@ class GarageVehiclePickerField extends StatelessWidget {
                   onChanged(selectedId);
                 },
           child: InputDecorator(
-            isEmpty: selected == null,
+            isEmpty: false,
             decoration: InputDecoration(
               labelText: 'Автомобиль *',
+              floatingLabelBehavior: FloatingLabelBehavior.always,
               prefixIcon: const Icon(Icons.directions_car_rounded),
               suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
               errorText: field.errorText,
@@ -150,6 +151,64 @@ class GarageVehiclePickerField extends StatelessWidget {
   }
 }
 
+class GaragePartPreferencePickerField extends StatelessWidget {
+  final GaragePartPreference value;
+  final ValueChanged<GaragePartPreference> onChanged;
+  final bool enabled;
+
+  const GaragePartPreferencePickerField({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FormField<GaragePartPreference>(
+      key: ValueKey(value),
+      initialValue: value,
+      builder: (field) {
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: !enabled
+              ? null
+              : () async {
+                  final selected = await showGaragePartPreferencePicker(
+                    context: context,
+                    selectedPreference: field.value ?? value,
+                  );
+                  if (selected == null || !context.mounted) return;
+                  field.didChange(selected);
+                  onChanged(selected);
+                },
+          child: InputDecorator(
+            isEmpty: false,
+            decoration: InputDecoration(
+              labelText: 'Тип запчасти *',
+              floatingLabelBehavior: FloatingLabelBehavior.always,
+              prefixIcon: const Icon(Icons.category_outlined),
+              suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+              enabled: enabled,
+            ),
+            child: Text(
+              garagePartPreferenceLabel(value),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 Future<int?> showGarageVehiclePicker({
   required BuildContext context,
   required List<GarageVehicle> vehicles,
@@ -165,6 +224,23 @@ Future<int?> showGarageVehiclePicker({
     builder: (context) => _GarageVehiclePickerSheet(
       vehicles: vehicles,
       selectedVehicleId: selectedVehicleId,
+    ),
+  );
+}
+
+Future<GaragePartPreference?> showGaragePartPreferencePicker({
+  required BuildContext context,
+  required GaragePartPreference selectedPreference,
+}) {
+  return showBlurredModalBottomSheet<GaragePartPreference>(
+    context: context,
+    useRootNavigator: true,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.22),
+    builder: (context) => _GaragePartPreferencePickerSheet(
+      selectedPreference: selectedPreference,
     ),
   );
 }
@@ -277,6 +353,143 @@ class _GarageVehiclePickerSheet extends StatelessWidget {
                               vehicle.vinNormalized,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontFamily: 'Gilroy',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: selected
+                            ? context.brandPrimary
+                            : AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GaragePartPreferencePickerSheet extends StatelessWidget {
+  final GaragePartPreference selectedPreference;
+
+  const _GaragePartPreferencePickerSheet({required this.selectedPreference});
+
+  static const _preferences = <GaragePartPreference>[
+    GaragePartPreference.original,
+    GaragePartPreference.analog,
+    GaragePartPreference.any,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+      ),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SheetHandle(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 2, 20, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Выберите тип запчасти',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Укажите, какой вариант должен подобрать менеджер.',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                MediaQuery.paddingOf(context).bottom + 18,
+              ),
+              itemCount: _preferences.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 9),
+              itemBuilder: (context, index) {
+                final preference = _preferences[index];
+                final selected = preference == selectedPreference;
+                return GarageCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 13,
+                  ),
+                  onTap: () => Navigator.of(context).pop(preference),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: context.brandPrimary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          _garagePartPreferenceIcon(preference),
+                          color: context.brandPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              garagePartPreferenceLabel(preference),
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontFamily: 'Gilroy',
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              garagePartPreferenceDescription(preference),
                               style: const TextStyle(
                                 color: AppColors.textSecondary,
                                 fontFamily: 'Gilroy',
@@ -576,6 +789,78 @@ class GarageInfoRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class GaragePartsBadge extends StatelessWidget {
+  final String label;
+  final bool compact;
+
+  const GaragePartsBadge({
+    super.key,
+    required this.label,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: context.brandPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: context.brandPrimary,
+          fontFamily: 'Gilroy',
+          fontSize: compact ? 11 : 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+String garageOptionTypeLabel(String value) {
+  return switch (value.trim().toLowerCase()) {
+    'original' => 'оригинал',
+    'analog' || 'analogue' => 'аналог',
+    'used' => 'б/у',
+    'oem' => 'OEM',
+    final normalized when normalized.isNotEmpty => normalized,
+    _ => 'тип не указан',
+  };
+}
+
+String garagePartPreferenceLabel(GaragePartPreference preference) {
+  return switch (preference) {
+    GaragePartPreference.original => 'Оригинал',
+    GaragePartPreference.analog => 'Аналог',
+    GaragePartPreference.any => 'Любой подходящий',
+    GaragePartPreference.unknown => 'Не указано',
+  };
+}
+
+String garagePartPreferenceDescription(GaragePartPreference preference) {
+  return switch (preference) {
+    GaragePartPreference.original => 'Только оригинальная запчасть',
+    GaragePartPreference.analog => 'Подойдёт качественный аналог',
+    GaragePartPreference.any => 'Менеджер предложит оптимальный вариант',
+    GaragePartPreference.unknown => 'Тип запчасти не выбран',
+  };
+}
+
+IconData _garagePartPreferenceIcon(GaragePartPreference preference) {
+  return switch (preference) {
+    GaragePartPreference.original => Icons.verified_outlined,
+    GaragePartPreference.analog => Icons.compare_arrows_rounded,
+    GaragePartPreference.any => Icons.auto_awesome_rounded,
+    GaragePartPreference.unknown => Icons.help_outline_rounded,
+  };
 }
 
 String garageVehicleLabel(GarageVehicle vehicle) {

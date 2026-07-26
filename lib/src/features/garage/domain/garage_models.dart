@@ -398,6 +398,35 @@ class GarageRequestItem {
 }
 
 @immutable
+class GarageRequestStatusChange {
+  final int id;
+  final String eventType;
+  final String? previousStatus;
+  final String status;
+  final DateTime? changedAt;
+
+  const GarageRequestStatusChange({
+    required this.id,
+    required this.eventType,
+    required this.previousStatus,
+    required this.status,
+    required this.changedAt,
+  });
+
+  factory GarageRequestStatusChange.fromJson(Map<String, dynamic> json) {
+    return GarageRequestStatusChange(
+      id: _requiredInt(json['id'], 'GarageRequestStatusChange.id'),
+      eventType: _nullableString(json['eventType']) ?? 'status_changed',
+      previousStatus: _nullableString(
+        json['previousStatus'] ?? json['oldStatus'],
+      ),
+      status: _nullableString(json['status'] ?? json['newStatus']) ?? 'unknown',
+      changedAt: _nullableDate(json['changedAt'] ?? json['createdAt']),
+    );
+  }
+}
+
+@immutable
 class GarageRequest {
   final int id;
   final String requestNumber;
@@ -421,6 +450,7 @@ class GarageRequest {
   final String? cancelReason;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final List<GarageRequestStatusChange> statusHistory;
   final List<GarageRequestItem> items;
   final GarageOffer? currentOffer;
   final GarageOrder? order;
@@ -448,12 +478,14 @@ class GarageRequest {
     required this.cancelReason,
     required this.createdAt,
     required this.updatedAt,
+    List<GarageRequestStatusChange> statusHistory = const [],
     required List<GarageRequestItem> items,
     this.currentOffer,
     this.order,
   }) : vehicleSnapshot = vehicleSnapshot == null
            ? null
            : Map.unmodifiable(vehicleSnapshot),
+       statusHistory = List.unmodifiable(statusHistory),
        items = List.unmodifiable(items);
 
   factory GarageRequest.fromJson(Map<String, dynamic> json) {
@@ -461,6 +493,7 @@ class GarageRequest {
       json['vehicleSnapshot'] ?? json['vehicle'],
     );
     final rawItems = json['items'];
+    final rawStatusHistory = json['statusHistory'];
     return GarageRequest(
       id: _requiredInt(json['id'], 'GarageRequest.id'),
       requestNumber: _nullableString(json['requestNumber']) ?? '',
@@ -484,6 +517,16 @@ class GarageRequest {
       cancelReason: _nullableString(json['cancelReason']),
       createdAt: _nullableDate(json['createdAt']),
       updatedAt: _nullableDate(json['updatedAt']),
+      statusHistory: rawStatusHistory is List
+          ? rawStatusHistory
+                .whereType<Map>()
+                .map(
+                  (event) => GarageRequestStatusChange.fromJson(
+                    _stringKeyedMap(event),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
       items: rawItems is List
           ? rawItems
                 .whereType<Map>()
@@ -507,6 +550,7 @@ class GarageRequest {
     bool? needsEmployeeResponse,
     bool? needsClientResponse,
     DateTime? submittedAt,
+    List<GarageRequestStatusChange>? statusHistory,
     List<GarageRequestItem>? items,
     GarageOffer? currentOffer,
     GarageOrder? order,
@@ -537,6 +581,7 @@ class GarageRequest {
       cancelReason: cancelReason,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      statusHistory: statusHistory ?? this.statusHistory,
       items: items ?? this.items,
       currentOffer: currentOffer ?? this.currentOffer,
       order: order ?? this.order,
@@ -1145,6 +1190,7 @@ class GarageOrderItem {
   final double lineTotalCny;
   final double lineTotalRub;
   final String purchaseStatus;
+  final String? supplierOrderNumber;
   final DateTime? purchasedAt;
 
   const GarageOrderItem({
@@ -1167,6 +1213,7 @@ class GarageOrderItem {
     required this.lineTotalCny,
     required this.lineTotalRub,
     required this.purchaseStatus,
+    required this.supplierOrderNumber,
     required this.purchasedAt,
   });
 
@@ -1238,6 +1285,7 @@ class GarageOrderItem {
       lineTotalCny: _nullableDouble(json['lineTotalCny']) ?? 0,
       lineTotalRub: _nullableDouble(json['lineTotalRub']) ?? 0,
       purchaseStatus: _nullableString(json['purchaseStatus']) ?? 'pending',
+      supplierOrderNumber: _nullableString(json['supplierOrderNumber']),
       purchasedAt: _nullableDate(json['purchasedAt']),
     );
   }

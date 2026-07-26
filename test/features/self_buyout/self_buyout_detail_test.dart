@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_models.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_service.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/presentation/self_buyout_screen.dart';
@@ -168,7 +169,12 @@ void main() {
     final service = _FakeSelfBuyoutService();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [selfBuyoutServiceProvider.overrideWithValue(service)],
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
         child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
       ),
     );
@@ -200,7 +206,12 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [selfBuyoutServiceProvider.overrideWithValue(service)],
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
         child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
       ),
     );
@@ -248,7 +259,12 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [selfBuyoutServiceProvider.overrideWithValue(service)],
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
         child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
       ),
     );
