@@ -49,6 +49,16 @@ class SpV2Repository {
         .toList(growable: false);
   }
 
+  Future<SpV2PurchaseDirectoryPage> getPurchasesPage(
+    SpV2PurchaseDirectoryQuery query,
+  ) async {
+    final response = await _apiClient.get(
+      '/client/sp-v2/purchases',
+      queryParameters: query.toQueryParameters(),
+    );
+    return SpV2PurchaseDirectoryPage.fromResponse(response.data);
+  }
+
   Future<SpV2Purchase> getPurchase(int id) async {
     final response = await _apiClient.get('/client/sp-v2/purchases/$id');
     return SpV2Purchase.fromJson(response.data as Map<String, dynamic>);
@@ -64,6 +74,7 @@ class SpV2Repository {
 
   Future<SpV2Purchase> updatePurchase(
     int id, {
+    String? kind,
     String? title,
     String? description,
     String? status,
@@ -71,10 +82,12 @@ class SpV2Repository {
     bool? isAcceptingItems,
     double? purchaseRate,
     String? commissionMode,
+    SpV2ClientCardSections? clientCardSections,
   }) async {
     final response = await _apiClient.patch(
       '/client/sp-v2/purchases/$id',
       data: {
+        if (kind != null) 'kind': kind,
         if (title != null) 'title': title,
         if (description != null) 'description': description,
         if (status != null) 'status': status,
@@ -82,6 +95,41 @@ class SpV2Repository {
         if (isAcceptingItems != null) 'isAcceptingItems': isAcceptingItems,
         if (purchaseRate != null) 'purchaseRate': purchaseRate,
         if (commissionMode != null) 'commissionMode': commissionMode,
+        if (clientCardSections != null) ...clientCardSections.toJson(),
+      },
+    );
+    return SpV2Purchase.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<SpV2Purchase> updatePurchaseLifecycle(
+    int id, {
+    required String title,
+    String? kind,
+    required String status,
+    required String currency,
+    required bool isAcceptingItems,
+    required DateTime startedAt,
+    required DateTime? dispatchedFromChinaAt,
+    required DateTime? completedAt,
+    required SpV2ClientCardSections clientCardSections,
+    String? description,
+  }) async {
+    final response = await _apiClient.patch(
+      '/client/sp-v2/purchases/$id',
+      data: {
+        'title': title,
+        if (kind != null) 'kind': kind,
+        if (description != null && description.trim().isNotEmpty)
+          'description': description,
+        'status': status,
+        'currency': currency,
+        'isAcceptingItems': isAcceptingItems,
+        'startedAt': spDateOnly(startedAt),
+        'dispatchedFromChinaAt': dispatchedFromChinaAt == null
+            ? null
+            : spDateOnly(dispatchedFromChinaAt),
+        'completedAt': completedAt == null ? null : spDateOnly(completedAt),
+        ...clientCardSections.toJson(),
       },
     );
     return SpV2Purchase.fromJson(response.data as Map<String, dynamic>);
@@ -211,6 +259,7 @@ class SpV2Repository {
   Future<SpV2Item> updateItem(
     int itemId, {
     int? spCustomerId,
+    int? spProductId,
     String? title,
     String? sourceUrl,
     String? sellerInfo,
@@ -233,6 +282,7 @@ class SpV2Repository {
       '/client/sp-v2/items/$itemId',
       data: {
         if (spCustomerId != null) 'spCustomerId': spCustomerId,
+        if (spProductId != null) 'spProductId': spProductId,
         if (title != null) 'title': title,
         if (sourceUrl != null) 'sourceUrl': sourceUrl,
         if (sellerInfo != null) 'sellerInfo': sellerInfo,
@@ -259,6 +309,36 @@ class SpV2Repository {
       },
     );
     return SpV2Item.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<SpV2BulkApplyResult> applyBulkItemUpdates(
+    int purchaseId, {
+    required String operation,
+    required List<SpV2BulkItemUpdate> items,
+    String? targetStatus,
+    int? targetCustomerId,
+    int? targetPurchaseId,
+    String? archiveReason,
+  }) async {
+    final response = await _apiClient.post(
+      '/client/sp-v2/purchases/$purchaseId/items/bulk',
+      data: {
+        'operation': operation,
+        'items': items.map((item) => item.toJson()).toList(growable: false),
+        if (targetStatus != null) 'targetStatus': targetStatus,
+        if (targetCustomerId != null) 'targetCustomerId': targetCustomerId,
+        if (targetPurchaseId != null) 'targetPurchaseId': targetPurchaseId,
+        if (archiveReason != null) 'archiveReason': archiveReason,
+      },
+    );
+    return SpV2BulkApplyResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<SpV2BulkOptions> getBulkOptions(int purchaseId) async {
+    final response = await _apiClient.get(
+      '/client/sp-v2/purchases/$purchaseId/items/bulk',
+    );
+    return SpV2BulkOptions.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<SpV2Item> setItemPayment(
@@ -303,11 +383,12 @@ class SpV2Repository {
     required Uint8List bytes,
     required String fileName,
     String? mimeType,
+    String type = 'sp-v2',
   }) async {
     final response = await _apiClient.post(
       '/media/upload',
       data: FormData.fromMap({
-        'type': 'sp-v2',
+        'type': type,
         'file': MultipartFile.fromBytes(
           bytes,
           filename: fileName,

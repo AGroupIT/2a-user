@@ -8,6 +8,8 @@ import '../../../../core/ui/app_input_decoration.dart';
 import '../../data/purchase_blank_model.dart';
 import '../purchase_blank_ui.dart';
 
+typedef BlankItemPhotoPicker = Future<List<XFile>> Function();
+
 /// Форма добавления / редактирования товара в бланке
 class BlankItemForm extends StatefulWidget {
   /// Если передан — режим редактирования
@@ -26,12 +28,14 @@ class BlankItemForm extends StatefulWidget {
   onSave;
 
   final VoidCallback? onCancel;
+  final BlankItemPhotoPicker? photoPicker;
 
   const BlankItemForm({
     super.key,
     this.existingItem,
     required this.onSave,
     this.onCancel,
+    this.photoPicker,
   });
 
   @override
@@ -48,6 +52,7 @@ class _BlankItemFormState extends State<BlankItemForm> {
 
   final List<_PickedPhoto> _pickedPhotos = [];
   bool _isSaving = false;
+  bool _isPickingPhotos = false;
 
   @override
   void initState() {
@@ -75,20 +80,31 @@ class _BlankItemFormState extends State<BlankItemForm> {
   }
 
   Future<void> _pickPhotos() async {
-    final picker = ImagePicker();
-    final images = await picker.pickMultiImage(
-      maxWidth: 1200,
-      maxHeight: 1200,
-      imageQuality: 80,
-    );
-    if (!mounted || images.isEmpty) return;
+    if (_isPickingPhotos) return;
+    setState(() => _isPickingPhotos = true);
+    try {
+      final images =
+          await (widget.photoPicker?.call() ??
+              ImagePicker().pickMultiImage(
+                maxWidth: 1200,
+                maxHeight: 1200,
+                imageQuality: 80,
+              ));
+      if (!mounted || images.isEmpty) return;
 
-    for (final xFile in images) {
-      final bytes = await xFile.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _pickedPhotos.add(_PickedPhoto(bytes: bytes, name: xFile.name));
-      });
+      for (final xFile in images) {
+        final bytes = await xFile.readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          _pickedPhotos.add(_PickedPhoto(bytes: bytes, name: xFile.name));
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingPhotos = false);
+      } else {
+        _isPickingPhotos = false;
+      }
     }
   }
 
@@ -328,7 +344,8 @@ class _BlankItemFormState extends State<BlankItemForm> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
                         child: InkWell(
-                          onTap: _pickPhotos,
+                          key: const Key('blank_item_add_photos'),
+                          onTap: _isPickingPhotos ? null : _pickPhotos,
                           borderRadius: BorderRadius.circular(16),
                           child: Container(
                             width: 76,

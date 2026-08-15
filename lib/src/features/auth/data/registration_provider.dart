@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import 'auth_provider.dart';
+import 'client_partner_invite_provider.dart';
+import 'partner_link_provider.dart';
 
 /// Состояние регистрации
 class RegistrationState {
@@ -50,8 +52,13 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
     String? agentCode,
     String? referralCode,
     String? partnerLinkToken,
+    String? clientPartnerInviteToken,
+    String? registrationIdempotencyKey,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
+    final normalizedClientPartnerInviteToken = clientPartnerInviteToken?.trim();
+    final hasClientPartnerInvite =
+        normalizedClientPartnerInviteToken?.isNotEmpty == true;
 
     try {
       final response = await _apiClient.post(
@@ -63,24 +70,49 @@ class RegistrationNotifier extends Notifier<RegistrationState> {
           'password': password,
           'confirmPassword': confirmPassword,
           'phoneVerificationToken': phoneVerificationToken,
-          if (agentCode != null && agentCode.trim().isNotEmpty)
+          if (!hasClientPartnerInvite &&
+              agentCode != null &&
+              agentCode.trim().isNotEmpty)
             'agentCode': agentCode.trim(),
-          if (referralCode != null && referralCode.isNotEmpty)
+          if (!hasClientPartnerInvite &&
+              referralCode != null &&
+              referralCode.isNotEmpty)
             'referralCode': referralCode.trim().toUpperCase(),
-          if (partnerLinkToken != null && partnerLinkToken.trim().isNotEmpty)
+          if (!hasClientPartnerInvite &&
+              partnerLinkToken != null &&
+              partnerLinkToken.trim().isNotEmpty)
             'partnerLinkToken': partnerLinkToken.trim(),
+          if (hasClientPartnerInvite)
+            'clientPartnerInviteToken': normalizedClientPartnerInviteToken,
+          if (registrationIdempotencyKey != null &&
+              registrationIdempotencyKey.trim().isNotEmpty)
+            'registrationIdempotencyKey': registrationIdempotencyKey.trim(),
         },
       );
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
         final token = data['token'] as String;
         final userData = data['user'] as Map<String, dynamic>;
 
+        if (hasClientPartnerInvite) {
+          await ref.read(clientPartnerInviteProvider.notifier).clear();
+          await ref.read(partnerLinkProvider.notifier).clear();
+        }
+
         // Автологин — тот же метод что использует сброс пароля
-        await ref
+        final loggedIn = await ref
             .read(authProvider.notifier)
             .loginWithData(token: token, userData: userData);
+
+        if (!loggedIn) {
+          state = state.copyWith(
+            isLoading: false,
+            error:
+                'Аккаунт создан, но не удалось войти автоматически. Войдите вручную.',
+          );
+          return false;
+        }
 
         state = state.copyWith(isLoading: false);
         return true;

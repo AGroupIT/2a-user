@@ -88,7 +88,7 @@ Future<PaymentReceiptSelection?> pickPaymentReceipt(
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  tr(context, ru: 'Приложить чек', zh: '附加付款凭证'),
+                  tr(sheetContext, ru: 'Приложить чек', zh: '附加付款凭证'),
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontFamily: 'Gilroy',
@@ -100,9 +100,9 @@ Future<PaymentReceiptSelection?> pickPaymentReceipt(
             ),
             _ReceiptSourceTile(
               icon: Icons.photo_library_rounded,
-              title: tr(context, ru: 'Галерея', zh: '相册'),
+              title: tr(sheetContext, ru: 'Галерея', zh: '相册'),
               subtitle: tr(
-                context,
+                sheetContext,
                 ru: 'Фото или скриншот оплаты',
                 zh: '付款照片或截图',
               ),
@@ -111,9 +111,9 @@ Future<PaymentReceiptSelection?> pickPaymentReceipt(
             ),
             _ReceiptSourceTile(
               icon: Icons.folder_rounded,
-              title: tr(context, ru: 'Файлы', zh: '文件'),
+              title: tr(sheetContext, ru: 'Файлы', zh: '文件'),
               subtitle: tr(
-                context,
+                sheetContext,
                 ru: 'Изображение или PDF-документ',
                 zh: '图片或 PDF 文档',
               ),

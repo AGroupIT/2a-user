@@ -190,10 +190,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     Future<void>.delayed(const Duration(seconds: 2), () async {
       try {
         if (!mounted) return;
-        if (!ref.read(authProvider).isLoggedIn) return;
+        final auth = ref.read(authProvider);
+        final clientId = auth.clientId;
+        if (!auth.isLoggedIn || clientId == null) return;
         final sent = await ref
             .read(problemReportRepositoryProvider)
-            .flushQueuedReports();
+            .flushQueuedReports(clientId: clientId);
         if (!mounted) return;
         if (sent > 0) {
           ClientLogService.instance.add(

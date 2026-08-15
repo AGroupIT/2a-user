@@ -24,8 +24,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.6'
-          channel: 'stable'
+          flutter-version: '3.47.0-0.3.pre'
+          channel: 'beta'
           cache: true
 
       - name: Install dependencies
@@ -34,14 +34,51 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build web
+      - name: Resolve build metadata
+        id: metadata
         run: |
-          SENTRY_DSN="${{ secrets.SENTRY_DSN || inputs.sentry_dsn }}"
+          FULL_VERSION="$(sed -n 's/^version: //p' pubspec.yaml)"
+          BUILD_NUMBER="${FULL_VERSION##*+}"
+          SOURCE_REVISION="${GITHUB_SHA:0:12}"
+          echo "release=com.twoalogistic.user@$FULL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist=$BUILD_NUMBER-$SOURCE_REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Build web
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN || inputs.sentry_dsn }}
+          SENTRY_RELEASE: ${{ steps.metadata.outputs.release }}
+          SENTRY_DIST: ${{ steps.metadata.outputs.dist }}
+        run: |
+          SENTRY_ARGS=(
+            --dart-define=SENTRY_ENVIRONMENT=production
+            --dart-define=SENTRY_RELEASE="$SENTRY_RELEASE"
+            --dart-define=SENTRY_DIST="$SENTRY_DIST"
+          )
           if [ -n "$SENTRY_DSN" ]; then
-            flutter build web --release --dart-define=SENTRY_DSN="$SENTRY_DSN"
-          else
-            flutter build web --release
+            SENTRY_ARGS+=(--dart-define=SENTRY_DSN="$SENTRY_DSN")
           fi
+          flutter build web --release --pwa-strategy none --source-maps "${SENTRY_ARGS[@]}"
+
+      - name: Upload source maps from the deployed build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_URL: https://sentry.cp.2a-logistic.com
+          SENTRY_PROJECT: 2a-user
+          SENTRY_ORG: sentry
+          SENTRY_RELEASE: ${{ steps.metadata.outputs.release }}
+          SENTRY_DIST: ${{ steps.metadata.outputs.dist }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "WARNING: SENTRY_AUTH_TOKEN is missing; source maps were not uploaded."
+            exit 0
+          fi
+          dart run sentry_dart_plugin \
+            --sentry-define=url="$SENTRY_URL" \
+            --sentry-define=project="$SENTRY_PROJECT" \
+            --sentry-define=org="$SENTRY_ORG" \
+            --sentry-define=release="$SENTRY_RELEASE" \
+            --sentry-define=dist="$SENTRY_DIST" \
+            --sentry-define=commits=false
 
       - name: Copy firebase-messaging-sw.js
         run: |

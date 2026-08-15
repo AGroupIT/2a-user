@@ -163,22 +163,33 @@ final shopAvailabilityServiceProvider = Provider<ShopAvailabilityService>((
   return ShopAvailabilityService(ref.watch(apiClientProvider));
 });
 
+final shopAvailabilityRefreshIntervalProvider = Provider<Duration>((ref) {
+  return const Duration(seconds: 30);
+});
+
 final shopAvailabilityProvider =
     FutureProvider.autoDispose<MarketplaceAvailability>((ref) async {
       // Переключение активного клиентского кода должно обновлять доступность.
       ref.watch(activeClientCodeProvider);
 
+      final service = ref.read(shopAvailabilityServiceProvider);
+      final refreshInterval = ref.read(shopAvailabilityRefreshIntervalProvider);
+      Timer? refreshTimer;
+      var disposed = false;
+      ref.onDispose(() {
+        disposed = true;
+        refreshTimer?.cancel();
+      });
+
       // На desktop боковое меню живёт постоянно. Периодический revalidation
       // применяет изменение agent settings без повторного входа и без
       // подключения к общему realtime-emitter с большим blast radius.
-      final availability = await ref
-          .read(shopAvailabilityServiceProvider)
-          .getAvailability();
-      final refreshTimer = Timer(
-        const Duration(seconds: 30),
-        ref.invalidateSelf,
-      );
-      ref.onDispose(refreshTimer.cancel);
+      final availability = await service.getAvailability();
+      if (disposed || !ref.mounted) return availability;
+
+      refreshTimer = Timer(refreshInterval, () {
+        if (ref.mounted) ref.invalidateSelf();
+      });
 
       return availability;
     });

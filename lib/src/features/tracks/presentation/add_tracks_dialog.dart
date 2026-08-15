@@ -6,8 +6,10 @@ import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.da
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../add_tracks/data/add_tracks_repository.dart';
+import '../../add_tracks/data/track_tracking_check_repository.dart';
 import '../../add_tracks/domain/add_tracks_result.dart';
 import '../data/tracks_provider.dart';
 
@@ -31,13 +33,19 @@ class _AddTracksDialog extends ConsumerStatefulWidget {
 
 class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
   final _ctrl = TextEditingController();
+  final List<_UnconfirmedTrackDraft> _reviewDrafts = [];
   AddTracksResult? _result;
   String? _error;
   bool _submitting = false;
+  int _addedTotal = 0;
+  final List<SkippedTrack> _skippedTotal = [];
 
   @override
   void dispose() {
     _ctrl.dispose();
+    for (final draft in _reviewDrafts) {
+      draft.controller.dispose();
+    }
     super.dispose();
   }
 
@@ -60,110 +68,227 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
       return;
     }
 
+    final trackNumbers = _parseTrackNumbers(txt);
+    if (trackNumbers.isEmpty) {
+      setState(() => _error = 'Введите хотя бы один трек-номер');
+      return;
+    }
+
+    _addedTotal = 0;
+    _skippedTotal.clear();
+    _result = null;
+    await _checkAndAdd(clientCode, trackNumbers);
+  }
+
+  List<String> _parseTrackNumbers(String text) {
+    return text
+        .split(RegExp(r'[,\n;]'))
+        .map((value) => value.trim().toUpperCase())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  List<String> _reviewTrackNumbers() {
+    return _reviewDrafts
+        .map((draft) => draft.controller.text.trim().toUpperCase())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Future<void> _checkAndAdd(
+    String clientCode,
+    List<String> trackNumbers,
+  ) async {
     setState(() {
       _submitting = true;
       _error = null;
-      _result = null;
     });
 
     try {
-      debugPrint('📦 Adding tracks from dialog for client $clientCode');
+      final checkResult = await ref
+          .read(trackTrackingCheckRepositoryProvider)
+          .check(clientCode: clientCode, trackCodes: trackNumbers);
+      if (!mounted) return;
 
-      final repo = ref.read(addTracksRepositoryProvider);
-
-      // Парсим текст в список трек-номеров
-      final trackNumbers = txt
-          .split(RegExp(r'[,\n;]'))
-          .map((t) => t.trim().toUpperCase())
-          .where((t) => t.isNotEmpty)
-          .toSet() // Убираем дубликаты
+      final trackable = checkResult.items
+          .where((item) => item.status == TrackTrackingStatus.trackable)
+          .map((item) => item.code)
           .toList();
-
-      if (trackNumbers.isEmpty) {
-        throw Exception('Введите хотя бы один трек-номер');
-      }
-
-      debugPrint('📦 Parsed ${trackNumbers.length} track numbers');
-
-      final result = await repo.addTracks(
-        clientCode: clientCode,
-        trackCodes: trackNumbers,
+      final existing = checkResult.items.where(
+        (item) => item.status == TrackTrackingStatus.existing,
+      );
+      final unconfirmed = checkResult.items.where(
+        (item) => item.status == TrackTrackingStatus.unconfirmed,
       );
 
-      if (!mounted) return;
-
-      debugPrint(
-        '✅ Tracks added from dialog: ${result.added}, skipped: ${result.skipped.length}',
-      );
-
-      setState(() {
-        _submitting = false;
-        _result = result;
-        if (result.added > 0) {
-          _ctrl.clear();
-        }
-      });
-
-      // Обновляем список треков
-      try {
-        ref.invalidate(paginatedTracksProvider(clientCode));
-      } catch (e) {
-        debugPrint('⚠️ Error invalidating tracks list: $e');
-        // Не критично
-      }
-
-      // Если успешно - закрываем диалог через 1.5 секунды
-      // Используем route-aware проверку чтобы не закрыть чужой диалог
-      if (result.added > 0 && mounted) {
-        final route = ModalRoute.of(context);
-        await Future.delayed(const Duration(milliseconds: 1500));
-        if (mounted && route != null && route.isCurrent) {
-          Navigator.of(context).pop();
-        }
-      }
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error adding tracks from dialog: $e');
-      debugPrint('Stack trace: $stackTrace');
-
-      if (!mounted) return;
-
-      final errorMessage = e.toString().replaceFirst('Exception: ', '');
-      setState(() {
-        _submitting = false;
-        _error = errorMessage;
-      });
-
-      // Показать SnackBar с ошибкой
-      if (mounted) {
-        AppToast.showFromSnackBar(
-          context,
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Ошибка: $errorMessage',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            duration: const Duration(seconds: 4),
+      for (final item in existing) {
+        _skippedTotal.add(
+          SkippedTrack(
+            code: item.code,
+            reason: tr(context, ru: 'Уже существует в базе', zh: '已存在于系统中'),
           ),
         );
       }
+
+      if (trackable.isNotEmpty) {
+        await _addTracks(clientCode, trackable);
+        if (!mounted) return;
+      }
+
+      _replaceReviewDrafts(
+        unconfirmed
+            .map(
+              (item) => _UnconfirmedTrackDraft(
+                code: item.code,
+                reason: item.reason ?? TrackTrackingReason.checkUnavailable,
+              ),
+            )
+            .toList(),
+      );
+
+      setState(() {
+        _submitting = false;
+        _result = AddTracksResult(
+          added: _addedTotal,
+          skipped: List.unmodifiable(_skippedTotal),
+        );
+        if (_addedTotal > 0) _ctrl.clear();
+      });
+
+      if (_reviewDrafts.isEmpty) {
+        await _closeAfterSuccess();
+      }
+    } catch (error, stackTrace) {
+      _handleError(error, stackTrace);
     }
+  }
+
+  Future<void> _addTracks(String clientCode, List<String> trackNumbers) async {
+    final result = await ref
+        .read(addTracksRepositoryProvider)
+        .addTracks(clientCode: clientCode, trackCodes: trackNumbers);
+    _addedTotal += result.added;
+    _skippedTotal.addAll(result.skipped);
+    if (result.added > 0) {
+      ref.invalidate(paginatedTracksProvider(clientCode));
+    }
+  }
+
+  Future<void> _recheckReview() async {
+    final clientCode = ref.read(activeClientCodeProvider);
+    if (clientCode == null) return;
+    final trackNumbers = _reviewTrackNumbers();
+    if (trackNumbers.isEmpty) {
+      setState(
+        () => _error = tr(
+          context,
+          ru: 'Оставьте хотя бы один трек-номер или закройте окно',
+          zh: '请至少保留一个运单号，或关闭窗口',
+        ),
+      );
+      return;
+    }
+    await _checkAndAdd(clientCode, trackNumbers);
+  }
+
+  Future<void> _confirmReview() async {
+    final clientCode = ref.read(activeClientCodeProvider);
+    if (clientCode == null) return;
+    final trackNumbers = _reviewTrackNumbers();
+    if (trackNumbers.isEmpty) {
+      setState(
+        () => _error = tr(
+          context,
+          ru: 'Нет трек-номеров для добавления',
+          zh: '没有可添加的运单号',
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await _addTracks(clientCode, trackNumbers);
+      if (!mounted) return;
+      _replaceReviewDrafts(const []);
+      setState(() {
+        _submitting = false;
+        _result = AddTracksResult(
+          added: _addedTotal,
+          skipped: List.unmodifiable(_skippedTotal),
+        );
+      });
+      await _closeAfterSuccess();
+    } catch (error, stackTrace) {
+      _handleError(error, stackTrace);
+    }
+  }
+
+  void _replaceReviewDrafts(List<_UnconfirmedTrackDraft> drafts) {
+    for (final draft in _reviewDrafts) {
+      draft.controller.dispose();
+    }
+    _reviewDrafts
+      ..clear()
+      ..addAll(drafts);
+  }
+
+  void _removeReviewDraft(int index) {
+    setState(() {
+      _reviewDrafts.removeAt(index).controller.dispose();
+      _error = null;
+    });
+  }
+
+  Future<void> _closeAfterSuccess() async {
+    if (_addedTotal <= 0 || !mounted) return;
+    final route = ModalRoute.of(context);
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted && route != null && route.isCurrent) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _handleError(Object error, StackTrace stackTrace) {
+    debugPrint('❌ Error adding tracks from dialog: $error');
+    debugPrint('Stack trace: $stackTrace');
+    if (!mounted) return;
+
+    final errorMessage = error.toString().replaceFirst('Exception: ', '');
+    setState(() {
+      _submitting = false;
+      _error = errorMessage;
+    });
+    AppToast.showFromSnackBar(
+      context,
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${tr(context, ru: 'Ошибка', zh: '错误')}: $errorMessage',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   @override
@@ -238,20 +363,28 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                   _AddTracksHeader(clientCode: clientCode),
                   const SizedBox(height: 14),
                   if (clientCode != null) ...[
-                    const _AddTracksHintCard(),
+                    if (_reviewDrafts.isEmpty) const _AddTracksHintCard(),
                     const SizedBox(height: 12),
-                    _AddTracksInputCard(
-                      controller: _ctrl,
-                      enabled: !_submitting,
-                      onChanged: () {
-                        if (_error != null || _result != null) {
-                          setState(() {
-                            _error = null;
-                            _result = null;
-                          });
-                        }
-                      },
-                    ),
+                    if (_reviewDrafts.isEmpty)
+                      _AddTracksInputCard(
+                        controller: _ctrl,
+                        enabled: !_submitting,
+                        onChanged: () {
+                          if (_error != null || _result != null) {
+                            setState(() {
+                              _error = null;
+                              _result = null;
+                            });
+                          }
+                        },
+                      )
+                    else
+                      _UnconfirmedTracksCard(
+                        drafts: _reviewDrafts,
+                        enabled: !_submitting,
+                        addedCount: _addedTotal,
+                        onRemove: _removeReviewDraft,
+                      ),
                     if (_result != null) ...[
                       const SizedBox(height: 12),
                       _AddTracksResultCard(result: _result!),
@@ -268,8 +401,29 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                     const SizedBox(height: 14),
                     _AddTracksPrimaryButton(
                       loading: _submitting,
-                      onTap: _submitting ? null : _submit,
+                      onTap: _submitting
+                          ? null
+                          : _reviewDrafts.isEmpty
+                          ? _submit
+                          : _recheckReview,
+                      icon: _reviewDrafts.isEmpty
+                          ? Icons.fact_check_rounded
+                          : Icons.refresh_rounded,
+                      label: _reviewDrafts.isEmpty
+                          ? tr(context, ru: 'Проверить и добавить', zh: '检查并添加')
+                          : tr(
+                              context,
+                              ru: 'Проверить исправления',
+                              zh: '检查修改',
+                            ),
                     ),
+                    if (_reviewDrafts.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _AddTracksSecondaryButton(
+                        enabled: !_submitting,
+                        onTap: _confirmReview,
+                      ),
+                    ],
                   ] else ...[
                     const _AddTracksFeedbackCard(
                       icon: Icons.badge_outlined,
@@ -327,11 +481,11 @@ class _AddTracksHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Добавить треки',
+                Text(
+                  tr(context, ru: 'Добавить треки', zh: '添加运单号'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'Gilroy',
                     fontSize: 21,
@@ -341,11 +495,15 @@ class _AddTracksHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 5),
-                const Text(
-                  'Вставьте один или несколько номеров — мы начнём отслеживание',
+                Text(
+                  tr(
+                    context,
+                    ru: 'Проверим отслеживание перед добавлением',
+                    zh: '添加前先检查物流信息',
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Color(0xE6FFFFFF),
                     fontFamily: 'Gilroy',
                     fontSize: 12.8,
@@ -428,13 +586,13 @@ class _AddTracksHintCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Как вставлять номера',
-                  style: TextStyle(
+                  tr(context, ru: 'Как вставлять номера', zh: '如何填写运单号'),
+                  style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontFamily: 'Gilroy',
                     fontSize: 14,
@@ -442,10 +600,14 @@ class _AddTracksHintCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
-                  'По одному в строке или через запятую. Дубликаты автоматически уберём.',
-                  style: TextStyle(
+                  tr(
+                    context,
+                    ru: 'До 50 номеров: по одному в строке или через запятую. Перед добавлением проверим историю доставки.',
+                    zh: '最多50个：每行一个或用逗号分隔。添加前会检查物流记录。',
+                  ),
+                  style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontFamily: 'Gilroy',
                     fontSize: 12.5,
@@ -522,6 +684,213 @@ class _AddTracksInputCard extends StatelessWidget {
           contentPadding: const EdgeInsets.fromLTRB(0, 14, 14, 14),
         ),
         onChanged: (_) => onChanged(),
+      ),
+    );
+  }
+}
+
+class _UnconfirmedTrackDraft {
+  final TextEditingController controller;
+  final TrackTrackingReason reason;
+
+  _UnconfirmedTrackDraft({required String code, required this.reason})
+    : controller = TextEditingController(text: code);
+}
+
+class _UnconfirmedTracksCard extends StatelessWidget {
+  final List<_UnconfirmedTrackDraft> drafts;
+  final bool enabled;
+  final int addedCount;
+  final ValueChanged<int> onRemove;
+
+  const _UnconfirmedTracksCard({
+    required this.drafts,
+    required this.enabled,
+    required this.addedCount,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF3C760)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.manage_search_rounded,
+                color: Color(0xFFC98700),
+                size: 24,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tr(
+                        context,
+                        ru: 'Проверьте эти трек-номера',
+                        zh: '请检查这些运单号',
+                      ),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 15,
+                        height: 1.1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      tr(
+                        context,
+                        ru: 'Сервис пока не видит историю доставки. Исправьте номер и проверьте снова. Если номер новый и ещё не появился у перевозчика, добавьте его без проверки.',
+                        zh: '服务暂未查到物流记录。请修改后重新检查；如果运单号刚创建、承运商尚未收录，也可以确认后直接添加。',
+                      ),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (addedCount > 0) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        tr(
+                          context,
+                          ru: 'Уже добавлено автоматически: $addedCount',
+                          zh: '已自动添加：$addedCount',
+                        ),
+                        style: TextStyle(
+                          color: context.brandPrimary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var index = 0; index < drafts.length; index++) ...[
+            _UnconfirmedTrackField(
+              key: ValueKey('unconfirmed-track-$index'),
+              controller: drafts[index].controller,
+              reason: drafts[index].reason,
+              enabled: enabled,
+              onRemove: () => onRemove(index),
+            ),
+            if (index != drafts.length - 1) const SizedBox(height: 9),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UnconfirmedTrackField extends StatelessWidget {
+  final TextEditingController controller;
+  final TrackTrackingReason reason;
+  final bool enabled;
+  final VoidCallback onRemove;
+
+  const _UnconfirmedTrackField({
+    super.key,
+    required this.controller,
+    required this.reason,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reasonText = switch (reason) {
+      TrackTrackingReason.noTrackingData => tr(
+        context,
+        ru: 'История доставки пока не найдена',
+        zh: '暂未找到物流记录',
+      ),
+      TrackTrackingReason.carrierNotRecognized => tr(
+        context,
+        ru: 'Служба доставки не определена',
+        zh: '无法识别承运商',
+      ),
+      TrackTrackingReason.checkUnavailable => tr(
+        context,
+        ru: 'Не удалось проверить сейчас',
+        zh: '暂时无法检查',
+      ),
+      TrackTrackingReason.alreadyExists => tr(
+        context,
+        ru: 'Уже существует в базе',
+        zh: '已存在于系统中',
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: const Color(0xFFE7D39B)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 6),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: tr(context, ru: 'Убрать номер', zh: '移除运单号'),
+                onPressed: enabled ? onRemove : null,
+                icon: const Icon(Icons.close_rounded, size: 20),
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+          Text(
+            reasonText,
+            style: const TextStyle(
+              color: Color(0xFF9C6A00),
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -626,8 +995,15 @@ class _AddTracksFeedbackCard extends StatelessWidget {
 class _AddTracksPrimaryButton extends StatelessWidget {
   final bool loading;
   final VoidCallback? onTap;
+  final IconData icon;
+  final String label;
 
-  const _AddTracksPrimaryButton({required this.loading, required this.onTap});
+  const _AddTracksPrimaryButton({
+    required this.loading,
+    required this.onTap,
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -664,14 +1040,14 @@ class _AddTracksPrimaryButton extends StatelessWidget {
                       strokeWidth: 2,
                     ),
                   )
-                : const Row(
+                : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_rounded, color: Colors.white, size: 21),
-                      SizedBox(width: 7),
+                      Icon(icon, color: Colors.white, size: 21),
+                      const SizedBox(width: 7),
                       Text(
-                        'Добавить треки',
-                        style: TextStyle(
+                        label,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontFamily: 'Gilroy',
                           fontSize: 15,
@@ -681,6 +1057,39 @@ class _AddTracksPrimaryButton extends StatelessWidget {
                       ),
                     ],
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddTracksSecondaryButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _AddTracksSecondaryButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: enabled ? onTap : null,
+        icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
+        label: Text(
+          tr(context, ru: 'Всё указано верно — добавить', zh: '信息无误，直接添加'),
+          style: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: context.brandPrimary,
+          side: BorderSide(color: context.brandPrimary.withValues(alpha: 0.42)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
           ),
         ),
       ),

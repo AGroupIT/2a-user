@@ -7,8 +7,10 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../core/logging/client_log_service.dart';
 import '../core/ui/app_layout.dart';
+import '../core/utils/locale_text.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/auth/data/partner_link_provider.dart';
+import '../features/auth/presentation/client_partner_invite_screen.dart';
 import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/partner_link_screen.dart';
@@ -39,10 +41,17 @@ import '../features/shop/presentation/shop_item_detail_screen.dart';
 import '../features/shop/presentation/shop_screen.dart';
 import '../features/sp_finance/presentation/sp_assembly_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_track_edit_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_analytics_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_customer_detail_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_customers_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_product_detail_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_products_screen.dart';
+import '../features/sp_finance/presentation/sp_organizer_shell.dart';
 import '../features/sp_finance/presentation/sp_v2_purchase_detail_screen.dart';
 import '../features/sp_finance/presentation/sp_v2_purchases_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/referral/presentation/referral_screen.dart';
+import '../features/partner_program/presentation/partner_program_screen.dart';
 import '../features/tariffs/presentation/tariffs_screen.dart';
 import '../features/purchase_blanks/presentation/purchase_blank_detail_screen.dart';
 import '../features/purchase_blanks/presentation/purchase_blanks_screen.dart';
@@ -52,6 +61,11 @@ import '../features/tracks/presentation/tracks_screen.dart';
 import 'widgets/app_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
+int? _parsePositiveRouteId(String? value) {
+  if (value == null || !RegExp(r'^[1-9]\d*$').hasMatch(value)) return null;
+  return int.tryParse(value);
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
   // НЕ используем ref.watch здесь — иначе GoRouter пересоздаётся при каждом
@@ -70,6 +84,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSplashRoute = state.matchedLocation == '/splash';
       final isPartnerLinkRoute = state.matchedLocation.startsWith(
         '/partner-connect/',
+      );
+      final isClientPartnerInviteRoute = state.matchedLocation.startsWith(
+        '/client-partner/invite/',
       );
       final routePartnerToken = isPartnerLinkRoute
           ? state.pathParameters['token']
@@ -97,7 +114,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Исключение: если пользователь уже на экране входа/регистрации — остаёмся там.
       // Иначе нажатие "Войти" перебрасывает на сплэш на время API-запроса.
       if (isLoading) {
-        if (isAuthRoute) return null;
+        if (isAuthRoute || isClientPartnerInviteRoute) return null;
         return isSplashRoute ? null : '/splash';
       }
 
@@ -110,7 +127,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // Not logged in and not on auth route - redirect to login
-      if (!isLoggedIn && !isAuthRoute) {
+      if (!isLoggedIn && !isAuthRoute && !isClientPartnerInviteRoute) {
         return '/login';
       }
 
@@ -158,6 +175,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/partner-connect/:token',
         builder: (context, state) =>
             PartnerLinkScreen(token: state.pathParameters['token'] ?? ''),
+      ),
+      GoRoute(
+        name: 'client-partner-invite',
+        path: '/client-partner/invite/:token',
+        builder: (context, state) => ClientPartnerInviteScreen(
+          token: state.pathParameters['token'] ?? '',
+        ),
       ),
 
       StatefulShellRoute.indexedStack(
@@ -386,6 +410,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        name: 'partner-program',
+        path: '/partner-program',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _adaptivePage(
+          context,
+          state,
+          const AppScaffold(
+            title: 'Партнёрская программа',
+            child: PartnerProgramScreen(),
+          ),
+        ),
+      ),
+      GoRoute(
         name: 'tariffs',
         path: '/tariffs',
         parentNavigatorKey: _rootNavigatorKey,
@@ -490,117 +527,261 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      // SP Finance routes
-      GoRoute(
-        name: 'sp-finance',
-        path: '/sp-finance',
+      // SP Finance workspace: the four organizer directories are persistent
+      // tabs. Branch switching keeps each tab's scroll/filter state and does
+      // not animate as a new page, while the existing URLs remain deep-linkable.
+      StatefulShellRoute.indexedStack(
         parentNavigatorKey: _rootNavigatorKey,
-        pageBuilder: (context, state) => _adaptivePage(
+        pageBuilder: (context, state, navigationShell) => _adaptivePage(
           context,
           state,
-          const AppScaffold(
-            title: 'Совместные покупки',
-            child: SpV2PurchasesScreen(),
+          AppScaffold(
+            title: tr(context, ru: 'Совместные покупки', zh: '共同采购'),
+            child: SpOrganizerShell(navigationShell: navigationShell),
           ),
         ),
-        routes: [
-          GoRoute(
-            name: 'sp-v2-purchase-detail',
-            path: 'purchases/:id',
-            parentNavigatorKey: _rootNavigatorKey,
-            pageBuilder: (context, state) {
-              final id = int.tryParse(state.pathParameters['id'] ?? '');
-              if (id == null) {
-                return _adaptivePage(
-                  context,
-                  state,
-                  const _InvalidLinkScreen(
-                    reason: 'Некорректный ID совместной покупки',
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                name: 'sp-finance',
+                path: '/sp-finance',
+                builder: (context, state) =>
+                    const SpV2PurchasesScreen(embedded: true),
+                routes: [
+                  GoRoute(
+                    name: 'sp-v2-purchase-detail',
+                    path: 'purchases/:id',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    pageBuilder: (context, state) {
+                      final id = _parsePositiveRouteId(
+                        state.pathParameters['id'],
+                      );
+                      if (id == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru: 'Некорректный ID совместной покупки',
+                              zh: '共同采购ID无效',
+                            ),
+                          ),
+                        );
+                      }
+                      return _adaptivePage(
+                        context,
+                        state,
+                        AppScaffold(
+                          title: tr(
+                            context,
+                            ru: 'Совместная покупка',
+                            zh: '共同采购',
+                          ),
+                          child: SpV2PurchaseDetailScreen(purchaseId: id),
+                        ),
+                      );
+                    },
                   ),
-                );
-              }
-              return _adaptivePage(
-                context,
-                state,
-                AppScaffold(
-                  title: 'Совместная покупка',
-                  child: SpV2PurchaseDetailScreen(purchaseId: id),
-                ),
-              );
-            },
-          ),
-          GoRoute(
-            name: 'sp-assembly-detail',
-            path: 'assemblies/:id',
-            parentNavigatorKey: _rootNavigatorKey,
-            pageBuilder: (context, state) {
-              // PU-S6: int.tryParse с invalid screen вместо int.parse,
-              // чтобы кривой URL (`/sp-finance/assemblies/abc`) не валил
-              // приложение exception'ом, а показывал понятную ошибку.
-              final id = int.tryParse(state.pathParameters['id'] ?? '');
-              if (id == null) {
-                return _adaptivePage(
-                  context,
-                  state,
-                  const _InvalidLinkScreen(reason: 'Некорректный ID сборки'),
-                );
-              }
-              return _adaptivePage(
-                context,
-                state,
-                AppScaffold(
-                  title: 'Детали сборки',
-                  child: SpAssemblyDetailScreen(assemblyId: id),
-                ),
-              );
-            },
-          ),
-          GoRoute(
-            name: 'sp-track-edit',
-            path: 'tracks/:id',
-            parentNavigatorKey: _rootNavigatorKey,
-            pageBuilder: (context, state) {
-              // PU-S6: int.tryParse и для path id, и для query assemblyId.
-              final id = int.tryParse(state.pathParameters['id'] ?? '');
-              if (id == null) {
-                return _adaptivePage(
-                  context,
-                  state,
-                  const _InvalidLinkScreen(reason: 'Некорректный ID трека'),
-                );
-              }
-              // PU-H4: assemblyId можно передать как query (?assemblyId=42),
-              // если переход внутри приложения — через state.extra (legacy).
-              // Раньше extra?['assemblyId'] as int падал NoSuchMethodError,
-              // если open происходил по deep link без extra.
-              final extra = state.extra as Map<String, dynamic>?;
-              final extraAssemblyId = extra?['assemblyId'];
-              final queryAssemblyId = int.tryParse(
-                state.uri.queryParameters['assemblyId'] ?? '',
-              );
-              final assemblyId = (extraAssemblyId is int)
-                  ? extraAssemblyId
-                  : queryAssemblyId;
-              if (assemblyId == null) {
-                return _adaptivePage(
-                  context,
-                  state,
-                  const _InvalidLinkScreen(
-                    reason:
-                        'Не указана сборка для трека. '
-                        'Откройте трек из карточки сборки.',
+                  GoRoute(
+                    name: 'sp-assembly-detail',
+                    path: 'assemblies/:id',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    pageBuilder: (context, state) {
+                      final id = _parsePositiveRouteId(
+                        state.pathParameters['id'],
+                      );
+                      if (id == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru: 'Некорректный ID сборки',
+                              zh: '集货单ID无效',
+                            ),
+                          ),
+                        );
+                      }
+                      return _adaptivePage(
+                        context,
+                        state,
+                        AppScaffold(
+                          title: tr(context, ru: 'Детали сборки', zh: '集货单详情'),
+                          child: SpAssemblyDetailScreen(assemblyId: id),
+                        ),
+                      );
+                    },
                   ),
-                );
-              }
-              return _adaptivePage(
-                context,
-                state,
-                AppScaffold(
-                  title: 'Редактирование трека',
-                  child: SpTrackEditScreen(trackId: id, assemblyId: assemblyId),
-                ),
-              );
-            },
+                  GoRoute(
+                    name: 'sp-track-edit',
+                    path: 'tracks/:id',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    pageBuilder: (context, state) {
+                      final id = _parsePositiveRouteId(
+                        state.pathParameters['id'],
+                      );
+                      if (id == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru: 'Некорректный ID трека',
+                              zh: '物流单号ID无效',
+                            ),
+                          ),
+                        );
+                      }
+                      final extra = state.extra as Map<String, dynamic>?;
+                      final extraAssemblyId = extra?['assemblyId'];
+                      final queryAssemblyId = _parsePositiveRouteId(
+                        state.uri.queryParameters['assemblyId'],
+                      );
+                      final assemblyId =
+                          (extraAssemblyId is int && extraAssemblyId > 0)
+                          ? extraAssemblyId
+                          : queryAssemblyId;
+                      if (assemblyId == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru:
+                                  'Не указана сборка для трека. '
+                                  'Откройте трек из карточки сборки.',
+                              zh: '未指定物流单所属集货单。请从集货单详情打开物流单。',
+                            ),
+                          ),
+                        );
+                      }
+                      return _adaptivePage(
+                        context,
+                        state,
+                        AppScaffold(
+                          title: tr(
+                            context,
+                            ru: 'Редактирование трека',
+                            zh: '编辑物流单',
+                          ),
+                          child: SpTrackEditScreen(
+                            trackId: id,
+                            assemblyId: assemblyId,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                name: 'sp-organizer-customers',
+                path: '/sp-finance/customers',
+                builder: (context, state) =>
+                    const SpOrganizerCustomersScreen(embedded: true),
+                routes: [
+                  GoRoute(
+                    name: 'sp-organizer-customer-detail',
+                    path: ':id',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    pageBuilder: (context, state) {
+                      final id = _parsePositiveRouteId(
+                        state.pathParameters['id'],
+                      );
+                      if (id == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru: 'Некорректный ID клиента СП',
+                              zh: '共同采购客户ID无效',
+                            ),
+                          ),
+                        );
+                      }
+                      return _adaptivePage(
+                        context,
+                        state,
+                        AppScaffold(
+                          title: tr(
+                            context,
+                            ru: 'Карточка клиента',
+                            zh: '客户详情',
+                          ),
+                          child: SpOrganizerCustomerDetailScreen(
+                            customerId: id,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                name: 'sp-organizer-products',
+                path: '/sp-finance/products',
+                builder: (context, state) =>
+                    const SpOrganizerProductsScreen(embedded: true),
+                routes: [
+                  GoRoute(
+                    name: 'sp-organizer-product-detail',
+                    path: ':id',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    pageBuilder: (context, state) {
+                      final id = _parsePositiveRouteId(
+                        state.pathParameters['id'],
+                      );
+                      if (id == null) {
+                        return _adaptivePage(
+                          context,
+                          state,
+                          _InvalidLinkScreen(
+                            reason: tr(
+                              context,
+                              ru: 'Некорректный ID товара СП',
+                              zh: '共同采购商品ID无效',
+                            ),
+                          ),
+                        );
+                      }
+                      return _adaptivePage(
+                        context,
+                        state,
+                        AppScaffold(
+                          title: tr(context, ru: 'Карточка товара', zh: '商品详情'),
+                          child: SpOrganizerProductDetailScreen(productId: id),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                name: 'sp-organizer-analytics',
+                path: '/sp-finance/analytics',
+                builder: (context, state) =>
+                    const SpOrganizerAnalyticsScreen(embedded: true),
+              ),
+            ],
           ),
         ],
       ),

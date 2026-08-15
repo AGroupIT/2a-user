@@ -534,6 +534,7 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
       builder: (_) =>
           SelfBuyoutCreateSheet.correctRequisites(correctionRequest: request),
     );
+    if (!context.mounted) return;
     if (corrected != null) {
       ref.invalidate(selfBuyoutRequestsProvider);
     }
@@ -559,6 +560,7 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
         cnyAmount: r.requestedCnyAmount,
       ),
     );
+    if (!context.mounted) return;
     if (changed == true) {
       ref.invalidate(selfBuyoutRequestsProvider);
     }

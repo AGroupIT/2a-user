@@ -31,7 +31,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Нужен доступ к камере для фото товаров</string>
+	<string>Камера используется для фото товаров и сканирования штрих-кодов</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID используется для быстрого входа в личный кабинет</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

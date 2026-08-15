@@ -3,6 +3,301 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
+import '../../../core/ui/app_layout.dart';
+import '../../../core/ui/blurred_modal_bottom_sheet.dart';
+import '../../../core/ui/sheet_handle.dart';
+
+class SpFinanceHeaderActionButton extends StatelessWidget {
+  final VoidCallback? onTap;
+  final Widget child;
+  final String? tooltip;
+  final Key? buttonKey;
+
+  const SpFinanceHeaderActionButton({
+    super.key,
+    required this.onTap,
+    required this.child,
+    this.tooltip,
+    this.buttonKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: buttonKey,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 46,
+          height: 44,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 18,
+                spreadRadius: -12,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: child,
+        ),
+      ),
+    );
+
+    final message = tooltip;
+    return message == null ? button : Tooltip(message: message, child: button);
+  }
+}
+
+Future<T?> showSpFinanceModalSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool isDismissible = true,
+  bool enableDrag = true,
+}) {
+  return showBlurredModalBottomSheet<T>(
+    context: context,
+    useRootNavigator: true,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.22),
+    isDismissible: isDismissible,
+    enableDrag: enableDrag,
+    builder: builder,
+  );
+}
+
+Future<bool?> showSpFinanceConfirmationSheet({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  String cancelLabel = 'Отмена',
+  IconData icon = Icons.help_outline_rounded,
+  bool destructive = false,
+}) {
+  return showSpFinanceModalSheet<bool>(
+    context: context,
+    builder: (sheetContext) {
+      final confirmColor = destructive
+          ? const Color(0xFFE5484D)
+          : sheetContext.brandPrimary;
+
+      return SpFinanceModalSurface(
+        key: const ValueKey('sp-finance-modal-surface'),
+        icon: icon,
+        title: title,
+        subtitle: message,
+        body: const SizedBox.shrink(),
+        footer: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(sheetContext).pop(false),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: AppColors.textPrimary,
+                  side: const BorderSide(color: Color(0xFFE1E5ED)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                child: Text(cancelLabel),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => Navigator.of(sheetContext).pop(true),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: confirmColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                child: Text(confirmLabel),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class SpFinanceModalSurface extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget body;
+  final Widget? footer;
+  final EdgeInsetsGeometry contentPadding;
+  final double maxHeightFactor;
+  final bool keyboardAware;
+  final bool showCloseButton;
+
+  const SpFinanceModalSurface({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+    this.subtitle,
+    this.footer,
+    this.contentPadding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    this.maxHeightFactor = 0.9,
+    this.keyboardAware = false,
+    this.showCloseButton = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final useSideSheet = AppLayout.useSideNavigation(context);
+    final mediaSize = MediaQuery.sizeOf(context);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final keyboardInset = keyboardAware
+        ? MediaQuery.viewInsetsOf(context).bottom
+        : 0.0;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Container(
+        height: useSideSheet ? mediaSize.height : null,
+        constraints: BoxConstraints(
+          maxHeight: useSideSheet
+              ? mediaSize.height
+              : mediaSize.height * maxHeightFactor,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: useSideSheet
+              ? BorderRadius.zero
+              : const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: useSideSheet ? MainAxisSize.max : MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ColoredBox(
+              color: Colors.white,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!useSideSheet) const SheetHandle(),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      useSideSheet ? 20 : 0,
+                      12,
+                      16,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: context.brandPrimary.withValues(alpha: 0.09),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            icon,
+                            color: context.brandPrimary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontFamily: 'Gilroy',
+                                    fontSize: 20,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                if (subtitle != null &&
+                                    subtitle!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    subtitle!,
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontFamily: 'Gilroy',
+                                      fontSize: 12.5,
+                                      height: 1.25,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (showCloseButton)
+                          IconButton(
+                            tooltip: 'Закрыть',
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.close_rounded),
+                            color: AppColors.textSecondary,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFE9ECF2)),
+            Flexible(
+              child: Padding(padding: contentPadding, child: body),
+            ),
+            if (footer != null) ...[
+              const Divider(height: 1, color: Color(0xFFE9ECF2)),
+              ColoredBox(
+                color: Colors.white,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + safeBottom),
+                  child: footer,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class SpFinanceUi {
   const SpFinanceUi._();

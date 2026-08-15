@@ -390,6 +390,8 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (correctionRequest == null) ...[
+                      _individualOnlyNotice(),
+                      const SizedBox(height: 12),
                       _rateCard(rateStr),
                       const SizedBox(height: 12),
                       _converterCard(),
@@ -471,6 +473,82 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           ),
           const SizedBox(height: 10),
           child,
+        ],
+      ),
+    );
+  }
+
+  Widget _individualOnlyNotice() {
+    return Container(
+      key: const ValueKey('self-buyout-individual-only-notice'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF97316), Color(0xFFEA580C)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33EA580C),
+            blurRadius: 18,
+            spreadRadius: -8,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
+            ),
+            child: const Icon(
+              Icons.person_rounded,
+              color: Colors.white,
+              size: 25,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr(context, ru: 'Только для физических лиц', zh: '仅限个人用户'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Gilroy',
+                    fontSize: 18,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  tr(
+                    context,
+                    ru: 'Услуга предоставляется только физическим лицам. Если вы ИП, напишите менеджеру в чат поддержки.',
+                    zh: '本服务仅向个人提供。如果您是个体经营者，请在客服聊天中联系经理。',
+                  ),
+                  style: const TextStyle(
+                    color: Color(0xF2FFFFFF),
+                    fontFamily: 'Gilroy',
+                    fontSize: 13.5,
+                    height: 1.3,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -773,8 +851,8 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           Text(
             tr(
               context,
-              ru: 'Оплата по заявке принимается только с карт физических лиц граждан РФ. Если хотите оплатить как ИП/юрлицо или картой банка другой страны — напишите менеджеру в чат поддержки. Если оплата будет произведена не в день создания заявки, расчёт может быть пересчитан по актуальному курсу на день оплаты. После поступления юаней у вас есть 14 дней, чтобы оформить доставку товаров на наш склад в Китае. Иначе мы не сможем впредь оказывать помощь в самовыкупе.',
-              zh: '仅接受俄罗斯公民个人银行卡付款。如需以个体户/法人或他国银行卡付款，请通过客服聊天联系经理。如果未在创建申请当天付款，金额可能会按付款当天的最新汇率重新计算。人民币到账后，您有 14 天时间安排货物送达我们在中国的仓库，否则我们将无法继续提供自助代购协助。',
+              ru: 'Оплата принимается только с карт физических лиц граждан РФ. Если оплата будет произведена не в день создания заявки, расчёт может быть пересчитан по актуальному курсу на день оплаты. После поступления юаней у вас есть 14 дней, чтобы оформить доставку товаров на наш склад в Китае. Иначе мы не сможем впредь оказывать помощь в самовыкупе.',
+              zh: '仅接受俄罗斯公民个人银行卡付款。如果未在创建申请当天付款，金额可能会按付款当天的最新汇率重新计算。人民币到账后，您有 14 天时间安排货物送达我们在中国的仓库，否则我们将无法继续提供自助代购协助。',
             ),
             style: const TextStyle(
               color: Color(0xFF92400E),

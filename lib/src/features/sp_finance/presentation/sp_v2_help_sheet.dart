@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/app_colors.dart';
-import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../data/sp_v2_models.dart';
 import 'sp_finance_ui.dart';
 
 Future<void> showSpV2HelpSheet(BuildContext context) {
-  return showBlurredModalBottomSheet<void>(
+  return showSpFinanceModalSheet<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
     builder: (context) => const SpV2HelpSheet(),
   );
 }
@@ -22,33 +18,12 @@ class SpV2HelpButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 46,
-          height: 44,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 18,
-                spreadRadius: -12,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Icon(
-            Icons.question_mark_rounded,
-            size: 19,
-            color: context.brandPrimary,
-          ),
-        ),
+    return SpFinanceHeaderActionButton(
+      onTap: onTap,
+      child: Icon(
+        Icons.question_mark_rounded,
+        size: 19,
+        color: context.brandPrimary,
       ),
     );
   }

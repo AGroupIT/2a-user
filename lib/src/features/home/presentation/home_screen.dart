@@ -31,6 +31,9 @@ import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import '../../tracks/presentation/add_tracks_dialog.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../data/current_cny_rate_provider.dart';
+import 'home_cny_rate_card.dart';
+import 'warehouse_address_copy_banner.dart';
 
 void _showStyledSnackBar(
   BuildContext context,
@@ -163,6 +166,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final AsyncValue<ReferralData> referralAsync = shouldLoadDashboardData
         ? ref.watch(referralProvider)
         : const AsyncValue.loading();
+    final AsyncValue<CurrentCnyRate?> currentCnyRateAsync =
+        shouldLoadDashboardData
+        ? ref.watch(currentCnyRateProvider)
+        : const AsyncValue.loading();
     final staleNotice = ref.watch(staleDataNoticeProvider);
 
     final tracksCount = tracksCountAsync.asData?.value;
@@ -211,6 +218,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.invalidate(assembliesWeeklyCountProvider(clientCode));
       ref.invalidate(invoicesWeeklyCountProvider(clientCode));
       ref.invalidate(referralProvider);
+      ref.invalidate(currentCnyRateProvider);
       await Future.wait([
         ref.read(tracksDigestProvider(clientCode).future),
         ref.read(assembliesDigestProvider(clientCode).future),
@@ -225,6 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(assembliesWeeklyCountProvider(clientCode).future),
         ref.read(invoicesWeeklyCountProvider(clientCode).future),
         ref.read(referralProvider.future),
+        ref.read(currentCnyRateProvider.future),
       ]);
     }
 
@@ -296,6 +305,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
             ),
             const SizedBox(height: 15),
+            if (useWideHomeLayout) ...[
+              _HomeReveal(
+                order: 1,
+                child: HomeCnyRateCard(
+                  rate: currentCnyRateAsync,
+                  onRetry: () => ref.invalidate(currentCnyRateProvider),
+                ),
+              ),
+              const SizedBox(height: 15),
+            ],
             if (staleNotice != null) ...[
               _HomeReveal(
                 order: 1,
@@ -314,6 +333,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 key: _quickCardsKey,
                 child: _StatsBlock(
                   showAddTracks: !useWideHomeLayout,
+                  currentCnyRate: useWideHomeLayout
+                      ? null
+                      : currentCnyRateAsync,
                   bonusKgValue: _formatKg(bonusKgBalance),
                   bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
                   tracksValue: _formatCount(tracksCount),
@@ -327,6 +349,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onBonusKgTap: () => context.push('/referral'),
                   onInvoicesTap: () => context.go('/invoices'),
                   onAddTracksTap: () => showAddTracksDialog(context, ref),
+                  onCnyRateRetry: () => ref.invalidate(currentCnyRateProvider),
                 ),
               ),
             ),
@@ -1163,7 +1186,9 @@ class _PromoSlider extends StatelessWidget {
             _designHeight *
             (useCompactDesktopBanner ? rawScale * 0.5 : rawScale);
         final radius = BorderRadius.circular(10 * scale);
-        final maxTextWidth = (_textBlockWidth * scale).clamp(0.0, width).toDouble();
+        final maxTextWidth = (_textBlockWidth * scale)
+            .clamp(0.0, width)
+            .toDouble();
         final minTextWidth = maxTextWidth <= 0
             ? 0.0
             : (180.0 * scale).clamp(0.0, maxTextWidth).toDouble();
@@ -1316,6 +1341,7 @@ class _WideHeroActionRow extends StatelessWidget {
 
 class _StatsBlock extends StatelessWidget {
   final bool showAddTracks;
+  final AsyncValue<CurrentCnyRate?>? currentCnyRate;
   final String bonusKgValue;
   final String bonusKgWeekly;
   final String tracksValue;
@@ -1329,9 +1355,11 @@ class _StatsBlock extends StatelessWidget {
   final VoidCallback onBonusKgTap;
   final VoidCallback onInvoicesTap;
   final VoidCallback onAddTracksTap;
+  final VoidCallback onCnyRateRetry;
 
   const _StatsBlock({
     this.showAddTracks = true,
+    this.currentCnyRate,
     required this.bonusKgValue,
     required this.bonusKgWeekly,
     required this.tracksValue,
@@ -1345,6 +1373,7 @@ class _StatsBlock extends StatelessWidget {
     required this.onBonusKgTap,
     required this.onInvoicesTap,
     required this.onAddTracksTap,
+    required this.onCnyRateRetry,
   });
 
   @override
@@ -1401,6 +1430,10 @@ class _StatsBlock extends StatelessWidget {
       children: [
         if (showAddTracks) ...[
           _AddTracksStatCard(onTap: onAddTracksTap),
+          const SizedBox(height: 8),
+        ],
+        if (currentCnyRate != null) ...[
+          HomeCnyRateCard(rate: currentCnyRate!, onRetry: onCnyRateRetry),
           const SizedBox(height: 8),
         ],
         Row(
@@ -1914,6 +1947,7 @@ class _WarehouseDataBlock extends StatelessWidget {
                     label: 'Адрес склада',
                     icon: CupertinoIcons.doc_on_doc,
                     value: address,
+                    showMarketplaceNotice: true,
                   ),
                 if (phone.isNotEmpty)
                   _WarehouseCopyButton(
@@ -2010,11 +2044,13 @@ class _WarehouseCopyButton extends StatelessWidget {
   final String value;
   final String label;
   final IconData icon;
+  final bool showMarketplaceNotice;
 
   const _WarehouseCopyButton({
     required this.label,
     required this.icon,
     required this.value,
+    this.showMarketplaceNotice = false,
   });
 
   @override
@@ -2068,6 +2104,10 @@ class _WarehouseCopyButton extends StatelessWidget {
       return;
     }
     HapticFeedback.selectionClick();
+    if (showMarketplaceNotice) {
+      showWarehouseAddressCopyBanner(context);
+      return;
+    }
     _showStyledSnackBar(context, 'Текст скопирован');
   }
 }

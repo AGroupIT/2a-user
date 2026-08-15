@@ -647,14 +647,16 @@ class ApiClient {
     Response<dynamic>? response,
     RequestOptions options,
   ) {
-    final value = response?.headers.value('x-request-id')?.trim();
-    if (value != null && value.isNotEmpty) return value;
-    return _requestId(options);
+    final clientValue = options.extra['client_log_request_id'];
+    return resolveSentryRequestId(
+      responseValue: response?.headers.value('x-request-id'),
+      clientValue: clientValue is String ? clientValue : null,
+    );
   }
 
   String _requestId(RequestOptions options) {
     final value = options.extra['client_log_request_id'];
-    return value is String && value.isNotEmpty ? value : 'unknown';
+    return safeSentryRequestId(value is String ? value : null) ?? 'unknown';
   }
 
   String? _operation(RequestOptions options) {
@@ -691,7 +693,8 @@ class ApiClient {
       onRequest: (options, handler) async {
         await _addHttpBreadcrumb(
           level: SentryLevel.info,
-          message: 'HTTP ${options.method} ${_safeRequestPath(options)}',
+          message:
+              'HTTP ${options.method} ${safeSentryPath(_safeRequestPath(options))}',
           requestOptions: options,
         );
         return handler.next(options);
@@ -702,8 +705,9 @@ class ApiClient {
           await _addHttpBreadcrumb(
             level: statusCode >= 500 ? SentryLevel.error : SentryLevel.warning,
             message:
-                'HTTP ${response.requestOptions.method} ${_safeRequestPath(response.requestOptions)} -> $statusCode',
+                'HTTP ${response.requestOptions.method} ${safeSentryPath(_safeRequestPath(response.requestOptions))} -> $statusCode',
             requestOptions: response.requestOptions,
+            requestId: _responseRequestId(response, response.requestOptions),
             statusCode: statusCode,
           );
         }
@@ -717,8 +721,9 @@ class ApiClient {
               ? SentryLevel.error
               : SentryLevel.warning,
           message:
-              'HTTP ${error.requestOptions.method} ${_safeRequestPath(error.requestOptions)} failed',
+              'HTTP ${error.requestOptions.method} ${safeSentryPath(_safeRequestPath(error.requestOptions))} failed',
           requestOptions: error.requestOptions,
+          requestId: _responseRequestId(error.response, error.requestOptions),
           statusCode: statusCode,
           extra: {'dio_type': error.type.name},
         );
@@ -730,14 +735,29 @@ class ApiClient {
             !_isLowPriorityHttpError(error.requestOptions)) {
           // Audit M3 (2026-04-26): не отправляем response body в Sentry,
           // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
+          final sentryContext = _sentryHttpContext(error);
           await Sentry.captureException(
             error,
             stackTrace: error.stackTrace,
+            withScope: (scope) async {
+              final method = error.requestOptions.method.toUpperCase();
+              final path = safeSentryPath(
+                _safeRequestPath(error.requestOptions),
+              );
+              scope.fingerprint = ['http_5xx', method, path, '$statusCode'];
+              await scope.setTag('http.method', method);
+              await scope.setTag('http.status_code', '$statusCode');
+              final operation = _operation(error.requestOptions);
+              if (operation != null) {
+                await scope.setTag('http.operation', operation);
+              }
+              await scope.setContexts('http_failure', sentryContext);
+            },
             hint: Hint.withMap({
               'keep_http_error': true,
               'type': 'http_5xx',
               'method': error.requestOptions.method,
-              'path': _safeRequestPath(error.requestOptions),
+              'path': safeSentryPath(_safeRequestPath(error.requestOptions)),
               'status_code': statusCode,
             }),
           );
@@ -752,12 +772,15 @@ class ApiClient {
     required SentryLevel level,
     required String message,
     required RequestOptions requestOptions,
+    String? requestId,
     int? statusCode,
     Map<String, dynamic>? extra,
   }) {
     final data = <String, dynamic>{
       'method': requestOptions.method,
-      'path': _safeRequestPath(requestOptions),
+      'path': safeSentryPath(_safeRequestPath(requestOptions)),
+      'request_id': requestId ?? _requestId(requestOptions),
+      'duration_ms': _durationMs(requestOptions),
       if (_operation(requestOptions) != null)
         'operation': _operation(requestOptions),
       if (_nativeHttpClient(requestOptions) != null)
@@ -769,6 +792,23 @@ class ApiClient {
     return Sentry.addBreadcrumb(
       Breadcrumb(message: message, category: 'http', level: level, data: data),
     );
+  }
+
+  Map<String, dynamic> _sentryHttpContext(DioException error) {
+    final options = error.requestOptions;
+    final route = safeSentryRoute(ClientLogService.instance.currentScreen);
+    return {
+      'method': options.method,
+      'path': safeSentryPath(_safeRequestPath(options)),
+      'status_code': error.response?.statusCode,
+      'request_id': _responseRequestId(error.response, options),
+      'duration_ms': _durationMs(options),
+      'dio_type': error.type.name,
+      if (_operation(options) != null) 'operation': _operation(options),
+      if (_nativeHttpClient(options) != null)
+        'native_http_client': _nativeHttpClient(options),
+      if (route != null) 'route': route,
+    };
   }
 
   String _safeRequestPath(RequestOptions options) {
@@ -1476,4 +1516,50 @@ class ApiClient {
       options: uploadOptions,
     );
   }
+}
+
+@visibleForTesting
+String? safeSentryRequestId(String? value) {
+  final normalized = value?.trim();
+  if (normalized == null || normalized.isEmpty || normalized.length > 128) {
+    return null;
+  }
+  return RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]*$').hasMatch(normalized)
+      ? normalized
+      : null;
+}
+
+@visibleForTesting
+String resolveSentryRequestId({String? responseValue, String? clientValue}) {
+  return safeSentryRequestId(responseValue) ??
+      safeSentryRequestId(clientValue) ??
+      'unknown';
+}
+
+@visibleForTesting
+String safeSentryPath(String value) {
+  final path = value.split('?').first;
+  return path
+      .split('/')
+      .map((segment) {
+        if (RegExp(r'^\d+$').hasMatch(segment) ||
+            RegExp(
+              r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              caseSensitive: false,
+            ).hasMatch(segment) ||
+            (segment.length > 48 &&
+                RegExp(r'^[A-Za-z0-9._~-]+$').hasMatch(segment))) {
+          return ':id';
+        }
+        return segment;
+      })
+      .join('/');
+}
+
+@visibleForTesting
+String? safeSentryRoute(String? value) {
+  final normalized = value?.trim();
+  if (normalized == null || normalized.isEmpty) return null;
+  final safe = safeSentryPath(normalized);
+  return safe.length <= 160 ? safe : '${safe.substring(0, 157)}...';
 }

@@ -63,6 +63,14 @@ class TrackItem {
   // Есть ли активный вопрос
   bool get hasActiveQuestion => activeQuestion != null;
 
+  /// Удаление разрешено только для треков, которые ещё не приняты складом.
+  ///
+  /// Основной источник истины — серверный код статуса. Текстовый fallback
+  /// оставлен для старых ответов API, где `statusCode` ещё не передавался.
+  bool get isPending =>
+      statusCode == 'pending' ||
+      (statusCode.isEmpty && status == 'В ожидании');
+
   factory TrackItem.fromJson(Map<String, dynamic> json) {
     // Получаем код трека
     final code =

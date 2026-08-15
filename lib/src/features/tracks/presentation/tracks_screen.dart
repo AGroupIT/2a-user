@@ -37,6 +37,7 @@ import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../../core/ui/tutorial_card.dart';
 import 'add_tracks_dialog.dart';
+import 'track_warehouse_delivery_panel.dart';
 
 // Alias для authStateProvider
 final authStateProvider = authProvider;
@@ -3849,6 +3850,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     });
   }
 
+  Future<void> _showWarehouseDeliverySheet(
+    BuildContext context,
+    TrackItem track,
+  ) async {
+    await showBlurredModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (sheetContext) => _TrackSheetSurface(
+        icon: Icons.local_shipping_outlined,
+        title: tr(
+          sheetContext,
+          ru: 'Доставка до склада',
+          zh: '到仓物流',
+        ),
+        subtitle: tr(
+          sheetContext,
+          ru: 'Трек ${track.code}',
+          zh: '单号 ${track.code}',
+        ),
+        child: TrackWarehouseDeliveryPanel(track: track),
+      ),
+    );
+  }
+
   _TrackGroupCard _buildTrackGroupCard(
     _GroupBucket group, {
     GlobalKey? tutorialActionsKey,
@@ -3901,6 +3930,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       onSelectDelivery: (assembly) => _showDeliverySheet(context, assembly),
       onDeleteTrack: (track) => _deleteTrack(track),
       onReturnRequest: (track) => _showReturnSheet(context, track),
+      onWarehouseDelivery: (track) =>
+          _showWarehouseDeliverySheet(context, track),
       returnRequestedTracks: _returnRequestedTracks,
       tutorialActionsKey: tutorialActionsKey,
       tutorialAssemblyKey: tutorialAssemblyKey,
@@ -6768,6 +6799,7 @@ class _TrackGroupCard extends StatefulWidget {
   final ValueChanged<TrackAssembly> onSelectDelivery;
   final ValueChanged<TrackItem> onDeleteTrack;
   final ValueChanged<TrackItem> onReturnRequest;
+  final ValueChanged<TrackItem> onWarehouseDelivery;
   final Set<String> returnRequestedTracks;
   final GlobalKey? tutorialActionsKey;
   final GlobalKey? tutorialAssemblyKey;
@@ -6808,6 +6840,7 @@ class _TrackGroupCard extends StatefulWidget {
     required this.onSelectDelivery,
     required this.onDeleteTrack,
     required this.onReturnRequest,
+    required this.onWarehouseDelivery,
     required this.returnRequestedTracks,
     this.tutorialActionsKey,
     this.tutorialAssemblyKey,
@@ -7754,7 +7787,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                                 icon: Icons.assignment_return_outlined,
                                 onPressed: () => widget.onReturnRequest(track),
                               ),
-                            if (track.status == 'В ожидании')
+                            if (track.isPending)
                               _ActionChipButton(
                                 label: 'Удалить',
                                 icon: Icons.delete_outline_rounded,
@@ -7763,6 +7796,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                               ),
                           ],
                         ),
+                        if (widget.assembly == null &&
+                            canShowTrackWarehouseDelivery(track)) ...[
+                          const SizedBox(height: 10),
+                          TrackWarehouseDeliveryButton(
+                            onPressed: () =>
+                                widget.onWarehouseDelivery(track),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -7963,7 +8004,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               questionPending: questionPending,
               hasProductInfo: hasProductInfo,
               actions: actions,
-              canDelete: !embeddedInAssembly && track.status == 'В ожидании',
+              canDelete: !embeddedInAssembly && track.isPending,
               showStatusAndMarkers: !embeddedInAssembly,
               onPhotoMarkerTap: () => _handlePhotoMarkerTap(
                 context,
@@ -7989,6 +8030,13 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                 pendingLocalQuestion: pendingLocalQuestion,
               ),
             ),
+            if (!embeddedInAssembly &&
+                canShowTrackWarehouseDelivery(track)) ...[
+              const SizedBox(height: 12),
+              TrackWarehouseDeliveryButton(
+                onPressed: () => widget.onWarehouseDelivery(track),
+              ),
+            ],
             if (hasProductInfo || photoMediaUrls.isNotEmpty) ...[
               const SizedBox(height: 15),
               _buildTrackCardMediaSection(

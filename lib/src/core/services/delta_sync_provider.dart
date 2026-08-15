@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/invoices/data/invoices_provider.dart';
 import '../../features/garage/application/garage_providers.dart';
+import '../../features/home/data/current_cny_rate_provider.dart';
 import '../../features/self_buyout/data/self_buyout_service.dart';
 import '../../features/news/data/news_provider.dart';
 import '../../features/notifications/application/notifications_controller.dart';
+import '../../features/partner_program/data/client_partner_program_provider.dart';
 import '../../features/photos/data/photos_provider.dart';
 import '../../features/profile/data/profile_provider.dart';
 import '../../features/rules/data/rules_provider.dart';
@@ -176,6 +178,7 @@ void _handleDeltaType(Ref ref, String type) {
       return;
 
     case 'currency_rates':
+      ref.invalidate(currentCnyRateProvider);
       ref.invalidate(garageRequestsProvider);
       ref.invalidate(garageRequestProvider);
       ref.invalidate(garageOrdersProvider);
@@ -229,6 +232,8 @@ void invalidateClientCoreProviders(WidgetRef ref) {
   ref.invalidate(clientProfileProvider);
   ref.invalidate(clientStatsProvider);
   ref.invalidate(clientCodesControllerProvider);
+  ref.invalidate(currentCnyRateProvider);
+  ref.invalidate(clientPartnerProgramProvider);
   ref.read(notificationsControllerProvider.notifier).refreshDebounced();
 }
 
@@ -238,6 +243,8 @@ void _invalidateAllFor(dynamic ref) {
   ref.invalidate(clientProfileProvider);
   ref.invalidate(clientStatsProvider);
   ref.invalidate(clientCodesControllerProvider);
+  ref.invalidate(currentCnyRateProvider);
+  ref.invalidate(clientPartnerProgramProvider);
   ref.invalidate(tracksDigestProvider);
   ref.invalidate(tracksCountProvider);
   ref.invalidate(tracksWithoutAssemblyCountProvider);

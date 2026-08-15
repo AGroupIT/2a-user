@@ -78,8 +78,8 @@ class PaymentOperatorSleepingNotice extends StatelessWidget {
                 Text(
                   tr(
                     context,
-                    ru: 'Оплата по QR временно недоступна. Мы отправим PUSH, когда операторы вернутся.',
-                    zh: '二维码支付暂不可用。客服恢复在线后，我们会发送推送通知。',
+                    ru: 'Все способы оплаты временно недоступны. Мы отправим PUSH, когда операторы вернутся.',
+                    zh: '所有支付方式暂时不可用。客服恢复在线后，我们会发送推送通知。',
                   ),
                   style: TextStyle(
                     color: secondary,

@@ -10,6 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/utils/locale_text.dart';
+import '../data/client_partner_invite_provider.dart';
 import '../data/partner_link_provider.dart';
 import '../data/registration_provider.dart';
 import 'auth_visuals.dart';
@@ -357,6 +359,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
 
     final partnerLink = ref.read(partnerLinkProvider);
+    final clientPartnerInvite = ref.read(clientPartnerInviteProvider);
+    if (clientPartnerInvite.hasPendingInvite &&
+        !clientPartnerInvite.isValidated) {
+      _showError(
+        tr(
+          context,
+          ru: 'Дождитесь проверки партнёрской ссылки',
+          zh: '请等待合作伙伴邀请链接验证完成',
+        ),
+      );
+      return;
+    }
+    final clientPartnerInviteActive = clientPartnerInvite.hasPendingInvite;
     final success = await ref
         .read(registrationProvider.notifier)
         .register(
@@ -366,10 +381,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           password: _passwordCtrl.text,
           confirmPassword: _confirmPasswordCtrl.text,
           phoneVerificationToken: _confirmedPhoneVerificationToken!,
-          agentCode: partnerLink.hasPendingToken ? null : _agentCodeCtrl.text,
-          referralCode: _referralCodeCtrl.text,
-          partnerLinkToken: partnerLink.hasPendingToken
+          agentCode: partnerLink.hasPendingToken || clientPartnerInviteActive
+              ? null
+              : _agentCodeCtrl.text,
+          referralCode: clientPartnerInviteActive
+              ? null
+              : _referralCodeCtrl.text,
+          partnerLinkToken:
+              partnerLink.hasPendingToken && !clientPartnerInviteActive
               ? partnerLink.token
+              : null,
+          clientPartnerInviteToken: clientPartnerInviteActive
+              ? clientPartnerInvite.token
+              : null,
+          registrationIdempotencyKey: clientPartnerInviteActive
+              ? clientPartnerInvite.registrationIdempotencyKey
               : null,
         );
 
@@ -395,6 +421,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final partnerLinkActive = ref.watch(
       partnerLinkProvider.select((value) => value.hasPendingToken),
     );
+    final clientPartnerInvite = ref.watch(clientPartnerInviteProvider);
+    final clientPartnerInviteActive = clientPartnerInvite.hasPendingInvite;
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final topPadding = MediaQuery.paddingOf(context).top;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -439,7 +467,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             transitionBuilder: _stepTransition,
                             child: _buildCurrentStep(
                               state,
-                              partnerLinkActive: partnerLinkActive,
+                              partnerLinkActive:
+                                  partnerLinkActive &&
+                                  !clientPartnerInviteActive,
+                              clientPartnerInvite: clientPartnerInvite,
                             ),
                           ),
                         ],
@@ -566,6 +597,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget _buildCurrentStep(
     RegistrationState state, {
     required bool partnerLinkActive,
+    required ClientPartnerInviteState clientPartnerInvite,
   }) {
     return switch (_currentStep) {
       _RegistrationStep.contacts => _buildContactsStep(state),
@@ -573,6 +605,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _RegistrationStep.codes => _buildCodesStep(
         state,
         partnerLinkActive: partnerLinkActive,
+        clientPartnerInvite: clientPartnerInvite,
       ),
     };
   }
@@ -693,7 +726,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget _buildCodesStep(
     RegistrationState state, {
     required bool partnerLinkActive,
+    required ClientPartnerInviteState clientPartnerInvite,
   }) {
+    final clientPartnerInviteActive = clientPartnerInvite.hasPendingInvite;
     return Column(
       key: const ValueKey('codes-step'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -701,12 +736,45 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         _buildStepTitle(
           icon: Icons.card_giftcard_rounded,
           title: 'Коды и привязка',
-          subtitle: partnerLinkActive
+          subtitle: clientPartnerInviteActive
+              ? tr(
+                  context,
+                  ru: 'Компания ${clientPartnerInvite.agentName ?? '2A Logistic'} и префикс ${clientPartnerInvite.prefix ?? 'клиента'} будут назначены автоматически.',
+                  zh: '系统将自动分配公司 ${clientPartnerInvite.agentName ?? '2A Logistic'} 和客户前缀 ${clientPartnerInvite.prefix ?? ''}。',
+                )
+              : partnerLinkActive
               ? 'Агент 2a-logistic.ru и код PL- будут назначены автоматически.'
               : 'Если кодов нет — просто оставьте поля пустыми.',
         ),
         const SizedBox(height: 18),
-        if (partnerLinkActive)
+        if (clientPartnerInviteActive)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AuthVisuals.primary(context).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AuthVisuals.primary(context).withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.handshake_rounded, size: 21),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    tr(
+                      context,
+                      ru: 'Регистрация по приглашению ${clientPartnerInvite.partnerName ?? 'партнёра'}. Агент и префикс защищены от изменения.',
+                      zh: '通过 ${clientPartnerInvite.partnerName ?? '合作伙伴'} 的邀请注册。公司和客户前缀无法更改。',
+                    ),
+                    style: const TextStyle(fontSize: 13, height: 1.3),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (partnerLinkActive)
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -748,14 +816,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
         ],
-        const SizedBox(height: 16),
-        _buildTextField(
-          controller: _referralCodeCtrl,
-          label: 'Реферальный код (необязательно)',
-          hint: 'ABC123',
-          prefixIcon: Icons.card_giftcard_rounded,
-          textCapitalization: TextCapitalization.characters,
-        ),
+        if (!clientPartnerInviteActive) ...[
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _referralCodeCtrl,
+            label: 'Реферальный код (необязательно)',
+            hint: 'ABC123',
+            prefixIcon: Icons.card_giftcard_rounded,
+            textCapitalization: TextCapitalization.characters,
+          ),
+        ],
         const SizedBox(height: 24),
         Row(
           children: [
@@ -778,7 +848,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: state.isLoading ? null : _submit,
+                onPressed:
+                    state.isLoading ||
+                        (clientPartnerInviteActive &&
+                            !clientPartnerInvite.isValidated)
+                    ? null
+                    : _submit,
                 style: AuthVisuals.primaryButtonStyle(context),
                 icon: state.isLoading
                     ? const SizedBox(

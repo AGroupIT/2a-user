@@ -14,6 +14,7 @@ import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../garage/application/garage_providers.dart';
+import '../../partner_program/data/client_partner_program_provider.dart';
 import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
@@ -171,6 +172,8 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
         false;
     final showGarage =
         ref.watch(garageAvailabilityProvider).asData?.value.available ?? false;
+    final showPartnerProgram =
+        ref.watch(clientPartnerProgramProvider).asData?.value != null;
 
     return Container(
       constraints: BoxConstraints(
@@ -302,6 +305,14 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           iconColor: const Color(0xFF4CAF50),
                           onTap: () => _go(context, '/referral'),
                         ),
+                        if (showPartnerProgram)
+                          _MoreMenuTile(
+                            icon: Icons.handshake_rounded,
+                            title: 'Партнёрская программа',
+                            subtitle: 'Приглашения, комиссия и выплаты',
+                            iconColor: const Color(0xFF0F9D8A),
+                            onTap: () => _go(context, '/partner-program'),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 18),

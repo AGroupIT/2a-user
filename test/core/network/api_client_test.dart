@@ -2,6 +2,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('ApiClient - Sentry HTTP context', () {
+    test(
+      'accepts bounded opaque request ids and rejects PII-shaped values',
+      () {
+        expect(safeSentryRequestId(' backend-req_42 '), 'backend-req_42');
+        expect(safeSentryRequestId('client@example.test'), isNull);
+        expect(safeSentryRequestId('has spaces'), isNull);
+        expect(safeSentryRequestId('x' * 129), isNull);
+        expect(
+          resolveSentryRequestId(
+            responseValue: 'backend-42',
+            clientValue: 'client-17',
+          ),
+          'backend-42',
+        );
+        expect(
+          resolveSentryRequestId(
+            responseValue: 'unsafe id',
+            clientValue: 'client-17',
+          ),
+          'client-17',
+        );
+      },
+    );
+
+    test('normalizes dynamic path segments and removes query values', () {
+      expect(
+        safeSentryPath(
+          '/api/client/self-buyout/requests/293/bank-qr/start?token=secret',
+        ),
+        '/api/client/self-buyout/requests/:id/bank-qr/start',
+      );
+      expect(
+        safeSentryPath(
+          '/api/files/550e8400-e29b-41d4-a716-446655440000/download',
+        ),
+        '/api/files/:id/download',
+      );
+    });
+
+    test('normalizes route ids and bounds route context', () {
+      expect(safeSentryRoute('/payments/123?receipt=secret'), '/payments/:id');
+      expect(safeSentryRoute(''), isNull);
+      expect(safeSentryRoute('route name ' * 30), hasLength(160));
+    });
+  });
+
   group('ApiClient - Token Management', () {
     late ApiClient apiClient;
 

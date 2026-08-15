@@ -12,7 +12,7 @@ DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://prod-api.cp.2a-logistic.com/api/releases
 
 COOLIFY_API="${COOLIFY_API:-https://cp.2a-logistic.com/api/v1}"
 COOLIFY_APP_UUID="t4zsq97vzl8h46lkidi0f29w"
-COOLIFY_WEB_BRANCH="Раздел-магазин"
+COOLIFY_WEB_BRANCH="main"
 WEB_URL="https://cabinet.2a-logistic.ru"
 WEB_API_BASE_URL="${WEB_API_BASE_URL:-https://prod-api.cp.2a-logistic.com/api}"
 WEB_MEDIA_BASE_URL="${WEB_MEDIA_BASE_URL:-https://prod-api.cp.2a-logistic.com}"
@@ -403,11 +403,11 @@ if $BUILD_WEB; then
 
   echo "🌐 Building Flutter Web..."
   flutter build web --release --pwa-strategy none \
-    --source-maps \
     --dart-define=API_BASE_URL="$WEB_API_BASE_URL" \
     --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL" \
     "${SENTRY_DART_DEFINES[@]}"
-  run_sentry_upload "web"
+  echo "🧭 Web source maps are generated and uploaded only inside the Coolify Docker build."
+  echo "   This local build is a preflight artifact and is not the production main.dart.js."
 
   echo "📋 Copying firebase-messaging-sw.js..."
   cp web/firebase-messaging-sw.js build/web/

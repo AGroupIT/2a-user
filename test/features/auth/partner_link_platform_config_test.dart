@@ -36,4 +36,12 @@ void main() {
       );
     }
   });
+
+  test('cabinet domain proxies client partner invite landing to backend', () {
+    final nginx = File('deploy/nginx.conf').readAsStringSync();
+
+    expect(nginx, contains('location ^~ /client-partner/invite/'));
+    expect(nginx, contains('proxy_pass https://prod-api.cp.2a-logistic.com;'));
+    expect(nginx, contains(r'proxy_set_header X-Forwarded-Host $host;'));
+  });
 }

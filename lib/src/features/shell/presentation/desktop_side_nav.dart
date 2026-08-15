@@ -23,6 +23,7 @@ import '../../self_buyout/data/self_buyout_service.dart';
 import '../../clients/presentation/client_switcher_sheet.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../notifications/presentation/notifications_sheet.dart';
+import '../../partner_program/data/client_partner_program_provider.dart';
 import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
@@ -176,6 +177,8 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
         false;
     final garageAvailable =
         ref.watch(garageAvailabilityProvider).asData?.value.available ?? false;
+    final partnerProgramAvailable =
+        ref.watch(clientPartnerProgramProvider).asData?.value != null;
     final serviceItems = <_SideNavEntry>[
       const _SideNavEntry(
         icon: Icons.person_rounded,
@@ -235,26 +238,33 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
         route: '/search-nocode',
       ),
     ];
-    const infoItems = <_SideNavEntry>[
-      _SideNavEntry(
+    final infoItems = <_SideNavEntry>[
+      const _SideNavEntry(
         icon: Icons.card_giftcard_rounded,
         selectedIcon: Icons.card_giftcard_rounded,
         label: 'Рефералы',
         route: '/referral',
       ),
-      _SideNavEntry(
+      if (partnerProgramAvailable)
+        const _SideNavEntry(
+          icon: Icons.handshake_rounded,
+          selectedIcon: Icons.handshake_rounded,
+          label: 'Партнёрство',
+          route: '/partner-program',
+        ),
+      const _SideNavEntry(
         icon: Icons.newspaper_rounded,
         selectedIcon: Icons.newspaper_rounded,
         label: 'Новости',
         route: '/news',
       ),
-      _SideNavEntry(
+      const _SideNavEntry(
         icon: Icons.rule_rounded,
         selectedIcon: Icons.rule_rounded,
         label: 'Правила',
         route: '/rules',
       ),
-      _SideNavEntry(
+      const _SideNavEntry(
         icon: Icons.price_change_rounded,
         selectedIcon: Icons.price_change_rounded,
         label: 'Тарифы',

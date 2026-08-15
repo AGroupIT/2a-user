@@ -11,16 +11,30 @@ import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_layout.dart';
-import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/empty_state.dart';
+import '../../../core/utils/file_download_helper.dart';
 import '../../../core/utils/image_compressor.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
+import '../data/sp_organizer_export_xlsx.dart';
+import '../data/sp_organizer_provider.dart';
 import '../data/sp_v2_models.dart';
 import '../data/sp_v2_provider.dart';
 import '../data/sp_v2_repository.dart';
 import 'sp_finance_ui.dart';
+import 'sp_organizer_garage_import_sheet.dart';
+import 'sp_organizer_previous_purchase_import_sheet.dart';
+import 'sp_organizer_purchase_blank_import_sheet.dart';
+import 'sp_organizer_purchase_kind.dart';
+import 'sp_organizer_track_import_sheet.dart';
+import 'sp_organizer_workspace_panel.dart';
+import 'sp_purchase_client_sections_editor.dart';
+import 'sp_purchase_status_dates.dart';
+import 'sp_v2_bulk_actions_sheet.dart';
 import 'sp_v2_help_sheet.dart';
+
+enum _PurchaseDetailTab { items, participants, finance, tracks, settings }
 
 class SpV2PurchaseDetailScreen extends ConsumerStatefulWidget {
   final int purchaseId;
@@ -35,7 +49,11 @@ class SpV2PurchaseDetailScreen extends ConsumerStatefulWidget {
 class _SpV2PurchaseDetailScreenState
     extends ConsumerState<SpV2PurchaseDetailScreen> {
   final _scrollController = ScrollController();
-  int _tabIndex = 0;
+  _PurchaseDetailTab _selectedTab = _PurchaseDetailTab.items;
+  bool _isExporting = false;
+  bool _isUpdatingPurchaseStatus = false;
+  final Set<int> _updatingItemStatusIds = <int>{};
+  final Set<String> _updatingPaymentKeys = <String>{};
 
   @override
   void dispose() {
@@ -46,6 +64,10 @@ class _SpV2PurchaseDetailScreenState
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(spV2PurchaseDetailProvider(widget.purchaseId));
+    final organizerCapabilities = ref
+        .watch(spOrganizerCapabilitiesProvider)
+        .asData
+        ?.value;
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
 
@@ -56,98 +78,165 @@ class _SpV2PurchaseDetailScreenState
         title: 'Не удалось открыть СП',
         message: error.toString(),
       ),
-      data: (purchase) => RefreshIndicator(
-        color: context.brandPrimary,
-        onRefresh: () async {
-          ref.invalidate(spV2PurchaseDetailProvider(widget.purchaseId));
-          await ref.read(spV2PurchaseDetailProvider(widget.purchaseId).future);
-        },
-        child: ListView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            16,
-            topPad * 0.7 + 16,
-            16,
-            bottomPad + 20,
-          ),
-          children: [
-            SpPageHeader(
-              title: 'Совместная покупка',
-              trailing: SpV2HelpButton(onTap: () => showSpV2HelpSheet(context)),
+      data: (purchase) {
+        final showSettingsTab =
+            purchase.currency == 'CNY' ||
+            organizerCapabilities?.calculationProfiles == true ||
+            organizerCapabilities?.fulfillmentOverview == true;
+        final activeTab =
+            _selectedTab == _PurchaseDetailTab.settings && !showSettingsTab
+            ? _PurchaseDetailTab.items
+            : _selectedTab;
+
+        return RefreshIndicator(
+          color: context.brandPrimary,
+          onRefresh: () async {
+            ref.invalidate(spV2PurchaseDetailProvider(widget.purchaseId));
+            ref.invalidate(spOrganizerParticipantsProvider(widget.purchaseId));
+            ref.invalidate(
+              spOrganizerCalculationPreviewProvider(widget.purchaseId),
+            );
+            await ref.read(
+              spV2PurchaseDetailProvider(widget.purchaseId).future,
+            );
+          },
+          child: ListView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              topPad * 0.7 + 16,
+              16,
+              bottomPad + 20,
             ),
-            const SizedBox(height: 12),
-            _DetailHero(purchase: purchase),
-            const SizedBox(height: 14),
-            _QuickActions(
-              purchase: purchase,
-              onAddItem: () => _showAddItemSheet(purchase),
-              onStatusChanged: (status) => _updateStatus(status),
-            ),
-            if (purchase.currency == 'CNY') ...[
+            children: [
+              SpPageHeader(
+                title: 'Совместная покупка',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _PurchaseEditButton(
+                      onTap: () => _showEditPurchaseSheet(
+                        purchase,
+                        purchaseKindsEnabled:
+                            organizerCapabilities?.purchaseKinds == true,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    if (organizerCapabilities?.purchaseExport == true) ...[
+                      _PurchaseExportButton(
+                        isLoading: _isExporting,
+                        onTap: () => _exportPurchase(purchase),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    SpV2HelpButton(onTap: () => showSpV2HelpSheet(context)),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
-              _PurchaseRateCard(
+              _DetailHero(purchase: purchase),
+              const SizedBox(height: 12),
+              _PurchaseLifecycleCard(purchase: purchase),
+              const SizedBox(height: 12),
+              _QuickActions(
                 purchase: purchase,
-                onTap: () => _showRateSheet(purchase),
+                onStatusChanged: (status) => _updateStatus(status),
+              ),
+              const SizedBox(height: 14),
+              _TabsBar(
+                selectedTab: activeTab,
+                showSettings: showSettingsTab,
+                onChanged: (tab) => setState(() => _selectedTab = tab),
+              ),
+              const SizedBox(height: 14),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: switch (activeTab) {
+                  _PurchaseDetailTab.items => _ItemsTab(
+                    key: const ValueKey('items'),
+                    purchase: purchase,
+                    onAddItem: () => _showAddItemSheet(purchase),
+                    onBulkPrice: () => _showBulkClientPriceSheet(
+                      purchase,
+                      atomicBulkEnabled:
+                          organizerCapabilities?.bulkOperations == true,
+                    ),
+                    onBulkDelivery: () => _showBulkDeliverySheet(
+                      purchase,
+                      atomicBulkEnabled:
+                          organizerCapabilities?.bulkOperations == true,
+                    ),
+                    onBulkManage: organizerCapabilities?.bulkOperations == true
+                        ? () => _showBulkActionsSheet(purchase)
+                        : null,
+                    onEditItem: (item) => _showEditItemSheet(purchase, item),
+                    onTogglePurchased: _toggleItemPurchased,
+                    onToggleGoodsPaid: (item) =>
+                        _toggleItemPayment(purchase, item, 'goods_payment'),
+                    onToggleDeliveryPaid: (item) =>
+                        _toggleItemPayment(purchase, item, 'delivery_payment'),
+                  ),
+                  _PurchaseDetailTab.participants => Column(
+                    key: const ValueKey('participants'),
+                    children: [
+                      if (organizerCapabilities?.participants == true) ...[
+                        SpOrganizerWorkspacePanel(
+                          purchaseId: widget.purchaseId,
+                          showCalculation: false,
+                          showFulfillment: false,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      _CustomersTab(
+                        purchase: purchase,
+                        onCustomerTap: _showCustomerSheet,
+                        onToggleCustomerGoodsPaid: _toggleCustomerGoodsPaid,
+                        onToggleCustomerDeliveryPaid:
+                            _toggleCustomerDeliveryPaid,
+                        onToggleCustomerExtraPaid: _toggleCustomerExtraPaid,
+                      ),
+                    ],
+                  ),
+                  _PurchaseDetailTab.finance => _FinanceTab(
+                    key: const ValueKey('finance'),
+                    purchase: purchase,
+                    onToggleCustomerGoodsPaid: _toggleCustomerGoodsPaid,
+                    onToggleCustomerDeliveryPaid: _toggleCustomerDeliveryPaid,
+                    onToggleCustomerExtraPaid: _toggleCustomerExtraPaid,
+                    onAddExpense: _showExpenseSheet,
+                    onBulkDelivery: (purchase) => _showBulkDeliverySheet(
+                      purchase,
+                      atomicBulkEnabled:
+                          organizerCapabilities?.bulkOperations == true,
+                    ),
+                  ),
+                  _PurchaseDetailTab.tracks => _TracksTab(
+                    key: const ValueKey('tracks'),
+                    purchase: purchase,
+                  ),
+                  _PurchaseDetailTab.settings => _PurchaseSettingsTab(
+                    key: const ValueKey('settings'),
+                    purchase: purchase,
+                    purchaseId: widget.purchaseId,
+                    showCalculation:
+                        organizerCapabilities?.calculationProfiles == true,
+                    showFulfillment:
+                        organizerCapabilities?.fulfillmentOverview == true,
+                    onEditRate: () => _showRateSheet(purchase),
+                  ),
+                },
               ),
             ],
-            const SizedBox(height: 14),
-            _TabsBar(
-              selectedIndex: _tabIndex,
-              onChanged: (index) => setState(() => _tabIndex = index),
-            ),
-            const SizedBox(height: 14),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: switch (_tabIndex) {
-                0 => _ItemsTab(
-                  key: const ValueKey('items'),
-                  purchase: purchase,
-                  onAddItem: () => _showAddItemSheet(purchase),
-                  onBulkPrice: () => _showBulkClientPriceSheet(purchase),
-                  onBulkDelivery: () => _showBulkDeliverySheet(purchase),
-                  onEditItem: (item) => _showEditItemSheet(purchase, item),
-                  onTogglePurchased: _toggleItemPurchased,
-                  onToggleGoodsPaid: (item) =>
-                      _toggleItemPayment(purchase, item, 'goods_payment'),
-                  onToggleDeliveryPaid: (item) =>
-                      _toggleItemPayment(purchase, item, 'delivery_payment'),
-                ),
-                1 => _CustomersTab(
-                  key: const ValueKey('customers'),
-                  purchase: purchase,
-                  onCustomerTap: _showCustomerSheet,
-                  onToggleCustomerGoodsPaid: _toggleCustomerGoodsPaid,
-                  onToggleCustomerDeliveryPaid: _toggleCustomerDeliveryPaid,
-                  onToggleCustomerExtraPaid: _toggleCustomerExtraPaid,
-                ),
-                2 => _FinanceTab(
-                  key: const ValueKey('finance'),
-                  purchase: purchase,
-                  onToggleCustomerGoodsPaid: _toggleCustomerGoodsPaid,
-                  onToggleCustomerDeliveryPaid: _toggleCustomerDeliveryPaid,
-                  onToggleCustomerExtraPaid: _toggleCustomerExtraPaid,
-                  onAddExpense: _showExpenseSheet,
-                  onBulkDelivery: _showBulkDeliverySheet,
-                ),
-                _ => _TracksTab(
-                  key: const ValueKey('tracks'),
-                  purchase: purchase,
-                ),
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Future<void> _showAddItemSheet(SpV2Purchase purchase) async {
-    final created = await showBlurredModalBottomSheet<bool>(
+    final created = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _AddItemSheet(purchase: purchase),
     );
     if (!mounted || created != true) return;
@@ -157,12 +246,50 @@ class _SpV2PurchaseDetailScreenState
     );
   }
 
+  Future<void> _exportPurchase(SpV2Purchase purchase) async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final export = await ref
+          .read(spOrganizerRepositoryProvider)
+          .getPurchaseExport(purchase.id);
+      if (!mounted) return;
+      final bytes = buildSpOrganizerPurchaseXlsx(
+        export,
+        languageCode: Localizations.localeOf(context).languageCode,
+      );
+      final saved = await downloadFile(bytes: bytes, fileName: export.fileName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? tr(
+                    context,
+                    ru: 'Экспортировано товаров: ${export.totalRows}',
+                    zh: '已导出商品：${export.totalRows}',
+                  )
+                : tr(context, ru: 'Не удалось сохранить файл', zh: '无法保存文件'),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tr(context, ru: 'Не удалось экспортировать закупку', zh: '无法导出采购'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   Future<void> _showEditItemSheet(SpV2Purchase purchase, SpV2Item item) async {
-    final updated = await showBlurredModalBottomSheet<bool>(
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _EditItemSheet(purchase: purchase, item: item),
     );
     if (!mounted || updated != true) return;
@@ -172,39 +299,54 @@ class _SpV2PurchaseDetailScreenState
     );
   }
 
-  Future<void> _showBulkClientPriceSheet(SpV2Purchase purchase) async {
-    final updated = await showBlurredModalBottomSheet<bool>(
+  Future<void> _showBulkClientPriceSheet(
+    SpV2Purchase purchase, {
+    bool atomicBulkEnabled = false,
+  }) async {
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _BulkClientPriceSheet(purchase: purchase),
+      builder: (context) => _BulkClientPriceSheet(
+        purchase: purchase,
+        atomicBulkEnabled: atomicBulkEnabled,
+      ),
     );
     if (!mounted || updated != true) return;
     _refreshDetail();
   }
 
-  Future<void> _showBulkDeliverySheet(SpV2Purchase purchase) async {
-    final updated = await showBlurredModalBottomSheet<bool>(
+  Future<void> _showBulkDeliverySheet(
+    SpV2Purchase purchase, {
+    bool atomicBulkEnabled = false,
+  }) async {
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _BulkDeliverySheet(purchase: purchase),
+      builder: (context) => _BulkDeliverySheet(
+        purchase: purchase,
+        atomicBulkEnabled: atomicBulkEnabled,
+      ),
     );
     if (!mounted || updated != true) return;
     _refreshDetail();
+  }
+
+  Future<void> _showBulkActionsSheet(SpV2Purchase purchase) async {
+    final updated = await showSpFinanceModalSheet<bool>(
+      context: context,
+      builder: (context) => SpV2BulkActionsSheet(purchase: purchase),
+    );
+    if (!mounted || updated != true) return;
+    _refreshDetail();
+    unawaited(
+      ref.read(spV2PurchasesControllerProvider.notifier).load(silent: true),
+    );
   }
 
   Future<void> _showCustomerSheet(
     SpV2Purchase purchase,
     SpV2Customer customer,
   ) async {
-    await showBlurredModalBottomSheet<void>(
+    await showSpFinanceModalSheet<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _CustomerDetailSheet(
         purchase: purchase,
         customer: customer,
@@ -218,11 +360,8 @@ class _SpV2PurchaseDetailScreenState
   }
 
   Future<void> _showEditCustomerSheet(SpV2Customer customer) async {
-    final updated = await showBlurredModalBottomSheet<bool>(
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _EditCustomerSheet(customer: customer),
     );
     if (!mounted || updated != true) return;
@@ -231,11 +370,8 @@ class _SpV2PurchaseDetailScreenState
   }
 
   Future<void> _showExpenseSheet(SpV2Purchase purchase) async {
-    final created = await showBlurredModalBottomSheet<bool>(
+    final created = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _AddExpenseSheet(purchase: purchase),
     );
     if (!mounted || created != true) return;
@@ -243,12 +379,24 @@ class _SpV2PurchaseDetailScreenState
   }
 
   Future<void> _showRateSheet(SpV2Purchase purchase) async {
-    final updated = await showBlurredModalBottomSheet<bool>(
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _PurchaseRateSheet(purchase: purchase),
+    );
+    if (!mounted || updated != true) return;
+    _refreshDetail();
+  }
+
+  Future<void> _showEditPurchaseSheet(
+    SpV2Purchase purchase, {
+    required bool purchaseKindsEnabled,
+  }) async {
+    final updated = await showSpFinanceModalSheet<bool>(
+      context: context,
+      builder: (context) => _EditPurchaseSheet(
+        purchase: purchase,
+        purchaseKindsEnabled: purchaseKindsEnabled,
+      ),
     );
     if (!mounted || updated != true) return;
     _refreshDetail();
@@ -265,11 +413,8 @@ class _SpV2PurchaseDetailScreenState
         break;
       }
     }
-    final updated = await showBlurredModalBottomSheet<bool>(
+    final updated = await showSpFinanceModalSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _EditShipmentSheet(
         purchase: purchase,
         customer: customer,
@@ -281,21 +426,31 @@ class _SpV2PurchaseDetailScreenState
   }
 
   Future<void> _updateStatus(String status) async {
-    await ref
-        .read(spV2RepositoryProvider)
-        .updatePurchase(
-          widget.purchaseId,
-          status: status,
-          isAcceptingItems: status == 'open',
-        );
-    if (!mounted) return;
-    ref.invalidate(spV2PurchaseDetailProvider(widget.purchaseId));
-    unawaited(
-      ref.read(spV2PurchasesControllerProvider.notifier).load(silent: true),
-    );
+    if (_isUpdatingPurchaseStatus) return;
+    _isUpdatingPurchaseStatus = true;
+    try {
+      await ref
+          .read(spV2RepositoryProvider)
+          .updatePurchase(
+            widget.purchaseId,
+            status: status,
+            isAcceptingItems: status == 'open',
+          );
+      if (!mounted) return;
+      ref.invalidate(spV2PurchaseDetailProvider(widget.purchaseId));
+      unawaited(
+        ref.read(spV2PurchasesControllerProvider.notifier).load(silent: true),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showActionError(error, action: 'обновить статус СП');
+    } finally {
+      _isUpdatingPurchaseStatus = false;
+    }
   }
 
   Future<void> _toggleItemPurchased(SpV2Item item) async {
+    if (!_updatingItemStatusIds.add(item.id)) return;
     try {
       await ref
           .read(spV2RepositoryProvider)
@@ -306,7 +461,10 @@ class _SpV2PurchaseDetailScreenState
       if (!mounted) return;
       _refreshDetail();
     } catch (error) {
+      if (!mounted) return;
       _showActionError(error, action: 'обновить статус товара');
+    } finally {
+      _updatingItemStatusIds.remove(item.id);
     }
   }
 
@@ -315,6 +473,8 @@ class _SpV2PurchaseDetailScreenState
     SpV2Item item,
     String type,
   ) async {
+    final actionKey = 'item:${item.id}:$type';
+    if (!_updatingPaymentKeys.add(actionKey)) return;
     final isPaid = type == 'goods_payment'
         ? item.isGoodsPaid
         : item.isDeliveryPaid;
@@ -332,12 +492,15 @@ class _SpV2PurchaseDetailScreenState
       if (!mounted) return;
       _refreshDetail();
     } catch (error) {
+      if (!mounted) return;
       _showActionError(
         error,
         action: type == 'goods_payment'
             ? 'отметить оплату товара'
             : 'отметить оплату доставки',
       );
+    } finally {
+      _updatingPaymentKeys.remove(actionKey);
     }
   }
 
@@ -359,10 +522,15 @@ class _SpV2PurchaseDetailScreenState
     SpV2Purchase purchase,
     SpV2Customer customer,
   ) async {
+    final actionKey = 'customer:${customer.id}:extra_payment';
+    if (!_updatingPaymentKeys.add(actionKey)) return;
     final finance = _PurchaseFinance.fromPurchase(
       purchase,
     ).forCustomer(customer.id);
-    if (finance == null || finance.extraDueRub <= 0) return;
+    if (finance == null || finance.extraDueRub <= 0) {
+      _updatingPaymentKeys.remove(actionKey);
+      return;
+    }
     try {
       await ref
           .read(spV2RepositoryProvider)
@@ -376,7 +544,10 @@ class _SpV2PurchaseDetailScreenState
       if (!mounted) return;
       _refreshDetail();
     } catch (error) {
+      if (!mounted) return;
       _showActionError(error, action: 'отметить оплату доп. расходов');
+    } finally {
+      _updatingPaymentKeys.remove(actionKey);
     }
   }
 
@@ -385,10 +556,15 @@ class _SpV2PurchaseDetailScreenState
     SpV2Customer customer,
     String type,
   ) async {
+    final actionKey = 'customer:${customer.id}:$type';
+    if (!_updatingPaymentKeys.add(actionKey)) return;
     final items = purchase.items
         .where((item) => item.customer?.id == customer.id)
         .toList(growable: false);
-    if (items.isEmpty) return;
+    if (items.isEmpty) {
+      _updatingPaymentKeys.remove(actionKey);
+      return;
+    }
 
     final allPaid = items.every(
       (item) =>
@@ -410,12 +586,15 @@ class _SpV2PurchaseDetailScreenState
       }
       _refreshDetail();
     } catch (error) {
+      if (!mounted) return;
       _showActionError(
         error,
         action: type == 'goods_payment'
             ? 'отметить оплату товаров клиента'
             : 'отметить оплату доставки клиента',
       );
+    } finally {
+      _updatingPaymentKeys.remove(actionKey);
     }
   }
 
@@ -435,6 +614,11 @@ class _SpV2PurchaseDetailScreenState
 }
 
 String _spActionErrorMessage(Object error, {required String action}) {
+  if (error is DioException &&
+      error.response?.data is Map &&
+      (error.response?.data as Map)['code'] == 'SP_BULK_ITEMS_STALE') {
+    return 'Данные товаров изменились после открытия расчёта. Обновите закупку и повторите действие.';
+  }
   if (error is DioException && error.response?.statusCode == 404) {
     return 'Не удалось $action: на сервере ещё нет нужного обновления совместных покупок. Нужно задеплоить backend.';
   }
@@ -933,47 +1117,410 @@ class _DetailHero extends StatelessWidget {
   }
 }
 
-class _QuickActions extends StatelessWidget {
+class _PurchaseLifecycleCard extends StatelessWidget {
   final SpV2Purchase purchase;
-  final VoidCallback onAddItem;
-  final ValueChanged<String> onStatusChanged;
 
-  const _QuickActions({
-    required this.purchase,
-    required this.onAddItem,
-    required this.onStatusChanged,
-  });
+  const _PurchaseLifecycleCard({required this.purchase});
 
   @override
   Widget build(BuildContext context) {
+    final stage = spPurchaseCreationStageForStatus(purchase.status);
+    final fallbackStageAt = purchase.updatedAt ?? purchase.createdAt;
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       decoration: SpFinanceUi.cardDecoration(),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _ActionButton(
-              icon: Icons.add_shopping_cart_rounded,
-              label: 'Добавить товар',
-              filled: true,
-              onTap: onAddItem,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _ActionButton(
-              icon: purchase.isAcceptingItems
-                  ? Icons.lock_rounded
-                  : Icons.lock_open_rounded,
-              label: purchase.isAcceptingItems
-                  ? 'Закрыть приём'
-                  : 'Открыть приём',
-              onTap: () => onStatusChanged(
-                purchase.isAcceptingItems ? 'closed_for_items' : 'open',
+          Row(
+            children: [
+              Icon(Icons.route_rounded, color: context.brandPrimary, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Этапы закупки',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SpPurchaseLifecycleSummary(
+            currentStage: stage,
+            startedAt: purchase.startedAt ?? purchase.createdAt,
+            dispatchedFromChinaAt:
+                purchase.dispatchedFromChinaAt ??
+                (purchase.status == 'in_transit' ? fallbackStageAt : null),
+            completedAt:
+                purchase.completedAt ??
+                (stage == SpPurchaseCreationStage.delivered
+                    ? fallbackStageAt
+                    : null),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PurchaseEditButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PurchaseEditButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SpFinanceHeaderActionButton(
+      buttonKey: const Key('sp-purchase-edit'),
+      tooltip: 'Изменить закупку',
+      onTap: onTap,
+      child: Icon(Icons.edit_rounded, color: context.brandPrimary, size: 20),
+    );
+  }
+}
+
+class _EditPurchaseSheet extends ConsumerStatefulWidget {
+  final SpV2Purchase purchase;
+  final bool purchaseKindsEnabled;
+
+  const _EditPurchaseSheet({
+    required this.purchase,
+    required this.purchaseKindsEnabled,
+  });
+
+  @override
+  ConsumerState<_EditPurchaseSheet> createState() => _EditPurchaseSheetState();
+}
+
+class _EditPurchaseSheetState extends ConsumerState<_EditPurchaseSheet> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final SpPurchaseCreationStage _initialStage;
+  late SpPurchaseCreationTimelineValue _timeline;
+  late String _kind;
+  late String _currency;
+  late SpV2ClientCardSections _clientCardSections;
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.purchase.title);
+    _descriptionController = TextEditingController(
+      text: widget.purchase.description ?? '',
+    );
+    _kind = widget.purchase.kind;
+    _currency = widget.purchase.currency;
+    _clientCardSections = widget.purchase.clientCardSections;
+    _initialStage = spPurchaseCreationStageForStatus(widget.purchase.status);
+    _timeline = SpPurchaseCreationTimelineValue.fromExisting(
+      status: widget.purchase.status,
+      startedAt: widget.purchase.startedAt,
+      dispatchedFromChinaAt: widget.purchase.dispatchedFromChinaAt,
+      completedAt: widget.purchase.completedAt,
+      createdAt: widget.purchase.createdAt,
+      updatedAt: widget.purchase.updatedAt,
+    );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.94;
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 58,
+              height: 6,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE1E5ED),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: context.brandPrimary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.edit_calendar_rounded,
+                      color: context.brandPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Редактирование СП',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontFamily: 'Gilroy',
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Название, формат, валюта, статус и даты',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontFamily: 'Gilroy',
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Закрыть',
+                    onPressed: _isSaving
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                children: [
+                  TextField(
+                    controller: _titleController,
+                    decoration: SpFinanceUi.inputDecoration(
+                      context,
+                      labelText: 'Название СП',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _descriptionController,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: SpFinanceUi.inputDecoration(
+                      context,
+                      labelText: 'Комментарий',
+                    ),
+                  ),
+                  if (widget.purchaseKindsEnabled) ...[
+                    const SizedBox(height: 10),
+                    SpOrganizerPurchaseKindSelector(
+                      value: _kind,
+                      onChanged: (value) => setState(() => _kind = value),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  SpCurrencySelector(
+                    value: _currency,
+                    onChanged: (value) => setState(() => _currency = value),
+                  ),
+                  const SizedBox(height: 12),
+                  SpPurchaseStatusDatesEditor(
+                    value: _timeline,
+                    onChanged: (value) => setState(() {
+                      _timeline = value;
+                      _error = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  SpPurchaseClientSectionsEditor(
+                    value: _clientCardSections,
+                    onChanged: (value) => setState(() {
+                      _clientCardSections = value;
+                      _error = null;
+                    }),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 10),
+                    SpInfoNotice(
+                      title: 'Не удалось сохранить',
+                      message: _error!,
+                      icon: Icons.error_outline_rounded,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.fromLTRB(18, 10, 18, 18 + bottomPadding),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFEFF2F6))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: context.brandPrimary,
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: const Text('Отмена'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      key: const Key('sp-purchase-edit-save'),
+                      onPressed: _isSaving ? null : _save,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check_rounded),
+                      label: const Text('Сохранить'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: context.brandPrimary,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(52),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = 'Укажите название СП');
+      return;
+    }
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      final stageChanged = _timeline.stage != _initialStage;
+      final status = stageChanged
+          ? _timeline.backendStatus
+          : widget.purchase.status;
+      await ref
+          .read(spV2RepositoryProvider)
+          .updatePurchaseLifecycle(
+            widget.purchase.id,
+            title: title,
+            kind: widget.purchaseKindsEnabled ? _kind : null,
+            description: _descriptionController.text.trim(),
+            status: status,
+            currency: _currency,
+            isAcceptingItems: status == 'open',
+            startedAt: _timeline.startedAt,
+            dispatchedFromChinaAt: _timeline.dispatchedFromChinaAt,
+            completedAt: _timeline.completedAt,
+            clientCardSections: _clientCardSections,
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+}
+
+class _PurchaseExportButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _PurchaseExportButton({required this.isLoading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SpFinanceHeaderActionButton(
+      tooltip: tr(context, ru: 'Экспортировать закупку', zh: '导出采购'),
+      onTap: isLoading ? null : onTap,
+      child: isLoading
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: context.brandPrimary,
+              ),
+            )
+          : Icon(
+              Icons.file_download_outlined,
+              color: context.brandPrimary,
+              size: 21,
+            ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  final SpV2Purchase purchase;
+  final ValueChanged<String> onStatusChanged;
+
+  const _QuickActions({required this.purchase, required this.onStatusChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return _ActionButton(
+      icon: purchase.isAcceptingItems
+          ? Icons.lock_rounded
+          : Icons.lock_open_rounded,
+      label: purchase.isAcceptingItems ? 'Закрыть приём' : 'Открыть приём',
+      filled: purchase.isAcceptingItems,
+      onTap: () => onStatusChanged(
+        purchase.isAcceptingItems ? 'closed_for_items' : 'open',
       ),
     );
   }
@@ -1248,6 +1795,7 @@ class _PurchaseRateSheetState extends ConsumerState<_PurchaseRateSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final rate = double.tryParse(
       _rateController.text.trim().replaceAll(',', '.'),
     );
@@ -1276,18 +1824,25 @@ class _PurchaseRateSheetState extends ConsumerState<_PurchaseRateSheet> {
 }
 
 class _TabsBar extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onChanged;
+  final _PurchaseDetailTab selectedTab;
+  final bool showSettings;
+  final ValueChanged<_PurchaseDetailTab> onChanged;
 
-  const _TabsBar({required this.selectedIndex, required this.onChanged});
+  const _TabsBar({
+    required this.selectedTab,
+    required this.showSettings,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      (Icons.shopping_bag_rounded, 'Товары'),
-      (Icons.people_rounded, 'Клиенты'),
-      (Icons.payments_rounded, 'Финансы'),
-      (Icons.local_shipping_rounded, 'Треки'),
+      (Icons.shopping_bag_rounded, 'Товары', _PurchaseDetailTab.items),
+      (Icons.people_rounded, 'Участники', _PurchaseDetailTab.participants),
+      (Icons.payments_rounded, 'Финансы', _PurchaseDetailTab.finance),
+      (Icons.local_shipping_rounded, 'Треки', _PurchaseDetailTab.tracks),
+      if (showSettings)
+        (Icons.tune_rounded, 'Настройки', _PurchaseDetailTab.settings),
     ];
     return Container(
       padding: const EdgeInsets.all(6),
@@ -1301,8 +1856,8 @@ class _TabsBar extends StatelessWidget {
                 child: _TabButton(
                   icon: tabs[i].$1,
                   label: tabs[i].$2,
-                  selected: selectedIndex == i,
-                  onTap: () => onChanged(i),
+                  selected: selectedTab == tabs[i].$3,
+                  onTap: () => onChanged(tabs[i].$3),
                 ),
               ),
             ),
@@ -1344,15 +1899,19 @@ class _TabButton extends StatelessWidget {
                 color: selected ? Colors.white : context.brandPrimary,
               ),
               const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? Colors.white : AppColors.textSecondary,
-                  fontFamily: 'Gilroy',
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w900,
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: selected ? Colors.white : AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1363,11 +1922,49 @@ class _TabButton extends StatelessWidget {
   }
 }
 
+class _PurchaseSettingsTab extends StatelessWidget {
+  final SpV2Purchase purchase;
+  final int purchaseId;
+  final bool showCalculation;
+  final bool showFulfillment;
+  final VoidCallback onEditRate;
+
+  const _PurchaseSettingsTab({
+    super.key,
+    required this.purchase,
+    required this.purchaseId,
+    required this.showCalculation,
+    required this.showFulfillment,
+    required this.onEditRate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasWorkspace = showCalculation || showFulfillment;
+    return Column(
+      children: [
+        if (purchase.currency == 'CNY') ...[
+          _PurchaseRateCard(purchase: purchase, onTap: onEditRate),
+          if (hasWorkspace) const SizedBox(height: 12),
+        ],
+        if (hasWorkspace)
+          SpOrganizerWorkspacePanel(
+            purchaseId: purchaseId,
+            showParticipants: false,
+            showCalculation: showCalculation,
+            showFulfillment: showFulfillment,
+          ),
+      ],
+    );
+  }
+}
+
 class _ItemsTab extends StatelessWidget {
   final SpV2Purchase purchase;
   final VoidCallback onAddItem;
   final VoidCallback onBulkPrice;
   final VoidCallback onBulkDelivery;
+  final VoidCallback? onBulkManage;
   final ValueChanged<SpV2Item> onEditItem;
   final ValueChanged<SpV2Item> onTogglePurchased;
   final ValueChanged<SpV2Item> onToggleGoodsPaid;
@@ -1379,6 +1976,7 @@ class _ItemsTab extends StatelessWidget {
     required this.onAddItem,
     required this.onBulkPrice,
     required this.onBulkDelivery,
+    required this.onBulkManage,
     required this.onEditItem,
     required this.onTogglePurchased,
     required this.onToggleGoodsPaid,
@@ -1399,6 +1997,37 @@ class _ItemsTab extends StatelessWidget {
     }
     return Column(
       children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey('sp-add-item-tab-action'),
+            onPressed: onAddItem,
+            icon: const Icon(Icons.add_shopping_cart_rounded),
+            label: const Text('Добавить товар'),
+            style: FilledButton.styleFrom(
+              backgroundColor: context.brandPrimary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(17),
+              ),
+              textStyle: const TextStyle(
+                fontFamily: 'Gilroy',
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (onBulkManage != null) ...[
+          _BulkManageActionCard(
+            itemsCount: purchase.items.length,
+            onTap: onBulkManage!,
+          ),
+          const SizedBox(height: 12),
+        ],
         _BulkPriceActionCard(purchase: purchase, onTap: onBulkPrice),
         const SizedBox(height: 12),
         _BulkDeliveryActionCard(purchase: purchase, onTap: onBulkDelivery),
@@ -1417,6 +2046,75 @@ class _ItemsTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _BulkManageActionCard extends StatelessWidget {
+  final int itemsCount;
+  final VoidCallback onTap;
+
+  const _BulkManageActionCard({required this.itemsCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: itemsCount == 0 ? null : onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: SpFinanceUi.cardDecoration(
+            color: context.brandPrimary.withValues(alpha: 0.065),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.done_all_rounded,
+                  color: context.brandPrimary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Массовые действия',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Статус, перенос клиенту или в другую закупку, архив. Товаров: $itemsCount.',
+                      style: SpFinanceUi.labelStyle,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: itemsCount == 0
+                    ? AppColors.textSecondary.withValues(alpha: 0.45)
+                    : context.brandPrimary,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1602,8 +2300,12 @@ enum _BulkClientPriceMode { same, percent, fixed }
 
 class _BulkClientPriceSheet extends ConsumerStatefulWidget {
   final SpV2Purchase purchase;
+  final bool atomicBulkEnabled;
 
-  const _BulkClientPriceSheet({required this.purchase});
+  const _BulkClientPriceSheet({
+    required this.purchase,
+    required this.atomicBulkEnabled,
+  });
 
   @override
   ConsumerState<_BulkClientPriceSheet> createState() =>
@@ -1862,6 +2564,7 @@ class _BulkClientPriceSheetState extends ConsumerState<_BulkClientPriceSheet> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final items = _eligibleItems();
     if (items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1875,19 +2578,49 @@ class _BulkClientPriceSheetState extends ConsumerState<_BulkClientPriceSheet> {
     setState(() => _isSaving = true);
     try {
       final repository = ref.read(spV2RepositoryProvider);
-      for (final item in items) {
-        final clientPrice = _clientPriceFor(item);
-        if (clientPrice == null) continue;
-        await repository.updateItem(
-          item.id,
-          currency: widget.purchase.currency,
-          clientPrice: clientPrice,
-          totalDueRub: _itemTotalRubWithClientPrice(
-            item,
-            widget.purchase,
-            clientPrice,
-          ),
+      final canApplyAtomically =
+          widget.atomicBulkEnabled &&
+          items.every((item) => item.updatedAt != null);
+      if (canApplyAtomically) {
+        await repository.applyBulkItemUpdates(
+          widget.purchase.id,
+          operation: 'client_price',
+          items: items
+              .map((item) {
+                final clientPrice = _clientPriceFor(item)!;
+                return SpV2BulkItemUpdate(
+                  id: item.id,
+                  expectedUpdatedAt: item.updatedAt!,
+                  clientPriceRub: widget.purchase.currency == 'RUB'
+                      ? clientPrice
+                      : null,
+                  clientPriceYuan: widget.purchase.currency == 'RUB'
+                      ? null
+                      : clientPrice,
+                  totalDueRub: _itemTotalRubWithClientPrice(
+                    item,
+                    widget.purchase,
+                    clientPrice,
+                  ),
+                );
+              })
+              .toList(growable: false),
         );
+      } else {
+        for (final item in items) {
+          final clientPrice = _clientPriceFor(item);
+          if (clientPrice == null) continue;
+          await repository.updateItem(
+            item.id,
+            currency: widget.purchase.currency,
+            clientPrice: clientPrice,
+            totalDueRub: _itemTotalRubWithClientPrice(
+              item,
+              widget.purchase,
+              clientPrice,
+            ),
+          );
+        }
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1913,8 +2646,12 @@ enum _BulkDeliveryMode { weight, items, units, customers }
 
 class _BulkDeliverySheet extends ConsumerStatefulWidget {
   final SpV2Purchase purchase;
+  final bool atomicBulkEnabled;
 
-  const _BulkDeliverySheet({required this.purchase});
+  const _BulkDeliverySheet({
+    required this.purchase,
+    required this.atomicBulkEnabled,
+  });
 
   @override
   ConsumerState<_BulkDeliverySheet> createState() => _BulkDeliverySheetState();
@@ -2327,6 +3064,7 @@ class _BulkDeliverySheetState extends ConsumerState<_BulkDeliverySheet> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final items = _targetItems();
     final actualTotal = _readDecimalInput(_actualTotalController.text) ?? 0;
     final clientTotal = _readDecimalInput(_clientTotalController.text) ?? 0;
@@ -2357,23 +3095,51 @@ class _BulkDeliverySheetState extends ConsumerState<_BulkDeliverySheet> {
     setState(() => _isSaving = true);
     try {
       final repository = ref.read(spV2RepositoryProvider);
-      for (final item in items) {
-        final actualRub = _onlyEmpty && item.shippingCostActualRub > 0
-            ? item.shippingCostActualRub
-            : actualMap[item.id] ?? 0;
-        final clientRub = _onlyEmpty && item.shippingCostRub > 0
-            ? item.shippingCostRub
-            : clientMap[item.id] ?? 0;
-        await repository.updateItem(
-          item.id,
-          currency: widget.purchase.currency,
-          shippingCostActualRub: actualRub,
-          shippingCostRub: clientRub,
-          totalDueRub:
-              _itemBaseRub(item, widget.purchase) +
-              clientRub +
-              item.additionalExpensesRub,
+      double actualFor(SpV2Item item) =>
+          _onlyEmpty && item.shippingCostActualRub > 0
+          ? item.shippingCostActualRub
+          : actualMap[item.id] ?? 0;
+      double clientFor(SpV2Item item) => _onlyEmpty && item.shippingCostRub > 0
+          ? item.shippingCostRub
+          : clientMap[item.id] ?? 0;
+      final canApplyAtomically =
+          widget.atomicBulkEnabled &&
+          items.every((item) => item.updatedAt != null);
+      if (canApplyAtomically) {
+        await repository.applyBulkItemUpdates(
+          widget.purchase.id,
+          operation: 'delivery',
+          items: items
+              .map((item) {
+                final clientRub = clientFor(item);
+                return SpV2BulkItemUpdate(
+                  id: item.id,
+                  expectedUpdatedAt: item.updatedAt!,
+                  shippingCostActualRub: actualFor(item),
+                  shippingCostRub: clientRub,
+                  totalDueRub:
+                      _itemBaseRub(item, widget.purchase) +
+                      clientRub +
+                      item.additionalExpensesRub,
+                );
+              })
+              .toList(growable: false),
         );
+      } else {
+        for (final item in items) {
+          final actualRub = actualFor(item);
+          final clientRub = clientFor(item);
+          await repository.updateItem(
+            item.id,
+            currency: widget.purchase.currency,
+            shippingCostActualRub: actualRub,
+            shippingCostRub: clientRub,
+            totalDueRub:
+                _itemBaseRub(item, widget.purchase) +
+                clientRub +
+                item.additionalExpensesRub,
+          );
+        }
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -2583,6 +3349,9 @@ class _ItemCard extends StatelessWidget {
   final VoidCallback? onTogglePurchased;
   final VoidCallback? onToggleGoodsPaid;
   final VoidCallback? onToggleDeliveryPaid;
+  final bool showClientPrice;
+  final bool showFinance;
+  final bool showDelivery;
 
   const _ItemCard({
     required this.item,
@@ -2591,6 +3360,9 @@ class _ItemCard extends StatelessWidget {
     this.onTogglePurchased,
     this.onToggleGoodsPaid,
     this.onToggleDeliveryPaid,
+    this.showClientPrice = true,
+    this.showFinance = true,
+    this.showDelivery = true,
   });
 
   @override
@@ -2691,12 +3463,13 @@ class _ItemCard extends StatelessWidget {
                       label:
                           'Выкуп: $purchasePriceLabel${quantity > 1 ? ' × $quantity' : ''}',
                     ),
-                  _InfoChip(
-                    icon: Icons.sell_rounded,
-                    label:
-                        'Клиент: $clientPriceLabel${quantity > 1 ? ' × $quantity' : ''}',
-                  ),
-                  if (goodsTotalRub > 0)
+                  if (showClientPrice)
+                    _InfoChip(
+                      icon: Icons.sell_rounded,
+                      label:
+                          'Клиент: $clientPriceLabel${quantity > 1 ? ' × $quantity' : ''}',
+                    ),
+                  if (showFinance && goodsTotalRub > 0)
                     _InfoChip(
                       icon: Icons.functions_rounded,
                       label: 'Товар всего: ${_formatRub(goodsTotalRub)}',
@@ -2707,13 +3480,13 @@ class _ItemCard extends StatelessWidget {
                       label:
                           'Доставка СП: ${_formatRub(item.shippingCostActualRub)}',
                     ),
-                  if (item.shippingCostRub > 0)
+                  if (showDelivery && item.shippingCostRub > 0)
                     _InfoChip(
                       icon: Icons.local_shipping_rounded,
                       label:
                           'Доставка клиенту: ${_formatRub(item.shippingCostRub)}',
                     ),
-                  if (profitRub != 0)
+                  if (showFinance && profitRub != 0)
                     _InfoChip(
                       icon: Icons.trending_up_rounded,
                       label: 'Доход: ${_formatRub(profitRub)}',
@@ -2764,7 +3537,7 @@ class _ItemCard extends StatelessWidget {
                         selected: item.isPurchased,
                         onTap: onTogglePurchased!,
                       ),
-                    if (onToggleGoodsPaid != null)
+                    if (showFinance && onToggleGoodsPaid != null)
                       _ItemQuickAction(
                         icon: Icons.payments_rounded,
                         label: item.isGoodsPaid
@@ -2773,7 +3546,9 @@ class _ItemCard extends StatelessWidget {
                         selected: item.isGoodsPaid,
                         onTap: onToggleGoodsPaid!,
                       ),
-                    if (onToggleDeliveryPaid != null)
+                    if (showFinance &&
+                        showDelivery &&
+                        onToggleDeliveryPaid != null)
                       _ItemQuickAction(
                         icon: Icons.local_shipping_rounded,
                         label: item.isDeliveryPaid
@@ -3037,7 +3812,6 @@ class _CustomersTab extends StatelessWidget {
   onToggleCustomerExtraPaid;
 
   const _CustomersTab({
-    super.key,
     required this.purchase,
     required this.onCustomerTap,
     required this.onToggleCustomerGoodsPaid,
@@ -3048,6 +3822,7 @@ class _CustomersTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final customers = <int, SpV2Customer>{};
+    final clientSections = purchase.clientCardSections;
     for (final item in purchase.items) {
       final customer = item.customer;
       if (customer != null) customers[customer.id] = customer;
@@ -3158,37 +3933,41 @@ class _CustomersTab extends StatelessWidget {
                           customer: customer,
                           compact: true,
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _CustomerPayButton(
-                                label: allGoodsPaid
-                                    ? 'Товар оплачен'
-                                    : 'Оплатить товар',
-                                selected: allGoodsPaid,
-                                onTap: () => onToggleCustomerGoodsPaid(
-                                  purchase,
-                                  customer,
+                        if (clientSections.showFinance) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _CustomerPayButton(
+                                  label: allGoodsPaid
+                                      ? 'Товар оплачен'
+                                      : 'Оплатить товар',
+                                  selected: allGoodsPaid,
+                                  onTap: () => onToggleCustomerGoodsPaid(
+                                    purchase,
+                                    customer,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _CustomerPayButton(
-                                label: allDeliveryPaid
-                                    ? 'Доставка оплачена'
-                                    : 'Оплатить доставку',
-                                selected: allDeliveryPaid,
-                                onTap: () => onToggleCustomerDeliveryPaid(
-                                  purchase,
-                                  customer,
+                              if (clientSections.showDelivery) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _CustomerPayButton(
+                                    label: allDeliveryPaid
+                                        ? 'Доставка оплачена'
+                                        : 'Оплатить доставку',
+                                    selected: allDeliveryPaid,
+                                    onTap: () => onToggleCustomerDeliveryPaid(
+                                      purchase,
+                                      customer,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (hasExtraDue) ...[
+                              ],
+                            ],
+                          ),
+                        ],
+                        if (clientSections.showFinance && hasExtraDue) ...[
                           const SizedBox(height: 8),
                           _CustomerPayButton(
                             label: allExtraPaid
@@ -3261,6 +4040,7 @@ class _CustomerDetailSheet extends StatelessWidget {
         items.isNotEmpty && items.every((item) => item.isDeliveryPaid);
     final hasExtraDue = (customerFinance?.extraDueRub ?? 0) > 0;
     final allExtraPaid = customerFinance?.allExtraPaid ?? false;
+    final clientSections = purchase.clientCardSections;
     SpV2CustomerShipment? shipment;
     for (final entry in purchase.shipments) {
       if (entry.spCustomerId == customer.id) {
@@ -3369,10 +4149,11 @@ class _CustomerDetailSheet extends StatelessWidget {
                               ? '${totalWeight.toStringAsFixed(2)} кг'
                               : 'Вес не задан',
                         ),
-                        _InfoChip(
-                          icon: Icons.payments_rounded,
-                          label: 'Итого ${_formatRub(totalDue)}',
-                        ),
+                        if (clientSections.showFinance)
+                          _InfoChip(
+                            icon: Icons.payments_rounded,
+                            label: 'Итого ${_formatRub(totalDue)}',
+                          ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -3383,40 +4164,51 @@ class _CustomerDetailSheet extends StatelessWidget {
                         await onEditCustomer(customer);
                       },
                     ),
-                    const SizedBox(height: 12),
-                    _ShipmentSummaryTile(
-                      shipment: shipment,
-                      onTap: () async {
-                        Navigator.of(context).pop();
-                        await onEditShipment(purchase, customer);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _CustomerPayButton(
-                            label: allGoodsPaid
-                                ? 'Товары оплачены'
-                                : 'Отметить товары',
-                            selected: allGoodsPaid,
-                            onTap: () => onToggleGoodsPaid(purchase, customer),
+                    if (clientSections.showTariff) ...[
+                      const SizedBox(height: 12),
+                      _ClientTariffSummaryTile(purchase: purchase),
+                    ],
+                    if (clientSections.showDelivery) ...[
+                      const SizedBox(height: 12),
+                      _ShipmentSummaryTile(
+                        shipment: shipment,
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await onEditShipment(purchase, customer);
+                        },
+                      ),
+                    ],
+                    if (clientSections.showFinance) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _CustomerPayButton(
+                              label: allGoodsPaid
+                                  ? 'Товары оплачены'
+                                  : 'Отметить товары',
+                              selected: allGoodsPaid,
+                              onTap: () =>
+                                  onToggleGoodsPaid(purchase, customer),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _CustomerPayButton(
-                            label: allDeliveryPaid
-                                ? 'Доставка оплачена'
-                                : 'Отметить доставку',
-                            selected: allDeliveryPaid,
-                            onTap: () =>
-                                onToggleDeliveryPaid(purchase, customer),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (hasExtraDue) ...[
+                          if (clientSections.showDelivery) ...[
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _CustomerPayButton(
+                                label: allDeliveryPaid
+                                    ? 'Доставка оплачена'
+                                    : 'Отметить доставку',
+                                selected: allDeliveryPaid,
+                                onTap: () =>
+                                    onToggleDeliveryPaid(purchase, customer),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                    if (clientSections.showFinance && hasExtraDue) ...[
                       const SizedBox(height: 8),
                       _CustomerPayButton(
                         label: allExtraPaid
@@ -3426,8 +4218,9 @@ class _CustomerDetailSheet extends StatelessWidget {
                         onTap: () => onToggleExtraPaid(purchase, customer),
                       ),
                     ],
-                    if (customer.deliveryAddress?.isNotEmpty == true ||
-                        customer.city?.isNotEmpty == true ||
+                    if ((clientSections.showDelivery &&
+                            (customer.deliveryAddress?.isNotEmpty == true ||
+                                customer.city?.isNotEmpty == true)) ||
                         customer.comment?.isNotEmpty == true) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -3435,9 +4228,11 @@ class _CustomerDetailSheet extends StatelessWidget {
                         decoration: SpFinanceUi.softDecoration(context),
                         child: Text(
                           [
-                            if (customer.city?.isNotEmpty == true)
+                            if (clientSections.showDelivery &&
+                                customer.city?.isNotEmpty == true)
                               'Город: ${customer.city}',
-                            if (customer.deliveryAddress?.isNotEmpty == true)
+                            if (clientSections.showDelivery &&
+                                customer.deliveryAddress?.isNotEmpty == true)
                               'Адрес: ${customer.deliveryAddress}',
                             if (customer.comment?.isNotEmpty == true)
                               'Комментарий: ${customer.comment}',
@@ -3467,6 +4262,9 @@ class _CustomerDetailSheet extends StatelessWidget {
                             item: item,
                             purchase: purchase,
                             onTap: () {},
+                            showClientPrice: clientSections.showCustomPrice,
+                            showFinance: clientSections.showFinance,
+                            showDelivery: clientSections.showDelivery,
                           ),
                         ),
                       ),
@@ -3546,6 +4344,7 @@ class _EditCustomerSheetState extends ConsumerState<_EditCustomerSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(
@@ -3807,6 +4606,72 @@ class _EditCustomerSheetState extends ConsumerState<_EditCustomerSheet> {
   }
 }
 
+class _ClientTariffSummaryTile extends StatelessWidget {
+  final SpV2Purchase purchase;
+
+  const _ClientTariffSummaryTile({required this.purchase});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCny = purchase.currency == 'CNY';
+    final hasRate = purchase.purchaseRate > 0;
+    final subtitle = isCny
+        ? hasRate
+              ? 'Курс СП: ${purchase.purchaseRate.toStringAsFixed(2)} ₽ за ¥'
+              : 'Курс юаня пока не указан'
+        : 'Расчёт закупки ведётся сразу в рублях';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: SpFinanceUi.softDecoration(context),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              Icons.calculate_rounded,
+              color: context.brandPrimary,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Тариф и расчёт',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ShipmentSummaryTile extends StatelessWidget {
   final SpV2CustomerShipment? shipment;
   final VoidCallback onTap;
@@ -3935,6 +4800,7 @@ class _EditShipmentSheetState extends ConsumerState<_EditShipmentSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       await ref
@@ -4661,6 +5527,7 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final title = _titleController.text.trim();
     final amount = _readAmount();
     if (title.isEmpty || amount == null || amount <= 0) {
@@ -6191,7 +7058,11 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
   final List<_PickedSpImage> _pickedImages = [];
   int? _selectedCustomerId;
   bool _useExistingCustomer = false;
+  bool _showCustomerContacts = false;
+  bool _showDelivery = false;
+  bool _showDetails = false;
   bool _isSaving = false;
+  bool _importSheetPending = false;
 
   @override
   void dispose() {
@@ -6215,375 +7086,531 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
   @override
   Widget build(BuildContext context) {
     final customers = ref.watch(spV2CustomersProvider);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.92;
-
+    final capabilities = ref
+        .watch(spOrganizerCapabilitiesProvider)
+        .asData
+        ?.value;
+    final trackImportEnabled = capabilities?.trackImport == true;
+    final purchaseBlankImportEnabled =
+        capabilities?.purchaseBlankImport == true;
+    final previousPurchaseImportEnabled =
+        capabilities?.previousPurchaseImport == true;
+    final garageImportEnabled = capabilities?.garageImport == true;
+    final hasImports =
+        trackImportEnabled ||
+        purchaseBlankImportEnabled ||
+        previousPurchaseImportEnabled ||
+        garageImportEnabled;
     final currency = widget.purchase.currency;
     final priceSuffix = _currencySymbol(currency);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => FocusScope.of(context).unfocus(),
-      child: SafeArea(
-        bottom: false,
-        child: Container(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 58,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE1E5ED),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: SpAnimatedHeroSurface(
-                  padding: const EdgeInsets.all(16),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.add_shopping_cart_rounded,
-                        color: Colors.white,
-                        size: 34,
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Добавить товар',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'Gilroy',
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Клиент, ссылка/описание, цена и параметры.',
-                              style: TextStyle(
-                                color: Color(0xE6FFFFFF),
-                                fontFamily: 'Gilroy',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(18, 0, 18, 18 + bottomInset),
+      child: SpFinanceModalSurface(
+        key: const ValueKey('add-item-modal'),
+        icon: Icons.add_shopping_cart_rounded,
+        title: 'Добавить товар',
+        subtitle:
+            'Заполните вручную или перенесите готовые данные из сервисов 2A.',
+        maxHeightFactor: 0.94,
+        keyboardAware: true,
+        body: ListView(
+          key: const ValueKey('add-item-form-list'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(top: 14),
+          children: [
+            if (hasImports) ...[
+              _AddItemSectionCard(
+                icon: Icons.auto_awesome_rounded,
+                title: 'Источник данных',
+                subtitle:
+                    'Самый быстрый способ — выбрать уже существующий товар.',
+                child: Column(
                   children: [
-                    if (currency == 'CNY' &&
-                        widget.purchase.purchaseRate <= 0) ...[
-                      const SpInfoNotice(
-                        title: 'Курс юаня пока не указан',
-                        message:
-                            'Товар можно добавить сейчас, но рублёвые итоги и оплаты посчитаются только после указания курса в карточке СП.',
-                        icon: Icons.currency_exchange_rounded,
+                    if (trackImportEnabled) ...[
+                      _ItemImportEntry(
+                        valueKey: 'track-import-entry',
+                        icon: Icons.qr_code_2_rounded,
+                        title: 'Добавить из трека',
+                        subtitle:
+                            'Фото, название, количество и трек-номер перенесутся в СП.',
+                        onTap: _openTrackImport,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 9),
                     ],
-                    customers.when(
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                      data: (items) => items.isEmpty
-                          ? const SizedBox.shrink()
-                          : SwitchListTile.adaptive(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text(
-                                'Выбрать существующего клиента',
-                              ),
-                              value: _useExistingCustomer,
-                              activeThumbColor: context.brandPrimary,
-                              onChanged: (value) => setState(() {
-                                _useExistingCustomer = value;
-                                if (!value) _selectedCustomerId = null;
-                              }),
-                            ),
-                    ),
-                    if (_useExistingCustomer)
-                      customers.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (_, _) => const SizedBox.shrink(),
-                        data: (items) => DropdownButtonFormField<int>(
-                          initialValue: _selectedCustomerId,
-                          decoration: SpFinanceUi.inputDecoration(
-                            context,
-                            labelText: 'Клиент',
-                          ),
-                          items: items
-                              .map(
-                                (customer) => DropdownMenuItem<int>(
-                                  value: customer.id,
-                                  child: Text(customer.fullName),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: (value) =>
-                              setState(() => _selectedCustomerId = value),
-                        ),
-                      )
-                    else ...[
-                      TextField(
-                        controller: _customerNameController,
-                        decoration: SpFinanceUi.inputDecoration(
-                          context,
-                          labelText: 'ФИО клиента',
-                        ),
+                    if (previousPurchaseImportEnabled) ...[
+                      _ItemImportEntry(
+                        valueKey: 'previous-purchase-import-entry',
+                        icon: Icons.history_rounded,
+                        title: 'Из прошлой закупки',
+                        subtitle:
+                            'Карточка, фото и unit-цены заполнятся автоматически.',
+                        onTap: _openPreviousPurchaseImport,
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _customerPhoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: SpFinanceUi.inputDecoration(
-                          context,
-                          labelText: 'Телефон',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _customerTelegramController,
-                        textInputAction: TextInputAction.next,
-                        decoration: SpFinanceUi.inputDecoration(
-                          context,
-                          labelText: 'Telegram ник',
-                          hintText: '@username или ссылка',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _customerWhatsappController,
-                              textInputAction: TextInputAction.next,
-                              decoration: SpFinanceUi.inputDecoration(
-                                context,
-                                labelText: 'WhatsApp',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: _customerWechatController,
-                              textInputAction: TextInputAction.next,
-                              decoration: SpFinanceUi.inputDecoration(
-                                context,
-                                labelText: 'WeChat',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 9),
                     ],
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _titleController,
-                            textInputAction: TextInputAction.next,
-                            decoration: SpFinanceUi.inputDecoration(
-                              context,
-                              labelText: 'Что купить',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 104,
-                          child: TextField(
-                            controller: _quantityController,
-                            keyboardType: TextInputType.number,
-                            textInputAction: TextInputAction.next,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            decoration: SpFinanceUi.inputDecoration(
-                              context,
-                              labelText: 'Кол-во',
-                              suffixText: 'шт.',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _LinkTextField(
-                      controller: _sourceUrlController,
-                      labelText: 'Ссылка на товар',
-                    ),
-                    const SizedBox(height: 10),
-                    SpInfoNotice(
-                      title: 'Цена выкупа и цена для клиента',
-                      message: currency == 'CNY'
-                          ? 'Введите цену за 1 шт. в юанях. Итог по товару считается как цена клиента × количество; разница с ценой выкупа будет вашей маржей.'
-                          : 'Введите цену за 1 шт. в рублях. Итог по товару считается как цена клиента × количество; разница с ценой выкупа будет вашей маржей.',
-                      icon: Icons.payments_rounded,
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _purchasePriceController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                    if (purchaseBlankImportEnabled) ...[
+                      _ItemImportEntry(
+                        valueKey: 'purchase-blank-import-entry',
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Из бланка выкупа',
+                        subtitle:
+                            'Фото, ссылка, параметры, количество и цена выкупа перенесутся автоматически.',
+                        onTap: _openPurchaseBlankImport,
                       ),
-                      decoration: SpFinanceUi.inputDecoration(
-                        context,
-                        labelText: 'Цена выкупа за 1 шт.',
-                        hintText: 'За сколько покупаем одну единицу',
-                        suffixText: priceSuffix,
+                      const SizedBox(height: 9),
+                    ],
+                    if (garageImportEnabled)
+                      _ItemImportEntry(
+                        valueKey: 'garage-import-entry',
+                        icon: Icons.garage_outlined,
+                        title: 'Из Garage',
+                        subtitle:
+                            'Карточка, фото, количество и цена покупки перенесутся автоматически.',
+                        onTap: _openGarageImport,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _clientPriceController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: SpFinanceUi.inputDecoration(
-                        context,
-                        labelText: 'Цена клиента за 1 шт.',
-                        hintText: 'С комиссией/наценкой за одну единицу',
-                        suffixText: priceSuffix,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const SpInfoNotice(
-                      title: 'Доставка и доход',
-                      message:
-                          'Можно заполнить сразу или позже. «Доставка оплачена СП» — ваша себестоимость, «Доставка клиенту» — сумма для клиента. Разница попадёт в прибыль.',
-                      icon: Icons.local_shipping_rounded,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _shippingActualController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: SpFinanceUi.inputDecoration(
-                              context,
-                              labelText: 'Доставка оплачена СП',
-                              hintText: 'Себестоимость',
-                              suffixText: '₽',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _shippingClientController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: SpFinanceUi.inputDecoration(
-                              context,
-                              labelText: 'Доставка клиенту',
-                              hintText: 'К оплате',
-                              suffixText: '₽',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _PickedImagesBlock(
-                      images: _pickedImages,
-                      onPick: _pickImages,
-                      onRemove: (index) =>
-                          setState(() => _pickedImages.removeAt(index)),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _sellerInfoController,
-                      minLines: 2,
-                      maxLines: 3,
-                      decoration: SpFinanceUi.inputDecoration(
-                        context,
-                        labelText: 'Данные продавца / параметры товара',
-                        hintText:
-                            'Размер, цвет, модель, продавец, заметки из WeChat',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _descriptionController,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: SpFinanceUi.inputDecoration(
-                        context,
-                        labelText: 'Комментарий',
-                      ),
-                    ),
                   ],
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  18,
-                  10,
-                  18,
-                  18 + MediaQuery.paddingOf(context).bottom,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _save,
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.check_rounded),
-                    label: const Text('Добавить товар'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.brandPrimary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      textStyle: const TextStyle(
-                        fontFamily: 'Gilroy',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
+              const SizedBox(height: 12),
+            ],
+            if (currency == 'CNY' && widget.purchase.purchaseRate <= 0) ...[
+              const SpInfoNotice(
+                title: 'Курс юаня пока не указан',
+                message:
+                    'Товар можно добавить сейчас. Рублёвые итоги и оплаты появятся после указания курса в настройках СП.',
+                icon: Icons.currency_exchange_rounded,
+              ),
+              const SizedBox(height: 12),
+            ],
+            _AddItemSectionCard(
+              key: const ValueKey('add-item-customer-section'),
+              icon: Icons.person_outline_rounded,
+              title: 'Участник',
+              subtitle: 'Выберите существующего или создайте нового клиента.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  customers.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, _) => const SizedBox.shrink(),
+                    data: (items) => items.isEmpty
+                        ? const SizedBox.shrink()
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: _AddItemModeButton(
+                                  key: const ValueKey(
+                                    'add-item-new-customer-mode',
+                                  ),
+                                  icon: Icons.person_add_alt_1_rounded,
+                                  label: 'Новый',
+                                  selected: !_useExistingCustomer,
+                                  onTap: () => setState(() {
+                                    _useExistingCustomer = false;
+                                    _selectedCustomerId = null;
+                                  }),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _AddItemModeButton(
+                                  key: const ValueKey(
+                                    'add-item-existing-customer-mode',
+                                  ),
+                                  icon: Icons.people_alt_outlined,
+                                  label: 'Из списка',
+                                  selected: _useExistingCustomer,
+                                  onTap: () => _selectExistingCustomer(items),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                  if (_useExistingCustomer) ...[
+                    const SizedBox(height: 10),
+                    customers.when(
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (_, _) => const SizedBox.shrink(),
+                      data: (items) {
+                        SpV2Customer? selected;
+                        for (final customer in items) {
+                          if (customer.id == _selectedCustomerId) {
+                            selected = customer;
+                            break;
+                          }
+                        }
+                        return _SelectedAddItemCustomer(
+                          key: const ValueKey('add-item-selected-customer'),
+                          customer: selected,
+                          onTap: () => _selectExistingCustomer(items),
+                        );
+                      },
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _customerNameController,
+                      textInputAction: TextInputAction.next,
+                      decoration: SpFinanceUi.inputDecoration(
+                        context,
+                        labelText: 'Имя участника *',
+                        hintText: 'Например, Иван Иванов',
+                        prefixIcon: Icons.badge_outlined,
                       ),
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 9),
+                    _AddItemOptionalSection(
+                      key: const ValueKey('add-item-customer-contacts'),
+                      title: 'Контакты участника',
+                      subtitle: 'Телефон и мессенджеры — необязательно',
+                      icon: Icons.chat_bubble_outline_rounded,
+                      expanded: _showCustomerContacts,
+                      onToggle: () => setState(
+                        () => _showCustomerContacts = !_showCustomerContacts,
+                      ),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _customerPhoneController,
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Телефон',
+                            ),
+                          ),
+                          const SizedBox(height: 9),
+                          TextField(
+                            controller: _customerTelegramController,
+                            textInputAction: TextInputAction.next,
+                            decoration: SpFinanceUi.inputDecoration(
+                              context,
+                              labelText: 'Telegram',
+                              hintText: '@username или ссылка',
+                            ),
+                          ),
+                          const SizedBox(height: 9),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final fields = [
+                                TextField(
+                                  controller: _customerWhatsappController,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: SpFinanceUi.inputDecoration(
+                                    context,
+                                    labelText: 'WhatsApp',
+                                  ),
+                                ),
+                                TextField(
+                                  controller: _customerWechatController,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: SpFinanceUi.inputDecoration(
+                                    context,
+                                    labelText: 'WeChat',
+                                  ),
+                                ),
+                              ];
+                              if (constraints.maxWidth < 380) {
+                                return Column(
+                                  children: [
+                                    fields.first,
+                                    const SizedBox(height: 9),
+                                    fields.last,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  Expanded(child: fields.first),
+                                  const SizedBox(width: 9),
+                                  Expanded(child: fields.last),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
+            const SizedBox(height: 12),
+            _AddItemSectionCard(
+              key: const ValueKey('add-item-product-section'),
+              icon: Icons.shopping_bag_outlined,
+              title: 'Товар',
+              subtitle: 'Название и количество обязательны.',
+              child: Column(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final titleField = TextField(
+                        controller: _titleController,
+                        textInputAction: TextInputAction.next,
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Название товара *',
+                          hintText: 'Что покупаем',
+                        ),
+                      );
+                      final quantityField = TextField(
+                        controller: _quantityController,
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.next,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Количество *',
+                          suffixText: 'шт.',
+                        ),
+                      );
+                      if (constraints.maxWidth < 360) {
+                        return Column(
+                          children: [
+                            titleField,
+                            const SizedBox(height: 9),
+                            quantityField,
+                          ],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: titleField),
+                          const SizedBox(width: 9),
+                          SizedBox(width: 116, child: quantityField),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 9),
+                  _LinkTextField(
+                    controller: _sourceUrlController,
+                    labelText: 'Ссылка на товар',
+                  ),
+                  const SizedBox(height: 10),
+                  _PickedImagesBlock(
+                    images: _pickedImages,
+                    onPick: _pickImages,
+                    onRemove: (index) =>
+                        setState(() => _pickedImages.removeAt(index)),
+                  ),
+                  const SizedBox(height: 10),
+                  _AddItemOptionalSection(
+                    key: const ValueKey('add-item-details-section'),
+                    title: 'Параметры и комментарий',
+                    subtitle: 'Размер, цвет, продавец и заметки',
+                    icon: Icons.tune_rounded,
+                    expanded: _showDetails,
+                    onToggle: () =>
+                        setState(() => _showDetails = !_showDetails),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _sellerInfoController,
+                          minLines: 2,
+                          maxLines: 3,
+                          decoration: SpFinanceUi.inputDecoration(
+                            context,
+                            labelText: 'Параметры товара / продавец',
+                            hintText: 'Размер, цвет, модель, продавец, WeChat',
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        TextField(
+                          controller: _descriptionController,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: SpFinanceUi.inputDecoration(
+                            context,
+                            labelText: 'Комментарий',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _AddItemSectionCard(
+              key: const ValueKey('add-item-prices-section'),
+              icon: Icons.payments_outlined,
+              title: 'Цены',
+              subtitle:
+                  'Укажите цену за одну штуку. Маржа посчитается автоматически.',
+              child: Column(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final purchaseField = TextField(
+                        controller: _purchasePriceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        textInputAction: TextInputAction.next,
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Цена выкупа',
+                          hintText: 'Себестоимость',
+                          suffixText: priceSuffix,
+                        ),
+                      );
+                      final clientField = TextField(
+                        controller: _clientPriceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        textInputAction: TextInputAction.next,
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Цена участника',
+                          hintText: 'С наценкой',
+                          suffixText: priceSuffix,
+                        ),
+                      );
+                      if (constraints.maxWidth < 400) {
+                        return Column(
+                          children: [
+                            purchaseField,
+                            const SizedBox(height: 9),
+                            clientField,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: purchaseField),
+                          const SizedBox(width: 9),
+                          Expanded(child: clientField),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 9),
+                  const _AddItemHelperLine(
+                    icon: Icons.calculate_outlined,
+                    text:
+                        'Итог участника = цена участника × количество. Разница с ценой выкупа — ваша маржа.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _AddItemOptionalSection(
+              key: const ValueKey('add-item-delivery-section'),
+              title: 'Доставка',
+              subtitle: 'Можно заполнить позже',
+              icon: Icons.local_shipping_outlined,
+              expanded: _showDelivery,
+              onToggle: () => setState(() => _showDelivery = !_showDelivery),
+              child: Column(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final actualField = TextField(
+                        controller: _shippingActualController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Оплачено СП',
+                          hintText: 'Себестоимость',
+                          suffixText: '₽',
+                        ),
+                      );
+                      final clientField = TextField(
+                        controller: _shippingClientController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: SpFinanceUi.inputDecoration(
+                          context,
+                          labelText: 'Начислить участнику',
+                          hintText: 'К оплате',
+                          suffixText: '₽',
+                        ),
+                      );
+                      if (constraints.maxWidth < 400) {
+                        return Column(
+                          children: [
+                            actualField,
+                            const SizedBox(height: 9),
+                            clientField,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: actualField),
+                          const SizedBox(width: 9),
+                          Expanded(child: clientField),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 9),
+                  const _AddItemHelperLine(
+                    icon: Icons.info_outline_rounded,
+                    text:
+                        'Разница между начислением участнику и фактической оплатой попадёт в прибыль.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        ),
+        footer: FilledButton.icon(
+          key: const ValueKey('add-item-submit'),
+          onPressed: _isSaving ? null : _save,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+            backgroundColor: context.brandPrimary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(17),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Gilroy',
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
           ),
+          icon: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check_rounded),
+          label: const Text('Добавить товар'),
         ),
       ),
     );
+  }
+
+  Future<void> _selectExistingCustomer(List<SpV2Customer> customers) async {
+    final selected = await showSpCustomerPickerSheet(
+      context: context,
+      customers: customers,
+      selectedCustomerId: _selectedCustomerId,
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _selectedCustomerId = selected.id;
+      _useExistingCustomer = true;
+    });
   }
 
   Future<void> _pickImages() async {
@@ -6592,7 +7619,48 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
     setState(() => _pickedImages.addAll(picked));
   }
 
+  Future<void> _openPurchaseBlankImport() => _openImportSheet(
+    () => showSpOrganizerPurchaseBlankImportSheet(
+      context: context,
+      purchaseId: widget.purchase.id,
+    ),
+  );
+
+  Future<void> _openTrackImport() => _openImportSheet(
+    () => showSpOrganizerTrackImportSheet(
+      context: context,
+      purchaseId: widget.purchase.id,
+    ),
+  );
+
+  Future<void> _openPreviousPurchaseImport() => _openImportSheet(
+    () => showSpOrganizerPreviousPurchaseImportSheet(
+      context: context,
+      purchaseId: widget.purchase.id,
+    ),
+  );
+
+  Future<void> _openGarageImport() => _openImportSheet(
+    () => showSpOrganizerGarageImportSheet(
+      context: context,
+      purchaseId: widget.purchase.id,
+    ),
+  );
+
+  Future<void> _openImportSheet(Future<bool?> Function() showSheet) async {
+    if (_importSheetPending) return;
+    _importSheetPending = true;
+    try {
+      final imported = await showSheet();
+      if (!mounted || imported != true) return;
+      Navigator.of(context).pop(true);
+    } finally {
+      _importSheetPending = false;
+    }
+  }
+
   Future<void> _save() async {
+    if (_isSaving) return;
     final title = _titleController.text.trim();
     final customerName = _customerNameController.text.trim();
     final quantity = _readPositiveInt(_quantityController.text);
@@ -6668,6 +7736,743 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
     final normalized = value.trim().replaceAll(',', '.');
     if (normalized.isEmpty) return null;
     return double.tryParse(normalized);
+  }
+}
+
+Future<SpV2Customer?> showSpCustomerPickerSheet({
+  required BuildContext context,
+  required List<SpV2Customer> customers,
+  int? selectedCustomerId,
+}) {
+  return showSpFinanceModalSheet<SpV2Customer>(
+    context: context,
+    builder: (context) => _SpCustomerPickerSheet(
+      customers: customers,
+      selectedCustomerId: selectedCustomerId,
+    ),
+  );
+}
+
+class _SpCustomerPickerSheet extends StatefulWidget {
+  final List<SpV2Customer> customers;
+  final int? selectedCustomerId;
+
+  const _SpCustomerPickerSheet({
+    required this.customers,
+    this.selectedCustomerId,
+  });
+
+  @override
+  State<_SpCustomerPickerSheet> createState() => _SpCustomerPickerSheetState();
+}
+
+class _SpCustomerPickerSheetState extends State<_SpCustomerPickerSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? widget.customers
+        : widget.customers
+              .where(
+                (customer) =>
+                    _customerSearchText(customer).toLowerCase().contains(query),
+              )
+              .toList(growable: false);
+
+    return SpFinanceModalSurface(
+      key: const ValueKey('add-item-customer-picker-modal'),
+      icon: Icons.people_alt_outlined,
+      title: 'Выбрать участника',
+      subtitle:
+          'Найдите клиента по имени, телефону или мессенджеру. Всего: ${widget.customers.length}.',
+      maxHeightFactor: 0.88,
+      keyboardAware: true,
+      body: Column(
+        children: [
+          const SizedBox(height: 14),
+          TextField(
+            key: const ValueKey('add-item-customer-search'),
+            controller: _searchController,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) => setState(() => _query = value),
+            decoration:
+                SpFinanceUi.inputDecoration(
+                  context,
+                  labelText: 'Поиск участника',
+                  hintText: 'Имя, телефон, Telegram, WeChat…',
+                  prefixIcon: Icons.search_rounded,
+                ).copyWith(
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Очистить поиск',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: filtered.isEmpty
+                ? const _CustomerPickerEmptyState()
+                : ListView.separated(
+                    key: const ValueKey('add-item-customer-results'),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final customer = filtered[index];
+                      return _CustomerPickerTile(
+                        customer: customer,
+                        selected: customer.id == widget.selectedCustomerId,
+                        onTap: () => Navigator.of(context).pop(customer),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectedAddItemCustomer extends StatelessWidget {
+  final SpV2Customer? customer;
+  final VoidCallback onTap;
+
+  const _SelectedAddItemCustomer({
+    super.key,
+    required this.customer,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final customer = this.customer;
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: customer == null
+                  ? const Color(0xFFE1E5ED)
+                  : context.brandPrimary.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: customer == null
+                      ? const Color(0xFFEFF3F8)
+                      : context.brandPrimary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  customer == null
+                      ? Icons.person_search_rounded
+                      : Icons.check_rounded,
+                  color: customer == null
+                      ? AppColors.textSecondary
+                      : context.brandPrimary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer?.fullName ?? 'Выберите участника',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      customer == null
+                          ? 'Откроется список с поиском'
+                          : (_customerPrimaryContact(customer) ??
+                                'Участник выбран'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: SpFinanceUi.labelStyle,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                customer == null ? 'Выбрать' : 'Изменить',
+                style: TextStyle(
+                  color: context.brandPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 3),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 19,
+                color: context.brandPrimary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerPickerTile extends StatelessWidget {
+  final SpV2Customer customer;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CustomerPickerTile({
+    required this.customer,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final contact = _customerPrimaryContact(customer);
+    return Material(
+      color: selected
+          ? context.brandPrimary.withValues(alpha: 0.08)
+          : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        key: ValueKey('add-item-customer-result-${customer.id}'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? context.brandPrimary : const Color(0xFFE1E5ED),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  _customerInitials(customer.fullName),
+                  style: TextStyle(
+                    color: context.brandPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (contact != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        contact,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: SpFinanceUi.labelStyle,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_right_rounded,
+                color: selected
+                    ? const Color(0xFF16A34A)
+                    : AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerPickerEmptyState extends StatelessWidget {
+  const _CustomerPickerEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_search_rounded,
+              size: 42,
+              color: context.brandPrimary,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Участник не найден',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Проверьте запрос или добавьте нового клиента.',
+              textAlign: TextAlign.center,
+              style: SpFinanceUi.labelStyle,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _customerSearchText(SpV2Customer customer) {
+  return [
+    customer.fullName,
+    customer.phone,
+    customer.email,
+    customer.telegram,
+    customer.whatsapp,
+    customer.wechat,
+    customer.vk,
+    customer.max,
+  ].whereType<String>().join(' ');
+}
+
+String? _customerPrimaryContact(SpV2Customer customer) {
+  for (final value in [
+    customer.phone,
+    customer.telegram,
+    customer.whatsapp,
+    customer.wechat,
+    customer.email,
+  ]) {
+    if (value != null && value.trim().isNotEmpty) return value.trim();
+  }
+  return null;
+}
+
+String _customerInitials(String name) {
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .toList(growable: false);
+  if (parts.isEmpty) return 'К';
+  return parts.map((part) => part.substring(0, 1).toUpperCase()).join();
+}
+
+class _AddItemSectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  const _AddItemSectionCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: SpFinanceUi.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AddItemSectionHeading(icon: icon, title: title, subtitle: subtitle),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _AddItemSectionHeading extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _AddItemSectionHeading({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: context.brandPrimary.withValues(alpha: 0.09),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, size: 20, color: context.brandPrimary),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 16,
+                  height: 1.15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(subtitle, style: SpFinanceUi.labelStyle),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddItemModeButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AddItemModeButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? context.brandPrimary.withValues(alpha: 0.1)
+          : const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? context.brandPrimary.withValues(alpha: 0.55)
+                  : const Color(0xFFE1E5ED),
+              width: selected ? 1.4 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected
+                    ? context.brandPrimary
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected
+                        ? context.brandPrimary
+                        : AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddItemOptionalSection extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  const _AddItemOptionalSection({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: SpFinanceUi.cardDecoration(),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: context.brandPrimary.withValues(alpha: 0.09),
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Icon(icon, size: 20, color: context.brandPrimary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontFamily: 'Gilroy',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(subtitle, style: SpFinanceUi.labelStyle),
+                        ],
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: child,
+            ),
+            crossFadeState: expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddItemHelperLine extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _AddItemHelperLine({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: SpFinanceUi.softDecoration(context),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: context.brandPrimary),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: SpFinanceUi.labelStyle)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemImportEntry extends StatelessWidget {
+  final String valueKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ItemImportEntry({
+    required this.valueKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.brandPrimary.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        key: ValueKey(valueKey),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: context.brandPrimary.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: Colors.white),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: context.brandPrimary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -7237,11 +9042,8 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
 
   Future<void> _selectStatus() async {
     FocusScope.of(context).unfocus();
-    final selected = await showBlurredModalBottomSheet<String>(
+    final selected = await showSpFinanceModalSheet<String>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _ItemStatusSheet(selectedStatus: _status),
     );
     if (!mounted || selected == null || selected == _status) return;
@@ -7294,6 +9096,7 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final quantity = _readPositiveInt(_quantityController.text);
     if (quantity == null) {
       ScaffoldMessenger.of(context).showSnackBar(

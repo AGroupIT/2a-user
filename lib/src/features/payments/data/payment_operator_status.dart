@@ -74,19 +74,40 @@ final paymentOperatorStatusServiceProvider =
 /// Пока хотя бы один платежный экран открыт, статус обновляется раз в минуту.
 final paymentOperatorStatusProvider =
     StreamProvider.autoDispose<PaymentOperatorStatus>((ref) {
-      final controller = StreamController<PaymentOperatorStatus>();
+      late final StreamController<PaymentOperatorStatus> controller;
+      controller = StreamController<PaymentOperatorStatus>(
+        sync: true,
+        onListen: () {
+          // Deliver synchronously while Riverpod attaches the subscription.
+          // A buffered pre-listen event is delivered later and can still race
+          // autoDispose when a route opens and closes in the same frame.
+          controller.add(PaymentOperatorStatus.workingFallback);
+        },
+      );
+      final firstLoadKeepAlive = ref.keepAlive();
       Timer? timer;
       var requestInFlight = false;
+      var firstLoadFinished = false;
+
+      void releaseFirstLoad() {
+        if (firstLoadFinished) return;
+        firstLoadFinished = true;
+        firstLoadKeepAlive.close();
+      }
 
       Future<void> load() async {
         if (requestInFlight || controller.isClosed) return;
         requestInFlight = true;
-        final status = await ref
-            .read(paymentOperatorStatusServiceProvider)
-            .getStatus();
-        requestInFlight = false;
-        if (!controller.isClosed) {
-          controller.add(status);
+        try {
+          final status = await ref
+              .read(paymentOperatorStatusServiceProvider)
+              .getStatus();
+          if (!controller.isClosed) {
+            controller.add(status);
+          }
+        } finally {
+          requestInFlight = false;
+          releaseFirstLoad();
         }
       }
 
@@ -94,6 +115,7 @@ final paymentOperatorStatusProvider =
       timer = Timer.periodic(const Duration(minutes: 1), (_) => load());
       ref.onDispose(() {
         timer?.cancel();
+        releaseFirstLoad();
         unawaited(controller.close());
       });
       return controller.stream;

@@ -11,36 +11,63 @@ final spV2RepositoryProvider = Provider<SpV2Repository>((ref) {
   return SpV2Repository(ref.watch(apiClientProvider));
 });
 
+const _spPurchasesStateUnset = Object();
+
 class SpV2PurchasesState {
   final List<SpV2Purchase> purchases;
   final bool isLoading;
+  final bool isLoadingMore;
   final String? error;
-  final String query;
+  final SpV2PurchaseDirectoryQuery directoryQuery;
+  final SpV2PurchaseDirectoryPagination pagination;
+  final SpV2PurchaseDirectorySummary summary;
+  final List<SpV2PurchaseDirectoryStatus> statusOptions;
+  final bool usedLegacyResponse;
 
   const SpV2PurchasesState({
     this.purchases = const [],
     this.isLoading = false,
+    this.isLoadingMore = false,
     this.error,
-    this.query = '',
+    this.directoryQuery = const SpV2PurchaseDirectoryQuery(),
+    this.pagination = const SpV2PurchaseDirectoryPagination(),
+    this.summary = const SpV2PurchaseDirectorySummary(),
+    this.statusOptions = const [],
+    this.usedLegacyResponse = false,
   });
+
+  String get query => directoryQuery.query;
+  bool get hasNextPage => pagination.hasNextPage && !usedLegacyResponse;
 
   SpV2PurchasesState copyWith({
     List<SpV2Purchase>? purchases,
     bool? isLoading,
-    String? error,
-    String? query,
+    bool? isLoadingMore,
+    Object? error = _spPurchasesStateUnset,
+    SpV2PurchaseDirectoryQuery? directoryQuery,
+    SpV2PurchaseDirectoryPagination? pagination,
+    SpV2PurchaseDirectorySummary? summary,
+    List<SpV2PurchaseDirectoryStatus>? statusOptions,
+    bool? usedLegacyResponse,
   }) {
     return SpV2PurchasesState(
       purchases: purchases ?? this.purchases,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
-      query: query ?? this.query,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      error: identical(error, _spPurchasesStateUnset)
+          ? this.error
+          : error as String?,
+      directoryQuery: directoryQuery ?? this.directoryQuery,
+      pagination: pagination ?? this.pagination,
+      summary: summary ?? this.summary,
+      statusOptions: statusOptions ?? this.statusOptions,
+      usedLegacyResponse: usedLegacyResponse ?? this.usedLegacyResponse,
     );
   }
 }
 
 class SpV2PurchasesController extends Notifier<SpV2PurchasesState> {
-  Future<void>? _loadFuture;
+  int _requestGeneration = 0;
 
   @override
   SpV2PurchasesState build() {
@@ -51,66 +78,114 @@ class SpV2PurchasesController extends Notifier<SpV2PurchasesState> {
   }
 
   Future<void> load({bool silent = false, String? query}) {
-    final nextQuery = query ?? state.query;
-    if (_loadFuture != null && query == null) return _loadFuture!;
-
-    late final Future<void> future;
-    future = _loadInternal(silent: silent, query: nextQuery).whenComplete(() {
-      if (identical(_loadFuture, future)) _loadFuture = null;
-    });
-    _loadFuture = future;
-    return future;
+    final nextQuery = state.directoryQuery.copyWith(
+      query: query ?? state.query,
+      page: 1,
+    );
+    return _loadPage(query: nextQuery, silent: silent);
   }
 
   Future<void> search(String query) {
-    state = state.copyWith(query: query);
-    return load(query: query);
+    return updateDirectoryQuery(
+      state.directoryQuery.copyWith(query: query, page: 1),
+    );
+  }
+
+  Future<void> updateDirectoryQuery(SpV2PurchaseDirectoryQuery query) {
+    final normalized = query.copyWith(page: 1);
+    state = state.copyWith(directoryQuery: normalized, error: null);
+    return _loadPage(query: normalized);
+  }
+
+  Future<void> clearDirectoryFilters() {
+    return updateDirectoryQuery(
+      SpV2PurchaseDirectoryQuery(
+        query: state.query,
+        limit: state.directoryQuery.limit,
+      ),
+    );
+  }
+
+  Future<void> loadMore() async {
+    if (!state.hasNextPage || state.isLoading || state.isLoadingMore) return;
+    final nextQuery = state.directoryQuery.copyWith(
+      page: state.pagination.page + 1,
+    );
+    await _loadPage(query: nextQuery, silent: true, append: true);
   }
 
   Future<SpV2Purchase> createPurchase(CreateSpV2PurchaseInput input) async {
     final repository = ref.read(spV2RepositoryProvider);
     final purchase = await repository.createPurchase(input);
-    state = state.copyWith(
-      purchases: [purchase, ...state.purchases],
-      error: null,
-    );
+    await load(silent: true);
     return purchase;
   }
 
-  Future<void> _loadInternal({
-    required bool silent,
-    required String query,
+  Future<void> _loadPage({
+    required SpV2PurchaseDirectoryQuery query,
+    bool silent = false,
+    bool append = false,
   }) async {
     if (ref.read(demoModeProvider)) {
       state = state.copyWith(
         purchases: const [],
         isLoading: false,
+        isLoadingMore: false,
         error: null,
-        query: query,
+        directoryQuery: query,
+        pagination: const SpV2PurchaseDirectoryPagination(),
+        summary: const SpV2PurchaseDirectorySummary(),
       );
       return;
     }
 
-    if (!silent) {
-      state = state.copyWith(isLoading: true, error: null, query: query);
-    }
+    final requestGeneration = ++_requestGeneration;
+    state = state.copyWith(
+      isLoading: !silent && !append,
+      isLoadingMore: append,
+      error: null,
+      directoryQuery: query,
+    );
 
     try {
       final repository = ref.read(spV2RepositoryProvider);
-      final purchases = await repository.getPurchases(query: query);
+      final page = await repository.getPurchasesPage(query);
+      if (requestGeneration != _requestGeneration) return;
+
+      final purchases = append
+          ? _mergePurchases(state.purchases, page.purchases)
+          : page.purchases;
       state = state.copyWith(
         purchases: purchases,
         isLoading: false,
+        isLoadingMore: false,
         error: null,
-        query: query,
+        directoryQuery: query,
+        pagination: page.pagination,
+        summary: page.summary,
+        statusOptions: page.statusOptions,
+        usedLegacyResponse: page.usedLegacyResponse,
       );
     } catch (error) {
+      if (requestGeneration != _requestGeneration) return;
       state = state.copyWith(
         isLoading: false,
+        isLoadingMore: false,
         error: error.toString(),
-        query: query,
+        directoryQuery: query,
       );
     }
+  }
+
+  List<SpV2Purchase> _mergePurchases(
+    List<SpV2Purchase> current,
+    List<SpV2Purchase> next,
+  ) {
+    final byId = <int, SpV2Purchase>{
+      for (final purchase in current) purchase.id: purchase,
+      for (final purchase in next) purchase.id: purchase,
+    };
+    return byId.values.toList(growable: false);
   }
 }
 

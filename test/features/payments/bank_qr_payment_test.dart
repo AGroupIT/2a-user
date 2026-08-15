@@ -12,6 +12,7 @@ import 'package:twoalogisticcabineuser/src/features/payments/data/bank_qr_paymen
 import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/domain/payment_model.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/presentation/bank_qr_payment_screen.dart';
+import 'package:twoalogisticcabineuser/src/features/payments/presentation/payment_operator_sleeping_notice.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/presentation/payment_receipt_picker.dart';
 import 'package:twoalogisticcabineuser/src/features/invoices/domain/invoice_item.dart';
 import 'package:twoalogisticcabineuser/src/features/self_buyout/data/self_buyout_models.dart';
@@ -103,6 +104,17 @@ void main() {
   const workingStatus = PaymentOperatorStatus(sleeping: false, reachable: true);
 
   group('Режим отдыха операторов оплаты', () {
+    testWidgets('общее уведомление блокирует все способы оплаты', (
+      tester,
+    ) async {
+      await tester.pumpApp(const PaymentOperatorSleepingNotice());
+
+      expect(
+        find.textContaining('Все способы оплаты временно недоступны'),
+        findsOneWidget,
+      );
+    });
+
     test('статус парсится из общего backend-ответа', () {
       final status = PaymentOperatorStatus.fromJson({
         'operatorStatus': {

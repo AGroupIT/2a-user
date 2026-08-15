@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
@@ -84,6 +85,28 @@ Future<bool> _requestInvoicePaymentStatus(
   WidgetRef ref,
   InvoiceItem item,
 ) async {
+  final currentOperatorStatus = ref
+      .read(paymentOperatorStatusProvider)
+      .asData
+      ?.value;
+  final operatorStatus =
+      currentOperatorStatus ??
+      await ref.read(paymentOperatorStatusProvider.future) ??
+      PaymentOperatorStatus.workingFallback;
+  if (!context.mounted) return false;
+  if (operatorStatus.sleeping) {
+    AppToast.show(
+      context,
+      tr(
+        context,
+        ru: 'Операторы оплаты сейчас отдыхают. Все способы оплаты временно недоступны.',
+        zh: '支付客服当前休息中，所有支付方式暂时不可用。',
+      ),
+      isError: true,
+    );
+    return false;
+  }
+
   final apiClient = ref.read(apiClientProvider);
   final activeCode = ref.read(activeClientCodeProvider);
 
@@ -102,9 +125,29 @@ Future<bool> _requestInvoicePaymentStatus(
       invalidateInvoiceData();
     }
     return true;
-  } catch (_) {
+  } on DioException catch (error) {
     if (!context.mounted) return false;
 
+    invalidateInvoiceData();
+    final responseData = error.response?.data;
+    final operatorsAreSleeping =
+        responseData is Map &&
+        responseData['reason'] == 'exchange_operators_sleeping';
+    AppToast.showFromSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          operatorsAreSleeping
+              ? 'Операторы оплаты сейчас отдыхают. Все способы оплаты временно недоступны.'
+              : 'Не удалось отправить счёт в обработку',
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.fixed,
+      ),
+    );
+    return false;
+  } catch (_) {
+    if (!context.mounted) return false;
     invalidateInvoiceData();
     AppToast.showFromSnackBar(
       context,
@@ -2330,8 +2373,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         context,
         tr(
           context,
-          ru: 'Операторы оплаты сейчас отдыхают. QR временно недоступен.',
-          zh: '支付客服当前休息，二维码暂不可用。',
+          ru: 'Операторы оплаты сейчас отдыхают. Все способы оплаты временно недоступны.',
+          zh: '支付客服当前休息中，所有支付方式暂时不可用。',
         ),
         isError: true,
       );
@@ -2581,10 +2624,15 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_canOpenBankQr) ...[
-                    if (operatorsSleeping)
-                      const PaymentOperatorSleepingNotice(compact: true)
-                    else
+                  if (operatorsSleeping) ...[
+                    const PaymentOperatorSleepingNotice(compact: true),
+                    const SizedBox(height: 8),
+                    _InvoiceSecondaryButton(
+                      label: tr(context, ru: 'Закрыть', zh: '关闭'),
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                  ] else ...[
+                    if (_canOpenBankQr) ...[
                       _InvoicePrimaryButton(
                         label: tr(
                           context,
@@ -2596,22 +2644,23 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                         icon: Icons.qr_code_2_rounded,
                         onTap: _openBankQr,
                       ),
-                    const SizedBox(height: 8),
-                  ],
-                  if (_isUnpaid)
-                    _InvoiceSecondaryButton(
-                      label: tr(
-                        context,
-                        ru: 'Оплатить через менеджера',
-                        zh: '通过经理付款',
+                      const SizedBox(height: 8),
+                    ],
+                    if (_isUnpaid)
+                      _InvoiceSecondaryButton(
+                        label: tr(
+                          context,
+                          ru: 'Оплатить через менеджера',
+                          zh: '通过经理付款',
+                        ),
+                        onTap: widget.onPay,
+                      )
+                    else
+                      _InvoiceSecondaryButton(
+                        label: tr(context, ru: 'Закрыть', zh: '关闭'),
+                        onTap: () => Navigator.of(context).pop(),
                       ),
-                      onTap: widget.onPay,
-                    )
-                  else
-                    _InvoiceSecondaryButton(
-                      label: tr(context, ru: 'Закрыть', zh: '关闭'),
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
+                  ],
                 ],
               )
             : _InvoiceSecondaryButton(
