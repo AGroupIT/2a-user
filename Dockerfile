@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.10
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 ARG API_BASE_URL=https://prod-api.cp.2a-logistic.com/api

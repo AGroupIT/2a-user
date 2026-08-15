@@ -312,6 +312,7 @@ trigger_coolify_deploy() {
 
   echo "🚀 Triggering Coolify deploy..."
   curl -fsS \
+    -X POST \
     -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
     "${COOLIFY_API}/deploy?uuid=${COOLIFY_APP_UUID}&force=false"
   echo ""
