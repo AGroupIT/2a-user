@@ -57,6 +57,31 @@ final _packagingsProvider = FutureProvider.autoDispose<List<_Packaging>>((
       .toList();
 });
 
+final _unloadingQuoteProvider = FutureProvider.autoDispose
+    .family<int, ({double volumeM3, String packagingTypeIds})>((
+      ref,
+      request,
+    ) async {
+      var disposed = false;
+      ref.onDispose(() => disposed = true);
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (disposed) throw StateError('quote request cancelled');
+
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post(
+        '/client/unloading-quote',
+        data: {
+          'volumeM3': request.volumeM3,
+          'packagingTypeIds': request.packagingTypeIds.isEmpty
+              ? const <int>[]
+              : request.packagingTypeIds.split(',').map(int.parse).toList(),
+        },
+      );
+      final data = response.data as Map<String, dynamic>;
+      final quote = data['data'] as Map<String, dynamic>;
+      return (quote['clientCostUsd'] as num).ceil();
+    });
+
 // ─── Data models ─────────────────────────────────────────────────────────────
 
 class _WeightTier {
@@ -351,6 +376,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     List<_Tariff> tariffs,
     List<_PhotoCoef> coefs,
     List<_Packaging> packagings,
+    int transshipment,
   ) {
     final tariff =
         _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
@@ -361,7 +387,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final places = int.tryParse(_placesCtrl.text) ?? 0;
     final total = int.tryParse(_totalCtrl.text) ?? 0;
     final withPhoto = int.tryParse(_photoCtrl.text) ?? 0;
-    if (weight <= 0 || places <= 0 || total <= 0) return null;
+    if (weight <= 0 || volume <= 0 || places <= 0 || total <= 0) return null;
 
     // Процент треков с фото
     final photoPercent = total > 0 ? (withPhoto / total * 100) : 0.0;
@@ -389,8 +415,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       pricePerKg = tariff.priceForWeight(weight);
       shipping = weight * pricePerKg * photoCoef;
     }
-    // Разгрузка = кол-во мест × $5
-    final transshipment = places * 5.0;
     final selectedAddonPackagings = packagings
         .where((p) => _selectedAddonPackagingIds.contains(p.id))
         .toList();
@@ -432,6 +456,20 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final tariffsAsync = ref.watch(_tariffsProvider);
     final coefsAsync = ref.watch(_coefsProvider);
     final packagingsAsync = ref.watch(_packagingsProvider);
+    final volumeM3 =
+        double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
+    final packagingTypeIds = <int>{
+      if (_selectedPrimaryPackaging != null) _selectedPrimaryPackaging!.id,
+      ..._selectedAddonPackagingIds,
+    }.toList()..sort();
+    final unloadingQuoteAsync = volumeM3 > 0
+        ? ref.watch(
+            _unloadingQuoteProvider((
+              volumeM3: volumeM3,
+              packagingTypeIds: packagingTypeIds.join(','),
+            )),
+          )
+        : null;
 
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
@@ -612,17 +650,14 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                             ),
                           ],
                         ),
-                        // Объём (для тарифов по плотности)
-                        if (_selectedTariff?.isDensity == true) ...[
-                          const SizedBox(height: 10),
-                          _NumField(
-                            label: 'Объём, м³',
-                            controller: _volumeCtrl,
-                            hint: 'например 0.15',
-                            decimal: true,
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ],
+                        const SizedBox(height: 10),
+                        _NumField(
+                          label: 'Объём, м³',
+                          controller: _volumeCtrl,
+                          hint: 'например 0.15',
+                          decimal: true,
+                          onChanged: (_) => setState(() {}),
+                        ),
                         const SizedBox(height: 10),
                         KeyedSubtree(
                           key: _photoSurchargeKey,
@@ -659,6 +694,19 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               tariffsAsync.maybeWhen(
                 data: (tariffs) => coefsAsync.maybeWhen(
                   data: (coefs) {
+                    if (volumeM3 > 0 &&
+                        unloadingQuoteAsync?.isLoading == true) {
+                      return const _SectionCard(
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (unloadingQuoteAsync?.hasError == true) {
+                      return const _SectionCard(
+                        child: _MutedMessage(
+                          'Не удалось рассчитать разгрузку. Проверьте соединение и повторите попытку.',
+                        ),
+                      );
+                    }
                     final result = _calculate(
                       tariffs,
                       coefs,
@@ -666,6 +714,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                         data: (packagings) => packagings,
                         orElse: () => const <_Packaging>[],
                       ),
+                      unloadingQuoteAsync?.value ?? 0,
                     );
                     if (result == null) {
                       return _SectionCard(
@@ -730,7 +779,7 @@ class _CalcResult {
   final int tracksTotal;
   final int tracksWithPhoto;
   final double shipping;
-  final double transshipment;
+  final int transshipment;
   final double packagingCost;
   final List<String> packagingNames;
   final double packagingBaseCost;
@@ -865,8 +914,8 @@ class _ResultCard extends StatelessWidget {
           ),
           _Row(
             'Разгрузка',
-            '\$${result.transshipment.toStringAsFixed(2)}',
-            subtitle: '${result.places} мест × \$5',
+            '\$${result.transshipment}',
+            subtitle: 'по объёму, минимум \$5',
           ),
           if (result.packagingCost > 0)
             _Row(
