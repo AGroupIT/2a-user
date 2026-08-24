@@ -1,5 +1,10 @@
 name: Deploy Web
 
+env:
+  USER_DIR: 2a-user
+  SHARED_DIR: 2a-shared
+  SHARED_REPOSITORY: Ostaapich/2a-shared
+
 on:
   push:
     branches:
@@ -22,6 +27,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          path: ${{ env.USER_DIR }}
+
+      - name: Checkout shared package
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SHARED_REPOSITORY }}
+          ref: main
+          path: ${{ env.SHARED_DIR }}
+          token: ${{ secrets.SHARED_REPO_TOKEN }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -31,13 +46,16 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        working-directory: ${{ env.USER_DIR }}
         run: flutter pub get
 
       - name: Run tests
+        working-directory: ${{ env.USER_DIR }}
         run: flutter test
 
       - name: Resolve build metadata
         id: metadata
+        working-directory: ${{ env.USER_DIR }}
         run: |
           FULL_VERSION="$(sed -n 's/^version: //p' pubspec.yaml)"
           BUILD_NUMBER="${FULL_VERSION##*+}"
@@ -46,6 +64,7 @@ jobs:
           echo "dist=$BUILD_NUMBER-$SOURCE_REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Build web
+        working-directory: ${{ env.USER_DIR }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN || inputs.sentry_dsn }}
           SENTRY_RELEASE: ${{ steps.metadata.outputs.release }}
@@ -62,6 +81,7 @@ jobs:
           flutter build web --release --pwa-strategy none --source-maps "${SENTRY_ARGS[@]}"
 
       - name: Upload source maps from the deployed build
+        working-directory: ${{ env.USER_DIR }}
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_URL: https://sentry.cp.2a-logistic.com
@@ -83,6 +103,7 @@ jobs:
             --sentry-define=commits=false
 
       - name: Copy firebase-messaging-sw.js
+        working-directory: ${{ env.USER_DIR }}
         run: |
           if [ -f web/firebase-messaging-sw.js ]; then
             cp web/firebase-messaging-sw.js build/web/
@@ -92,7 +113,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-build
-          path: build/web
+          path: ${{ env.USER_DIR }}/build/web
           retention-days: 7
 
       - name: Deploy to FTP
@@ -102,7 +123,7 @@ jobs:
           server: ${{ env.FTP_HOST }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: build/web/
+          local-dir: ${{ env.USER_DIR }}/build/web/
           server-dir: ${{ secrets.FTP_SERVER_DIR || '/home/administrator_cabinetapp/' }}
           dangerous-clean-slate: false
           exclude: |
