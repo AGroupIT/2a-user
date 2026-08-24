@@ -29,6 +29,8 @@ import '../../../core/utils/image_compressor.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../auth/data/auth_provider.dart';
+import '../../assembly_scan_sessions/presentation/assembly_scan_sessions_section.dart';
+import '../../assembly_scan_sessions/presentation/assembly_scan_track_video_link.dart';
 import '../data/tracks_provider.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
@@ -37,6 +39,7 @@ import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../../core/ui/tutorial_card.dart';
 import 'add_tracks_dialog.dart';
+import 'widgets/client_track_compact_card.dart';
 import 'track_warehouse_delivery_panel.dart';
 
 // Alias для authStateProvider
@@ -240,6 +243,9 @@ class TracksScreen extends ConsumerStatefulWidget {
   final String? initialTrackCode;
   final int? initialAssemblyId;
   final String? initialClientCode;
+  final List<TrackItem>? embeddedTracks;
+  final bool embeddedAsAssembly;
+  final VoidCallback? onEmbeddedChanged;
 
   const TracksScreen({
     super.key,
@@ -247,7 +253,21 @@ class TracksScreen extends ConsumerStatefulWidget {
     this.initialTrackCode,
     this.initialAssemblyId,
     this.initialClientCode,
-  });
+  }) : embeddedTracks = null,
+       embeddedAsAssembly = false,
+       onEmbeddedChanged = null;
+
+  const TracksScreen.embedded({
+    super.key,
+    required List<TrackItem> tracks,
+    bool asAssembly = false,
+    this.onEmbeddedChanged,
+  }) : initialTrackId = null,
+       initialTrackCode = null,
+       initialAssemblyId = null,
+       initialClientCode = null,
+       embeddedTracks = tracks,
+       embeddedAsAssembly = asAssembly;
 
   @override
   ConsumerState<TracksScreen> createState() => _TracksScreenState();
@@ -390,6 +410,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final filterParams = _getFilterParams(clientCode);
       ref.read(paginatedTracksProvider(clientCode)).updateFilters(filterParams);
     }
+    widget.onEmbeddedChanged?.call();
   }
 
   /// Очищает оптимистичные Map-записи для треков, у которых сервер
@@ -990,6 +1011,31 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
   }
 
+  Future<bool> _updatePhotoWishInline(
+    BuildContext context,
+    TrackItem track,
+    String wish,
+  ) async {
+    final activeRequest = track.activePhotoRequest;
+    if (activeRequest == null) return false;
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .updatePhotoWish(activeRequest.id, wish);
+    if (!context.mounted) return success;
+    if (success) {
+      setState(() => _photoRequestNotes[track.code] = wish);
+      _refreshTracks();
+      _showStyledSnackBar(context, 'Пожелание обновлено');
+    } else {
+      _showStyledSnackBar(
+        context,
+        'Ошибка обновления пожелания',
+        isError: true,
+      );
+    }
+    return success;
+  }
+
   Future<void> _cancelQuestion(TrackItem track) async {
     final confirmed = await _confirmAction(
       context,
@@ -1243,33 +1289,161 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     if (result == true) {
-      final comment = controller.text.trim();
-      setState(() => _overrideComments[track.code] = comment);
-
-      // Сохраняем в API если есть trackId
-      if (track.id != null) {
-        final apiService = ref.read(tracksApiServiceProvider);
-        final success = await apiService.addTrackComment(
-          trackId: track.id!,
-          comment: comment,
-        );
-
-        if (success) {
-          if (!context.mounted) return;
-          _showStyledSnackBar(context, 'Заметка сохранена');
-        } else {
-          if (!context.mounted) return;
-          _showStyledSnackBar(
-            context,
-            'Заметка сохранена локально',
-            isError: false,
-          );
-        }
-      } else {
-        if (!context.mounted) return;
-        _showStyledSnackBar(context, 'Заметка сохранена');
-      }
+      if (!context.mounted) return;
+      await _saveTrackComment(context, track, controller.text.trim());
     }
+  }
+
+  int? _clientCodeIdForTrack(TrackItem track, dynamic auth) {
+    if (track.clientCodeId != null) return track.clientCodeId;
+    final codes = auth.clientData?['codes'] as List<dynamic>?;
+    if (codes == null || codes.isEmpty) return null;
+    final firstCode = codes.first;
+    return firstCode is Map<String, dynamic> ? firstCode['id'] as int? : null;
+  }
+
+  Future<bool> _requestPhotoInline(
+    BuildContext context,
+    TrackItem track,
+    String wish,
+  ) async {
+    final auth = ref.read(authStateProvider);
+    final clientId = auth.clientId;
+    final clientCodeId = _clientCodeIdForTrack(track, auth);
+    if (track.id == null || clientId == null) {
+      if (context.mounted) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: нет данных для запроса',
+          isError: true,
+        );
+      }
+      return false;
+    }
+    final now = DateTime.now();
+    setState(() {
+      _requestedPhotoReports.add(track.code);
+      _photoRequestNotes[track.code] = wish;
+      _photoRequestCreatedAt[track.code] = now;
+      _photoRequestUpdatedAt[track.code] = now;
+    });
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .createPhotoRequest(
+          clientId: clientId,
+          clientCodeId: clientCodeId,
+          trackId: track.id!,
+          trackNumber: track.code,
+          wish: wish.isEmpty ? null : wish,
+        );
+    if (!context.mounted) return success;
+    if (success) {
+      _showStyledSnackBar(context, 'Запрос фотоотчёта отправлен');
+      _refreshTracks();
+    } else {
+      setState(() {
+        _requestedPhotoReports.remove(track.code);
+        _photoRequestNotes.remove(track.code);
+        _photoRequestCreatedAt.remove(track.code);
+        _photoRequestUpdatedAt.remove(track.code);
+      });
+      _showStyledSnackBar(context, 'Ошибка отправки запроса', isError: true);
+    }
+    return success;
+  }
+
+  Future<bool> _askQuestionInline(BuildContext context, TrackItem track) async {
+    final auth = ref.read(authStateProvider);
+    final clientId = auth.clientId;
+    final clientCodeId = _clientCodeIdForTrack(track, auth);
+    if (track.id == null || clientId == null) {
+      if (context.mounted) {
+        _showStyledSnackBar(
+          context,
+          'Ошибка: нет данных для запроса',
+          isError: true,
+        );
+      }
+      return false;
+    }
+    final now = DateTime.now();
+    final wasEmpty = (_askedQuestions[track.code] ?? '').trim().isEmpty;
+    setState(() {
+      _askedQuestions[track.code] = _unknownTrackQuestionText;
+      if (wasEmpty) _questionCreatedAt[track.code] = now;
+      _questionUpdatedAt[track.code] = now;
+    });
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .createTrackQuestion(
+          clientId: clientId,
+          clientCodeId: clientCodeId,
+          trackId: track.id!,
+          trackNumber: track.code,
+          question: _unknownTrackQuestionText,
+          questionType: _unknownTrackQuestionType,
+        );
+    if (!context.mounted) return success;
+    if (success) {
+      _showStyledSnackBar(context, 'Вопрос отправлен');
+      _refreshTracks();
+    } else {
+      setState(() {
+        if (wasEmpty) {
+          _askedQuestions.remove(track.code);
+          _questionCreatedAt.remove(track.code);
+        }
+        _questionUpdatedAt.remove(track.code);
+      });
+      _showStyledSnackBar(context, 'Ошибка отправки вопроса', isError: true);
+    }
+    return success;
+  }
+
+  Future<bool> _requestReturnInline(
+    BuildContext context,
+    TrackItem track,
+    String returnCode,
+  ) async {
+    if (track.id == null || returnCode.trim().isEmpty) return false;
+    setState(() => _returnRequestedTracks.add(track.code));
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .createTrackReturn(trackId: track.id!, returnCode: returnCode.trim());
+    if (!context.mounted) return success;
+    if (success) {
+      _refreshTracks();
+      _showStyledSnackBar(
+        context,
+        'Возврат оформлен. Склад получит уведомление.',
+      );
+    } else {
+      setState(() => _returnRequestedTracks.remove(track.code));
+      _showStyledSnackBar(context, 'Ошибка оформления возврата', isError: true);
+    }
+    return success;
+  }
+
+  Future<bool> _saveTrackComment(
+    BuildContext context,
+    TrackItem track,
+    String comment,
+  ) async {
+    setState(() => _overrideComments[track.code] = comment);
+    if (track.id == null) {
+      if (context.mounted) _showStyledSnackBar(context, 'Заметка сохранена');
+      return true;
+    }
+
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .addTrackComment(trackId: track.id!, comment: comment);
+    if (!context.mounted) return success;
+    _showStyledSnackBar(
+      context,
+      success ? 'Заметка сохранена' : 'Заметка сохранена локально',
+    );
+    return true;
   }
 
   Future<void> _showGroupCommentSheet(
@@ -1688,6 +1862,42 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         );
       }
     }
+  }
+
+  Future<bool> _saveAssemblyDeliveryInline(
+    BuildContext context,
+    TrackAssembly assembly, {
+    required String deliveryMethod,
+    String? recipientName,
+    String? recipientPhone,
+    String? recipientCity,
+    String? transportCompanyName,
+  }) async {
+    final success = await ref
+        .read(assembliesApiServiceProvider)
+        .updateAssemblyDelivery(
+          assemblyId: assembly.id,
+          deliveryMethod: deliveryMethod,
+          recipientName: recipientName,
+          recipientPhone: recipientPhone,
+          recipientCity: recipientCity,
+          transportCompanyName: transportCompanyName,
+        );
+    if (!context.mounted) return success;
+    if (success) {
+      final methodLabel = deliveryMethod == 'self_pickup'
+          ? 'Самовывоз'
+          : 'Транспортная компания';
+      _showStyledSnackBar(context, 'Способ получения: $methodLabel');
+      _refreshTracks();
+    } else {
+      _showStyledSnackBar(
+        context,
+        'Ошибка сохранения способа получения',
+        isError: true,
+      );
+    }
+    return success;
   }
 
   /// Подтверждение снятия упаковки: что именно снимаем + согласие с рисками.
@@ -3184,7 +3394,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final trackClientCodeId = selectedTracks.firstOrNull?.clientCodeId;
       final clientCodeId =
           trackClientCodeId ?? ref.read(activeClientCodeIdProvider);
-      final assembly = await apiService.createAssembly(
+      final createResult = await apiService.createAssembly(
         clientId: clientId,
         clientCodeId: clientCodeId,
         clientCode: clientCodeId == null ? clientCode : null,
@@ -3205,6 +3415,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         trackIds: selectedTrackIds,
       );
 
+      final assembly = createResult.assembly;
       if (assembly != null) {
         if (!context.mounted) return;
         _showStyledSnackBar(context, 'Сборка ${assembly.number} создана');
@@ -3217,7 +3428,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         ref.invalidate(assembliesListProvider(clientCode));
       } else {
         if (!context.mounted) return;
-        _showStyledSnackBar(context, 'Ошибка создания сборки', isError: true);
+        final message =
+            createResult.errorCode == trackWarehouseArrivalCooldownCode
+            ? (createResult.message ??
+                  'Этот трек только поступил на склад. Отправить его можно завтра.')
+            : 'Ошибка создания сборки';
+        _showStyledSnackBar(context, message, isError: true);
       }
     }
   }
@@ -3502,108 +3718,110 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       },
     );
     if (result == true) {
-      final productName = nameController.text.trim();
-      final quantity = int.tryParse(qtyController.text.trim()) ?? 1;
+      if (!context.mounted) return;
+      await _saveProductInfo(
+        context,
+        track,
+        productName: nameController.text.trim(),
+        quantity: int.tryParse(qtyController.text.trim()) ?? 1,
+        existingImages: images,
+        newImage: newFiles.firstOrNull,
+      );
+    }
+  }
 
-      // Отправляем на сервер
-      if (track.id != null) {
-        final apiService = ref.read(tracksApiServiceProvider);
-
-        String? uploadedImageUrl;
-        var imageUploadFailed = false;
-
-        // Загружаем первое новое изображение
-        if (newFiles.isNotEmpty) {
-          try {
-            final sourceFile = newFiles.first;
-            final sourceBytes = await sourceFile.readAsBytes();
-            const maxMultipartSafeBytes = 9 * 1024 * 1024;
-            var compressed = await ImageCompressor.compressForUpload(
-              sourceBytes,
-              sourceName: sourceFile.name,
-            );
-            if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
-              compressed = await ImageCompressor.compressForUpload(
-                sourceBytes,
-                sourceName: sourceFile.name,
-                maxSide: 1600,
-                quality: 75,
-              );
-            }
-            if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
-              throw Exception('фото не удалось сжать до 10 MB');
-            }
-            final uploadFileName = _fileNameWithExtension(
-              sourceFile.name,
-              compressed.extension,
-            );
-            uploadedImageUrl = await apiService.uploadProductInfoImageFromBytes(
+  Future<bool> _saveProductInfo(
+    BuildContext context,
+    TrackItem track, {
+    required String productName,
+    required int quantity,
+    required List<String> existingImages,
+    XFile? newImage,
+  }) async {
+    String? uploadedImageUrl;
+    if (track.id != null && newImage != null) {
+      try {
+        final sourceBytes = await newImage.readAsBytes();
+        const maxMultipartSafeBytes = 9 * 1024 * 1024;
+        var compressed = await ImageCompressor.compressForUpload(
+          sourceBytes,
+          sourceName: newImage.name,
+        );
+        if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
+          compressed = await ImageCompressor.compressForUpload(
+            sourceBytes,
+            sourceName: newImage.name,
+            maxSide: 1600,
+            quality: 75,
+          );
+        }
+        if (compressed.bytes.lengthInBytes > maxMultipartSafeBytes) {
+          throw Exception('фото не удалось сжать до 10 MB');
+        }
+        uploadedImageUrl = await ref
+            .read(tracksApiServiceProvider)
+            .uploadProductInfoImageFromBytes(
               track.id!,
               compressed.bytes,
-              uploadFileName,
+              _fileNameWithExtension(newImage.name, compressed.extension),
               mimeType: compressed.mimeType,
             );
-            if (uploadedImageUrl == null) {
-              throw Exception('сервер не вернул URL изображения');
-            }
-          } catch (e) {
-            imageUploadFailed = true;
-            debugPrint('Failed to upload image ${newFiles.first.name}: $e');
-          }
+        if (uploadedImageUrl == null) {
+          throw Exception('сервер не вернул URL изображения');
         }
-
-        if (imageUploadFailed) {
-          if (!context.mounted) return;
+      } catch (error) {
+        debugPrint('Failed to upload image ${newImage.name}: $error');
+        if (context.mounted) {
           _showStyledSnackBar(
             context,
             'Не удалось загрузить фото товара',
             isError: true,
           );
-          return;
         }
-
-        final success = await apiService.updateProductInfo(
-          trackId: track.id!,
-          productName: productName,
-          quantity: quantity,
-          imageUrl:
-              uploadedImageUrl ?? (images.isNotEmpty ? images.first : null),
-        );
-
-        if (success) {
-          // После успешного сохранения — обновляем треки с сервера,
-          // чтобы получить актуальные URL изображений
-          _refreshTracks();
-          if (!context.mounted) return;
-          _showStyledSnackBar(context, 'Информация о товаре сохранена');
-        } else {
-          // Сохраняем локально как fallback
-          setState(() {
-            _productInfos[track.code] = _ProductInfo(
-              name: productName,
-              quantity: quantity,
-              images: images,
-            );
-          });
-          if (!context.mounted) return;
-          _showStyledSnackBar(
-            context,
-            'Ошибка сохранения на сервере',
-            isError: true,
-          );
-        }
-      } else {
-        setState(() {
-          _productInfos[track.code] = _ProductInfo(
-            name: productName,
-            quantity: quantity,
-            images: images,
-          );
-        });
-        if (!context.mounted) return;
-        _showStyledSnackBar(context, 'Информация о товаре сохранена локально');
+        return false;
       }
     }
+
+    final images = uploadedImageUrl == null
+        ? List<String>.from(existingImages)
+        : <String>[uploadedImageUrl];
+    if (track.id != null) {
+      final success = await ref
+          .read(tracksApiServiceProvider)
+          .updateProductInfo(
+            trackId: track.id!,
+            productName: productName,
+            quantity: quantity,
+            imageUrl: images.firstOrNull,
+          );
+      if (success) {
+        _refreshTracks();
+        if (context.mounted) {
+          _showStyledSnackBar(context, 'Информация о товаре сохранена');
+        }
+        return true;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _productInfos[track.code] = _ProductInfo(
+          name: productName,
+          quantity: quantity,
+          images: images,
+        );
+      });
+    }
+    if (context.mounted) {
+      _showStyledSnackBar(
+        context,
+        track.id == null
+            ? 'Информация о товаре сохранена локально'
+            : 'Ошибка сохранения на сервере',
+        isError: track.id != null,
+      );
+    }
+    return true;
   }
 
   /// Получить текущие параметры фильтрации
@@ -3863,11 +4081,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => _TrackSheetSurface(
         icon: Icons.local_shipping_outlined,
-        title: tr(
-          sheetContext,
-          ru: 'Доставка до склада',
-          zh: '到仓物流',
-        ),
+        title: tr(sheetContext, ru: 'Доставка до склада', zh: '到仓物流'),
         subtitle: tr(
           sheetContext,
           ru: 'Трек ${track.code}',
@@ -3898,21 +4112,38 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           const [],
       selectedTrackCodes: _selectedTracks,
       selectedStatus: _selectedStatus,
+      allowSelection: widget.embeddedTracks == null,
       onToggle: _toggleTrack,
       requestedPhotoReports: _requestedPhotoReports,
       onPhotoRequest: (track) => _showPhotoRequestSheet(context, track),
+      onRequestPhotoInline: (track, wish) =>
+          _requestPhotoInline(context, track, wish),
       onCancelPhotoRequest: (track) => _cancelPhotoRequest(track),
       onEditPhotoWish: (track) => _showEditPhotoWishSheet(context, track),
+      onUpdatePhotoWishInline: (track, wish) =>
+          _updatePhotoWishInline(context, track, wish),
       photoRequestCreatedAt: _photoRequestCreatedAt,
       photoRequestUpdatedAt: _photoRequestUpdatedAt,
       photoRequestNotes: _photoRequestNotes,
       overrideComments: _overrideComments,
       onAskQuestion: (track) => _showAskQuestionSheet(context, track),
+      onAskQuestionInline: (track) => _askQuestionInline(context, track),
       onTransferClientCode: (track) =>
           _showClientCodeTransferSheet(context, track),
       onCancelQuestion: (track) => _cancelQuestion(track),
       onEditComment: (track) => _showCommentSheet(context, track),
+      onSaveComment: (track, comment) =>
+          _saveTrackComment(context, track, comment),
       onEditProduct: (track) => _showAboutProductSheet(context, track),
+      onSaveProduct: (track, name, quantity, images, newImage) =>
+          _saveProductInfo(
+            context,
+            track,
+            productName: name,
+            quantity: quantity,
+            existingImages: images,
+            newImage: newImage,
+          ),
       askedQuestions: _askedQuestions,
       questionCreatedAt: _questionCreatedAt,
       questionUpdatedAt: _questionUpdatedAt,
@@ -3928,10 +4159,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       onAskGroupQuestion: (assembly) =>
           _showGroupQuestionSheet(context, assembly),
       onSelectDelivery: (assembly) => _showDeliverySheet(context, assembly),
+      onSaveDelivery:
+          (
+            assembly, {
+            required deliveryMethod,
+            recipientName,
+            recipientPhone,
+            recipientCity,
+            transportCompanyName,
+          }) => _saveAssemblyDeliveryInline(
+            context,
+            assembly,
+            deliveryMethod: deliveryMethod,
+            recipientName: recipientName,
+            recipientPhone: recipientPhone,
+            recipientCity: recipientCity,
+            transportCompanyName: transportCompanyName,
+          ),
       onDeleteTrack: (track) => _deleteTrack(track),
       onReturnRequest: (track) => _showReturnSheet(context, track),
+      onRequestReturnInline: (track, code) =>
+          _requestReturnInline(context, track, code),
       onWarehouseDelivery: (track) =>
           _showWarehouseDeliverySheet(context, track),
+      onLoadReturn: (trackId) =>
+          ref.read(tracksApiServiceProvider).getTrackReturn(trackId),
+      onUpdateReturnCode: (trackId, returnCode) => ref
+          .read(tracksApiServiceProvider)
+          .updateTrackReturnCode(trackId: trackId, returnCode: returnCode),
       returnRequestedTracks: _returnRequestedTracks,
       tutorialActionsKey: tutorialActionsKey,
       tutorialAssemblyKey: tutorialAssemblyKey,
@@ -4098,6 +4353,28 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             'Чтобы увидеть треки, сначала выберите или добавьте код клиента.',
       );
     }
+
+    final embeddedTracks = widget.embeddedTracks;
+    if (embeddedTracks != null) {
+      if (embeddedTracks.isEmpty) return const SizedBox.shrink();
+      final trackStatuses =
+          ref.watch(trackStatusesProvider).asData?.value ??
+          const <TrackStatus>[];
+      final assemblyStatuses =
+          ref.watch(assemblyStatusesProvider).asData?.value ??
+          const <TrackStatus>[];
+      return _buildTrackGroupCard(
+        _GroupBucket(
+          assembly: widget.embeddedAsAssembly
+              ? embeddedTracks.first.assembly
+              : null,
+          tracks: embeddedTracks,
+        ),
+        trackStatuses: trackStatuses,
+        assemblyStatuses: assemblyStatuses,
+      );
+    }
+
     final switchTarget = _clientCodeSwitchTarget(clientCode);
     if (switchTarget != null) {
       _scheduleInitialClientSwitch(switchTarget);
@@ -5442,6 +5719,7 @@ class _TrackSheetSurface extends StatelessWidget {
   final EdgeInsetsGeometry contentPadding;
   final bool keyboardAware;
   final ScrollController? scrollController;
+  final bool useMaxHeight;
 
   const _TrackSheetSurface({
     required this.icon,
@@ -5453,6 +5731,7 @@ class _TrackSheetSurface extends StatelessWidget {
     this.contentPadding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
     this.keyboardAware = false,
     this.scrollController,
+    this.useMaxHeight = false,
   });
 
   @override
@@ -5461,57 +5740,74 @@ class _TrackSheetSurface extends StatelessWidget {
     final keyboardInset = keyboardAware
         ? MediaQuery.viewInsetsOf(context).bottom
         : 0.0;
+    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.9;
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: keyboardInset),
-      child: SafeArea(
-        top: false,
-        bottom: false,
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+    return Stack(
+      children: [
+        if (keyboardInset > 0)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: keyboardInset,
+            child: const ColoredBox(color: Colors.white),
           ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SheetHandle(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: _TrackSheetHeader(
-                  icon: icon,
-                  title: title,
-                  subtitle: subtitle,
-                ),
+        AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: Container(
+              height: useMaxHeight ? maxSheetHeight : null,
+              constraints: BoxConstraints(maxHeight: maxSheetHeight),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
               ),
-              if (pinnedChild != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                  child: pinnedChild,
-                ),
-              Flexible(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: Padding(padding: contentPadding, child: child),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SheetHandle(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: _TrackSheetHeader(
+                      icon: icon,
+                      title: title,
+                      subtitle: subtitle,
+                    ),
+                  ),
+                  if (pinnedChild != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: pinnedChild,
+                    ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: Padding(padding: contentPadding, child: child),
+                    ),
+                  ),
+                  if (footer != null)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        0,
+                        16,
+                        12 + bottomPadding,
+                      ),
+                      child: footer,
+                    ),
+                ],
               ),
-              if (footer != null)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12 + bottomPadding),
-                  child: footer,
-                ),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -6044,6 +6340,53 @@ class _TrackFilterSectionCard extends StatelessWidget {
   }
 }
 
+class _TrackDetailEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _TrackDetailEmptyState({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 132),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: context.brandPrimary, size: 23),
+          ),
+          const SizedBox(height: 11),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 13.5,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TrackSheetNoticeCard extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -6066,7 +6409,7 @@ class _TrackSheetNoticeCard extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 34,
@@ -6457,6 +6800,407 @@ class _TrackSheetSecondaryButton extends StatelessWidget {
   }
 }
 
+class _TrackSheetCompactAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _TrackSheetCompactAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    return SizedBox(
+      width: 132,
+      height: 64,
+      child: Material(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: accent.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 19, color: accent),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: accent,
+                      fontFamily: 'Gilroy',
+                      fontSize: 12.5,
+                      height: 1.05,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssemblyCompactCard extends StatelessWidget {
+  final String number;
+  final String? name;
+  final String status;
+  final Color? statusColor;
+  final int trackCount;
+  final int boxCount;
+  final bool hasDelivery;
+  final ValueChanged<int> onOpen;
+  final VoidCallback onComment;
+  final VoidCallback onDelivery;
+
+  const _AssemblyCompactCard({
+    required this.number,
+    required this.name,
+    required this.status,
+    required this.statusColor,
+    required this.trackCount,
+    required this.boxCount,
+    required this.hasDelivery,
+    required this.onOpen,
+    required this.onComment,
+    required this.onDelivery,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.brandPrimary;
+    return ClientTrackCompactCard(
+      trackNumber: number,
+      status: status,
+      statusColor: statusColor ?? accent,
+      productName: name ?? '',
+      selectable: false,
+      selected: false,
+      onToggleSelection: null,
+      onCopyTrack: () {},
+      onOpenDetails: onOpen,
+      entityLabel: 'Сборка',
+      leadingIcon: Icons.inventory_2_rounded,
+      showCopyAction: false,
+      indicators: [
+        ClientTrackIndicator(
+          icon: Icons.local_shipping_outlined,
+          title: 'Треки',
+          value: '$trackCount',
+          label: 'Треки',
+          color: trackCount > 0 ? accent : AppColors.textSecondary,
+          tabIndex: 4,
+        ),
+        ClientTrackIndicator(
+          icon: Icons.inventory_2_outlined,
+          title: 'Места',
+          value: '$boxCount',
+          label: 'Места',
+          color: boxCount > 0 ? Colors.green : AppColors.textSecondary,
+          tabIndex: 3,
+        ),
+        ClientTrackIndicator(
+          icon: Icons.local_shipping_rounded,
+          title: 'Доставка',
+          value: hasDelivery ? 'Выбрана' : '',
+          label: 'Доставка',
+          color: hasDelivery ? Colors.green : AppColors.textSecondary,
+          tabIndex: 2,
+        ),
+      ],
+      actions: [
+        ClientTrackQuickAction(
+          icon: Icons.sticky_note_2_outlined,
+          label: 'Заметка',
+          onTap: onComment,
+        ),
+        ClientTrackQuickAction(
+          icon: Icons.local_shipping_outlined,
+          label: 'Доставка',
+          onTap: onDelivery,
+        ),
+      ],
+    );
+  }
+}
+
+typedef _InlineAssemblyDeliverySaver =
+    Future<bool> Function({
+      required String deliveryMethod,
+      String? recipientName,
+      String? recipientPhone,
+      String? recipientCity,
+      String? transportCompanyName,
+    });
+
+class _AssemblyDeliveryEditor extends StatefulWidget {
+  final TrackAssembly assembly;
+  final _InlineAssemblyDeliverySaver onSave;
+
+  const _AssemblyDeliveryEditor({required this.assembly, required this.onSave});
+
+  @override
+  State<_AssemblyDeliveryEditor> createState() =>
+      _AssemblyDeliveryEditorState();
+}
+
+class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
+  late String? _selectedMethod;
+  late final TextEditingController _nameController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _transportCompanyController;
+  late final PhoneController _phoneController;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMethod = widget.assembly.deliveryMethod;
+    _nameController = TextEditingController(
+      text: widget.assembly.recipientName ?? '',
+    );
+    _cityController = TextEditingController(
+      text: widget.assembly.recipientCity ?? '',
+    );
+    _transportCompanyController = TextEditingController(
+      text: widget.assembly.transportCompanyName ?? '',
+    );
+    _phoneController = PhoneController(
+      initialValue:
+          PhoneInputField.parse(widget.assembly.recipientPhone) ??
+          const PhoneNumber(isoCode: IsoCode.RU, nsn: ''),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _cityController.dispose();
+    _transportCompanyController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  void _showError(String message) {
+    _showStyledSnackBar(context, message, isError: true);
+  }
+
+  Future<void> _save() async {
+    final method = _selectedMethod;
+    if (method == null || _saving) return;
+    if (method == 'transport_company') {
+      if (_nameController.text.trim().isEmpty) {
+        _showError('Укажите ФИО получателя');
+        return;
+      }
+      final phone = _phoneController.value;
+      if (phone.nsn.trim().isEmpty) {
+        _showError('Укажите телефон получателя');
+        return;
+      }
+      if (!phone.isValid()) {
+        _showError('Введите корректный номер телефона');
+        return;
+      }
+      if (_cityController.text.trim().isEmpty) {
+        _showError('Укажите город получателя');
+        return;
+      }
+    }
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _saving = true);
+    await widget.onSave(
+      deliveryMethod: method,
+      recipientName: _nameController.text.trim(),
+      recipientPhone: _phoneController.value.international,
+      recipientCity: _cityController.text.trim(),
+      transportCompanyName: _transportCompanyController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isTransport = _selectedMethod == 'transport_company';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _TrackFilterSectionCard(
+          icon: Icons.delivery_dining_rounded,
+          title: 'Вариант получения',
+          child: Column(
+            children: [
+              _DeliveryOptionCard(
+                title: 'Самовывоз',
+                subtitle: 'Забрать груз на терминале склада',
+                icon: Icons.storefront_rounded,
+                isSelected: _selectedMethod == 'self_pickup',
+                onTap: () => setState(() => _selectedMethod = 'self_pickup'),
+              ),
+              const SizedBox(height: 10),
+              _DeliveryOptionCard(
+                title: 'Транспортная компания',
+                subtitle: 'Передадим груз выбранной ТК',
+                icon: Icons.local_shipping_rounded,
+                isSelected: isTransport,
+                onTap: () =>
+                    setState(() => _selectedMethod = 'transport_company'),
+              ),
+            ],
+          ),
+        ),
+        if (_selectedMethod == 'self_pickup') ...[
+          const SizedBox(height: 12),
+          _TrackSheetNoticeCard(
+            icon: Icons.warning_amber_rounded,
+            text:
+                'Доступ на терминал платный. Для уточнения условий свяжитесь с поддержкой.',
+            color: Colors.amber.shade800,
+          ),
+        ],
+        if (isTransport) ...[
+          const SizedBox(height: 12),
+          _TrackFilterSectionCard(
+            icon: Icons.apartment_rounded,
+            title: 'Транспортная компания',
+            child: _outlinedInput(
+              context,
+              _transportCompanyController,
+              hint: 'Название ТК (СДЭК, ПЭК и т. д.)',
+            ),
+          ),
+          const SizedBox(height: 12),
+          _TrackFilterSectionCard(
+            icon: Icons.person_rounded,
+            title: 'Данные получателя',
+            child: Column(
+              children: [
+                _outlinedInput(
+                  context,
+                  _nameController,
+                  hint: 'ФИО получателя',
+                ),
+                const SizedBox(height: 10),
+                PhoneInputField(
+                  controller: _phoneController,
+                  isRequired: true,
+                  hintText: 'Телефон получателя',
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 10),
+                _outlinedInput(
+                  context,
+                  _cityController,
+                  hint: 'Город',
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        _TrackSheetPrimaryButton(
+          label: _saving ? 'Сохраняем…' : 'Сохранить доставку',
+          icon: Icons.check_rounded,
+          onTap: _selectedMethod == null || _saving ? null : _save,
+        ),
+      ],
+    );
+  }
+}
+
+class _AssemblyDetailTabs extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  const _AssemblyDetailTabs({
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  static const labels = ['Основное', 'Видео', 'Доставка', 'Места', 'Треки'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F7),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var index = 0; index < labels.length; index++) ...[
+              if (index > 0) const SizedBox(width: 6),
+              _AssemblyDetailTabButton(
+                label: labels[index],
+                selected: selectedIndex == index,
+                onTap: () => onSelected(index),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssemblyDetailTabButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AssemblyDetailTabButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? context.brandPrimary : Colors.transparent,
+      borderRadius: BorderRadius.circular(15),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Filters extends StatefulWidget {
   final String status;
   final List<String> statuses;
@@ -6763,6 +7507,16 @@ class _FiltersNewState extends State<_FiltersNew> {
   }
 }
 
+typedef _AssemblyDeliverySaver =
+    Future<bool> Function(
+      TrackAssembly assembly, {
+      required String deliveryMethod,
+      String? recipientName,
+      String? recipientPhone,
+      String? recipientCity,
+      String? transportCompanyName,
+    });
+
 class _TrackGroupCard extends StatefulWidget {
   final TrackAssembly? assembly;
   final List<TrackItem> tracks;
@@ -6770,20 +7524,35 @@ class _TrackGroupCard extends StatefulWidget {
   final List<TrackStatus> assemblyStatuses;
   final Set<String> selectedTrackCodes;
   final String? selectedStatus;
+  final bool allowSelection;
   final ValueChanged<TrackItem> onToggle;
   final Set<String> requestedPhotoReports;
   final ValueChanged<TrackItem> onPhotoRequest;
+  final Future<bool> Function(TrackItem track, String wish)
+  onRequestPhotoInline;
   final ValueChanged<TrackItem> onCancelPhotoRequest;
   final ValueChanged<TrackItem> onEditPhotoWish;
+  final Future<bool> Function(TrackItem track, String wish)
+  onUpdatePhotoWishInline;
   final Map<String, DateTime> photoRequestCreatedAt;
   final Map<String, DateTime> photoRequestUpdatedAt;
   final Map<String, String> photoRequestNotes;
   final Map<String, String> overrideComments;
   final ValueChanged<TrackItem> onAskQuestion;
+  final Future<bool> Function(TrackItem track) onAskQuestionInline;
   final ValueChanged<TrackItem> onTransferClientCode;
   final ValueChanged<TrackItem> onCancelQuestion;
   final ValueChanged<TrackItem> onEditComment;
+  final Future<bool> Function(TrackItem track, String comment) onSaveComment;
   final ValueChanged<TrackItem> onEditProduct;
+  final Future<bool> Function(
+    TrackItem track,
+    String name,
+    int quantity,
+    List<String> images,
+    XFile? newImage,
+  )
+  onSaveProduct;
   final Map<String, String> askedQuestions;
   final Map<String, DateTime> questionCreatedAt;
   final Map<String, DateTime> questionUpdatedAt;
@@ -6797,9 +7566,15 @@ class _TrackGroupCard extends StatefulWidget {
   final ValueChanged<TrackAssembly> onEditGroupComment;
   final ValueChanged<TrackAssembly> onAskGroupQuestion;
   final ValueChanged<TrackAssembly> onSelectDelivery;
+  final _AssemblyDeliverySaver onSaveDelivery;
   final ValueChanged<TrackItem> onDeleteTrack;
   final ValueChanged<TrackItem> onReturnRequest;
+  final Future<bool> Function(TrackItem track, String returnCode)
+  onRequestReturnInline;
   final ValueChanged<TrackItem> onWarehouseDelivery;
+  final Future<TrackReturnInfo?> Function(int trackId) onLoadReturn;
+  final Future<TrackReturnInfo?> Function(int trackId, String returnCode)
+  onUpdateReturnCode;
   final Set<String> returnRequestedTracks;
   final GlobalKey? tutorialActionsKey;
   final GlobalKey? tutorialAssemblyKey;
@@ -6811,20 +7586,26 @@ class _TrackGroupCard extends StatefulWidget {
     required this.assemblyStatuses,
     required this.selectedTrackCodes,
     required this.selectedStatus,
+    required this.allowSelection,
     required this.onToggle,
     required this.requestedPhotoReports,
     required this.onPhotoRequest,
+    required this.onRequestPhotoInline,
     required this.onCancelPhotoRequest,
     required this.onEditPhotoWish,
+    required this.onUpdatePhotoWishInline,
     required this.photoRequestCreatedAt,
     required this.photoRequestUpdatedAt,
     required this.photoRequestNotes,
     required this.overrideComments,
     required this.onAskQuestion,
+    required this.onAskQuestionInline,
     required this.onTransferClientCode,
     required this.onCancelQuestion,
     required this.onEditComment,
+    required this.onSaveComment,
     required this.onEditProduct,
+    required this.onSaveProduct,
     required this.askedQuestions,
     required this.questionCreatedAt,
     required this.questionUpdatedAt,
@@ -6838,9 +7619,13 @@ class _TrackGroupCard extends StatefulWidget {
     required this.onEditGroupComment,
     required this.onAskGroupQuestion,
     required this.onSelectDelivery,
+    required this.onSaveDelivery,
     required this.onDeleteTrack,
     required this.onReturnRequest,
+    required this.onRequestReturnInline,
     required this.onWarehouseDelivery,
+    required this.onLoadReturn,
+    required this.onUpdateReturnCode,
     required this.returnRequestedTracks,
     this.tutorialActionsKey,
     this.tutorialAssemblyKey,
@@ -6851,10 +7636,21 @@ class _TrackGroupCard extends StatefulWidget {
 }
 
 class _TrackGroupCardState extends State<_TrackGroupCard> {
-  bool _showDelivery = false;
   bool _showBoxes = false;
   bool _showTracks = false;
   bool _showAssemblyDetails = false;
+
+  void _disposeControllersAfterSheetClose(
+    Iterable<TextEditingController> controllers,
+  ) {
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 500)).then((_) {
+        for (final controller in controllers) {
+          controller.dispose();
+        }
+      }),
+    );
+  }
 
   List<StatusTimelineStatus> _timelineStatuses(List<TrackStatus> statuses) {
     return statuses
@@ -7800,8 +8596,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             canShowTrackWarehouseDelivery(track)) ...[
                           const SizedBox(height: 10),
                           TrackWarehouseDeliveryButton(
-                            onPressed: () =>
-                                widget.onWarehouseDelivery(track),
+                            onPressed: () => widget.onWarehouseDelivery(track),
                           ),
                         ],
                       ],
@@ -7824,7 +8619,11 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final canSelect = track.status == 'На складе';
     final allowedByStatus =
         widget.selectedStatus == null || widget.selectedStatus == track.status;
-    final canShowCheckbox = !embeddedInAssembly && canSelect && allowedByStatus;
+    final canShowCheckbox =
+        widget.allowSelection &&
+        !embeddedInAssembly &&
+        canSelect &&
+        allowedByStatus;
     final isSelected = widget.selectedTrackCodes.contains(track.code);
 
     final canAskQuestion =
@@ -7856,8 +8655,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         activePhoto != null ||
         widget.requestedPhotoReports.contains(track.code);
     final canRequestPhoto = track.status == 'В ожидании' && !isPhotoRequested;
-    final canCancelPhoto = activePhoto?.status == 'new';
-
     final commentText = widget.overrideComments[track.code] ?? track.comment;
     final commentValue = (commentText ?? '').trim();
     final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '')
@@ -7865,10 +8662,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final hasQuestion =
         visibleQuestions.isNotEmpty || pendingLocalQuestion.isNotEmpty;
 
-    final photoCreated =
-        activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
-    final photoUpdated =
-        activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
     final photoStatusLabel = activePhoto?.statusLabel ?? 'Новый';
     final photoMediaUrls = _collectPhotoMediaUrls(track, activePhoto);
 
@@ -7888,91 +8681,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         productInfoQuantity != null ||
         productInfoImages.isNotEmpty;
 
-    final infoSections = <Widget>[];
-    if (commentValue.isNotEmpty) {
-      infoSections.add(
-        _CollapsibleNote(
-          text: commentValue,
-          onEdit: () => widget.onEditComment(track),
-        ),
-      );
-    }
-    if (hasQuestion) {
-      for (var i = 0; i < visibleQuestions.length; i++) {
-        final q = visibleQuestions[i];
-        final statusColor = q.hasResponse
-            ? Colors.green
-            : q.status == 'cancelled'
-            ? Colors.red
-            : Colors.orange;
-        infoSections.add(
-          _CollapsibleQuestion(
-            title: visibleQuestions.length > 1 ? 'Вопрос ${i + 1}' : 'Вопрос',
-            statusLabel: q.statusLabel,
-            statusColor: statusColor,
-            question: q.question,
-            answer: q.hasAnswer ? q.answer : null,
-            answerPhotoUrls: q.answerPhotoUrls,
-            trackCode: track.code,
-            createdAt: df.format(q.createdAt),
-            answeredAt: q.answeredAt != null ? df.format(q.answeredAt!) : null,
-            canCancel: !embeddedInAssembly && q.isActive,
-            onCancel: () => widget.onCancelQuestion(track),
-          ),
-        );
-      }
-      if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty) {
-        infoSections.add(
-          _CollapsibleQuestion(
-            title: 'Вопрос',
-            statusLabel: widget.questionStatus[track.code] ?? 'Новый',
-            statusColor: Colors.orange,
-            question: pendingLocalQuestion,
-            answer: null,
-            answerPhotoUrls: const [],
-            trackCode: track.code,
-            createdAt: df.format(DateTime.now()),
-            answeredAt: null,
-            canCancel: !embeddedInAssembly,
-            onCancel: () => widget.onCancelQuestion(track),
-          ),
-        );
-      }
-    }
-
-    final actions = <_TrackCardAction>[
-      if (!embeddedInAssembly && canRequestPhoto)
-        _TrackCardAction(
-          label: 'Фотоотчет',
-          onTap: () => widget.onPhotoRequest(track),
-        ),
-      if (!embeddedInAssembly && canAskQuestion && !hasQuestion)
-        _TrackCardAction(
-          label: 'Вопрос',
-          onTap: () => widget.onAskQuestion(track),
-        ),
-      if (canTransferClientCode)
-        _TrackCardAction(
-          label: 'Перенести',
-          onTap: () => widget.onTransferClientCode(track),
-        ),
-      if (commentValue.isEmpty)
-        _TrackCardAction(
-          label: 'Заметка',
-          onTap: () => widget.onEditComment(track),
-        ),
-      if (canEditProductInfo && !hasProductInfo)
-        _TrackCardAction(
-          label: 'О товаре',
-          onTap: () => widget.onEditProduct(track),
-        ),
-      if (!embeddedInAssembly && canRequestReturn)
-        _TrackCardAction(
-          label: 'Возврат',
-          onTap: () => widget.onReturnRequest(track),
-        ),
-    ];
-
     final activeQuestion = track.activeQuestion;
     final questionDone =
         activeQuestion?.hasResponse == true ||
@@ -7981,273 +8689,365 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final photoDone =
         photoMediaUrls.isNotEmpty || activePhoto?.status == 'completed';
     final photoPending = activePhoto != null && !photoDone;
-    final statusColor = parseHexColor(track.statusColor);
-
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: _tracksPremiumCardDecoration(context, selected: isSelected),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildTrackCardHeader(
-              context,
-              track: track,
-              canShowCheckbox: canShowCheckbox,
-              isSelected: isSelected,
-              statusColor: statusColor,
-              photoDone: photoDone,
-              photoPending: photoPending,
-              questionDone: questionDone,
-              questionPending: questionPending,
-              hasProductInfo: hasProductInfo,
-              actions: actions,
-              canDelete: !embeddedInAssembly && track.isPending,
-              showStatusAndMarkers: !embeddedInAssembly,
-              onPhotoMarkerTap: () => _handlePhotoMarkerTap(
-                context,
-                track: track,
-                activePhoto: activePhoto,
-                mediaUrls: photoMediaUrls,
-                statusLabel: photoStatusLabel,
-                createdAt: photoCreated,
-                updatedAt: photoUpdated,
-                canRequestPhoto: canRequestPhoto,
-                canCancelPhoto: canCancelPhoto,
-              ),
-              onProductMarkerTap: () => _handleProductMarkerTap(
-                context,
-                track: track,
-                canEdit: canEditProductInfo || hasProductInfo,
-              ),
-              onQuestionMarkerTap: () => _handleQuestionMarkerTap(
-                context,
-                track: track,
-                canAskQuestion: canAskQuestion,
-                visibleQuestions: visibleQuestions,
-                pendingLocalQuestion: pendingLocalQuestion,
-              ),
-            ),
-            if (!embeddedInAssembly &&
-                canShowTrackWarehouseDelivery(track)) ...[
-              const SizedBox(height: 12),
-              TrackWarehouseDeliveryButton(
-                onPressed: () => widget.onWarehouseDelivery(track),
-              ),
-            ],
-            if (hasProductInfo || photoMediaUrls.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              _buildTrackCardMediaSection(
-                context,
-                track: track,
-                productName: productInfoName,
-                productQuantity: productInfoQuantity,
-                productImageUrls: productInfoImages,
-                photoMediaUrls: photoMediaUrls,
-                hasProductInfo: hasProductInfo,
-              ),
-            ],
-            if (track.spItems.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _TrackSpItemsBlock(items: track.spItems),
-            ],
-            if (infoSections.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _TrackInfoSectionsSurface(children: infoSections),
-            ],
-          ],
-        ),
+    final returnRequested =
+        widget.returnRequestedTracks.contains(track.code) ||
+        track.statusCode == 'return_requested';
+    final statusColor =
+        parseHexColor(track.statusColor) ?? context.brandPrimary;
+    final indicatorMuted = AppColors.textSecondary;
+    final successColor = const Color(0xFF168A5B);
+    final warningColor = const Color(0xFFD97706);
+    final indicators = <ClientTrackIndicator>[
+      ClientTrackIndicator(
+        icon: hasProductInfo
+            ? Icons.inventory_2_rounded
+            : Icons.inventory_2_outlined,
+        title: 'Товар',
+        value: hasProductInfo ? 'Заполнено' : 'Не заполнено',
+        label: hasProductInfo ? 'Товар заполнен' : 'Товар не заполнен',
+        color: hasProductInfo ? successColor : warningColor,
+        tabIndex: 0,
       ),
+      ClientTrackIndicator(
+        icon: photoDone
+            ? Icons.photo_library_rounded
+            : Icons.photo_library_outlined,
+        title: 'Фото',
+        value: photoDone
+            ? 'Готово'
+            : photoPending
+            ? photoStatusLabel
+            : 'Нет',
+        label: photoDone
+            ? 'Фотоотчёт готов'
+            : photoPending
+            ? photoStatusLabel
+            : 'Фотоотчёта нет',
+        color: photoDone
+            ? successColor
+            : photoPending
+            ? warningColor
+            : indicatorMuted,
+        tabIndex: 2,
+      ),
+      ClientTrackIndicator(
+        icon: questionDone
+            ? Icons.mark_chat_read_rounded
+            : Icons.help_outline_rounded,
+        title: 'Вопросы',
+        value: visibleQuestions.isEmpty && pendingLocalQuestion.isEmpty
+            ? 'Нет'
+            : questionDone
+            ? 'Есть ответ'
+            : 'Ждёт ответа',
+        label: visibleQuestions.isEmpty && pendingLocalQuestion.isEmpty
+            ? 'Вопросов нет'
+            : questionDone
+            ? '${visibleQuestions.length} · есть ответ'
+            : '${visibleQuestions.length + (pendingLocalQuestion.isEmpty ? 0 : 1)} · ждёт ответа',
+        color: questionDone
+            ? successColor
+            : questionPending || pendingLocalQuestion.isNotEmpty
+            ? warningColor
+            : indicatorMuted,
+        tabIndex: 3,
+      ),
+      if (returnRequested)
+        ClientTrackIndicator(
+          icon: Icons.assignment_return_rounded,
+          title: 'Возврат',
+          value: 'Оформлен',
+          label: 'Возврат оформлен',
+          color: warningColor,
+          tabIndex: 4,
+        ),
+    ];
+
+    void closeDetailsThen(VoidCallback callback) => callback();
+
+    final quickActions = <ClientTrackQuickAction>[
+      if (!embeddedInAssembly && canAskQuestion && !hasQuestion)
+        ClientTrackQuickAction(
+          icon: Icons.help_outline_rounded,
+          label: 'Вопрос',
+          onTap: () => closeDetailsThen(() => widget.onAskQuestion(track)),
+        )
+      else if (hasQuestion)
+        ClientTrackQuickAction(
+          icon: Icons.forum_outlined,
+          label: 'Вопросы',
+          onTap: () => _showTrackDetailSheet(
+            context,
+            track: track,
+            embeddedInAssembly: embeddedInAssembly,
+            initialTab: 3,
+          ),
+        ),
+      if (canTransferClientCode)
+        ClientTrackQuickAction(
+          icon: Icons.swap_horiz_rounded,
+          label: 'Перенести',
+          onTap: () => widget.onTransferClientCode(track),
+        ),
+      ClientTrackQuickAction(
+        icon: commentValue.isEmpty
+            ? Icons.edit_note_rounded
+            : Icons.sticky_note_2_outlined,
+        label: 'Заметка',
+        onTap: () => widget.onEditComment(track),
+      ),
+      if (!embeddedInAssembly && canRequestPhoto)
+        ClientTrackQuickAction(
+          icon: Icons.photo_camera_outlined,
+          label: 'Фотоотчёт',
+          onTap: () => widget.onPhotoRequest(track),
+        ),
+      if (canEditProductInfo && !hasProductInfo)
+        ClientTrackQuickAction(
+          icon: Icons.inventory_2_outlined,
+          label: 'О товаре',
+          onTap: () => widget.onEditProduct(track),
+        ),
+      if (!embeddedInAssembly && canRequestReturn)
+        ClientTrackQuickAction(
+          icon: Icons.assignment_return_outlined,
+          label: 'Возврат',
+          onTap: () => widget.onReturnRequest(track),
+        ),
+    ];
+
+    return ClientTrackCompactCard(
+      trackNumber: track.code,
+      status: track.status,
+      statusColor: statusColor,
+      productName: productInfoName,
+      selectable: canShowCheckbox,
+      selected: isSelected,
+      onToggleSelection: canShowCheckbox ? () => widget.onToggle(track) : null,
+      onCopyTrack: () => _copyTrackCode(context, track.code),
+      onOpenDetails: (tab) => _showTrackDetailSheet(
+        context,
+        track: track,
+        embeddedInAssembly: embeddedInAssembly,
+        initialTab: tab,
+      ),
+      indicators: indicators,
+      actions: quickActions,
     );
   }
 
   Widget _buildAssemblyCard(BuildContext context) {
     final assembly = widget.assembly!;
     final statusColor = parseHexColor(assembly.statusColor);
+    return _AssemblyCompactCard(
+      number: assembly.number,
+      name: assembly.name,
+      status: assembly.statusName?.isNotEmpty == true
+          ? assembly.statusName!
+          : assembly.status,
+      statusColor: statusColor,
+      trackCount: assembly.trackCount ?? widget.tracks.length,
+      boxCount: assembly.boxes.length,
+      hasDelivery: assembly.deliveryMethod != null,
+      onOpen: (tab) =>
+          _showAssemblyDetailSheet(context, assembly, initialTab: tab),
+      onComment: () => widget.onEditGroupComment(assembly),
+      onDelivery: () => widget.onSelectDelivery(assembly),
+    );
+  }
+
+  Future<void> _showAssemblyDetailSheet(
+    BuildContext context,
+    TrackAssembly assembly, {
+    int initialTab = 0,
+  }) async {
+    var selectedTab = initialTab.clamp(0, 4);
     final createdAt = _assemblyCreatedAt();
     final updatedAt = _assemblyUpdatedAt();
+    final dateFormat = DateFormat('dd.MM.yyyy', 'ru');
+    final comment =
+        (widget.groupComments[assembly.id.toString()] ?? assembly.comment ?? '')
+            .trim();
 
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: _tracksPremiumCardDecoration(context),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildAssemblyHeader(
-              context,
-              assembly: assembly,
-              createdAt: createdAt,
-              updatedAt: updatedAt,
-              statusColor: statusColor,
-            ),
-            const SizedBox(height: 15),
-            _buildAssemblyActions(context, assembly),
-            if (assembly.tariffName != null ||
-                assembly.packagingTypes.isNotEmpty ||
-                assembly.hasFragileGoods ||
-                assembly.placePreference != 'unspecified') ...[
-              const SizedBox(height: 15),
-              _buildAssemblyPackingBlock(context, assembly),
-            ],
-            const SizedBox(height: 15),
-            _buildAssemblyDeliveryBlock(context, assembly),
-            if (assembly.boxes.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              _buildAssemblyBoxesBlock(context, assembly),
-            ],
-            if (widget.tracks.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              _buildAssemblyTracksBlock(context, assembly),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssemblyHeader(
-    BuildContext context, {
-    required TrackAssembly assembly,
-    required DateTime? createdAt,
-    required DateTime? updatedAt,
-    required Color? statusColor,
-  }) {
-    final dateFormat = DateFormat('dd.MM.yy', 'ru');
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    await showBlurredModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          Widget mainTab() => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                assembly.number,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF2F2F2F),
-                  fontFamily: 'Gilroy',
-                  fontSize: 16,
-                  height: 24 / 16,
-                  fontWeight: FontWeight.w500,
+              Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+                child: InkWell(
+                  onTap: () => _showAssemblyStatusTimeline(context, assembly),
+                  borderRadius: BorderRadius.circular(18),
+                  child: _TrackSheetMetaCard(
+                    icon: Icons.inventory_2_rounded,
+                    title: 'Текущий статус',
+                    value: assembly.statusName?.isNotEmpty == true
+                        ? assembly.statusName!
+                        : assembly.status,
+                  ),
                 ),
               ),
-              const SizedBox(height: 5),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
+              const SizedBox(height: 10),
+              Row(
                 children: [
-                  if (createdAt != null)
-                    _TrackDateMeta(
-                      icon: CupertinoIcons.plus_circle,
-                      value: dateFormat.format(createdAt),
+                  Expanded(
+                    child: _TrackSheetMetaCard(
+                      icon: Icons.add_circle_outline_rounded,
+                      title: 'Добавлена',
+                      value: createdAt == null
+                          ? '—'
+                          : dateFormat.format(createdAt),
                     ),
-                  if (updatedAt != null)
-                    _TrackDateMeta(
-                      icon: CupertinoIcons.arrow_2_circlepath_circle,
-                      value: dateFormat.format(updatedAt),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _TrackSheetMetaCard(
+                      icon: Icons.update_rounded,
+                      title: 'Обновлена',
+                      value: updatedAt == null
+                          ? '—'
+                          : dateFormat.format(updatedAt),
                     ),
+                  ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _showAssemblyStatusTimeline(context, assembly),
-          child: _AssemblyStatusPill(
-            text: assembly.statusName?.isNotEmpty == true
-                ? assembly.statusName!
-                : assembly.status,
-            color: statusColor ?? const Color(0xFFB8E1C8),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAssemblyActions(BuildContext context, TrackAssembly assembly) {
-    final accent = context.brandPrimary;
-    return SizedBox(
-      height: 24,
-      child: Row(
-        children: [
-          Row(
-            children: [
-              _TrackCardActionChip(
-                action: _TrackCardAction(
-                  label: 'Заметка',
-                  onTap: () => widget.onEditGroupComment(assembly),
-                ),
-                accent: accent,
+              const SizedBox(height: 12),
+              _TrackSheetMetaCard(
+                icon: Icons.label_outline_rounded,
+                title: 'Название сборки',
+                value: assembly.name?.trim().isNotEmpty == true
+                    ? assembly.name!.trim()
+                    : '—',
               ),
-              const SizedBox(width: 5),
-              _TrackCardActionChip(
-                action: _TrackCardAction(
-                  label: 'Доставка',
-                  onTap: () => widget.onSelectDelivery(assembly),
-                ),
-                accent: accent,
-              ),
-            ],
-          ),
-          const Spacer(),
-          _TrackDeleteButton(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              _showStyledSnackBar(
-                context,
-                'Удаление сборки недоступно',
-                isError: true,
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAssemblyDeliveryBlock(
-    BuildContext context,
-    TrackAssembly assembly,
-  ) {
-    final lines = _assemblyDeliveryLines(assembly);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _AssemblySectionHeader(
-          title: 'Доставка',
-          isExpanded: _showDelivery,
-          onTap: () => setState(() => _showDelivery = !_showDelivery),
-        ),
-        if (_showDelivery) ...[
-          const SizedBox(height: 3),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              width: 237,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < lines.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 5),
-                    _AssemblyPlainText(lines[i]),
+              const SizedBox(height: 12),
+              _TrackFilterSectionCard(
+                icon: Icons.sticky_note_2_outlined,
+                title: 'Комментарий пользователя',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TaskDetailBlock(
+                      title: 'Заметка',
+                      text: comment.isEmpty
+                          ? 'Комментарий не добавлен'
+                          : comment,
+                      muted: comment.isEmpty,
+                    ),
+                    const SizedBox(height: 10),
+                    _TrackSheetSecondaryButton(
+                      label: comment.isEmpty
+                          ? 'Добавить комментарий'
+                          : 'Изменить комментарий',
+                      onTap: () => widget.onEditGroupComment(assembly),
+                    ),
                   ],
-                ],
+                ),
               ),
+              if (assembly.tariffName != null ||
+                  assembly.packagingTypes.isNotEmpty ||
+                  assembly.hasFragileGoods ||
+                  assembly.placePreference != 'unspecified') ...[
+                const SizedBox(height: 12),
+                _TrackFilterSectionCard(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Упаковка и тариф',
+                  child: _buildAssemblyPackingBlock(context, assembly),
+                ),
+              ],
+            ],
+          );
+
+          Widget videoTab() => AssemblyScanSessionsSection(
+            assemblyId: assembly.id,
+            assemblyNumber: assembly.number,
+          );
+
+          Widget deliveryTab() => _AssemblyDeliveryEditor(
+            assembly: assembly,
+            onSave:
+                ({
+                  required deliveryMethod,
+                  recipientName,
+                  recipientPhone,
+                  recipientCity,
+                  transportCompanyName,
+                }) => widget.onSaveDelivery(
+                  assembly,
+                  deliveryMethod: deliveryMethod,
+                  recipientName: recipientName,
+                  recipientPhone: recipientPhone,
+                  recipientCity: recipientCity,
+                  transportCompanyName: transportCompanyName,
+                ),
+          );
+
+          Widget boxesTab() => assembly.boxes.isEmpty
+              ? const _TrackDetailEmptyState(
+                  icon: Icons.inventory_2_outlined,
+                  text: 'Места сборки ещё не добавлены',
+                )
+              : Column(
+                  children: [
+                    for (var i = 0; i < assembly.boxes.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 14),
+                      _buildAssemblyBoxRow(
+                        context,
+                        assembly,
+                        assembly.boxes[i],
+                        i,
+                      ),
+                    ],
+                  ],
+                );
+
+          Widget tracksTab() => widget.tracks.isEmpty
+              ? const _TrackDetailEmptyState(
+                  icon: Icons.local_shipping_outlined,
+                  text: 'В сборке пока нет трек-номеров',
+                )
+              : _AssemblyTracksGrid(
+                  tracks: widget.tracks,
+                  itemBuilder: (track) => _buildTrackCard(
+                    context,
+                    DateFormat('dd MMM yyyy', 'ru'),
+                    track,
+                    embeddedInAssembly: true,
+                  ),
+                );
+
+          final child = switch (selectedTab) {
+            1 => videoTab(),
+            2 => deliveryTab(),
+            3 => boxesTab(),
+            4 => tracksTab(),
+            _ => mainTab(),
+          };
+
+          return _TrackSheetSurface(
+            icon: Icons.inventory_2_rounded,
+            title: assembly.number,
+            subtitle: 'Карточка сборки',
+            useMaxHeight: true,
+            pinnedChild: _AssemblyDetailTabs(
+              selectedIndex: selectedTab,
+              onSelected: (value) => setSheetState(() => selectedTab = value),
             ),
-          ),
-        ],
-      ],
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: KeyedSubtree(key: ValueKey(selectedTab), child: child),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -8272,68 +9072,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _AssemblySectionHeader(
-          title: 'Упаковка и тариф',
-          isExpanded: true,
-          onTap: null,
-        ),
-        const SizedBox(height: 7),
         for (var i = 0; i < lines.length; i++) ...[
           if (i > 0) const SizedBox(height: 5),
           _AssemblyPlainText(lines[i]),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAssemblyBoxesBlock(
-    BuildContext context,
-    TrackAssembly assembly,
-  ) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _AssemblySectionHeader(
-          title: 'Коробки (${assembly.boxes.length})',
-          isExpanded: _showBoxes,
-          onTap: () => setState(() => _showBoxes = !_showBoxes),
-        ),
-        if (_showBoxes) ...[
-          const SizedBox(height: 7),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < assembly.boxes.length; i++) ...[
-                if (i > 0) const SizedBox(height: 15),
-                _buildAssemblyBoxRow(context, assembly, assembly.boxes[i]),
-              ],
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAssemblyTracksBlock(
-    BuildContext context,
-    TrackAssembly assembly,
-  ) {
-    final df = DateFormat('dd MMM yyyy', 'ru');
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _AssemblySectionHeader(
-          title: 'Трек-номера (${assembly.trackCount ?? widget.tracks.length})',
-          isExpanded: _showTracks,
-          onTap: () => setState(() => _showTracks = !_showTracks),
-        ),
-        if (_showTracks) ...[
-          const SizedBox(height: 7),
-          _AssemblyTracksGrid(
-            tracks: widget.tracks,
-            itemBuilder: (track) =>
-                _buildTrackCard(context, df, track, embeddedInAssembly: true),
-          ),
         ],
       ],
     );
@@ -8343,112 +9084,172 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     BuildContext context,
     TrackAssembly assembly,
     Box box,
+    int index,
   ) {
     final photos = box.photos.map((photo) => photo.url).where((url) {
       return url.trim().isNotEmpty;
     }).toList();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: photos.isEmpty
-              ? null
-              : () => _openAssemblyMediaViewer(context, photos),
-          child: Container(
-            width: 154,
-            height: 124,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: const Color(0xFFC4C4C4),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1A000000),
-                  offset: Offset(3, 4),
-                  blurRadius: 25,
-                ),
-              ],
-            ),
-            child: photos.isEmpty
-                ? const SizedBox.shrink()
-                : AppCachedMediaImage(
-                    url: photos.first,
-                    thumbnailSize: 480,
-                    memCacheWidth: 220,
-                    memCacheHeight: 220,
-                    maxWidthDiskCache: 440,
-                    maxHeightDiskCache: 440,
-                    fadeInDuration: Duration.zero,
-                    fadeOutDuration: Duration.zero,
-                    useOldImageOnUrlChange: false,
-                    filterQuality: FilterQuality.low,
-                    imageBuilder: (_, imageProvider) => DecoratedBox(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: imageProvider,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    placeholder: (_, _) => const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    errorWidget: (_, _, _) => const Center(
-                      child: Icon(Icons.broken_image_outlined, size: 22),
-                    ),
+    return _TrackFilterSectionCard(
+      icon: Icons.inventory_2_outlined,
+      title: 'Место ${index + 1}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: photos.isEmpty
+                ? null
+                : () => _openAssemblyMediaViewer(context, photos),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F1F4),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.045),
                   ),
+                ),
+                child: photos.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.image_not_supported_outlined,
+                              color: AppColors.textSecondary,
+                              size: 28,
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'Фото места не добавлено',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontFamily: 'Gilroy',
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          AppCachedMediaImage(
+                            url: photos.first,
+                            thumbnailSize: 720,
+                            memCacheWidth: 720,
+                            maxWidthDiskCache: 1080,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            useOldImageOnUrlChange: false,
+                            filterQuality: FilterQuality.medium,
+                            imageBuilder: (_, imageProvider) => DecoratedBox(
+                              decoration: BoxDecoration(
+                                image: DecorationImage(
+                                  image: imageProvider,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            placeholder: (_, _) => const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            errorWidget: (_, _, _) => const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                          if (photos.length > 1)
+                            Positioned(
+                              right: 10,
+                              bottom: 10,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.62),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '+${photos.length - 1} фото',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'Gilroy',
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AssemblyInvoiceText(
-                value: (box.orderNumber ?? assembly.number).trim(),
-              ),
-              const SizedBox(height: 3),
-              _AssemblyPlainText('Габариты: ${_boxDimensionsForDesign(box)}'),
-              const SizedBox(height: 3),
-              _AssemblyPlainText('Вес: ${_formatDecimal(box.weight)} кг'),
-              const SizedBox(height: 3),
-              _AssemblyPlainText('Объём: ${box.volume.toStringAsFixed(4)} м³'),
-              const SizedBox(height: 3),
-              _AssemblyPlainText(
-                'Плотность: ${box.density.toStringAsFixed(0)} кг/м3',
-              ),
-              const SizedBox(height: 3),
-              _AssemblyPlainText(
-                'Тариф: ${box.tariffName ?? assembly.tariffName ?? '—'}',
-              ),
-              const SizedBox(height: 3),
-              _AssemblyPlainText(
-                'Упаковка: ${_boxPackagingForDesign(box, assembly)}',
-              ),
-            ],
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 8.0;
+              final width = (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Номер',
+                    value: (box.orderNumber ?? assembly.number).trim(),
+                    icon: Icons.tag_rounded,
+                  ),
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Габариты',
+                    value: _boxDimensionsForDesign(box),
+                    icon: Icons.straighten_rounded,
+                  ),
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Вес',
+                    value: '${_formatDecimal(box.weight)} кг',
+                    icon: Icons.scale_outlined,
+                  ),
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Объём',
+                    value: '${box.volume.toStringAsFixed(4)} м³',
+                    icon: Icons.view_in_ar_outlined,
+                  ),
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Плотность',
+                    value: '${box.density.toStringAsFixed(0)} кг/м³',
+                    icon: Icons.compress_rounded,
+                  ),
+                  _AssemblyBoxFact(
+                    width: width,
+                    label: 'Тариф',
+                    value: box.tariffName ?? assembly.tariffName ?? '—',
+                    icon: Icons.payments_outlined,
+                  ),
+                  _AssemblyBoxFact(
+                    width: constraints.maxWidth,
+                    label: 'Упаковка',
+                    value: _boxPackagingForDesign(box, assembly),
+                    icon: Icons.inventory_outlined,
+                  ),
+                ],
+              );
+            },
           ),
-        ),
-      ],
+        ],
+      ),
     );
-  }
-
-  List<String> _assemblyDeliveryLines(TrackAssembly assembly) {
-    final isTransport = assembly.deliveryMethod == 'transport_company';
-    final deliveryType = assembly.deliveryMethod == null
-        ? '—'
-        : isTransport
-        ? ((assembly.transportCompanyName ?? '').trim().isNotEmpty
-              ? assembly.transportCompanyName!.trim()
-              : 'Транспортная компания')
-        : 'Самовывоз';
-    return [
-      'Тип доставки: $deliveryType',
-      'ФИО получателя: ${_emptyDash(assembly.recipientName)}',
-      'Телефон: ${_emptyDash(assembly.recipientPhone)}',
-      'Адрес доставки: ${_emptyDash(assembly.recipientCity)}',
-    ];
   }
 
   String _boxDimensionsForDesign(Box box) {
@@ -8463,11 +9264,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         ? box.packagingTypes
         : assembly.packagingTypes;
     return values.isEmpty ? '—' : values.join(', ');
-  }
-
-  String _emptyDash(String? value) {
-    final trimmed = value?.trim() ?? '';
-    return trimmed.isEmpty ? '—' : trimmed;
   }
 
   DateTime? _assemblyCreatedAt() {
@@ -8512,6 +9308,1117 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
+  Future<void> _showTrackDetailSheet(
+    BuildContext context, {
+    required TrackItem track,
+    required bool embeddedInAssembly,
+    int initialTab = 0,
+  }) async {
+    final dateFormat = DateFormat('dd.MM.yyyy', 'ru');
+    final showWarehouseDeliveryTab = canShowTrackWarehouseDelivery(track);
+    var selectedTab = initialTab.clamp(0, 4);
+    if (!showWarehouseDeliveryTab && selectedTab == 1) selectedTab = 0;
+    Future<TrackReturnInfo?>? returnFuture = track.id == null
+        ? null
+        : widget.onLoadReturn(track.id!);
+
+    final activePhoto = track.activePhotoRequest;
+    final photoMediaUrls = _collectPhotoMediaUrls(track, activePhoto);
+    var photoCreated =
+        activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
+    final photoUpdated =
+        activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
+    var photoStatus = activePhoto == null && photoMediaUrls.isNotEmpty
+        ? 'Выполнен'
+        : activePhoto?.statusLabel ?? 'Не запрошен';
+    var photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
+        ? activePhoto!.wishes!.trim()
+        : widget.photoRequestNotes[track.code]?.trim() ?? '';
+    final photoWishController = TextEditingController(text: photoNote);
+    var isEditingPhotoRequest = false;
+    var isSavingPhotoRequest = false;
+    var isPhotoRequested =
+        activePhoto != null ||
+        widget.requestedPhotoReports.contains(track.code) ||
+        photoMediaUrls.isNotEmpty;
+    final canRequestPhoto = track.status == 'В ожидании' && !isPhotoRequested;
+    final canEditPhoto = activePhoto?.status == 'new';
+
+    final apiProductInfo = track.productInfo;
+    final localProductInfo = widget.productInfos[track.code];
+    var productName = apiProductInfo?.name ?? localProductInfo?.name ?? '';
+    var productQuantity =
+        apiProductInfo?.quantity ?? localProductInfo?.quantity;
+    var productImageUrls = localProductInfo?.images.isNotEmpty == true
+        ? localProductInfo!.images
+        : apiProductInfo?.imageUrl?.trim().isNotEmpty == true
+        ? <String>[apiProductInfo!.imageUrl!]
+        : const <String>[];
+    final productNameController = TextEditingController(text: productName);
+    final productQuantityController = TextEditingController(
+      text: productQuantity?.toString() ?? '',
+    );
+    var isEditingProduct = false;
+    var isSavingProduct = false;
+    XFile? selectedProductImage;
+    final canEditProductInfo =
+        embeddedInAssembly ||
+        track.status == 'В ожидании' ||
+        track.status == 'На складе' ||
+        track.status == 'На сборке' ||
+        track.status == 'Отправлен';
+
+    final visibleQuestions = track.questions
+        .where((question) => question.status != 'cancelled')
+        .toList(growable: false);
+    var pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '').trim();
+    final canAskQuestion =
+        track.status == 'В ожидании' || track.status == 'На складе';
+    final hasActiveTransferRequest = visibleQuestions.any(
+      (question) =>
+          question.questionType == _clientCodeTransferQuestionType &&
+          question.isActive,
+    );
+    final canTransferClientCode =
+        !embeddedInAssembly &&
+        track.assembly == null &&
+        !hasActiveTransferRequest &&
+        (track.statusCode == 'pending' || track.statusCode == 'in_warehouse');
+    final canRequestReturn =
+        !embeddedInAssembly &&
+        track.status == 'На складе' &&
+        track.statusCode == 'in_warehouse' &&
+        !widget.returnRequestedTracks.contains(track.code);
+    var comment = (widget.overrideComments[track.code] ?? track.comment ?? '')
+        .trim();
+    final commentController = TextEditingController(text: comment);
+    var isEditingComment = false;
+    var isSavingComment = false;
+    final returnCodeController = TextEditingController();
+    var isEditingReturn = false;
+    var isSavingReturn = false;
+    var isCreatingQuestion = false;
+    var isSavingQuestion = false;
+
+    void closeAndRun(BuildContext sheetContext, VoidCallback callback) {
+      Navigator.of(sheetContext).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+    }
+
+    await showBlurredModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Widget buildMainTab() {
+              final hasProductInfo =
+                  productName.trim().isNotEmpty ||
+                  productQuantity != null ||
+                  productImageUrls.isNotEmpty;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(18),
+                          child: InkWell(
+                            onTap: () =>
+                                _showTrackStatusTimeline(context, track),
+                            borderRadius: BorderRadius.circular(18),
+                            child: _TrackSheetMetaCard(
+                              icon: Icons.route_rounded,
+                              title: 'Текущий статус',
+                              value: track.status,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (canTransferClientCode) ...[
+                        const SizedBox(width: 10),
+                        _TrackSheetCompactAction(
+                          icon: Icons.swap_horiz_rounded,
+                          label: 'Перенести трек',
+                          onTap: () => widget.onTransferClientCode(track),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TrackSheetMetaCard(
+                          icon: Icons.add_circle_outline_rounded,
+                          title: 'Добавлен',
+                          value: dateFormat.format(track.createdAt),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _TrackSheetMetaCard(
+                          icon: Icons.update_rounded,
+                          title: 'Обновлён',
+                          value: dateFormat.format(track.updatedAt),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _TrackFilterSectionCard(
+                    icon: Icons.sticky_note_2_outlined,
+                    title: 'Комментарий пользователя',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isEditingComment) ...[
+                          AppGradientInputFrame(
+                            child: TextField(
+                              controller: commentController,
+                              maxLines: 4,
+                              scrollPadding: const EdgeInsets.only(bottom: 180),
+                              onTapOutside: (_) =>
+                                  FocusManager.instance.primaryFocus?.unfocus(),
+                              decoration: const InputDecoration(
+                                hintText: 'Введите комментарий…',
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _TrackSheetSecondaryButton(
+                                  label: 'Отмена',
+                                  onTap: isSavingComment
+                                      ? () {}
+                                      : () => setSheetState(() {
+                                          commentController.text = comment;
+                                          isEditingComment = false;
+                                        }),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _TrackSheetPrimaryButton(
+                                  label: isSavingComment
+                                      ? 'Сохраняем…'
+                                      : 'Сохранить',
+                                  icon: Icons.check_rounded,
+                                  onTap: isSavingComment
+                                      ? null
+                                      : () async {
+                                          final value = commentController.text
+                                              .trim();
+                                          setSheetState(
+                                            () => isSavingComment = true,
+                                          );
+                                          final saved = await widget
+                                              .onSaveComment(track, value);
+                                          if (!sheetContext.mounted) return;
+                                          setSheetState(() {
+                                            isSavingComment = false;
+                                            if (saved) {
+                                              comment = value;
+                                              isEditingComment = false;
+                                            }
+                                          });
+                                        },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
+                          _TaskDetailBlock(
+                            title: 'Заметка',
+                            text: comment.isEmpty
+                                ? 'Комментарий не добавлен'
+                                : comment,
+                            muted: comment.isEmpty,
+                          ),
+                          const SizedBox(height: 10),
+                          _TrackSheetSecondaryButton(
+                            label: comment.isEmpty
+                                ? 'Добавить комментарий'
+                                : 'Изменить комментарий',
+                            onTap: () =>
+                                setSheetState(() => isEditingComment = true),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _TrackFilterSectionCard(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'О товаре',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isEditingProduct)
+                          _InlineProductEditor(
+                            nameController: productNameController,
+                            quantityController: productQuantityController,
+                            existingImageUrl: productImageUrls.firstOrNull,
+                            selectedImage: selectedProductImage,
+                            saving: isSavingProduct,
+                            onPickImage: () async {
+                              try {
+                                final picked = await ImagePicker().pickImage(
+                                  source: ImageSource.gallery,
+                                  imageQuality: 85,
+                                );
+                                if (picked != null) {
+                                  setSheetState(
+                                    () => selectedProductImage = picked,
+                                  );
+                                }
+                              } catch (error) {
+                                if (sheetContext.mounted) {
+                                  _showStyledSnackBar(
+                                    sheetContext,
+                                    'Не удалось открыть галерею: $error',
+                                    isError: true,
+                                  );
+                                }
+                              }
+                            },
+                            onCancel: () => setSheetState(() {
+                              productNameController.text = productName;
+                              productQuantityController.text =
+                                  productQuantity?.toString() ?? '';
+                              selectedProductImage = null;
+                              isEditingProduct = false;
+                            }),
+                            onSave: () async {
+                              final name = productNameController.text.trim();
+                              final quantity =
+                                  int.tryParse(
+                                    productQuantityController.text.trim(),
+                                  ) ??
+                                  1;
+                              setSheetState(() => isSavingProduct = true);
+                              final saved = await widget.onSaveProduct(
+                                track,
+                                name,
+                                quantity,
+                                productImageUrls,
+                                selectedProductImage,
+                              );
+                              if (!sheetContext.mounted) return;
+                              setSheetState(() {
+                                isSavingProduct = false;
+                                if (saved) {
+                                  productName = name;
+                                  productQuantity = quantity;
+                                  selectedProductImage = null;
+                                  isEditingProduct = false;
+                                }
+                              });
+                            },
+                          )
+                        else if (hasProductInfo)
+                          _TrackProductPreview(
+                            name: productName,
+                            quantity: productQuantity,
+                            imageUrls: productImageUrls,
+                            trackCode: track.code,
+                            onTap: productImageUrls.isEmpty
+                                ? null
+                                : () => _openMediaViewer(
+                                    context,
+                                    productImageUrls,
+                                    track,
+                                  ),
+                            onEdit: canEditProductInfo
+                                ? () => setSheetState(
+                                    () => isEditingProduct = true,
+                                  )
+                                : null,
+                          )
+                        else
+                          const _TrackDetailEmptyState(
+                            icon: Icons.inventory_2_outlined,
+                            text: 'Информация о товаре ещё не заполнена',
+                          ),
+                        if (canEditProductInfo && !isEditingProduct) ...[
+                          const SizedBox(height: 10),
+                          _TrackSheetSecondaryButton(
+                            label: hasProductInfo
+                                ? 'Изменить информацию'
+                                : 'Заполнить информацию',
+                            onTap: () =>
+                                setSheetState(() => isEditingProduct = true),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (track.spItems.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _TrackSpItemsBlock(items: track.spItems),
+                  ],
+                  if (embeddedInAssembly && widget.assembly != null) ...[
+                    const SizedBox(height: 12),
+                    AssemblyScanTrackVideoLink(
+                      assemblyId: widget.assembly!.id,
+                      assemblyNumber: widget.assembly!.number,
+                      track: track,
+                    ),
+                  ],
+                  if (track.isPending && !embeddedInAssembly) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => closeAndRun(
+                        sheetContext,
+                        () => widget.onDeleteTrack(track),
+                      ),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      label: const Text('Удалить трек'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            }
+
+            Widget buildPhotoTab() {
+              if (!isPhotoRequested && !canRequestPhoto) {
+                return const _TrackDetailEmptyState(
+                  icon: Icons.photo_library_outlined,
+                  text: 'Фотоотчёт недоступен для текущего статуса трека',
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (isPhotoRequested) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _TaskStatusBadge(
+                        text: photoStatus,
+                        color: _taskStatusColor(photoStatus),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _TaskDetailBlock(
+                      title: 'Пожелание',
+                      text: photoNote.isEmpty
+                          ? 'Пожелание не указано'
+                          : photoNote,
+                      muted: photoNote.isEmpty,
+                    ),
+                    if (activePhoto?.warehouseComment?.trim().isNotEmpty ==
+                        true) ...[
+                      const SizedBox(height: 10),
+                      _TaskDetailBlock(
+                        title: 'Комментарий склада',
+                        text: activePhoto!.warehouseComment!.trim(),
+                      ),
+                    ],
+                    if (photoMediaUrls.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _TrackFilterSectionCard(
+                        icon: Icons.photo_library_rounded,
+                        title: 'Фото и видео',
+                        child: _TrackPhotoGrid(
+                          mediaUrls: photoMediaUrls,
+                          track: track,
+                          onTap: (index) => _openMediaViewer(
+                            context,
+                            photoMediaUrls,
+                            track,
+                            index,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (photoCreated != null || photoUpdated != null) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 6,
+                        children: [
+                          if (photoCreated != null)
+                            _TaskDateLabel(
+                              label: 'Создан',
+                              value: dateFormat.format(photoCreated!),
+                            ),
+                          if (photoUpdated != null)
+                            _TaskDateLabel(
+                              label: 'Обновлён',
+                              value: dateFormat.format(photoUpdated),
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (canEditPhoto) ...[
+                      const SizedBox(height: 14),
+                      if (isEditingPhotoRequest) ...[
+                        AppGradientInputFrame(
+                          child: TextField(
+                            controller: photoWishController,
+                            maxLines: 4,
+                            scrollPadding: const EdgeInsets.only(bottom: 180),
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
+                            decoration: const InputDecoration(
+                              hintText: 'Пожелание для склада…',
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TrackSheetSecondaryButton(
+                                label: 'Отмена',
+                                onTap: isSavingPhotoRequest
+                                    ? () {}
+                                    : () => setSheetState(() {
+                                        photoWishController.text = photoNote;
+                                        isEditingPhotoRequest = false;
+                                      }),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _TrackSheetPrimaryButton(
+                                label: isSavingPhotoRequest
+                                    ? 'Сохраняем…'
+                                    : 'Сохранить',
+                                icon: Icons.check_rounded,
+                                onTap: isSavingPhotoRequest
+                                    ? null
+                                    : () async {
+                                        final wish = photoWishController.text
+                                            .trim();
+                                        setSheetState(
+                                          () => isSavingPhotoRequest = true,
+                                        );
+                                        final saved = await widget
+                                            .onUpdatePhotoWishInline(
+                                              track,
+                                              wish,
+                                            );
+                                        if (!sheetContext.mounted) return;
+                                        setSheetState(() {
+                                          isSavingPhotoRequest = false;
+                                          if (saved) {
+                                            photoNote = wish;
+                                            isEditingPhotoRequest = false;
+                                          }
+                                        });
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TrackSheetSecondaryButton(
+                                label: 'Изменить пожелание',
+                                onTap: () => setSheetState(
+                                  () => isEditingPhotoRequest = true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    widget.onCancelPhotoRequest(track),
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                label: const Text('Отменить'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.redAccent,
+                                  minimumSize: const Size.fromHeight(48),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ] else ...[
+                    if (isEditingPhotoRequest) ...[
+                      _TrackSheetNoticeCard(
+                        icon: Icons.info_outline_rounded,
+                        text:
+                            'Фотоотчёт может быть платным. Ознакомьтесь с тарифами перед запросом.',
+                        color: Colors.amber.shade800,
+                      ),
+                      const SizedBox(height: 12),
+                      AppGradientInputFrame(
+                        child: TextField(
+                          controller: photoWishController,
+                          maxLines: 4,
+                          scrollPadding: const EdgeInsets.only(bottom: 180),
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          decoration: const InputDecoration(
+                            hintText: 'Пожелание для склада…',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _TrackSheetSecondaryButton(
+                              label: 'Отмена',
+                              onTap: isSavingPhotoRequest
+                                  ? () {}
+                                  : () => setSheetState(
+                                      () => isEditingPhotoRequest = false,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _TrackSheetPrimaryButton(
+                              label: isSavingPhotoRequest
+                                  ? 'Отправляем…'
+                                  : 'Запросить',
+                              icon: Icons.photo_camera_outlined,
+                              onTap: isSavingPhotoRequest
+                                  ? null
+                                  : () async {
+                                      setSheetState(
+                                        () => isSavingPhotoRequest = true,
+                                      );
+                                      final saved = await widget
+                                          .onRequestPhotoInline(
+                                            track,
+                                            photoWishController.text.trim(),
+                                          );
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(() {
+                                        isSavingPhotoRequest = false;
+                                        if (saved) {
+                                          isPhotoRequested = true;
+                                          photoStatus = 'Новый';
+                                          photoNote = photoWishController.text
+                                              .trim();
+                                          photoCreated = DateTime.now();
+                                          isEditingPhotoRequest = false;
+                                        }
+                                      });
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const _TrackDetailEmptyState(
+                        icon: Icons.photo_camera_outlined,
+                        text: 'Фотоотчёт ещё не запрошен',
+                      ),
+                      const SizedBox(height: 12),
+                      _TrackSheetPrimaryButton(
+                        label: 'Запросить фотоотчёт',
+                        icon: Icons.photo_camera_outlined,
+                        onTap: () =>
+                            setSheetState(() => isEditingPhotoRequest = true),
+                      ),
+                    ],
+                  ],
+                ],
+              );
+            }
+
+            Widget buildQuestionsTab() {
+              final items = <_QuestionDetailsItem>[
+                for (var i = 0; i < visibleQuestions.length; i++)
+                  _QuestionDetailsItem.fromQuestion(
+                    visibleQuestions[i],
+                    visibleQuestions[i].questionType ==
+                            _clientCodeTransferQuestionType
+                        ? 'Перенос кода клиента'
+                        : visibleQuestions.length > 1
+                        ? 'Вопрос ${i + 1}'
+                        : 'Вопрос',
+                    track.code,
+                  ),
+                if (pendingLocalQuestion.isNotEmpty && visibleQuestions.isEmpty)
+                  _QuestionDetailsItem(
+                    title: 'Вопрос',
+                    statusLabel: widget.questionStatus[track.code] ?? 'Новый',
+                    statusColor: Colors.orange,
+                    question: pendingLocalQuestion,
+                    answer: null,
+                    answerPhotoUrls: const [],
+                    trackCode: track.code,
+                    createdAt:
+                        widget.questionCreatedAt[track.code] ?? DateTime.now(),
+                    answeredAt: null,
+                    canCancel: true,
+                  ),
+              ];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (items.isEmpty)
+                    const _TrackDetailEmptyState(
+                      icon: Icons.help_outline_rounded,
+                      text: 'По этому треку пока нет вопросов',
+                    )
+                  else
+                    for (var i = 0; i < items.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      _QuestionDetailsCard(
+                        item: items[i],
+                        dateFormat: dateFormat,
+                      ),
+                    ],
+                  if (canAskQuestion) ...[
+                    const SizedBox(height: 14),
+                    if (isCreatingQuestion) ...[
+                      _TrackSheetMetaCard(
+                        icon: Icons.lock_outline_rounded,
+                        title: 'Текст задачи',
+                        value: _unknownTrackQuestionText,
+                        valueMaxLines: 4,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _TrackSheetSecondaryButton(
+                              label: 'Отмена',
+                              onTap: isSavingQuestion
+                                  ? () {}
+                                  : () => setSheetState(
+                                      () => isCreatingQuestion = false,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _TrackSheetPrimaryButton(
+                              label: isSavingQuestion
+                                  ? 'Отправляем…'
+                                  : 'Отправить',
+                              icon: Icons.send_rounded,
+                              onTap: isSavingQuestion
+                                  ? null
+                                  : () async {
+                                      setSheetState(
+                                        () => isSavingQuestion = true,
+                                      );
+                                      final saved = await widget
+                                          .onAskQuestionInline(track);
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(() {
+                                        isSavingQuestion = false;
+                                        if (saved) {
+                                          pendingLocalQuestion =
+                                              _unknownTrackQuestionText;
+                                          isCreatingQuestion = false;
+                                        }
+                                      });
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else
+                      _TrackSheetPrimaryButton(
+                        label: 'Создать новый вопрос',
+                        icon: Icons.add_comment_outlined,
+                        onTap: () =>
+                            setSheetState(() => isCreatingQuestion = true),
+                      ),
+                  ],
+                ],
+              );
+            }
+
+            Widget buildReturnTab() {
+              if (track.id == null || embeddedInAssembly) {
+                return const _TrackDetailEmptyState(
+                  icon: Icons.assignment_return_outlined,
+                  text: 'Возврат недоступен в этом представлении',
+                );
+              }
+              final future = returnFuture;
+              if (future == null) {
+                return const _TrackDetailEmptyState(
+                  icon: Icons.assignment_return_outlined,
+                  text: 'Информация о возврате недоступна',
+                );
+              }
+              return FutureBuilder<TrackReturnInfo?>(
+                future: future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _TrackDetailEmptyState(
+                          icon: Icons.cloud_off_outlined,
+                          text: 'Не удалось загрузить информацию о возврате',
+                        ),
+                        const SizedBox(height: 12),
+                        _TrackSheetSecondaryButton(
+                          label: 'Повторить',
+                          onTap: () => setSheetState(() {
+                            returnFuture = widget.onLoadReturn(track.id!);
+                          }),
+                        ),
+                      ],
+                    );
+                  }
+                  final info = snapshot.data;
+                  if (info == null) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _TrackDetailEmptyState(
+                          icon: Icons.assignment_return_outlined,
+                          text: 'Возврат по этому треку ещё не оформлен',
+                        ),
+                        if (canRequestReturn) ...[
+                          const SizedBox(height: 12),
+                          if (isEditingReturn) ...[
+                            _TrackSheetNoticeCard(
+                              icon: Icons.schedule_rounded,
+                              text:
+                                  'Возврат можно оформить в окно с 13:00 до 15:00 по Китаю.',
+                              color: Colors.orange.shade800,
+                            ),
+                            const SizedBox(height: 10),
+                            AppGradientInputFrame(
+                              child: TextField(
+                                controller: returnCodeController,
+                                textCapitalization:
+                                    TextCapitalization.characters,
+                                scrollPadding: const EdgeInsets.only(
+                                  bottom: 160,
+                                ),
+                                onTapOutside: (_) => FocusManager
+                                    .instance
+                                    .primaryFocus
+                                    ?.unfocus(),
+                                decoration: const InputDecoration(
+                                  hintText: 'Введите код возврата…',
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _TrackSheetSecondaryButton(
+                                    label: 'Отмена',
+                                    onTap: isSavingReturn
+                                        ? () {}
+                                        : () => setSheetState(
+                                            () => isEditingReturn = false,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _TrackSheetPrimaryButton(
+                                    label: isSavingReturn
+                                        ? 'Отправляем…'
+                                        : 'Оформить',
+                                    icon: Icons.assignment_return_rounded,
+                                    onTap: isSavingReturn
+                                        ? null
+                                        : () async {
+                                            final code = returnCodeController
+                                                .text
+                                                .trim();
+                                            if (code.isEmpty) return;
+                                            setSheetState(
+                                              () => isSavingReturn = true,
+                                            );
+                                            final saved = await widget
+                                                .onRequestReturnInline(
+                                                  track,
+                                                  code,
+                                                );
+                                            if (!sheetContext.mounted) return;
+                                            setSheetState(() {
+                                              isSavingReturn = false;
+                                              if (saved) {
+                                                isEditingReturn = false;
+                                                returnFuture = widget
+                                                    .onLoadReturn(track.id!);
+                                              }
+                                            });
+                                          },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ] else
+                            _TrackSheetPrimaryButton(
+                              label: 'Запросить возврат',
+                              icon: Icons.assignment_return_outlined,
+                              onTap: () =>
+                                  setSheetState(() => isEditingReturn = true),
+                            ),
+                        ],
+                      ],
+                    );
+                  }
+                  final canEditCode =
+                      info.status == 'pending' || info.status == 'in_progress';
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _TaskStatusBadge(
+                          text: info.statusLabel,
+                          color: _taskStatusColor(info.statusLabel),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _TrackSheetMetaCard(
+                        icon: Icons.pin_outlined,
+                        title: 'Код возврата',
+                        value: info.returnCode,
+                        valueMaxLines: 2,
+                      ),
+                      if (info.note?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 10),
+                        _TaskDetailBlock(
+                          title: 'Комментарий',
+                          text: info.note!.trim(),
+                        ),
+                      ],
+                      if (info.screenshotUrl?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        _TrackFilterSectionCard(
+                          icon: Icons.image_outlined,
+                          title: 'Подтверждение',
+                          child: _TrackPhotoGrid(
+                            mediaUrls: [info.screenshotUrl!],
+                            track: track,
+                            onTap: (_) => _openMediaViewer(context, [
+                              info.screenshotUrl!,
+                            ], track),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 6,
+                        children: [
+                          _TaskDateLabel(
+                            label: 'Создан',
+                            value: dateFormat.format(info.createdAt),
+                          ),
+                          if (info.updatedAt != null)
+                            _TaskDateLabel(
+                              label: 'Обновлён',
+                              value: dateFormat.format(info.updatedAt!),
+                            ),
+                        ],
+                      ),
+                      if (canEditCode) ...[
+                        const SizedBox(height: 14),
+                        _TrackSheetPrimaryButton(
+                          label: 'Изменить код возврата',
+                          icon: Icons.edit_outlined,
+                          onTap: () async {
+                            final code = await _showReturnCodeEditor(
+                              context,
+                              currentCode: info.returnCode,
+                            );
+                            if (code == null || code == info.returnCode) return;
+                            final updated = await widget.onUpdateReturnCode(
+                              track.id!,
+                              code,
+                            );
+                            if (!sheetContext.mounted) return;
+                            if (updated == null) {
+                              _showStyledSnackBar(
+                                context,
+                                'Не удалось изменить код возврата',
+                                isError: true,
+                              );
+                              return;
+                            }
+                            setSheetState(() {
+                              returnFuture = Future.value(updated);
+                            });
+                            _showStyledSnackBar(
+                              context,
+                              'Код возврата обновлён',
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              );
+            }
+
+            Widget buildWarehouseDeliveryTab() {
+              if (canShowTrackWarehouseDelivery(track)) {
+                return TrackWarehouseDeliveryPanel(track: track);
+              }
+              return const _TrackDetailEmptyState(
+                icon: Icons.local_shipping_outlined,
+                text:
+                    'Информация о доставке до склада для этого трека недоступна',
+              );
+            }
+
+            final child = switch (selectedTab) {
+              1 => buildWarehouseDeliveryTab(),
+              2 => buildPhotoTab(),
+              3 => buildQuestionsTab(),
+              4 => buildReturnTab(),
+              _ => buildMainTab(),
+            };
+            return _TrackSheetSurface(
+              icon: Icons.local_shipping_rounded,
+              title: track.code,
+              subtitle: 'Карточка трек-номера',
+              useMaxHeight: true,
+              keyboardAware: true,
+              pinnedChild: ClientTrackDetailTabs(
+                selectedIndex: selectedTab,
+                visibleIndices: showWarehouseDeliveryTab
+                    ? const [0, 1, 2, 3, 4]
+                    : const [0, 2, 3, 4],
+                onSelected: (value) => setSheetState(() => selectedTab = value),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: KeyedSubtree(key: ValueKey(selectedTab), child: child),
+              ),
+            );
+          },
+        );
+      },
+    );
+    _disposeControllersAfterSheetClose([
+      commentController,
+      photoWishController,
+      productNameController,
+      productQuantityController,
+      returnCodeController,
+    ]);
+  }
+
+  Future<String?> _showReturnCodeEditor(
+    BuildContext context, {
+    required String currentCode,
+  }) async {
+    var value = currentCode;
+    return showBlurredModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) => _TrackSheetSurface(
+            icon: Icons.pin_outlined,
+            title: 'Код возврата',
+            subtitle: 'Измените код, который склад использует для возврата',
+            keyboardAware: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _TrackFilterSectionCard(
+                  icon: Icons.edit_outlined,
+                  title: 'Новый код возврата',
+                  child: AppGradientInputFrame(
+                    child: TextFormField(
+                      initialValue: currentCode,
+                      autofocus: true,
+                      onChanged: (text) => setSheetState(() => value = text),
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        hintText: 'Введите код возврата',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _TrackSheetPrimaryButton(
+                  label: 'Сохранить код',
+                  icon: Icons.check_rounded,
+                  onTap: value.trim().isEmpty
+                      ? null
+                      : () => Navigator.of(sheetContext).pop(value.trim()),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Legacy sheet entry point kept temporarily while the compact modal rolls out.
+  // ignore: unused_element
   void _handlePhotoMarkerTap(
     BuildContext context, {
     required TrackItem track,
@@ -8561,6 +10468,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
+  // ignore: unused_element
   void _handleProductMarkerTap(
     BuildContext context, {
     required TrackItem track,
@@ -8579,6 +10487,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
+  // ignore: unused_element
   void _handleQuestionMarkerTap(
     BuildContext context, {
     required TrackItem track,
@@ -8892,6 +10801,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     return context.brandPrimary;
   }
 
+  // Legacy expanded-card renderer kept for rollback safety during rollout.
+  // ignore: unused_element
   Widget _buildTrackCardHeader(
     BuildContext context, {
     required TrackItem track,
@@ -9071,6 +10982,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildTrackCardMediaSection(
     BuildContext context, {
     required TrackItem track,
@@ -9456,100 +11368,6 @@ class _AssemblyTracksGrid extends StatelessWidget {
   }
 }
 
-class _AssemblyStatusPill extends StatelessWidget {
-  final String text;
-  final Color color;
-
-  const _AssemblyStatusPill({required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final isLight = color.computeLuminance() > 0.58;
-    final textColor = isLight ? AppColors.textPrimary : color;
-    final bg = isLight
-        ? color.withValues(alpha: 0.42)
-        : color.withValues(alpha: 0.12);
-
-    return Container(
-      constraints: const BoxConstraints(minHeight: 28),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.20)),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: textColor,
-          fontFamily: 'Gilroy',
-          fontSize: 12.5,
-          height: 1,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _AssemblySectionHeader extends StatelessWidget {
-  final String title;
-  final bool isExpanded;
-  final VoidCallback? onTap;
-
-  const _AssemblySectionHeader({
-    required this.title,
-    required this.isExpanded,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 24),
-        child: Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontFamily: 'Gilroy',
-                fontSize: 15,
-                height: 1.1,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.05,
-              ),
-            ),
-            const Spacer(),
-            if (onTap != null)
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(
-                  isExpanded
-                      ? CupertinoIcons.chevron_up
-                      : CupertinoIcons.chevron_down,
-                  size: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _AssemblyPlainText extends StatelessWidget {
   final String text;
 
@@ -9571,30 +11389,71 @@ class _AssemblyPlainText extends StatelessWidget {
   }
 }
 
-class _AssemblyInvoiceText extends StatelessWidget {
+class _AssemblyBoxFact extends StatelessWidget {
+  final double width;
+  final String label;
   final String value;
+  final IconData icon;
 
-  const _AssemblyInvoiceText({required this.value});
+  const _AssemblyBoxFact({
+    required this.width,
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
+    return Container(
+      width: width,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6F8),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TextSpan(text: 'Накладная: '),
-          TextSpan(
-            text: value.isEmpty ? '—' : value,
-            style: const TextStyle(fontWeight: FontWeight.w900),
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.brandPrimary.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: context.brandPrimary),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-      softWrap: true,
-      style: const TextStyle(
-        color: AppColors.textPrimary,
-        fontFamily: 'Gilroy',
-        fontSize: 12.5,
-        height: 1.25,
-        fontWeight: FontWeight.w600,
       ),
     );
   }
@@ -10460,6 +12319,167 @@ class _TrackDeleteButton extends StatelessWidget {
   }
 }
 
+class _InlineProductEditor extends StatelessWidget {
+  final TextEditingController nameController;
+  final TextEditingController quantityController;
+  final String? existingImageUrl;
+  final XFile? selectedImage;
+  final bool saving;
+  final VoidCallback onPickImage;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+
+  const _InlineProductEditor({
+    required this.nameController,
+    required this.quantityController,
+    required this.existingImageUrl,
+    required this.selectedImage,
+    required this.saving,
+    required this.onPickImage,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = existingImageUrl?.trim() ?? '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppGradientInputFrame(
+          child: TextField(
+            controller: nameController,
+            textInputAction: TextInputAction.next,
+            scrollPadding: const EdgeInsets.only(bottom: 240),
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            decoration: const InputDecoration(
+              hintText: 'Название товара',
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        AppGradientInputFrame(
+          child: TextField(
+            controller: quantityController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            scrollPadding: const EdgeInsets.only(bottom: 240),
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            decoration: const InputDecoration(
+              hintText: 'Количество',
+              suffixText: 'шт',
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Material(
+          color: context.brandPrimary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            onTap: saving ? null : onPickImage,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: selectedImage != null || imageUrl.isNotEmpty ? 128 : 52,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: context.brandPrimary.withValues(alpha: 0.18),
+                ),
+              ),
+              child: selectedImage != null
+                  ? (kIsWeb
+                        ? FutureBuilder<Uint8List>(
+                            future: selectedImage!.readAsBytes(),
+                            builder: (_, snapshot) => snapshot.hasData
+                                ? Image.memory(
+                                    snapshot.data!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                          )
+                        : Image.file(
+                            File(selectedImage!.path),
+                            fit: BoxFit.cover,
+                          ))
+                  : imageUrl.isNotEmpty
+                  ? AppCachedMediaImage(
+                      url: imageUrl,
+                      fit: BoxFit.cover,
+                      thumbnailSize: 480,
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: context.brandPrimary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Добавить фото товара',
+                          style: TextStyle(
+                            color: context.brandPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+        if (selectedImage != null || imageUrl.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          TextButton.icon(
+            onPressed: saving ? null : onPickImage,
+            icon: const Icon(Icons.photo_library_outlined, size: 18),
+            label: const Text('Заменить фото'),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _TrackSheetSecondaryButton(
+                label: 'Отмена',
+                onTap: saving ? () {} : onCancel,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _TrackSheetPrimaryButton(
+                label: saving ? 'Сохраняем…' : 'Сохранить',
+                icon: saving
+                    ? Icons.hourglass_top_rounded
+                    : Icons.check_rounded,
+                onTap: saving ? null : onSave,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _TrackProductPreview extends StatelessWidget {
   final String name;
   final int? quantity;
@@ -11143,6 +13163,7 @@ Widget _outlinedInput(
   TextInputType? keyboardType,
   List<TextInputFormatter>? inputFormatters,
   ValueChanged<String>? onChanged,
+  TextInputAction? textInputAction,
   int maxLines = 1,
 }) {
   return AppGradientInputFrame(
@@ -11151,6 +13172,7 @@ Widget _outlinedInput(
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       onChanged: onChanged,
+      textInputAction: textInputAction,
       maxLines: maxLines,
       decoration: InputDecoration(
         hintText: hint,

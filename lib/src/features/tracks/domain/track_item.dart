@@ -68,8 +68,7 @@ class TrackItem {
   /// Основной источник истины — серверный код статуса. Текстовый fallback
   /// оставлен для старых ответов API, где `statusCode` ещё не передавался.
   bool get isPending =>
-      statusCode == 'pending' ||
-      (statusCode.isEmpty && status == 'В ожидании');
+      statusCode == 'pending' || (statusCode.isEmpty && status == 'В ожидании');
 
   factory TrackItem.fromJson(Map<String, dynamic> json) {
     // Получаем код трека
@@ -632,6 +631,50 @@ class TrackQuestion {
           : null,
       answeredByName:
           (json['answeredBy'] as Map<String, dynamic>?)?['fullName'] as String?,
+    );
+  }
+}
+
+class TrackReturnInfo {
+  final int id;
+  final String returnCode;
+  final String status;
+  final String? screenshotUrl;
+  final String? note;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+
+  const TrackReturnInfo({
+    required this.id,
+    required this.returnCode,
+    required this.status,
+    this.screenshotUrl,
+    this.note,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  String get statusLabel {
+    return switch (status) {
+      'pending' => 'Ожидает обработки',
+      'in_progress' => 'В работе',
+      'completed' => 'Выполнен',
+      'cancelled' => 'Отменён',
+      _ => status,
+    };
+  }
+
+  factory TrackReturnInfo.fromJson(Map<String, dynamic> json) {
+    return TrackReturnInfo(
+      id: _readInt(json['id']) ?? 0,
+      returnCode: json['returnCode']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending',
+      screenshotUrl: json['screenshotUrl']?.toString(),
+      note: json['note']?.toString(),
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
     );
   }
 }

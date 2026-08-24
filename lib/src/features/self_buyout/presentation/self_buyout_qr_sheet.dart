@@ -13,6 +13,7 @@ import '../../../core/utils/gallery_image_save_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
+import '../../payments/presentation/payment_qr_timing_warning.dart';
 import '../../payments/presentation/payment_receipt_picker.dart';
 import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
@@ -45,6 +46,7 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
   String? _fileMime;
   bool _uploading = false;
   bool _downloadingQr = false;
+  bool _timingWarningShown = false;
 
   @override
   void initState() {
@@ -86,6 +88,10 @@ class _SelfBuyoutQrSheetState extends ConsumerState<SelfBuyoutQrSheet> {
         _result = res;
         _loading = false;
       });
+      if (!_timingWarningShown) {
+        _timingWarningShown = true;
+        await showPaymentQrTimingWarning(context);
+      }
     } on DioException {
       if (!mounted) return;
       setState(() {

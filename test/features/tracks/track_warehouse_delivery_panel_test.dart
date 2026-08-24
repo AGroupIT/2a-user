@@ -7,7 +7,7 @@ import 'package:twoalogisticcabineuser/src/features/tracks/domain/track_item.dar
 import 'package:twoalogisticcabineuser/src/features/tracks/presentation/track_warehouse_delivery_panel.dart';
 
 void main() {
-  test('кнопка доступна только для pending', () {
+  test('доставка до склада доступна только в статусе ожидания', () {
     expect(canShowTrackWarehouseDelivery(_track('pending')), isTrue);
     expect(canShowTrackWarehouseDelivery(_track('in_warehouse')), isFalse);
     expect(canShowTrackWarehouseDelivery(_track('in_transit')), isFalse);
@@ -88,6 +88,31 @@ void main() {
 
     expect(repository.requestCalls, [true]);
     expect(find.text('Получить информацию'), findsOneWidget);
+  });
+
+  testWidgets('при ошибке показывает только одну кнопку повторного запроса', (
+    tester,
+  ) async {
+    final repository = _FakeGateway(
+      delivery: const TrackWarehouseDelivery(
+        configured: true,
+        trackNumber: '79025360024440',
+        trackStatus: 'in_warehouse',
+        automatic: false,
+        subscriptionStatus: 'idle',
+        isDelivered: false,
+        lastError: 'provider_error',
+      ),
+    );
+
+    await _pumpPanel(
+      tester,
+      repository: repository,
+      track: _track('in_warehouse'),
+    );
+
+    expect(find.text('Повторить запрос'), findsOneWidget);
+    expect(find.text('Получить информацию'), findsNothing);
   });
 }
 

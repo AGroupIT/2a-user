@@ -569,7 +569,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                     }
 
                     final invoiceIndex = index - 3;
-                    final invoiceTile = _InvoiceTile(
+                    final invoiceTile = ClientInvoiceTile(
                       item: filtered[invoiceIndex],
                       clientCode: clientCode,
                     );
@@ -1659,17 +1659,21 @@ class _InvoiceSmallAmount extends StatelessWidget {
 
 // ─── Карточка счёта в списке ──────────────────────────────────────────────────
 
-class _InvoiceTile extends ConsumerStatefulWidget {
+class ClientInvoiceTile extends ConsumerStatefulWidget {
   final InvoiceItem item;
   final String clientCode;
 
-  const _InvoiceTile({required this.item, required this.clientCode});
+  const ClientInvoiceTile({
+    super.key,
+    required this.item,
+    required this.clientCode,
+  });
 
   @override
-  ConsumerState<_InvoiceTile> createState() => _InvoiceTileState();
+  ConsumerState<ClientInvoiceTile> createState() => ClientInvoiceTileState();
 }
 
-class _InvoiceTileState extends ConsumerState<_InvoiceTile> {
+class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
   bool _isNavigatingToPayment = false;
 
   void _showInvoiceStatusTimeline(
@@ -2685,6 +2689,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 _buildInfoRow(context, 'Выставлен', df.format(item.createdAt!)),
               if (item.paidAt != null)
                 _buildInfoRow(context, 'Оплачен', df.format(item.paidAt!)),
+              if (item.arrivalDate != null)
+                _buildInfoRow(context, 'Прибыл', df.format(item.arrivalDate!)),
               if (item.arrivalMarket != null && item.arrivalMarket!.isNotEmpty)
                 _buildInfoRow(
                   context,

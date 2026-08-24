@@ -57,6 +57,81 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('awaiting payment request can be cancelled and leaves the list', (
+    tester,
+  ) async {
+    final service = _LifecycleSelfBuyoutService();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(_request.requestNumber).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Отменить заявку'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Отменить'));
+    await tester.pumpAndSettle();
+
+    expect(service.cancelCalls, 1);
+    expect(find.text(_request.requestNumber), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('first exchange shows Alipay QR instruction before create form', (
+    tester,
+  ) async {
+    final service = _FirstExchangeSelfBuyoutService();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          selfBuyoutServiceProvider.overrideWithValue(service),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SelfBuyoutScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Создать заявку'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('QR-код для получения юаней'), findsOneWidget);
+    expect(find.textContaining('Pay/Receive'), findsOneWidget);
+    expect(find.byType(PageView), findsOneWidget);
+    expect(tester.getSize(find.byType(PageView)).height, greaterThan(200));
+
+    expect(
+      find.text('Пополняли ли Вы ранее Alipay хотя бы 3 раза?'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Понятно, продолжить'));
+    await tester.pump();
+    expect(find.text('QR-код для получения юаней'), findsOneWidget);
+
+    await tester.tap(find.text('Нет'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Понятно, продолжить'));
+    await tester.pumpAndSettle();
+    expect(find.text('Новая заявка'), findsOneWidget);
+    expect(find.textContaining('ограничена 1000 ¥'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _PageRouteObserver extends NavigatorObserver {
@@ -72,13 +147,16 @@ class _LifecycleSelfBuyoutService extends SelfBuyoutService {
   _LifecycleSelfBuyoutService() : super(ApiClient());
 
   int startCalls = 0;
+  int cancelCalls = 0;
+  bool cancelled = false;
 
   @override
   Future<SelfBuyoutAvailability> getAvailability() async =>
       SelfBuyoutAvailability.unavailable;
 
   @override
-  Future<List<SelfBuyoutRequest>> getRequests() async => const [_request];
+  Future<List<SelfBuyoutRequest>> getRequests() async =>
+      cancelled ? const [] : const [_request];
 
   @override
   Future<SelfBuyoutDetail> getDetail(int requestId) async =>
@@ -96,4 +174,28 @@ class _LifecycleSelfBuyoutService extends SelfBuyoutService {
       qrPayload: 'ST00012|Name=Test|Sum=120000|Purpose=SelfBuyout',
     );
   }
+
+  @override
+  Future<bool> cancel(int requestId) async {
+    cancelCalls++;
+    cancelled = true;
+    return true;
+  }
+}
+
+class _FirstExchangeSelfBuyoutService extends SelfBuyoutService {
+  _FirstExchangeSelfBuyoutService() : super(ApiClient());
+
+  @override
+  Future<SelfBuyoutAvailability> getAvailability() async =>
+      const SelfBuyoutAvailability(
+        available: true,
+        clientCnyRubRate: 12,
+        firstExchangeActive: true,
+        showFirstExchangeOnboarding: true,
+        requiresAlipayExperienceAnswer: true,
+      );
+
+  @override
+  Future<List<SelfBuyoutRequest>> getRequests() async => const [];
 }

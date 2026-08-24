@@ -45,14 +45,19 @@ String _formatAmount(double value) => value
 class SelfBuyoutCreateSheet extends ConsumerStatefulWidget {
   final SelfBuyoutAvailability? availability;
   final SelfBuyoutRequest? correctionRequest;
+  final bool? alipayTopUpExperienced;
 
-  const SelfBuyoutCreateSheet({super.key, required this.availability})
-    : correctionRequest = null;
+  const SelfBuyoutCreateSheet({
+    super.key,
+    required this.availability,
+    this.alipayTopUpExperienced,
+  }) : correctionRequest = null;
 
   const SelfBuyoutCreateSheet.correctRequisites({
     super.key,
     required this.correctionRequest,
   }) : availability = null,
+       alipayTopUpExperienced = null,
        assert(correctionRequest != null);
 
   @override
@@ -78,6 +83,15 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
       0;
 
   bool get _isCorrection => widget.correctionRequest != null;
+
+  double? get _effectiveMaxCny {
+    final availability = widget.availability;
+    if (availability == null || !availability.firstExchangeActive) return null;
+    if (availability.maxCny != null) return availability.maxCny;
+    return widget.alipayTopUpExperienced == false
+        ? availability.firstExchangeInexperiencedMaxCny
+        : null;
+  }
 
   @override
   void dispose() {
@@ -255,6 +269,13 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
         zh: '自助代购最低金额为 ${_formatAmount(min)} ¥',
       );
     }
+    if (_effectiveMaxCny != null && cny > _effectiveMaxCny!) {
+      return tr(
+        context,
+        ru: 'Для первого пополнения максимальная сумма — ${_formatAmount(_effectiveMaxCny!)} ¥',
+        zh: '首次充值最高金额为 ${_formatAmount(_effectiveMaxCny!)} ¥',
+      );
+    }
     final activeCodeId = ref.read(activeClientCodeIdProvider);
     if (activeCodeId == null) {
       return tr(
@@ -300,6 +321,7 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
                   ? double.parse(_cnyCtrl.text.replaceAll(',', '.'))
                   : double.parse(_rubCtrl.text.replaceAll(',', '.')),
               warningAccepted: true,
+              alipayTopUpExperienced: widget.alipayTopUpExperienced,
               fileBytes: _fileBytes!,
               fileName: _fileName!,
               fileMime: _fileMime!,
@@ -314,12 +336,20 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           : const <dynamic, dynamic>{};
       final code = data['code']?.toString();
       final serverMinCny = (data['minCny'] as num?)?.toDouble();
+      final serverMaxCny = (data['maxCny'] as num?)?.toDouble();
       final reason =
           code == 'SELF_BUYOUT_AMOUNT_BELOW_MINIMUM' && serverMinCny != null
           ? tr(
               context,
               ru: 'Минимальная сумма самовыкупа — ${_formatAmount(serverMinCny)} ¥',
               zh: '自助代购最低金额为 ${_formatAmount(serverMinCny)} ¥',
+            )
+          : code == 'FIRST_SELF_BUYOUT_AMOUNT_ABOVE_MAXIMUM' &&
+                serverMaxCny != null
+          ? tr(
+              context,
+              ru: 'Для первого пополнения максимальная сумма — ${_formatAmount(serverMaxCny)} ¥',
+              zh: '首次充值最高金额为 ${_formatAmount(serverMaxCny)} ¥',
             )
           : data['error']?.toString();
       AppToast.show(
@@ -395,6 +425,10 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
                       _rateCard(rateStr),
                       const SizedBox(height: 12),
                       _converterCard(),
+                      if (_effectiveMaxCny != null) ...[
+                        const SizedBox(height: 10),
+                        _firstExchangeLimitNotice(_effectiveMaxCny!),
+                      ],
                       const SizedBox(height: 12),
                       _activeCodeCard(activeCode),
                       const SizedBox(height: 12),
@@ -547,6 +581,42 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _firstExchangeLimitNotice(double maxCny) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.30),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.shield_outlined, color: Color(0xFFD97706), size: 20),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              tr(
+                context,
+                ru: 'Так как вы ранее не пополняли Alipay минимум 3 раза, сумма первого пополнения ограничена ${_formatAmount(maxCny)} ¥.',
+                zh: '由于您此前未完成至少 3 次支付宝充值，首次充值金额上限为 ${_formatAmount(maxCny)} ¥。',
+              ),
+              style: const TextStyle(
+                color: Color(0xFF92400E),
+                fontFamily: 'Gilroy',
+                fontSize: 12.5,
+                height: 1.3,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

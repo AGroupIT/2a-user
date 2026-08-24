@@ -450,7 +450,7 @@ class PushNotificationService {
       }
 
       if (token != null) {
-        debugPrint('🔔 FCM Token получен: ${token.substring(0, 20)}...');
+        debugPrint('🔔 FCM token получен');
       } else {
         debugPrint('🔔 FCM Token не получен (null)');
       }

@@ -295,6 +295,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('Я понял'));
+      await tester.pumpAndSettle();
+
       final attachButton = find.text('Приложить чек (фото/PDF)');
       await tester.ensureVisible(attachButton);
       await tester.pumpAndSettle();

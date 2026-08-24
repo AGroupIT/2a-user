@@ -1153,6 +1153,46 @@ class TracksApiService {
     }
   }
 
+  Future<TrackReturnInfo?> getTrackReturn(int trackId) async {
+    try {
+      final response = await _apiClient.get(
+        '/client/tracks/$trackId/return',
+        options: Options(
+          validateStatus: (status) => status == 200 || status == 404,
+        ),
+      );
+      if (response.statusCode == 404) return null;
+      if (response.statusCode != 200 || response.data is! Map) return null;
+      return TrackReturnInfo.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      debugPrint('Error loading track return: $e');
+      rethrow;
+    }
+  }
+
+  Future<TrackReturnInfo?> updateTrackReturnCode({
+    required int trackId,
+    required String returnCode,
+  }) async {
+    try {
+      final response = await _apiClient.patch(
+        '/client/tracks/$trackId/return',
+        data: {'returnCode': returnCode.trim()},
+      );
+      if (response.statusCode != 200 || response.data is! Map) return null;
+      return TrackReturnInfo.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (e) {
+      debugPrint('Error updating track return code: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return null;
+    }
+  }
+
   /// Отменить вопрос
   Future<bool> cancelTrackQuestion(int questionId) async {
     try {

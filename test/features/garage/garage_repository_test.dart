@@ -118,7 +118,8 @@ void main() {
         partName: 'Колодки',
         partNumber: '04465-33480',
         preference: GaragePartPreference.original,
-        existUrl: 'https://exist.ru/item',
+        russiaAnalogueUrl: 'https://example.ru/item',
+        imageUrl: '/uploads/garage-request-items/part.jpg',
         quantity: 2,
       );
       await repository.addRequestItem(11, itemInput);
@@ -134,6 +135,14 @@ void main() {
         'clientComment': 'Нужны детали',
       });
       expect(client.calls[4].headers, {'Idempotency-Key': 'submit-1'});
+      expect(
+        client.calls[5].data,
+        containsPair('russiaAnalogueUrl', 'https://example.ru/item'),
+      );
+      expect(
+        client.calls[5].data,
+        containsPair('imageUrl', '/uploads/garage-request-items/part.jpg'),
+      );
       expect(client.calls.map((call) => '${call.method} ${call.path}'), [
         'GET /client/garage/requests',
         'POST /client/garage/requests',
@@ -144,6 +153,23 @@ void main() {
         'PATCH /client/garage/request-items/101',
         'DELETE /client/garage/request-items/101',
       ]);
+    },
+  );
+
+  test(
+    'request item image upload uses the dedicated multipart route',
+    () async {
+      client.responses.add({'url': '/uploads/garage-request-items/part.jpg'});
+
+      final url = await repository.uploadRequestItemImage(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        fileName: 'part.jpg',
+        mimeType: 'image/jpeg',
+      );
+
+      expect(url, '/uploads/garage-request-items/part.jpg');
+      expect(client.calls.single.path, '/client/garage/request-items/image');
+      expect(client.calls.single.data, isA<FormData>());
     },
   );
 
@@ -487,7 +513,8 @@ Map<String, dynamic> _itemJson({required int id, required int requestId}) {
     'partName': 'Колодки',
     'partNumber': '04465-33480',
     'preference': 'original',
-    'existUrl': 'https://exist.ru/item',
+    'russiaAnalogueUrl': 'https://example.ru/item',
+    'imageUrl': '/uploads/garage-request-items/part.jpg',
     'quantity': 2,
   };
 }

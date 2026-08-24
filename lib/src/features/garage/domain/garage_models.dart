@@ -306,7 +306,8 @@ class GarageRequestItemInput {
   final String partName;
   final String partNumber;
   final GaragePartPreference preference;
-  final String existUrl;
+  final String? russiaAnalogueUrl;
+  final String? imageUrl;
   final int quantity;
   final String? side;
   final String? position;
@@ -317,20 +318,29 @@ class GarageRequestItemInput {
     required this.partName,
     required this.partNumber,
     required this.preference,
-    required this.existUrl,
+    String? russiaAnalogueUrl,
+    this.imageUrl,
+    @Deprecated('Use russiaAnalogueUrl') String? existUrl,
     this.quantity = 1,
     this.side,
     this.position,
     this.clientComment,
     this.isOptional = false,
-  }) : assert(quantity > 0);
+  }) : russiaAnalogueUrl = russiaAnalogueUrl ?? existUrl,
+       assert(quantity > 0);
+
+  @Deprecated('Use russiaAnalogueUrl')
+  String get existUrl => russiaAnalogueUrl ?? '';
 
   Map<String, dynamic> toJson() {
     return {
       'partName': partName.trim(),
       'partNumber': partNumber.trim(),
       'preference': preference.apiValue,
-      'existUrl': existUrl.trim(),
+      'russiaAnalogueUrl': _trimmedOrNull(russiaAnalogueUrl),
+      // Rolling-release compatibility with older backend versions.
+      'existUrl': _trimmedOrNull(russiaAnalogueUrl),
+      'imageUrl': _trimmedOrNull(imageUrl),
       'quantity': quantity,
       'side': _trimmedOrNull(side),
       'position': _trimmedOrNull(position),
@@ -349,7 +359,8 @@ class GarageRequestItem {
   final String partNumber;
   final String? partNumberNormalized;
   final GaragePartPreference preference;
-  final String existUrl;
+  final String? russiaAnalogueUrl;
+  final String? imageUrl;
   final int quantity;
   final String? side;
   final String? position;
@@ -366,7 +377,9 @@ class GarageRequestItem {
     required this.partNumber,
     required this.partNumberNormalized,
     required this.preference,
-    required this.existUrl,
+    String? russiaAnalogueUrl,
+    this.imageUrl,
+    @Deprecated('Use russiaAnalogueUrl') String? existUrl,
     required this.quantity,
     required this.side,
     required this.position,
@@ -374,7 +387,10 @@ class GarageRequestItem {
     required this.isOptional,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : russiaAnalogueUrl = russiaAnalogueUrl ?? existUrl;
+
+  @Deprecated('Use russiaAnalogueUrl')
+  String get existUrl => russiaAnalogueUrl ?? '';
 
   factory GarageRequestItem.fromJson(Map<String, dynamic> json) {
     return GarageRequestItem(
@@ -385,7 +401,10 @@ class GarageRequestItem {
       partNumber: _nullableString(json['partNumber']) ?? '',
       partNumberNormalized: _nullableString(json['partNumberNormalized']),
       preference: GaragePartPreference.fromApiValue(json['preference']),
-      existUrl: _nullableString(json['existUrl']) ?? '',
+      russiaAnalogueUrl: _nullableString(
+        json['russiaAnalogueUrl'] ?? json['existUrl'],
+      ),
+      imageUrl: _nullableString(json['imageUrl']),
       quantity: _nullableInt(json['quantity']) ?? 1,
       side: _nullableString(json['side']),
       position: _nullableString(json['position']),

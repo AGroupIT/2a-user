@@ -80,6 +80,12 @@ class SelfBuyoutAvailability {
   final String? rateDate;
   final double? clientCnyRubRate;
   final double? minCny;
+  final double? maxCny;
+  final bool firstExchangeActive;
+  final bool showFirstExchangeOnboarding;
+  final bool? alipayTopUpExperienced;
+  final bool requiresAlipayExperienceAnswer;
+  final double firstExchangeInexperiencedMaxCny;
   final int deliveryDeadlineDays;
   final bool? operatorSleeping;
   final bool operatorStatusReachable;
@@ -95,6 +101,12 @@ class SelfBuyoutAvailability {
     this.rateDate,
     this.clientCnyRubRate,
     this.minCny,
+    this.maxCny,
+    this.firstExchangeActive = false,
+    this.showFirstExchangeOnboarding = false,
+    this.alipayTopUpExperienced,
+    this.requiresAlipayExperienceAnswer = false,
+    this.firstExchangeInexperiencedMaxCny = 1000,
     this.deliveryDeadlineDays = 14,
     this.operatorSleeping,
     this.operatorStatusReachable = false,
@@ -106,6 +118,7 @@ class SelfBuyoutAvailability {
   factory SelfBuyoutAvailability.fromJson(Map<String, dynamic> json) {
     final rate = json['rate'] as Map<String, dynamic>?;
     final limits = json['limits'] as Map<String, dynamic>?;
+    final firstExchange = json['firstExchange'] as Map<String, dynamic>?;
     final operatorStatus = json['operatorStatus'] as Map<String, dynamic>?;
     final cnyRubRate = (rate?['clientCnyRubRate'] as num?)?.toDouble();
     final explicitMinCny = (limits?['minCny'] as num?)?.toDouble();
@@ -122,6 +135,14 @@ class SelfBuyoutAvailability {
           (legacyMinRub != null && cnyRubRate != null && cnyRubRate > 0
               ? legacyMinRub / cnyRubRate
               : null),
+      maxCny: (limits?['maxCny'] as num?)?.toDouble(),
+      firstExchangeActive: firstExchange?['active'] == true,
+      showFirstExchangeOnboarding: firstExchange?['showOnboarding'] == true,
+      alipayTopUpExperienced: firstExchange?['alipayTopUpExperienced'] as bool?,
+      requiresAlipayExperienceAnswer:
+          firstExchange?['requiresAlipayExperienceAnswer'] == true,
+      firstExchangeInexperiencedMaxCny:
+          (firstExchange?['inexperiencedMaxCny'] as num?)?.toDouble() ?? 1000,
       deliveryDeadlineDays:
           (json['deliveryDeadlineDays'] as num?)?.toInt() ?? 14,
       operatorSleeping: operatorStatus?['sleeping'] as bool?,

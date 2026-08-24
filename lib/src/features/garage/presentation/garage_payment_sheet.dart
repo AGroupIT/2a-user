@@ -10,6 +10,7 @@ import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
+import '../../payments/presentation/payment_qr_timing_warning.dart';
 import '../../payments/presentation/payment_receipt_picker.dart';
 import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
@@ -52,6 +53,7 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
   String? _error;
   bool _loading = true;
   bool _uploading = false;
+  bool _timingWarningShown = false;
 
   @override
   void initState() {
@@ -89,6 +91,10 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
         _payment = payment;
         _loading = false;
       });
+      if (!_timingWarningShown) {
+        _timingWarningShown = true;
+        await showPaymentQrTimingWarning(context);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {

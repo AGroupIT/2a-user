@@ -39,6 +39,15 @@ class GaragePartPositionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (item.imageUrl?.trim().isNotEmpty == true) ...[
+            GarageImageStrip(
+              imagePaths: [item.imageUrl!],
+              keyPrefix: 'garage-request-item-${item.id}',
+              fallbackFileNamePrefix: 'garage-part-${item.id}',
+              imageSize: 112,
+            ),
+            const SizedBox(height: 11),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

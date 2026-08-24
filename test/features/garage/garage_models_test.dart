@@ -76,7 +76,8 @@ void main() {
           'partName': 'Колодки',
           'partNumber': '04465-33480',
           'preference': 'original',
-          'existUrl': 'https://exist.ru/item',
+          'russiaAnalogueUrl': 'https://example.ru/item',
+          'imageUrl': '/uploads/garage-request-items/part.jpg',
           'quantity': 2,
           'isOptional': false,
         },
@@ -94,6 +95,11 @@ void main() {
       DateTime.parse('2026-07-23T09:00:00.000Z'),
     );
     expect(request.items.single.preference, GaragePartPreference.original);
+    expect(request.items.single.russiaAnalogueUrl, 'https://example.ru/item');
+    expect(
+      request.items.single.imageUrl,
+      '/uploads/garage-request-items/part.jpg',
+    );
     expect(
       () => request.statusHistory.add(request.statusHistory.first),
       throwsUnsupportedError,

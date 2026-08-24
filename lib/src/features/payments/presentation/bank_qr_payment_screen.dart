@@ -14,6 +14,7 @@ import '../../../core/utils/locale_text.dart';
 import '../data/bank_qr_payment.dart';
 import '../data/payment_operator_status.dart';
 import 'payment_operator_sleeping_notice.dart';
+import 'payment_qr_timing_warning.dart';
 import 'payment_receipt_picker.dart';
 
 /// Bank QR — модалка оплаты счёта в рублях.
@@ -45,6 +46,7 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
 
   bool _uploading = false;
   bool _downloadingQr = false;
+  bool _timingWarningShown = false;
 
   @override
   void initState() {
@@ -86,6 +88,10 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
         _result = res;
         _loading = false;
       });
+      if (!_timingWarningShown) {
+        _timingWarningShown = true;
+        await showPaymentQrTimingWarning(context);
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       final reason = e.response?.data is Map

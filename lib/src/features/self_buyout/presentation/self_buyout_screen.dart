@@ -13,6 +13,7 @@ import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../purchase_blanks/presentation/purchase_blank_ui.dart';
 import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
+import 'self_buyout_alipay_qr_instruction_sheet.dart';
 import 'self_buyout_create_sheet.dart';
 import 'self_buyout_detail_sheet.dart';
 import 'self_buyout_qr_sheet.dart';
@@ -479,6 +480,36 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
   ) async {
     if (!await _ensurePaymentOperatorsWorking(context, ref)) return;
     if (!context.mounted) return;
+
+    var alipayTopUpExperienced = availability.alipayTopUpExperienced;
+    if (availability.showFirstExchangeOnboarding) {
+      final answer = await showBlurredModalBottomSheet<bool>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.22),
+        builder: (_) => SelfBuyoutAlipayQrInstructionSheet(
+          initialAlipayTopUpExperienced: alipayTopUpExperienced,
+        ),
+      );
+      if (answer == null || !context.mounted) return;
+      alipayTopUpExperienced = answer;
+    }
+    if (availability.firstExchangeActive && alipayTopUpExperienced == null) {
+      AppToast.show(
+        context,
+        tr(
+          context,
+          ru: 'Ответьте на вопрос об опыте пополнения Alipay',
+          zh: '请回答支付宝充值经验问题',
+        ),
+        isError: true,
+      );
+      return;
+    }
+
     final created = await showBlurredModalBottomSheet<SelfBuyoutRequest>(
       context: context,
       useRootNavigator: true,
@@ -486,7 +517,10 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (_) => SelfBuyoutCreateSheet(availability: availability),
+      builder: (_) => SelfBuyoutCreateSheet(
+        availability: availability,
+        alipayTopUpExperienced: alipayTopUpExperienced,
+      ),
     );
     if (created != null && context.mounted) {
       ref.invalidate(selfBuyoutRequestsProvider);
@@ -514,8 +548,77 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
         await _openQr(context, ref, r);
       case SelfBuyoutDetailAction.correctRequisites:
         await _correctRequisites(context, ref, r);
+      case SelfBuyoutDetailAction.cancel:
+        await _cancelRequest(context, ref, r);
       case null:
         break;
+    }
+  }
+
+  Future<void> _cancelRequest(
+    BuildContext context,
+    WidgetRef ref,
+    SelfBuyoutRequest request,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          tr(context, ru: 'Отменить заявку?', zh: '取消申请？'),
+          style: const TextStyle(
+            fontFamily: 'Gilroy',
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        content: Text(
+          tr(
+            context,
+            ru: 'Заявка исчезнет из списка. Это действие нельзя отменить.',
+            zh: '申请将从列表中消失，此操作无法撤销。',
+          ),
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontFamily: 'Gilroy',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(tr(context, ru: 'Оставить', zh: '保留')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+            ),
+            child: Text(tr(context, ru: 'Отменить', zh: '取消')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final cancelled = await ref
+          .read(selfBuyoutServiceProvider)
+          .cancel(request.id);
+      if (!context.mounted) return;
+      if (!cancelled) throw StateError('Cancellation failed');
+      ref.invalidate(selfBuyoutRequestsProvider);
+      AppToast.show(context, tr(context, ru: 'Заявка отменена', zh: '申请已取消'));
+    } catch (_) {
+      if (!context.mounted) return;
+      AppToast.show(
+        context,
+        tr(context, ru: 'Не удалось отменить заявку', zh: '无法取消申请'),
+        isError: true,
+      );
     }
   }
 

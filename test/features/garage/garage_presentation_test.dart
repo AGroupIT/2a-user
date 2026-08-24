@@ -617,7 +617,7 @@ void main() {
             'partName': 'Тормозные колодки',
             'partNumber': '04465-33480',
             'preference': 'original',
-            'existUrl': 'https://exist.ru/item',
+            'russiaAnalogueUrl': 'https://example.ru/item',
             'quantity': 2,
             'side': 'Передняя',
             'position': 'Передняя ось',
@@ -643,6 +643,8 @@ void main() {
     expect(find.text('Редактирование заявки'), findsOneWidget);
     expect(find.text('Тормозные колодки'), findsOneWidget);
     expect(find.text('Передняя ось'), findsOneWidget);
+    expect(find.text('Аналогичный товар в России'), findsOneWidget);
+    expect(find.text('Изображение детали'), findsOneWidget);
     expect(find.text('Сохранить изменения'), findsOneWidget);
     expect(find.text('Сохранить и отправить'), findsOneWidget);
     expect(tester.takeException(), isNull);

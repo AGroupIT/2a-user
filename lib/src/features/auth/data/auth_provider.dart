@@ -199,7 +199,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final clientName = prefs.getString(_kClientNameKey);
 
       debugPrint('🔍 isLoggedIn from SharedPreferences: $isLoggedIn');
-      debugPrint('🔍 userEmail: $userEmail');
+      debugPrint('🔍 cached user identity: ${userEmail != null}');
 
       // Проверяем есть ли токен в ApiClient (он сам знает откуда читать: localStorage на web, SecureStorage на мобильных)
       if (isLoggedIn) {
@@ -628,7 +628,7 @@ class AuthNotifier extends Notifier<AuthState> {
       await PushNotificationService.initializeFirebase();
       final fcmToken = await PushNotificationService.getFCMToken();
       if (fcmToken != null) {
-        debugPrint('🔔 FCM Token for client: ${fcmToken.substring(0, 20)}...');
+        debugPrint('🔔 FCM token for client received');
 
         // Определяем платформу через хелпер
         final platform = getPlatformNameImpl();

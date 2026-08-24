@@ -22,6 +22,7 @@ import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../invoices/domain/invoice_item.dart';
+import '../../invoices/presentation/invoices_screen.dart';
 import '../../photos/data/photos_provider.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
@@ -30,6 +31,7 @@ import '../../referral/data/referral_provider.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../tracks/domain/track_item.dart';
 import '../../tracks/presentation/add_tracks_dialog.dart';
+import '../../tracks/presentation/tracks_screen.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/current_cny_rate_provider.dart';
 import 'home_cny_rate_card.dart';
@@ -394,35 +396,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: KeyedSubtree(
                 key: _digestKey,
                 child: _DigestBlock(
+                  clientCode: clientCode,
                   tracksAsync: tracksDigestAsync,
                   assembliesAsync: assembliesDigestAsync,
                   invoicesAsync: invoicesDigestAsync,
                   photosAsync: recentPhotosAsync,
-                  onTrackTap: (track) {
-                    final params = <String, String>{
-                      if (track.id != null) 'trackId': track.id.toString(),
-                      'trackCode': track.code,
-                    };
-                    context.go(
-                      Uri(path: '/tracks', queryParameters: params).toString(),
-                    );
-                  },
-                  onAssemblyTap: (assembly) {
-                    context.go(
-                      Uri(
-                        path: '/tracks',
-                        queryParameters: {'assemblyId': assembly.id.toString()},
-                      ).toString(),
-                    );
-                  },
-                  onInvoiceTap: (invoice) {
-                    context.go(
-                      Uri(
-                        path: '/invoices',
-                        queryParameters: {'invoiceId': invoice.id},
-                      ).toString(),
-                    );
-                  },
                   onPhotoTap: (photo) {
                     Navigator.of(context, rootNavigator: true).push(
                       MaterialPageRoute<void>(
@@ -2304,23 +2282,19 @@ enum _DigestTab {
 }
 
 class _DigestBlock extends StatefulWidget {
+  final String clientCode;
   final AsyncValue<List<TrackItem>> tracksAsync;
   final AsyncValue<List<AssemblyItem>> assembliesAsync;
   final AsyncValue<List<InvoiceItem>> invoicesAsync;
   final AsyncValue<List<PhotoItem>> photosAsync;
-  final ValueChanged<TrackItem> onTrackTap;
-  final ValueChanged<AssemblyItem> onAssemblyTap;
-  final ValueChanged<InvoiceItem> onInvoiceTap;
   final ValueChanged<PhotoItem> onPhotoTap;
 
   const _DigestBlock({
+    required this.clientCode,
     required this.tracksAsync,
     required this.assembliesAsync,
     required this.invoicesAsync,
     required this.photosAsync,
-    required this.onTrackTap,
-    required this.onAssemblyTap,
-    required this.onInvoiceTap,
     required this.onPhotoTap,
   });
 
@@ -2397,16 +2371,16 @@ class _DigestBlockState extends State<_DigestBlock> {
               key: ValueKey(_selected),
               child: switch (_selected) {
                 _DigestTab.tracks => _TrackDigestList(
+                  clientCode: widget.clientCode,
                   itemsAsync: widget.tracksAsync,
-                  onTap: widget.onTrackTap,
                 ),
                 _DigestTab.assemblies => _AssemblyDigestList(
+                  clientCode: widget.clientCode,
                   itemsAsync: widget.assembliesAsync,
-                  onTap: widget.onAssemblyTap,
                 ),
                 _DigestTab.invoices => _InvoiceDigestList(
+                  clientCode: widget.clientCode,
                   itemsAsync: widget.invoicesAsync,
-                  onTap: widget.onInvoiceTap,
                 ),
                 _DigestTab.photos => _PhotoDigestGrid(
                   itemsAsync: widget.photosAsync,
@@ -2505,14 +2479,14 @@ class _DigestTabButton extends StatelessWidget {
   }
 }
 
-class _TrackDigestList extends StatelessWidget {
+class _TrackDigestList extends ConsumerWidget {
+  final String clientCode;
   final AsyncValue<List<TrackItem>> itemsAsync;
-  final ValueChanged<TrackItem> onTap;
 
-  const _TrackDigestList({required this.itemsAsync, required this.onTap});
+  const _TrackDigestList({required this.clientCode, required this.itemsAsync});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return itemsAsync.when(
       loading: () => const _DigestStateCard(child: CircularProgressIndicator()),
       error: (e, _) => _DigestStateCard(
@@ -2531,15 +2505,10 @@ class _TrackDigestList extends StatelessWidget {
         return _DigestListColumn(
           children: [
             for (final track in top)
-              _DigestItemCard(
-                icon: Icons.local_shipping_rounded,
-                title: track.code,
-                createdAt: track.createdAt,
-                updatedAt: track.updatedAt,
-                statusText: track.status,
-                statusColor: _statusColor(track.statusColor),
-                markers: _TrackDigestMarkers(track: track),
-                onTap: () => onTap(track),
+              TracksScreen.embedded(
+                tracks: [track],
+                onEmbeddedChanged: () =>
+                    ref.invalidate(tracksDigestProvider(clientCode)),
               ),
           ],
         );
@@ -2549,10 +2518,13 @@ class _TrackDigestList extends StatelessWidget {
 }
 
 class _AssemblyDigestList extends StatelessWidget {
+  final String clientCode;
   final AsyncValue<List<AssemblyItem>> itemsAsync;
-  final ValueChanged<AssemblyItem> onTap;
 
-  const _AssemblyDigestList({required this.itemsAsync, required this.onTap});
+  const _AssemblyDigestList({
+    required this.clientCode,
+    required this.itemsAsync,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2574,15 +2546,7 @@ class _AssemblyDigestList extends StatelessWidget {
         return _DigestListColumn(
           children: [
             for (final assembly in top)
-              _DigestItemCard(
-                icon: Icons.inventory_2_rounded,
-                title: assembly.number,
-                createdAt: assembly.createdAt,
-                updatedAt: assembly.updatedAt,
-                statusText: assembly.status,
-                statusColor: _statusColor(assembly.statusColor),
-                onTap: () => onTap(assembly),
-              ),
+              _AssemblyDigestEntry(clientCode: clientCode, assembly: assembly),
           ],
         );
       },
@@ -2590,11 +2554,66 @@ class _AssemblyDigestList extends StatelessWidget {
   }
 }
 
-class _InvoiceDigestList extends StatelessWidget {
-  final AsyncValue<List<InvoiceItem>> itemsAsync;
-  final ValueChanged<InvoiceItem> onTap;
+class _AssemblyDigestEntry extends ConsumerWidget {
+  final String clientCode;
+  final AssemblyItem assembly;
 
-  const _InvoiceDigestList({required this.itemsAsync, required this.onTap});
+  const _AssemblyDigestEntry({
+    required this.clientCode,
+    required this.assembly,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tracksAsync = ref.watch(
+      tracksListProvider(
+        TracksListParams(
+          clientCode: clientCode,
+          assemblyId: assembly.id.toString(),
+          take: 200,
+        ),
+      ),
+    );
+
+    return tracksAsync.when(
+      loading: () => const _DigestStateCard(child: CircularProgressIndicator()),
+      error: (error, _) => _DigestStateCard(
+        child: Text(
+          'Не удалось загрузить сборку: $error',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.red),
+        ),
+      ),
+      data: (tracks) => tracks.isEmpty
+          ? const _DigestStateCard(child: Text('В сборке пока нет треков.'))
+          : TracksScreen.embedded(
+              tracks: tracks,
+              asAssembly: true,
+              onEmbeddedChanged: () {
+                ref.invalidate(assembliesDigestProvider(clientCode));
+                ref.invalidate(
+                  tracksListProvider(
+                    TracksListParams(
+                      clientCode: clientCode,
+                      assemblyId: assembly.id.toString(),
+                      take: 200,
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _InvoiceDigestList extends StatelessWidget {
+  final String clientCode;
+  final AsyncValue<List<InvoiceItem>> itemsAsync;
+
+  const _InvoiceDigestList({
+    required this.clientCode,
+    required this.itemsAsync,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2616,15 +2635,7 @@ class _InvoiceDigestList extends StatelessWidget {
         return _DigestListColumn(
           children: [
             for (final invoice in top)
-              _DigestItemCard(
-                icon: Icons.receipt_long_rounded,
-                title: invoice.invoiceNumber,
-                createdAt: invoice.createdAt,
-                updatedAt: invoice.updatedAt ?? invoice.sendDate,
-                statusText: invoice.statusName ?? invoice.status,
-                statusColor: _statusColor(invoice.statusColor),
-                onTap: () => onTap(invoice),
-              ),
+              ClientInvoiceTile(item: invoice, clientCode: clientCode),
           ],
         );
       },
@@ -2716,267 +2727,6 @@ class _DigestListColumn extends StatelessWidget {
   }
 }
 
-class _DigestItemCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
-  final String statusText;
-  final Color? statusColor;
-  final Widget? markers;
-  final VoidCallback onTap;
-
-  const _DigestItemCard({
-    required this.icon,
-    required this.title,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.statusText,
-    required this.statusColor,
-    required this.onTap,
-    this.markers,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    final radius = 18 * scale;
-    return Material(
-      color: const Color(0xFFF8FAFC),
-      borderRadius: BorderRadius.circular(radius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          constraints: BoxConstraints(minHeight: 76 * scale),
-          padding: EdgeInsets.all(12 * scale),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 42 * scale,
-                height: 42 * scale,
-                decoration: BoxDecoration(
-                  color: (statusColor ?? context.brandPrimary).withValues(
-                    alpha: 0.14,
-                  ),
-                  borderRadius: BorderRadius.circular(15 * scale),
-                ),
-                child: Icon(
-                  icon,
-                  color: statusColor ?? context.brandPrimary,
-                  size: 21 * scale,
-                ),
-              ),
-              SizedBox(width: 11 * scale),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 16 * textScale,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                      ),
-                    ),
-                    SizedBox(height: 7 * scale),
-                    Wrap(
-                      spacing: 8 * scale,
-                      runSpacing: 4 * scale,
-                      children: [
-                        _DigestDateLabel(
-                          icon: CupertinoIcons.plus_circle,
-                          value: _formatDigestDate(createdAt),
-                        ),
-                        _DigestDateLabel(
-                          icon: CupertinoIcons.arrow_2_circlepath_circle,
-                          value: _formatDigestDate(updatedAt),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 8 * scale),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _DigestStatusPill(text: statusText, color: statusColor),
-                  if (markers != null) ...[
-                    SizedBox(height: 8 * scale),
-                    markers!,
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DigestDateLabel extends StatelessWidget {
-  final IconData icon;
-  final String value;
-
-  const _DigestDateLabel({required this.icon, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Icon(icon, size: 14 * scale, color: AppColors.textSecondary),
-        SizedBox(width: 4 * scale),
-        Text(
-          value,
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontFamily: 'Gilroy',
-            fontSize: 12 * textScale,
-            fontWeight: FontWeight.w700,
-            height: 1.1,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DigestStatusPill extends StatelessWidget {
-  final String text;
-  final Color? color;
-
-  const _DigestStatusPill({required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = color ?? context.brandPrimary;
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    final maxWidth = MediaQuery.sizeOf(context).width <= 360
-        ? 96.0
-        : 132 * scale;
-    return Container(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      padding: EdgeInsets.symmetric(
-        horizontal: 10 * scale,
-        vertical: 6 * scale,
-      ),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withValues(alpha: 0.18)),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: _readableStatusTextColor(accent),
-          fontFamily: 'Gilroy',
-          fontSize: 12 * textScale,
-          fontWeight: FontWeight.w900,
-          height: 1.1,
-        ),
-      ),
-    );
-  }
-}
-
-Color _readableStatusTextColor(Color color) {
-  final hsl = HSLColor.fromColor(color);
-  return hsl.withLightness((hsl.lightness * 0.46).clamp(0.18, 0.38)).toColor();
-}
-
-class _TrackDigestMarkers extends StatelessWidget {
-  final TrackItem track;
-
-  const _TrackDigestMarkers({required this.track});
-
-  @override
-  Widget build(BuildContext context) {
-    final activePhoto = track.activePhotoRequest;
-    final hasPhotoMedia =
-        track.photoReportUrls.isNotEmpty ||
-        (activePhoto?.mediaUrls.isNotEmpty ?? false);
-    final photoDone = hasPhotoMedia || activePhoto?.status == 'completed';
-    final photoPending = activePhoto != null && !photoDone;
-
-    final activeQuestion = track.activeQuestion;
-    final questionDone =
-        activeQuestion?.hasAnswer == true ||
-        activeQuestion?.status == 'completed';
-    final questionPending = activeQuestion != null && !questionDone;
-
-    final hasProductInfo = track.productInfo != null;
-
-    final scale = _compactHomeScale(context);
-
-    return SizedBox(
-      width: 89 * scale,
-      height: 24 * scale,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _DigestMarkerIcon(
-            icon: CupertinoIcons.camera_circle,
-            color: _markerColor(
-              context,
-              done: photoDone,
-              pending: photoPending,
-            ),
-          ),
-          SizedBox(width: 5 * scale),
-          _DigestMarkerIcon(
-            icon: CupertinoIcons.info_circle,
-            color: _markerColor(context, done: hasProductInfo, pending: false),
-          ),
-          SizedBox(width: 5 * scale),
-          _DigestMarkerIcon(
-            icon: CupertinoIcons.question_circle,
-            color: _markerColor(
-              context,
-              done: questionDone,
-              pending: questionPending,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DigestMarkerIcon extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-
-  const _DigestMarkerIcon({required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Icon(icon, size: 24 * _compactHomeScale(context), color: color);
-  }
-}
-
 class _DigestStateCard extends StatelessWidget {
   final Widget child;
 
@@ -2997,31 +2747,6 @@ class _DigestStateCard extends StatelessWidget {
       child: child,
     );
   }
-}
-
-String _formatDigestDate(DateTime? value) {
-  if (value == null) return '—';
-  return DateFormat('dd.MM.yy').format(value);
-}
-
-Color? _statusColor(String? hexColor) {
-  if (hexColor == null || hexColor.isEmpty) return null;
-  try {
-    final hex = hexColor.replaceAll('#', '');
-    if (hex.length == 6) return Color(int.parse('FF$hex', radix: 16));
-    if (hex.length == 8) return Color(int.parse(hex, radix: 16));
-  } catch (_) {}
-  return null;
-}
-
-Color _markerColor(
-  BuildContext context, {
-  required bool done,
-  required bool pending,
-}) {
-  if (done) return const Color(0xFF22C55E);
-  if (pending) return context.brandPrimary;
-  return const Color(0x552F2F2F);
 }
 
 class _PhotoThumb extends StatelessWidget {

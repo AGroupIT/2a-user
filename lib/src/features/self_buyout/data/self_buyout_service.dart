@@ -83,6 +83,7 @@ class SelfBuyoutService {
     required String amountEnteredIn, // cny | rub
     required double amount,
     required bool warningAccepted,
+    bool? alipayTopUpExperienced,
     required Uint8List fileBytes,
     required String fileName,
     required String fileMime,
@@ -92,6 +93,8 @@ class SelfBuyoutService {
       'amountEnteredIn': amountEnteredIn,
       'amount': amount.toString(),
       'warningAccepted': warningAccepted.toString(),
+      if (alipayTopUpExperienced != null)
+        'alipayTopUpExperienced': alipayTopUpExperienced.toString(),
     };
     final parts = fileMime.split('/');
     map['transferQr'] = MultipartFile.fromBytes(

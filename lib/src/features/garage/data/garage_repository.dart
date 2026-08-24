@@ -79,6 +79,12 @@ abstract interface class GarageRepository {
     GarageRequestItemInput input,
   );
 
+  Future<String> uploadRequestItemImage({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  });
+
   Future<void> deleteRequestItem(int itemId);
 
   Future<GarageRequest> cancelRequest(int requestId);
@@ -395,6 +401,31 @@ class RemoteGarageRepository implements GarageRepository {
       data: input.toJson(),
     );
     return GarageRequestItem.fromJson(_unwrapMap(data, const ['item', 'data']));
+  }
+
+  @override
+  Future<String> uploadRequestItemImage({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final data = await _client.post(
+      '/client/garage/request-items/image',
+      data: FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+          contentType: _mediaType(mimeType),
+        ),
+      }),
+      headers: const {'Content-Type': 'multipart/form-data'},
+    );
+    final payload = _unwrapMap(data, const ['data']);
+    final url = payload['url']?.toString().trim();
+    if (url == null || url.isEmpty) {
+      throw const FormatException('Garage item image URL is missing');
+    }
+    return url;
   }
 
   @override

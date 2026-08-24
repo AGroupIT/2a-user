@@ -5,6 +5,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
+const trackWarehouseArrivalCooldownCode = 'TRACK_WAREHOUSE_ARRIVAL_COOLDOWN';
+
+class AssemblyCreateResult {
+  const AssemblyCreateResult._({this.assembly, this.errorCode, this.message});
+
+  final Assembly? assembly;
+  final String? errorCode;
+  final String? message;
+
+  bool get isSuccess => assembly != null;
+
+  factory AssemblyCreateResult.success(Assembly assembly) =>
+      AssemblyCreateResult._(assembly: assembly);
+
+  factory AssemblyCreateResult.failure({String? errorCode, String? message}) =>
+      AssemblyCreateResult._(errorCode: errorCode, message: message);
+
+  factory AssemblyCreateResult.fromErrorData(dynamic data) {
+    if (data is! Map) return AssemblyCreateResult.failure();
+    return AssemblyCreateResult.failure(
+      errorCode: data['code']?.toString() ?? data['error']?.toString(),
+      message: data['message']?.toString(),
+    );
+  }
+}
+
 /// Модель сборки
 class Assembly {
   final int id;
@@ -252,7 +278,7 @@ class AssembliesApiService {
   ApiClient get _apiClient => _ref.read(apiClientProvider);
 
   /// Создать сборку (статус = new)
-  Future<Assembly?> createAssembly({
+  Future<AssemblyCreateResult> createAssembly({
     required int clientId,
     int? clientCodeId,
     String? clientCode,
@@ -293,12 +319,12 @@ class AssembliesApiService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
-        return Assembly.fromJson(data);
+        return AssemblyCreateResult.success(Assembly.fromJson(data));
       }
-      return null;
+      return AssemblyCreateResult.failure();
     } on DioException catch (e) {
       debugPrint('Error creating assembly: $e');
-      return null;
+      return AssemblyCreateResult.fromErrorData(e.response?.data);
     }
   }
 

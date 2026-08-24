@@ -25,6 +25,27 @@ void main() {
     expect(availability.minCny, 100);
   });
 
+  test('availability parses first Alipay exchange answer and maximum', () {
+    final availability = SelfBuyoutAvailability.fromJson({
+      'available': true,
+      'limits': {'minCny': 100, 'maxCny': 1000},
+      'firstExchange': {
+        'active': true,
+        'showOnboarding': true,
+        'alipayTopUpExperienced': false,
+        'requiresAlipayExperienceAnswer': false,
+        'inexperiencedMaxCny': 1000,
+      },
+    });
+
+    expect(availability.firstExchangeActive, isTrue);
+    expect(availability.showFirstExchangeOnboarding, isTrue);
+    expect(availability.alipayTopUpExperienced, isFalse);
+    expect(availability.requiresAlipayExperienceAnswer, isFalse);
+    expect(availability.maxCny, 1000);
+    expect(availability.firstExchangeInexperiencedMaxCny, 1000);
+  });
+
   test('availability parses exchange operator sleep status', () {
     final availability = SelfBuyoutAvailability.fromJson({
       'available': true,

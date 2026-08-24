@@ -13,7 +13,7 @@ import '../data/self_buyout_models.dart';
 import '../data/self_buyout_service.dart';
 import 'self_buyout_ui.dart';
 
-enum SelfBuyoutDetailAction { continuePayment, correctRequisites }
+enum SelfBuyoutDetailAction { continuePayment, correctRequisites, cancel }
 
 class SelfBuyoutDetailSheet extends ConsumerStatefulWidget {
   final SelfBuyoutRequest request;
@@ -126,6 +126,7 @@ class _SelfBuyoutDetailSheetState extends ConsumerState<SelfBuyoutDetailSheet> {
     final canContinuePayment =
         currentRequest.status == 'new' ||
         currentRequest.status == 'awaiting_payment';
+    final canCancel = currentRequest.status == 'awaiting_payment';
     final canCorrectRequisites =
         _detail?.cancellation?.canCorrectRequisites == true;
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
@@ -174,12 +175,36 @@ class _SelfBuyoutDetailSheetState extends ConsumerState<SelfBuyoutDetailSheet> {
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
               child: canContinuePayment
-                  ? SelfBuyoutPrimaryButton(
-                      label: tr(context, ru: 'Продолжить оплату', zh: '继续付款'),
-                      icon: Icons.qr_code_2_rounded,
-                      onTap: () => Navigator.of(
-                        context,
-                      ).pop(SelfBuyoutDetailAction.continuePayment),
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SelfBuyoutPrimaryButton(
+                          label: tr(
+                            context,
+                            ru: 'Продолжить оплату',
+                            zh: '继续付款',
+                          ),
+                          icon: Icons.qr_code_2_rounded,
+                          onTap: () => Navigator.of(
+                            context,
+                          ).pop(SelfBuyoutDetailAction.continuePayment),
+                        ),
+                        if (canCancel) ...[
+                          const SizedBox(height: 10),
+                          SelfBuyoutSecondaryButton(
+                            label: tr(
+                              context,
+                              ru: 'Отменить заявку',
+                              zh: '取消申请',
+                            ),
+                            icon: Icons.delete_outline_rounded,
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(SelfBuyoutDetailAction.cancel),
+                          ),
+                        ],
+                      ],
                     )
                   : canCorrectRequisites
                   ? SelfBuyoutPrimaryButton(

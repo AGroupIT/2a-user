@@ -37,6 +37,7 @@ class ImageCompressor {
     int maxSide = _defaultMaxSide,
     int quality = _defaultQuality,
     CompressFormat preferredFormat = CompressFormat.webp,
+    bool forceTranscode = false,
   }) async {
     if (sourceBytes.isEmpty) {
       return (
@@ -49,7 +50,7 @@ class ImageCompressor {
     // Маленькие картинки (<500KB) не трогаем — экономия сомнительна,
     // а сжатие может дать итог БОЛЬШЕ оригинала (для уже сжатых
     // скриншотов, мелких фото с невысоким разрешением).
-    if (sourceBytes.lengthInBytes < 500 * 1024) {
+    if (!forceTranscode && sourceBytes.lengthInBytes < 500 * 1024) {
       return _pickFallbackTypeFromName(sourceBytes, sourceName);
     }
 
@@ -58,6 +59,7 @@ class ImageCompressor {
       format: preferredFormat,
       maxSide: maxSide,
       quality: quality,
+      requireSmaller: !forceTranscode,
     );
     if (preferred != null) return preferred;
 
@@ -69,6 +71,7 @@ class ImageCompressor {
         format: CompressFormat.jpeg,
         maxSide: maxSide,
         quality: quality,
+        requireSmaller: !forceTranscode,
       );
       if (jpegFallback != null) return jpegFallback;
     }
@@ -82,6 +85,7 @@ class ImageCompressor {
     required CompressFormat format,
     required int maxSide,
     required int quality,
+    bool requireSmaller = true,
   }) async {
     try {
       final compressed = await FlutterImageCompress.compressWithList(
@@ -94,7 +98,7 @@ class ImageCompressor {
       );
 
       if (compressed.isEmpty ||
-          compressed.length >= sourceBytes.lengthInBytes) {
+          (requireSmaller && compressed.length >= sourceBytes.lengthInBytes)) {
         return null;
       }
 

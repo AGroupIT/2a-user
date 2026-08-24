@@ -234,8 +234,6 @@ class _TrackWarehouseDeliveryPanelState
               icon: Icons.error_outline_rounded,
               color: Colors.red.shade700,
               text: _errorText(context),
-              actionLabel: tr(context, ru: 'Повторить запрос', zh: '重新查询'),
-              onAction: () => _request(automatic: false),
             )
           else if (delivery.isWaiting)
             _MessageCard(
@@ -261,7 +259,9 @@ class _TrackWarehouseDeliveryPanelState
             const SizedBox(height: 12),
             _RefreshButton(
               loading: _requesting,
-              label: delivery.trace.isEmpty
+              label: _errorCode != null || delivery.lastError != null
+                  ? tr(context, ru: 'Повторить запрос', zh: '重新查询')
+                  : delivery.trace.isEmpty
                   ? tr(context, ru: 'Получить информацию', zh: '获取物流信息')
                   : tr(context, ru: 'Проверить обновления', zh: '检查更新'),
               onPressed: () => _request(automatic: false),

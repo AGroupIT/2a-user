@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/utils/image_compressor.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -40,6 +43,7 @@ class _GarageRequestFormScreenState
   String? _loadError;
 
   bool get _isEditing => widget.requestId != null;
+  bool get _uploadingImages => _items.any((item) => item.uploadingImage);
 
   @override
   void initState() {
@@ -70,6 +74,52 @@ class _GarageRequestFormScreenState
     }
     removed.dispose();
     setState(() {});
+  }
+
+  Future<void> _pickPartImage(_PartDraft draft) async {
+    if (_saving || draft.uploadingImage) return;
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 2200,
+      maxHeight: 2200,
+    );
+    if (image == null) return;
+    setState(() => draft.uploadingImage = true);
+    try {
+      final sourceBytes = await image.readAsBytes();
+      final sourceMimeType =
+          image.mimeType ?? _garagePartImageMimeType(image.name);
+      final needsTranscode = !const {
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+      }.contains(sourceMimeType.toLowerCase());
+      final prepared = await ImageCompressor.compressForUpload(
+        sourceBytes,
+        sourceName: image.name,
+        maxSide: 2200,
+        quality: 85,
+        forceTranscode: needsTranscode,
+      );
+      final originalBaseName = image.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
+      final url = await ref
+          .read(garageRepositoryProvider)
+          .uploadRequestItemImage(
+            bytes: prepared.bytes,
+            fileName: '$originalBaseName.${prepared.extension}',
+            mimeType: prepared.mimeType,
+          );
+      if (!mounted) return;
+      setState(() {
+        draft.imageUrl = url;
+        draft.uploadingImage = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => draft.uploadingImage = false);
+      _show('Не удалось загрузить изображение детали', error: true);
+    }
   }
 
   Future<void> _initialize() async {
@@ -115,7 +165,9 @@ class _GarageRequestFormScreenState
   }
 
   Future<void> _persist({required bool submit}) async {
-    if (_saving || !_formKey.currentState!.validate()) return;
+    if (_saving || _uploadingImages || !_formKey.currentState!.validate()) {
+      return;
+    }
     if (_vehicleId == null) {
       _show('Выберите автомобиль', error: true);
       return;
@@ -288,6 +340,9 @@ class _GarageRequestFormScreenState
               draft: _items[index],
               canRemove: _items.length > 1,
               enabled: !_saving,
+              onPickImage: () => _pickPartImage(_items[index]),
+              onRemoveImage: () =>
+                  setState(() => _items[index].imageUrl = null),
               onRemove: () => _removeItem(index),
             ),
             const SizedBox(height: 12),
@@ -306,14 +361,18 @@ class _GarageRequestFormScreenState
                     ? 'Сохранить изменения'
                     : 'Сохранить черновик',
                 icon: Icons.save_outlined,
-                onPressed: _saving ? null : () => _persist(submit: false),
+                onPressed: _saving || _uploadingImages
+                    ? null
+                    : () => _persist(submit: false),
               );
               final submitButton = GaragePrimaryButton(
                 label: _isEditing
                     ? 'Сохранить и отправить'
                     : 'Отправить заявку',
                 icon: Icons.send_rounded,
-                onPressed: () => _persist(submit: true),
+                onPressed: _uploadingImages
+                    ? null
+                    : () => _persist(submit: true),
                 loading: _saving,
               );
               if (compact) {
@@ -346,6 +405,8 @@ class _PartCard extends StatefulWidget {
   final bool canRemove;
   final bool enabled;
   final VoidCallback onRemove;
+  final VoidCallback onPickImage;
+  final VoidCallback onRemoveImage;
 
   const _PartCard({
     required this.index,
@@ -353,6 +414,8 @@ class _PartCard extends StatefulWidget {
     required this.canRemove,
     required this.enabled,
     required this.onRemove,
+    required this.onPickImage,
+    required this.onRemoveImage,
   });
 
   @override
@@ -390,6 +453,14 @@ class _PartCardState extends State<_PartCard> {
             ],
           ),
           const SizedBox(height: 8),
+          _PartImageField(
+            imageUrl: draft.imageUrl,
+            uploading: draft.uploadingImage,
+            enabled: widget.enabled,
+            onPick: widget.onPickImage,
+            onRemove: widget.onRemoveImage,
+          ),
+          const SizedBox(height: 11),
           TextFormField(
             controller: draft.name,
             enabled: widget.enabled,
@@ -406,14 +477,14 @@ class _PartCardState extends State<_PartCard> {
           ),
           const SizedBox(height: 11),
           TextFormField(
-            controller: draft.existUrl,
+            controller: draft.russiaAnalogueUrl,
             enabled: widget.enabled,
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
-              labelText: 'Ссылка Exist.ru *',
-              hintText: 'https://exist.ru/...',
+              labelText: 'Аналогичный товар в России',
+              hintText: 'Необязательная ссылка на любой сайт',
             ),
-            validator: _validateExistUrl,
+            validator: _validateOptionalWebUrl,
           ),
           const SizedBox(height: 11),
           GaragePartPreferencePickerField(
@@ -481,7 +552,9 @@ class _PartDraft {
   final int? itemId;
   final TextEditingController name;
   final TextEditingController number;
-  final TextEditingController existUrl;
+  final TextEditingController russiaAnalogueUrl;
+  String? imageUrl;
+  bool uploadingImage = false;
   final TextEditingController quantity;
   final TextEditingController side;
   final TextEditingController position;
@@ -493,7 +566,10 @@ class _PartDraft {
     : itemId = item?.id,
       name = TextEditingController(text: item?.partName ?? ''),
       number = TextEditingController(text: item?.partNumber ?? ''),
-      existUrl = TextEditingController(text: item?.existUrl ?? ''),
+      russiaAnalogueUrl = TextEditingController(
+        text: item?.russiaAnalogueUrl ?? '',
+      ),
+      imageUrl = item?.imageUrl,
       quantity = TextEditingController(text: '${item?.quantity ?? 1}'),
       side = TextEditingController(text: item?.side ?? ''),
       position = TextEditingController(text: item?.position ?? ''),
@@ -510,7 +586,8 @@ class _PartDraft {
       partName: name.text,
       partNumber: number.text,
       preference: preference,
-      existUrl: existUrl.text,
+      russiaAnalogueUrl: russiaAnalogueUrl.text,
+      imageUrl: imageUrl,
       quantity: int.parse(quantity.text),
       side: side.text,
       position: position.text,
@@ -522,7 +599,7 @@ class _PartDraft {
   void dispose() {
     name.dispose();
     number.dispose();
-    existUrl.dispose();
+    russiaAnalogueUrl.dispose();
     quantity.dispose();
     side.dispose();
     position.dispose();
@@ -534,12 +611,127 @@ String? _required(String? value) {
   return value?.trim().isNotEmpty == true ? null : 'Обязательное поле';
 }
 
-String? _validateExistUrl(String? value) {
-  final uri = Uri.tryParse(value?.trim() ?? '');
-  final host = uri?.host.toLowerCase() ?? '';
-  if (uri?.scheme != 'https' ||
-      (host != 'exist.ru' && !host.endsWith('.exist.ru'))) {
-    return 'Укажите HTTPS-ссылку Exist.ru';
+String? _validateOptionalWebUrl(String? value) {
+  final normalized = value?.trim() ?? '';
+  if (normalized.isEmpty) return null;
+  final uri = Uri.tryParse(normalized);
+  if (uri == null ||
+      (uri.scheme != 'http' && uri.scheme != 'https') ||
+      uri.host.isEmpty) {
+    return 'Укажите корректную ссылку http:// или https://';
   }
   return null;
+}
+
+String _garagePartImageMimeType(String fileName) {
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  if (lower.endsWith('.heif')) return 'image/heif';
+  return 'image/jpeg';
+}
+
+class _PartImageField extends StatelessWidget {
+  final String? imageUrl;
+  final bool uploading;
+  final bool enabled;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  const _PartImageField({
+    required this.imageUrl,
+    required this.uploading,
+    required this.enabled,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl?.trim().isNotEmpty == true;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE4E7EC)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 72,
+              height: 72,
+              child: uploading
+                  ? const ColoredBox(
+                      color: Colors.white,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : hasImage
+                  ? Image.network(
+                      ApiConfig.getMediaThumbnailUrl(imageUrl!, size: 360),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: Colors.white,
+                        child: Icon(Icons.broken_image_outlined),
+                      ),
+                    )
+                  : const ColoredBox(
+                      color: Colors.white,
+                      child: Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Изображение детали',
+                  style: TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Поможет менеджеру точнее подобрать запчасть',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    TextButton.icon(
+                      onPressed: enabled && !uploading ? onPick : null,
+                      icon: Icon(
+                        hasImage ? Icons.refresh_rounded : Icons.add_rounded,
+                        size: 17,
+                      ),
+                      label: Text(hasImage ? 'Заменить' : 'Добавить'),
+                    ),
+                    if (hasImage)
+                      TextButton(
+                        onPressed: enabled && !uploading ? onRemove : null,
+                        child: const Text('Удалить'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
