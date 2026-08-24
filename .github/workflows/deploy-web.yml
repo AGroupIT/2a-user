@@ -16,6 +16,8 @@ jobs:
     name: Build and Deploy Web
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
 
     steps:
       - name: Checkout repository
@@ -94,10 +96,10 @@ jobs:
           retention-days: 7
 
       - name: Deploy to FTP
-        if: ${{ secrets.FTP_HOST != '' }}
+        if: ${{ env.FTP_HOST != '' }}
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_HOST }}
+          server: ${{ env.FTP_HOST }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: build/web/
