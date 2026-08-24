@@ -36,7 +36,7 @@ jobs:
           repository: ${{ env.SHARED_REPOSITORY }}
           ref: main
           path: ${{ env.SHARED_DIR }}
-          token: ${{ secrets.SHARED_REPO_TOKEN }}
+          ssh-key: ${{ secrets.SHARED_REPO_SSH_KEY }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
