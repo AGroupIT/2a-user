@@ -21,4 +21,24 @@ void main() {
     expect(result.errorCode, isNull);
     expect(result.message, isNull);
   });
+
+  test('uses legacy backend error text as a user-facing message', () {
+    final result = AssemblyCreateResult.fromErrorData({
+      'error': 'Укажите список товаров в сборке',
+    });
+
+    expect(result.errorCode, isNull);
+    expect(result.message, 'Укажите список товаров в сборке');
+  });
+
+  test('prefers structured backend code and message', () {
+    final result = AssemblyCreateResult.fromErrorData({
+      'error': 'legacy fallback',
+      'code': 'ASSEMBLY_PRODUCT_INFO_REQUIRED',
+      'message': 'Укажите список товаров в сборке',
+    });
+
+    expect(result.errorCode, 'ASSEMBLY_PRODUCT_INFO_REQUIRED');
+    expect(result.message, 'Укажите список товаров в сборке');
+  });
 }

@@ -24,9 +24,15 @@ class AssemblyCreateResult {
 
   factory AssemblyCreateResult.fromErrorData(dynamic data) {
     if (data is! Map) return AssemblyCreateResult.failure();
+    final error = data['error']?.toString().trim();
+    final code = data['code']?.toString().trim();
+    final structuredMessage = data['message']?.toString().trim();
+    final message = structuredMessage?.isNotEmpty == true
+        ? structuredMessage
+        : (error?.isNotEmpty == true ? error : null);
     return AssemblyCreateResult.failure(
-      errorCode: data['code']?.toString() ?? data['error']?.toString(),
-      message: data['message']?.toString(),
+      errorCode: code?.isNotEmpty == true ? code : null,
+      message: message,
     );
   }
 }

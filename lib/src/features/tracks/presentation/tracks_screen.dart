@@ -3429,10 +3429,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       } else {
         if (!context.mounted) return;
         final message =
-            createResult.errorCode == trackWarehouseArrivalCooldownCode
-            ? (createResult.message ??
-                  'Этот трек только поступил на склад. Отправить его можно завтра.')
-            : 'Ошибка создания сборки';
+            createResult.message ??
+            (createResult.errorCode == trackWarehouseArrivalCooldownCode
+                ? 'Этот трек только поступил на склад. Отправить его можно завтра.'
+                : 'Ошибка создания сборки');
         _showStyledSnackBar(context, message, isError: true);
       }
     }
