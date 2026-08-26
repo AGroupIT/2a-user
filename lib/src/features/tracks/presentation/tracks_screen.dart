@@ -50,6 +50,25 @@ const _clientCodeTransferQuestionType = 'client_code_transfer';
 const _unknownTrackQuestionText =
     'Не знаю что это за трек номер, могли бы проверить и код клиента и трек номер';
 
+bool _canSelectTrackForAssembly(
+  TrackItem track,
+  Set<String> locallyRequestedReturns,
+) =>
+    track.isAvailableForAssemblySelection &&
+    !locallyRequestedReturns.contains(track.code) &&
+    track.statusCode != 'return_requested';
+
+String? _assemblySelectionHint(
+  TrackItem track,
+  Set<String> locallyRequestedReturns,
+) {
+  if (locallyRequestedReturns.contains(track.code) ||
+      track.statusCode == 'return_requested') {
+    return 'По треку запрошен возврат';
+  }
+  return track.assemblySelectionHint;
+}
+
 /// Парсит HEX цвет из строки (например "#FF5733" или "FF5733")
 Color? parseHexColor(String? hexString) {
   if (hexString == null || hexString.isEmpty) return null;
@@ -1202,7 +1221,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final trackId = track.id;
       if (trackId == null) return;
 
-      setState(() => _returnRequestedTracks.add(track.code));
+      setState(() {
+        _returnRequestedTracks.add(track.code);
+        _selectedTracks.remove(track.code);
+        if (_selectedTracks.isEmpty) _selectedStatus = null;
+      });
 
       final apiService = ref.read(tracksApiServiceProvider);
       final success = await apiService.createTrackReturn(
@@ -1406,7 +1429,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     String returnCode,
   ) async {
     if (track.id == null || returnCode.trim().isEmpty) return false;
-    setState(() => _returnRequestedTracks.add(track.code));
+    setState(() {
+      _returnRequestedTracks.add(track.code);
+      _selectedTracks.remove(track.code);
+      if (_selectedTracks.isEmpty) _selectedStatus = null;
+    });
     final success = await ref
         .read(tracksApiServiceProvider)
         .createTrackReturn(trackId: track.id!, returnCode: returnCode.trim());
@@ -3237,6 +3264,31 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           .where((t) => _selectedTracks.contains(t.code) && t.id != null)
           .toList();
 
+      final blockedSelectedTracks = selectedTracks
+          .where(
+            (track) =>
+                !_canSelectTrackForAssembly(track, _returnRequestedTracks),
+          )
+          .toList();
+      if (blockedSelectedTracks.isNotEmpty) {
+        setState(() {
+          _selectedTracks.removeAll(
+            blockedSelectedTracks.map((track) => track.code),
+          );
+          if (_selectedTracks.isEmpty) _selectedStatus = null;
+        });
+        final hint = _assemblySelectionHint(
+          blockedSelectedTracks.first,
+          _returnRequestedTracks,
+        );
+        _showStyledSnackBar(
+          context,
+          hint ?? 'Часть треков больше нельзя добавить в сборку',
+          isError: true,
+        );
+        return;
+      }
+
       final selectedTrackIds = selectedTracks.map((t) => t.id!).toList();
 
       // Проверяем наличие незавершённых задач (вопросы/фотоотчёты)
@@ -4800,7 +4852,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   void _toggleTrack(TrackItem track) {
     final status = track.status;
-    if (!_selectableStatuses.contains(status)) return;
+    if (!_selectableStatuses.contains(status) ||
+        (status == 'На складе' &&
+            !_canSelectTrackForAssembly(track, _returnRequestedTracks))) {
+      final hint = _assemblySelectionHint(track, _returnRequestedTracks);
+      if (hint != null) _showStyledSnackBar(context, hint, isError: true);
+      return;
+    }
 
     setState(() {
       if (_selectedTracks.contains(track.code)) {
@@ -4846,7 +4904,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     }
 
     final allWithStatus = notifier.state.tracks
-        .where((t) => t.status == selectedStatus)
+        .where(
+          (t) =>
+              t.status == selectedStatus &&
+              (selectedStatus != 'На складе' ||
+                  _canSelectTrackForAssembly(t, _returnRequestedTracks)),
+        )
         .map((t) => t.code)
         .toSet();
 
@@ -8319,7 +8382,12 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
             ...widget.tracks.asMap().entries.map((entry) {
               final index = entry.key;
               final track = entry.value;
-              final canSelect = track.status == 'На складе';
+              final canSelect =
+                  track.status == 'На складе' &&
+                  _canSelectTrackForAssembly(
+                    track,
+                    widget.returnRequestedTracks,
+                  );
               final allowedByStatus =
                   widget.selectedStatus == null ||
                   widget.selectedStatus == track.status;
@@ -8616,7 +8684,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     TrackItem track, {
     bool embeddedInAssembly = false,
   }) {
-    final canSelect = track.status == 'На складе';
+    final canSelect =
+        track.status == 'На складе' &&
+        _canSelectTrackForAssembly(track, widget.returnRequestedTracks);
     final allowedByStatus =
         widget.selectedStatus == null || widget.selectedStatus == track.status;
     final canShowCheckbox =

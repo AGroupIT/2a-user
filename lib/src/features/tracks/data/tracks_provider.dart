@@ -12,6 +12,51 @@ import '../../../core/services/websocket_provider.dart';
 import '../../shell/application/shell_branch_provider.dart';
 import '../domain/track_item.dart';
 
+/// Загружает полный список треков клиента для экспорта, независимо от того,
+/// сколько страниц пользователь успел открыть на экране.
+Future<List<TrackItem>> fetchAllTracksForExport(
+  ApiClient apiClient,
+  String clientCode, {
+  int batchSize = 200,
+  int safetyLimit = 50000,
+}) async {
+  final tracks = <TrackItem>[];
+  var skip = 0;
+
+  while (tracks.length < safetyLimit) {
+    final response = await apiClient.get(
+      '/tracks',
+      queryParameters: {
+        'clientCode': clientCode,
+        'take': batchSize,
+        'skip': skip,
+        'sortBy': 'createdAt',
+      },
+    );
+    final payload = response.data as Map<String, dynamic>? ?? const {};
+    final items = payload['data'] as List<dynamic>? ?? const [];
+    final batch = items
+        .whereType<Map<String, dynamic>>()
+        .map(TrackItem.fromJson)
+        .toList();
+
+    tracks.addAll(batch);
+    if (batch.isEmpty) break;
+
+    final total = payload['total'] as int?;
+    final hasMore = payload['hasMore'] as bool?;
+    final isComplete =
+        hasMore == false ||
+        (total != null && tracks.length >= total) ||
+        (hasMore == null && total == null && batch.length < batchSize);
+    if (isComplete) break;
+
+    skip += batch.length;
+  }
+
+  return tracks;
+}
+
 // ==================== Status Model ====================
 
 /// Модель статуса из БД

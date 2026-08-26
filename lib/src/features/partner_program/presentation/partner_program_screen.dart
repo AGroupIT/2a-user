@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
@@ -76,11 +77,12 @@ class _PartnerProgramScreenState extends ConsumerState<PartnerProgramScreen> {
   }
 
   void _shareInvite(String inviteUrl) {
+    final companyName = ref.read(companyNameProvider);
     Share.share(
       tr(
         context,
-        ru: 'Зарегистрируйтесь в 2A Logistic по моей ссылке: $inviteUrl',
-        zh: '通过我的邀请链接注册 2A Logistic：$inviteUrl',
+        ru: 'Зарегистрируйтесь в $companyName по моей ссылке: $inviteUrl',
+        zh: '通过我的邀请链接注册 $companyName：$inviteUrl',
       ),
     );
   }
@@ -167,8 +169,6 @@ class _PartnerProgramScreenState extends ConsumerState<PartnerProgramScreen> {
                     ),
                     const SizedBox(height: 14),
                     _PartnerMetricsCard(data: data),
-                    const SizedBox(height: 14),
-                    _PartnerTermsCard(data: data),
                     const SizedBox(height: 14),
                     KeyedSubtree(
                       key: _payoutsKey,
@@ -274,98 +274,29 @@ class _PartnerProgramHero extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.handshake_rounded,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 13),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              tr(
-                                context,
-                                ru: 'Ваш партнёрский кабинет',
-                                zh: '您的合作伙伴中心',
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'Gilroy',
-                                fontSize: 22,
-                                height: 1.08,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              data.partnerCode.isEmpty
-                                  ? tr(
-                                      context,
-                                      ru: 'Код партнёра не указан',
-                                      zh: '未设置合作伙伴代码',
-                                    )
-                                  : '${tr(context, ru: 'Код партнёра', zh: '合作伙伴代码')}: ${data.partnerCode}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.78),
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
+                        child: _PartnerHeroValue(
+                          label: tr(
+                            context,
+                            ru: 'Партнёрский префикс',
+                            zh: '合作伙伴前缀',
+                          ),
+                          value: data.prefix ?? '—',
+                          icon: Icons.badge_rounded,
                         ),
                       ),
-                      _PartnerStatusChip(active: data.active),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    tr(context, ru: 'Доступно к выплате', zh: '可提现金额'),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.74),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    _usd(data.payableUsd),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontFamily: 'Gilroy',
-                      fontSize: 32,
-                      height: 1,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 13),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _HeroInfoChip(
-                        icon: Icons.stacked_line_chart_rounded,
-                        label:
-                            '${tr(context, ru: 'За всё время', zh: '累计收益')} ${_usd(data.lifetimeEarnedUsd)}',
-                      ),
-                      _HeroInfoChip(
-                        icon: Icons.group_rounded,
-                        label:
-                            '${data.registeredCount} ${tr(context, ru: 'клиентов', zh: '位客户')}',
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PartnerHeroValue(
+                          label: tr(
+                            context,
+                            ru: 'Доступно к выплате',
+                            zh: '可提现金额',
+                          ),
+                          value: _usd(data.payableUsd),
+                          icon: Icons.payments_rounded,
+                        ),
                       ),
                     ],
                   ),
@@ -379,64 +310,53 @@ class _PartnerProgramHero extends StatelessWidget {
   }
 }
 
-class _PartnerStatusChip extends StatelessWidget {
-  const _PartnerStatusChip({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: active ? 0.18 : 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-      ),
-      child: Text(
-        active
-            ? tr(context, ru: 'Активна', zh: '已启用')
-            : tr(context, ru: 'Отключена', zh: '已停用'),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _HeroInfoChip extends StatelessWidget {
-  const _HeroInfoChip({required this.icon, required this.label});
+class _PartnerHeroValue extends StatelessWidget {
+  const _PartnerHeroValue({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: Colors.white, size: 15),
-          const SizedBox(width: 6),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.74),
+              fontSize: 10.5,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontSize: 21,
+              height: 1,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -481,8 +401,8 @@ class _PartnerInviteCard extends StatelessWidget {
                   )
                 : tr(
                     context,
-                    ru: 'Отправьте эту ссылку новому клиенту. Регистрация автоматически будет закреплена за вами.',
-                    zh: '将此链接发送给新客户，注册后客户将自动关联到您。',
+                    ru: 'Скопируйте приглашение или сразу поделитесь им. Регистрация нового клиента автоматически будет закреплена за вами.',
+                    zh: '复制邀请或直接分享，新客户注册后将自动关联到您。',
                   ),
             style: const TextStyle(
               color: AppColors.textSecondary,
@@ -493,70 +413,24 @@ class _PartnerInviteCard extends StatelessWidget {
           ),
           if (inviteUrl != null) ...[
             const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: context.brandPrimary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: context.brandPrimary.withValues(alpha: 0.14),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => onCopy(inviteUrl),
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    label: Text(
+                      tr(context, ru: 'Копировать ссылку', zh: '复制链接'),
+                    ),
+                  ),
                 ),
-              ),
-              child: SelectableText(
-                inviteUrl,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 12.5,
-                  height: 1.35,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (data.shortCode != null) ...[
-              const SizedBox(height: 9),
-              Text(
-                '${tr(context, ru: 'Короткий код', zh: '短代码')}: ${data.shortCode}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final copyButton = FilledButton.icon(
-                  onPressed: () => onCopy(inviteUrl),
-                  icon: const Icon(Icons.copy_rounded, size: 18),
-                  label: Text(tr(context, ru: 'Копировать', zh: '复制')),
-                );
-                final shareButton = OutlinedButton.icon(
+                const SizedBox(width: 9),
+                IconButton.outlined(
                   onPressed: () => onShare(inviteUrl),
-                  icon: const Icon(Icons.ios_share_rounded, size: 18),
-                  label: Text(tr(context, ru: 'Поделиться', zh: '分享')),
-                );
-
-                if (constraints.maxWidth < 300) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      copyButton,
-                      const SizedBox(height: 8),
-                      shareButton,
-                    ],
-                  );
-                }
-
-                return Row(
-                  children: [
-                    Expanded(child: copyButton),
-                    const SizedBox(width: 9),
-                    Expanded(child: shareButton),
-                  ],
-                );
-              },
+                  tooltip: tr(context, ru: 'Поделиться', zh: '分享'),
+                  icon: const Icon(Icons.ios_share_rounded, size: 20),
+                ),
+              ],
             ),
           ],
         ],
@@ -597,6 +471,13 @@ class _PartnerMetricsCard extends StatelessWidget {
         tr(context, ru: 'Выплачено', zh: '已支付'),
         _usd(data.paidUsd),
         Icons.check_circle_rounded,
+      ),
+      _MetricData(
+        tr(context, ru: 'Ставка', zh: '费率'),
+        data.rateUsdPerKg == null
+            ? '—'
+            : '${data.rateUsdPerKg!.toStringAsFixed(4)} USD/кг',
+        Icons.percent_rounded,
       ),
     ];
 
@@ -685,95 +566,6 @@ class _PartnerMetric extends StatelessWidget {
               fontSize: 10.5,
               height: 1.15,
               fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PartnerTermsCard extends StatelessWidget {
-  const _PartnerTermsCard({required this.data});
-
-  final ClientPartnerProgramData data;
-
-  @override
-  Widget build(BuildContext context) {
-    final rate = data.rateUsdPerKg;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _programCardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeading(
-            icon: Icons.rule_folder_rounded,
-            title: tr(context, ru: 'Условия начисления', zh: '佣金规则'),
-          ),
-          const SizedBox(height: 12),
-          _TermsRow(
-            label: tr(context, ru: 'Префикс клиентов', zh: '客户前缀'),
-            value: data.prefix ?? '—',
-          ),
-          const SizedBox(height: 9),
-          _TermsRow(
-            label: tr(context, ru: 'Ставка', zh: '费率'),
-            value: rate == null ? '—' : '${rate.toStringAsFixed(4)} USD/кг',
-          ),
-          const SizedBox(height: 12),
-          Text(
-            tr(
-              context,
-              ru: 'Начисления рассчитываются сервером по фактически оплаченным перевозкам приглашённых клиентов.',
-              zh: '佣金由服务器根据受邀客户实际支付的运输费用计算。',
-            ),
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TermsRow extends StatelessWidget {
-  const _TermsRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w900,
             ),
           ),
         ],

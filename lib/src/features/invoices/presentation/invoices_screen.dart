@@ -18,13 +18,13 @@ import '../../../core/ui/status_timeline_sheet.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/bank_qr_payment_screen.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../assemblies/domain/box.dart';
 import '../../photos/domain/photo_item.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../referral/data/referral_provider.dart';
@@ -1475,16 +1475,8 @@ class _InvoiceFilterChip extends StatelessWidget {
 
 class _InvoiceDetailSummaryCard extends StatelessWidget {
   final InvoiceItem item;
-  final Color? statusColor;
-  final VoidCallback onStatusTap;
-  final VoidCallback onCopyNumber;
 
-  const _InvoiceDetailSummaryCard({
-    required this.item,
-    required this.statusColor,
-    required this.onStatusTap,
-    required this.onCopyNumber,
-  });
+  const _InvoiceDetailSummaryCard({required this.item});
 
   @override
   Widget build(BuildContext context) {
@@ -1502,126 +1494,50 @@ class _InvoiceDetailSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Номер счёта',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 11.5,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            item.invoiceNumber,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 20,
-                              height: 1.04,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.25,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          child: InkWell(
-                            onTap: onCopyNumber,
-                            borderRadius: BorderRadius.circular(10),
-                            child: SizedBox(
-                              width: 30,
-                              height: 30,
-                              child: Icon(
-                                Icons.copy_rounded,
-                                size: 16,
-                                color: context.brandPrimary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onStatusTap,
-                child: _InvoiceCardStatusPill(
-                  text: item.statusName ?? item.status,
-                  color: statusColor,
-                ),
-              ),
-            ],
+          const Text(
+            'Стоимость в долларах',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
+          Text(
+            amountUsd,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 31,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.65,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Стоимость в долларах',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 11.5,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      amountUsd,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 31,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.65,
-                      ),
-                    ),
-                  ],
+                child: _InvoiceSmallAmount(
+                  label: 'Стоимость в рублях',
+                  value: item.totalCostRub > 0
+                      ? '${money.format(item.totalCostRub.round())} ₽'
+                      : '—',
                 ),
               ),
-              if (item.totalCostRub > 0 || item.totalCostCny > 0)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (item.totalCostRub > 0)
-                      _InvoiceSmallAmount(
-                        label: '${money.format(item.totalCostRub.round())} ₽',
-                      ),
-                    if (item.totalCostCny > 0) ...[
-                      const SizedBox(height: 5),
-                      _InvoiceSmallAmount(
-                        label: '¥${money.format(item.totalCostCny.round())}',
-                      ),
-                    ],
-                  ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: _InvoiceSmallAmount(
+                  label: 'Стоимость в юанях',
+                  value: item.totalCostCny > 0
+                      ? '¥${money.format(item.totalCostCny.round())}'
+                      : '—',
                 ),
+              ),
             ],
           ),
         ],
@@ -1632,26 +1548,47 @@ class _InvoiceDetailSummaryCard extends StatelessWidget {
 
 class _InvoiceSmallAmount extends StatelessWidget {
   final String label;
+  final String value;
 
-  const _InvoiceSmallAmount({required this.label});
+  const _InvoiceSmallAmount({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontFamily: 'Gilroy',
-          fontSize: 12.2,
-          height: 1,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Gilroy',
+              fontSize: 10.5,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 14,
+              height: 1,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1961,80 +1898,55 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 13,
+                  vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(20),
+                  color: context.brandPrimary.withValues(alpha: 0.055),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: Colors.black.withValues(alpha: 0.035),
+                    color: context.brandPrimary.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: 38,
+                      height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.80),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: context.brandPrimary.withValues(alpha: 0.12),
-                        ),
+                        color: context.brandPrimary.withValues(alpha: 0.11),
+                        borderRadius: BorderRadius.circular(13),
                       ),
                       child: Icon(
                         Icons.attach_money_rounded,
                         color: context.brandPrimary,
-                        size: 23,
+                        size: 22,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 11),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Итого',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 11.5,
-                              height: 1,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            amountUsdText,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy',
-                              fontSize: 27,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.035),
+                      child: const Text(
+                        'Итого к оплате',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 13,
+                          height: 1.1,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      child: Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textSecondary.withValues(alpha: 0.78),
-                        size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      amountUsdText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Gilroy',
+                        fontSize: 25,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.45,
                       ),
                     ),
                   ],
@@ -2573,7 +2485,6 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       ref.watch(paymentOperatorStatusProvider),
     ).sleeping;
     final df = DateFormat('dd MMM yyyy', 'ru');
-    final money = NumberFormat.decimalPattern('ru');
     final statusColor = _parseHexColor(item.statusColor);
     final invoiceStatuses =
         ref.watch(invoiceStatusesProvider).asData?.value ??
@@ -2606,24 +2517,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         title: 'Счёт ${item.invoiceNumber}',
         subtitle: 'Разбивка суммы и данные для оплаты',
         keyboardAware: true,
-        pinnedChild: _InvoiceDetailSummaryCard(
-          item: item,
-          statusColor: statusColor,
-          onStatusTap: () => _showInvoiceStatusTimeline(invoiceStatuses),
-          onCopyNumber: () async {
-            final copied = await AppClipboard.copyText(item.invoiceNumber);
-            if (!context.mounted) return;
-            AppToast.showFromSnackBar(
-              context,
-              SnackBar(
-                content: Text(
-                  copied ? 'Номер скопирован' : 'Не удалось скопировать',
-                ),
-                backgroundColor: copied ? null : Colors.red.shade700,
-              ),
-            );
-          },
-        ),
+        pinnedChild: _InvoiceDetailSummaryCard(item: item),
         footer: (_isUnpaid || _canOpenBankQr)
             ? Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2682,26 +2576,63 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
               const _InvoiceBankQrRateBanner(),
               const SizedBox(height: 12),
             ],
-            _buildPlainInfoBlock([
-              _buildInfoRow(context, 'Номер счёта', item.invoiceNumber),
-              _buildInfoRow(context, 'Статус', item.statusName ?? item.status),
+            _buildSection('Курсы', [
+              if (item.clientRubRate != null)
+                _buildInfoRow(
+                  context,
+                  'Курс \$/рубль',
+                  item.clientRubRate!.toStringAsFixed(2),
+                ),
+              if (item.clientCnyRubRate != null)
+                _buildInfoRow(
+                  context,
+                  'Курс юань/рубль',
+                  item.clientCnyRubRate!.toStringAsFixed(4),
+                )
+              else if (item.clientYuanRate != null)
+                _buildInfoRow(
+                  context,
+                  'Курс \$/юань',
+                  item.clientYuanRate!.toStringAsFixed(4),
+                ),
+            ], icon: Icons.currency_exchange_rounded),
+            const SizedBox(height: 12),
+            _buildSection('Данные счёта', [
+              _buildStatusInfoRow(
+                context,
+                item: item,
+                statusColor: statusColor,
+                onTap: () => _showInvoiceStatusTimeline(invoiceStatuses),
+              ),
               if (item.createdAt != null)
-                _buildInfoRow(context, 'Выставлен', df.format(item.createdAt!)),
+                _buildInfoRow(
+                  context,
+                  'Дата выставления',
+                  df.format(item.createdAt!),
+                ),
               if (item.paidAt != null)
-                _buildInfoRow(context, 'Оплачен', df.format(item.paidAt!)),
+                _buildInfoRow(context, 'Дата оплаты', df.format(item.paidAt!)),
               if (item.arrivalDate != null)
-                _buildInfoRow(context, 'Прибыл', df.format(item.arrivalDate!)),
+                _buildInfoRow(
+                  context,
+                  'Дата прибытия',
+                  df.format(item.arrivalDate!),
+                ),
               if (item.arrivalMarket != null && item.arrivalMarket!.isNotEmpty)
                 _buildInfoRow(
                   context,
                   'Рынок прибытия',
                   _localizeMarket(item.arrivalMarket!),
                 ),
-            ]),
+            ], icon: Icons.receipt_long_rounded),
             const SizedBox(height: 12),
-            _buildSection('Груз и доставка', [
+            _buildSection('Груз', [
               if (item.totalTracks > 0)
-                _buildInfoRow(context, 'Треков в счёте', '${item.totalTracks}'),
+                _buildInfoRow(
+                  context,
+                  'Количество трек-номеров',
+                  '${item.totalTracks}',
+                ),
               if (item.placesCount > 0)
                 _buildInfoRow(
                   context,
@@ -2726,9 +2657,11 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                   'Плотность',
                   '${(item.weight / item.volume).toStringAsFixed(2)} кг/м³',
                 ),
-              if (item.tariffName != null && item.tariffName!.isNotEmpty)
-                _buildInfoRow(context, 'Тариф', item.tariffName!),
             ], icon: Icons.inventory_2_rounded),
+            if (item.boxes.isNotEmpty || item.scalePhotoUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildBoxesSection(item),
+            ],
             const SizedBox(height: 12),
             _buildSection('Расчёт суммы', [
               if (item.clientPricePerKg != null && item.clientPricePerKg! > 0)
@@ -2772,8 +2705,15 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                   item.resolvedPackagingCostTotal! > 0)
                 _buildInfoRow(
                   context,
-                  _packagingLabel(item),
+                  'Упаковка, итог',
                   '\$${item.resolvedPackagingCostTotal!.toStringAsFixed(2)}',
+                ),
+              if (!item.hasDetailedPackagingUsage &&
+                  item.packagingNames.isNotEmpty)
+                _buildInfoRow(
+                  context,
+                  'Использованные упаковки',
+                  item.packagingNames,
                 ),
               if (item.insuranceCostClient != null &&
                   item.insuranceCostClient! > 0)
@@ -2800,46 +2740,6 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                   'Бонусные кг',
                   '−${item.bonusKgApplied.toStringAsFixed(2)} кг',
                 ),
-              const Divider(height: 22),
-              if (item.totalCostUsd > 0)
-                _buildInfoRow(
-                  context,
-                  'Итого в долларах',
-                  _formatUsdAmount(item.totalCostUsd, withCents: true),
-                  isTotal: true,
-                ),
-              if (item.totalCostCny > 0)
-                _buildInfoRow(
-                  context,
-                  'К оплате в юанях',
-                  '¥${money.format(item.totalCostCny.round())}',
-                  isTotal: true,
-                ),
-              if (item.totalCostRub > 0)
-                _buildInfoRow(
-                  context,
-                  'К оплате в рублях',
-                  '${money.format(item.totalCostRub.round())} ₽',
-                  isTotal: true,
-                ),
-              if (item.clientRubRate != null)
-                _buildInfoRow(
-                  context,
-                  'Курс \$/₽',
-                  item.clientRubRate!.toStringAsFixed(2),
-                ),
-              if (item.clientCnyRubRate != null)
-                _buildInfoRow(
-                  context,
-                  'Курс RMB/₽',
-                  item.clientCnyRubRate!.toStringAsFixed(4),
-                )
-              else if (item.clientYuanRate != null)
-                _buildInfoRow(
-                  context,
-                  'Курс \$/¥',
-                  item.clientYuanRate!.toStringAsFixed(4),
-                ),
             ], icon: Icons.payments_rounded),
             if (showBonusSection) ...[
               const SizedBox(height: 12),
@@ -2851,8 +2751,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 bonusDiscount: bonusDiscount,
               ),
             ],
-            if (item.scalePhotoUrls.isNotEmpty ||
-                item.tkWaybillPhotoUrl != null) ...[
+            if (item.tkWaybillPhotoUrl != null) ...[
               const SizedBox(height: 12),
               _buildMediaSection(item),
             ],
@@ -2951,9 +2850,104 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     ], icon: Icons.redeem_rounded);
   }
 
-  Widget _buildMediaSection(InvoiceItem item) {
-    return _buildSection('Фото и накладные', [
-      if (item.scalePhotoUrls.isNotEmpty) ...[
+  Widget _buildStatusInfoRow(
+    BuildContext context, {
+    required InvoiceItem item,
+    required Color? statusColor,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Статус счёта',
+              style: TextStyle(
+                color: Color(0xFF666666),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: _InvoiceCardStatusPill(
+              text: item.statusName ?? item.status,
+              color: statusColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoxesSection(InvoiceItem item) {
+    final children = <Widget>[];
+    if (item.boxes.isNotEmpty) {
+      for (var index = 0; index < item.boxes.length; index++) {
+        if (index > 0) children.add(const SizedBox(height: 10));
+        children.add(_buildInvoiceBoxCard(item, item.boxes[index]));
+      }
+    } else if (item.scalePhotoUrls.isNotEmpty) {
+      children.add(_buildScalePhotoStrip(item, item.scalePhotoUrls));
+    }
+    return _buildSection(
+      'Информация по коробкам',
+      children,
+      icon: Icons.inventory_2_outlined,
+    );
+  }
+
+  Widget _buildInvoiceBoxCard(InvoiceItem item, Box box) {
+    final photoUrls = box.photos
+        .map((photo) => photo.url)
+        .where((url) => url.isNotEmpty)
+        .toList(growable: false);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Коробка №${box.number}',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (photoUrls.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildScalePhotoStrip(item, photoUrls),
+          ],
+          const SizedBox(height: 8),
+          if (box.weight > 0)
+            _buildInfoRow(context, 'Вес коробки', box.weightDisplay),
+          if (box.height > 0 && box.width > 0 && box.length > 0)
+            _buildInfoRow(context, 'Габариты коробки', box.dimensionsDisplay),
+          if (box.density > 0)
+            _buildInfoRow(context, 'Плотность коробки', box.densityDisplay),
+          if (box.volume > 0)
+            _buildInfoRow(context, 'Объём коробки', box.volumeDisplay),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScalePhotoStrip(InvoiceItem item, List<String> urls) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         const Text(
           'Фото с весов',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
@@ -2963,18 +2957,22 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           height: 104,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: item.scalePhotoUrls.length,
+            itemCount: urls.length,
             addAutomaticKeepAlives: false,
             addSemanticIndexes: false,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
+              final url = urls[index];
+              final allPhotoIndex = item.scalePhotoUrls.indexOf(url);
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _openScalePhoto(item, index),
+                onTap: allPhotoIndex < 0
+                    ? null
+                    : () => _openScalePhoto(item, allPhotoIndex),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Image.network(
-                    ApiConfig.getMediaUrl(item.scalePhotoUrls[index]),
+                    ApiConfig.getMediaUrl(url),
                     width: 104,
                     height: 104,
                     cacheWidth: 240,
@@ -2994,13 +2992,12 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMediaSection(InvoiceItem item) {
+    return _buildSection('Фото накладной', [
       if (item.tkWaybillPhotoUrl != null) ...[
-        if (item.scalePhotoUrls.isNotEmpty) const SizedBox(height: 12),
-        const Text(
-          'Фото накладной',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: GestureDetector(
@@ -3039,20 +3036,6 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     return _InvoiceSectionCard(
       icon: icon,
       title: title,
-      child: Column(children: children),
-    );
-  }
-
-  Widget _buildPlainInfoBlock(List<Widget> children) {
-    if (children.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.035)),
-      ),
       child: Column(children: children),
     );
   }
@@ -3150,7 +3133,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             children: [
               const Expanded(
                 child: Text(
-                  'Расход упаковки',
+                  'Упаковка, итог',
                   style: TextStyle(
                     color: Color(0xFF666666),
                     fontSize: 14,
@@ -3167,6 +3150,15 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Использованные упаковки',
+            style: TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 6),
           Container(
@@ -3235,14 +3227,5 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         ],
       ),
     );
-  }
-
-  String _packagingLabel(InvoiceItem item) {
-    final name = item.packagingNames;
-    final base = name.isEmpty ? 'Упаковка' : 'Упаковка: $name';
-    if (item.billablePlacesCount > 1 && item.packagingUnitCost > 0) {
-      return '$base ×${item.billablePlacesCount}';
-    }
-    return base;
   }
 }

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
@@ -21,7 +22,7 @@ Future<bool?> showGaragePaymentSheet({
   required int orderId,
   required String orderNumber,
 }) {
-  return showModalBottomSheet<bool>(
+  return showBlurredModalBottomSheet<bool>(
     context: context,
     useSafeArea: true,
     isScrollControlled: true,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
@@ -25,6 +27,9 @@ import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../invoices/data/invoices_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../data/invoice_export_data.dart';
+import '../data/track_export_data.dart';
+import '../data/xlsx_image_embedder.dart';
 import '../data/profile_provider.dart';
 
 void _showStyledSnackBar(
@@ -345,6 +350,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // Editing state
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _isExportingTracks = false;
+  int _trackExportProcessed = 0;
+  int _trackExportTotal = 0;
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
@@ -354,8 +362,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isChangingPassword = false;
   bool _isSavingPassword = false;
   bool _isLoadingPasskeyStatus = true;
+  bool _isLoadingPasskeyAvailability = true;
   bool _isBindingPasskey = false;
   bool _isUnlinkingPasskey = false;
+  bool _passkeyAvailable = false;
   PasskeyStatus? _passkeyStatus;
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -369,7 +379,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_loadPasskeyStatus());
+      unawaited(_loadPasskeyState());
     });
   }
 
@@ -507,7 +517,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           _buildExportButton(
                             key: _tracksExportButtonKey,
                             icon: Icons.local_shipping_rounded,
-                            label: 'Выгрузить треки в Excel',
+                            label: _isExportingTracks
+                                ? 'Подготавливаем выгрузку…'
+                                : 'Выгрузить треки в Excel',
+                            isLoading: _isExportingTracks,
                             onPressed: () =>
                                 _exportTracks(_tracksExportButtonKey),
                           ),
@@ -586,6 +599,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               ScrollToTopButton(controller: _scrollController),
+              if (_isExportingTracks)
+                Positioned.fill(
+                  child: _TrackExportProgressOverlay(
+                    processed: _trackExportProcessed,
+                    total: _trackExportTotal,
+                  ),
+                ),
             ],
           ),
         );
@@ -1082,8 +1102,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          _buildPasskeyBindingButton(),
+          if (_passkeyAvailable) ...[
+            const SizedBox(height: 12),
+            _buildPasskeyBindingButton(),
+          ],
         ],
       ),
     );
@@ -1092,7 +1114,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildPasskeyBindingButton() {
     final hasPasskey = _passkeyStatus?.enabled == true;
     final isBusy =
-        _isLoadingPasskeyStatus || _isBindingPasskey || _isUnlinkingPasskey;
+        _isLoadingPasskeyStatus ||
+        _isLoadingPasskeyAvailability ||
+        _isBindingPasskey ||
+        _isUnlinkingPasskey;
     final actionColor = hasPasskey
         ? const Color(0xFFE53935)
         : context.brandPrimary;
@@ -1100,10 +1125,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ? 'Проверяем быстрый вход...'
         : hasPasskey
         ? 'Отвязать Face ID / отпечаток'
-        : 'Привязать Face ID / отпечаток';
+        : 'Привязать быстрый вход';
     final description = hasPasskey
         ? 'Быстрый вход уже подключён. После отвязки следующий вход нужно будет выполнить с паролем.'
-        : 'После привязки можно будет входить без домена партнёра и пароля.';
+        : 'После привязки можно будет входить без телефона, домена партнёра '
+              'и пароля. При нескольких аккаунтах устройство предложит '
+              'выбрать нужного партнёра.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1273,6 +1300,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _loadPasskeyState() async {
+    final passkeyService = ref.read(passkeyAuthServiceProvider);
+    final available = await passkeyService.isAvailable();
+    if (!mounted) return;
+
+    setState(() {
+      _passkeyAvailable = available;
+      _isLoadingPasskeyAvailability = false;
+    });
+
+    if (available) {
+      await _loadPasskeyStatus();
+    } else if (mounted) {
+      setState(() => _isLoadingPasskeyStatus = false);
+    }
+  }
+
   Future<void> _bindPasskey() async {
     if (_isBindingPasskey) return;
 
@@ -1326,30 +1370,118 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _confirmAndUnlinkPasskey() async {
     if (_isUnlinkingPasskey) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showBlurredModalBottomSheet<bool>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Отвязать быстрый вход?'),
-          content: const Text(
-            'Face ID / отпечаток больше нельзя будет использовать для входа в этот аккаунт. Войти снова можно будет по домену партнёра и паролю.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFE53935),
+      useRootNavigator: true,
+      backgroundColor: Colors.white,
+      barrierColor: Colors.black.withValues(alpha: 0.34),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      builder: (sheetContext) {
+        final bottomPadding = MediaQuery.paddingOf(sheetContext).bottom;
+        const dangerColor = Color(0xFFE53935);
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE1E3E8),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-              child: const Text('Отвязать'),
-            ),
-          ],
+              const SizedBox(height: 24),
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: dangerColor.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Icon(
+                  Icons.fingerprint_rounded,
+                  size: 36,
+                  color: dangerColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Отвязать быстрый вход?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: _textColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'После отвязки Face ID или отпечаток больше нельзя будет '
+                'использовать для этого аккаунта. Следующий вход потребуется '
+                'выполнить с паролем.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.4,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: dangerColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Отвязать быстрый вход',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _textColor,
+                    side: BorderSide(color: _textColor.withValues(alpha: 0.12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Оставить подключённым',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1830,6 +1962,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
+    bool isLoading = false,
   }) {
     return SizedBox(
       key: key,
@@ -1839,7 +1972,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          onTap: onPressed,
+          onTap: isLoading ? null : onPressed,
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1852,7 +1985,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     color: context.brandPrimary.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(13),
                   ),
-                  child: Icon(icon, size: 18, color: context.brandPrimary),
+                  child: isLoading
+                      ? Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: context.brandPrimary,
+                          ),
+                        )
+                      : Icon(icon, size: 18, color: context.brandPrimary),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -1869,11 +2010,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: AppColors.textSecondary.withValues(alpha: 0.72),
-                ),
+                if (!isLoading)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.textSecondary.withValues(alpha: 0.72),
+                  ),
               ],
             ),
           ),
@@ -1924,58 +2066,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // против количества values ниже. Если кто-то добавит колонку в
       // headers, но забудет про values (или наоборот) — assert упадёт в
       // debug, и баг «всё съехало на одну колонку» не уйдёт в прод.
-      const exportHeaders = <String>[
-        '№ счёта',
-        'Дата',
-        'Статус',
-        'Тариф',
-        'Метод расчёта',
-        'Мест',
-        'Вес (кг)',
-        'Объём (м³)',
-        'Плотность',
-        'Перевалка USD',
-        'Страховка USD',
-        'Скидка USD',
-        'Упаковка USD',
-        'Доставка USD',
-        'Курс',
-        'К оплате RUB',
-      ];
-
-      sheet.appendRow(exportHeaders.map(xls.TextCellValue.new).toList());
+      sheet.appendRow(invoiceExportHeaders.map(xls.TextCellValue.new).toList());
 
       // Данные
-      final dateFormat = DateFormat('dd.MM.yyyy');
       for (final invoice in invoices) {
-        final row = <xls.CellValue>[
-          xls.TextCellValue(invoice.invoiceNumber),
-          xls.TextCellValue(
-            invoice.sendDate != null
-                ? dateFormat.format(invoice.sendDate!)
-                : '',
-          ),
-          xls.TextCellValue(invoice.statusName ?? invoice.status),
-          xls.TextCellValue(invoice.tariffName ?? ''),
-          xls.TextCellValue(invoice.calculationMethod ?? ''),
-          xls.IntCellValue(invoice.placesCount),
-          xls.DoubleCellValue(invoice.weight),
-          xls.DoubleCellValue(invoice.volume),
-          xls.DoubleCellValue(invoice.density),
-          xls.DoubleCellValue(invoice.transshipmentCost ?? 0),
-          xls.DoubleCellValue(invoice.insuranceCost ?? 0),
-          xls.DoubleCellValue(invoice.discountAmount ?? 0),
-          xls.DoubleCellValue(invoice.resolvedPackagingCostTotal ?? 0),
-          xls.DoubleCellValue(invoice.totalCostUsd),
-          invoice.clientRubRate != null
-              ? xls.DoubleCellValue(invoice.clientRubRate!)
-              : xls.TextCellValue(''),
-          xls.DoubleCellValue(invoice.totalCostRub),
-        ];
+        final row = buildInvoiceExportRow(invoice).map((value) {
+          return switch (value) {
+            int number => xls.IntCellValue(number),
+            double number => xls.DoubleCellValue(number),
+            _ => xls.TextCellValue(value.toString()),
+          };
+        }).toList();
         // PU-H8: страховка от «съехавшей» колонки.
         assert(
-          row.length == exportHeaders.length,
-          'Excel export: row.length(${row.length}) != headers.length(${exportHeaders.length})',
+          row.length == invoiceExportHeaders.length,
+          'Excel export: row.length(${row.length}) != headers.length(${invoiceExportHeaders.length})',
         );
         sheet.appendRow(row);
       }
@@ -2019,6 +2124,216 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _exportTracks(GlobalKey buttonKey) async {
+    if (_isExportingTracks) return;
+    final clientCode = ref.read(activeClientCodeProvider);
+    if (clientCode == null) {
+      _showStyledSnackBar(
+        context,
+        'Сначала выберите код клиента',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() {
+      _isExportingTracks = true;
+      _trackExportProcessed = 0;
+      _trackExportTotal = 0;
+    });
+
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final tracks = await fetchAllTracksForExport(apiClient, clientCode);
+      if (!mounted) return;
+      if (tracks.isEmpty) {
+        _showStyledSnackBar(context, 'Нет треков для экспорта', isError: true);
+        return;
+      }
+      setState(() => _trackExportTotal = tracks.length);
+
+      final excel = xls.Excel.createExcel();
+      excel.rename('Sheet1', 'Треки');
+      final sheet = excel['Треки'];
+      final headerStyle = xls.CellStyle(
+        bold: true,
+        horizontalAlign: xls.HorizontalAlign.Center,
+        verticalAlign: xls.VerticalAlign.Center,
+        textWrapping: xls.TextWrapping.WrapText,
+      );
+      sheet.appendRow(
+        trackExportHeaders.map((header) => xls.TextCellValue(header)).toList(),
+      );
+      for (var column = 0; column < trackExportHeaders.length; column++) {
+        sheet
+                .cell(
+                  xls.CellIndex.indexByColumnRow(
+                    columnIndex: column,
+                    rowIndex: 0,
+                  ),
+                )
+                .cellStyle =
+            headerStyle;
+      }
+
+      final embeddedImages = <XlsxEmbeddedImage>[];
+      for (var index = 0; index < tracks.length; index++) {
+        final row = buildTrackExportRow(tracks[index]);
+        sheet.appendRow(
+          row.values.map<xls.CellValue>((value) {
+            if (value is int) return xls.IntCellValue(value);
+            return xls.TextCellValue(value.toString());
+          }).toList(),
+        );
+
+        final excelRow = index + 1;
+        final pendingImages = <Future<_DownloadedExportImage?>>[
+          if (row.productImageUrl?.trim().isNotEmpty == true)
+            _downloadExportImage(apiClient, row.productImageUrl!),
+          ...row.photoReportUrls.map(
+            (url) => _downloadExportImage(apiClient, url),
+          ),
+        ];
+        final downloaded = await Future.wait(pendingImages);
+        var downloadedIndex = 0;
+        if (row.productImageUrl?.trim().isNotEmpty == true) {
+          final productImage = downloaded[downloadedIndex++];
+          if (productImage != null) {
+            embeddedImages.add(
+              XlsxEmbeddedImage(
+                bytes: productImage.bytes,
+                extension: productImage.extension,
+                column: 4,
+                row: excelRow,
+              ),
+            );
+          } else {
+            sheet
+                .cell(
+                  xls.CellIndex.indexByColumnRow(
+                    columnIndex: 4,
+                    rowIndex: excelRow,
+                  ),
+                )
+                .value = xls.TextCellValue(
+              row.productImageUrl!,
+            );
+          }
+        }
+
+        var reportImageOffset = 0;
+        for (; downloadedIndex < downloaded.length; downloadedIndex++) {
+          final reportImage = downloaded[downloadedIndex];
+          if (reportImage == null) continue;
+          embeddedImages.add(
+            XlsxEmbeddedImage(
+              bytes: reportImage.bytes,
+              extension: reportImage.extension,
+              column: 8,
+              row: excelRow,
+              widthPixels: 76,
+              heightPixels: 62,
+              columnOffsetPixels: 4 + reportImageOffset * 80,
+            ),
+          );
+          reportImageOffset++;
+        }
+        if (embeddedImages.any((image) => image.row == excelRow)) {
+          sheet.setRowHeight(excelRow, 56);
+        }
+        if (mounted) {
+          setState(() => _trackExportProcessed = index + 1);
+        }
+      }
+
+      const widths = <double>[20, 15, 18, 23, 18, 32, 12, 23, 55];
+      for (var column = 0; column < widths.length; column++) {
+        sheet.setColumnWidth(column, widths[column]);
+      }
+
+      final bytes = excel.encode();
+      if (bytes == null) {
+        throw StateError('Не удалось сформировать XLSX');
+      }
+      final resultBytes = embedImagesIntoFirstXlsxSheet(bytes, embeddedImages);
+      final fileName =
+          'Треки_${clientCode}_${DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now())}.xlsx';
+      if (!mounted) return;
+      final success = await downloadFile(
+        bytes: resultBytes,
+        fileName: fileName,
+        shareButtonKey: buttonKey,
+      );
+      if (!mounted) return;
+      if (success) {
+        _showStyledSnackBar(context, 'Экспортировано ${tracks.length} треков');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showStyledSnackBar(context, 'Ошибка экспорта: $e', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExportingTracks = false;
+          _trackExportProcessed = 0;
+          _trackExportTotal = 0;
+        });
+      }
+    }
+  }
+
+  Future<_DownloadedExportImage?> _downloadExportImage(
+    ApiClient apiClient,
+    String sourceUrl,
+  ) async {
+    try {
+      final url = ApiConfig.getMediaUrl(sourceUrl);
+      final response = await apiClient.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = response.data;
+      if (data == null || data.isEmpty) return null;
+      final bytes = Uint8List.fromList(data);
+      final extension = _detectExportImageExtension(bytes);
+      if (extension == null) return null;
+      return _DownloadedExportImage(bytes, extension);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _detectExportImageExtension(Uint8List bytes) {
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'jpeg';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'webp';
+    }
+    return null;
+  }
+
+  // TODO: удалить после полевого подтверждения новой выгрузки с изображениями.
+  // ignore: unused_element
+  Future<void> _exportTracksLegacy(GlobalKey buttonKey) async {
     final clientCode = ref.read(activeClientCodeProvider);
     if (clientCode == null) {
       _showStyledSnackBar(
@@ -2030,13 +2345,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     try {
-      // Получаем все треки - используем пагинированный провайдер
-      final notifier = ref.read(paginatedTracksProvider(clientCode));
-      // Загружаем если нужно
-      if (notifier.state.tracks.isEmpty && !notifier.state.isLoading) {
-        await notifier.loadInitial();
-      }
-      final tracks = notifier.state.tracks;
+      final tracks = await fetchAllTracksForExport(
+        ref.read(apiClientProvider),
+        clientCode,
+      );
 
       if (!mounted) return;
 
@@ -2383,6 +2695,109 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     }
   }
+}
+
+class _TrackExportProgressOverlay extends StatelessWidget {
+  final int processed;
+  final int total;
+
+  const _TrackExportProgressOverlay({
+    required this.processed,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasTotal = total > 0;
+    final progress = hasTotal ? (processed / total).clamp(0.0, 1.0) : null;
+    final description = hasTotal
+        ? 'Обрабатываем треки и загружаем фотографии\n$processed из $total'
+        : 'Загружаем список треков…';
+
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.28),
+      child: Center(
+        child: Container(
+          width: 320,
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 32,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                padding: const EdgeInsets.all(13),
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 3,
+                  color: context.brandPrimary,
+                  backgroundColor: context.brandPrimary.withValues(alpha: 0.14),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Подготавливаем Excel',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Не закрывайте страницу до завершения выгрузки',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontFamily: 'Gilroy',
+                  fontSize: 12,
+                  height: 1.3,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadedExportImage {
+  final Uint8List bytes;
+  final String extension;
+
+  const _DownloadedExportImage(this.bytes, this.extension);
 }
 
 class _TerminalChip extends StatelessWidget {

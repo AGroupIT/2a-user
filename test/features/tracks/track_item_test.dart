@@ -29,6 +29,37 @@ void main() {
     });
   });
 
+  group('TrackItem assembly selection', () {
+    TrackItem parse({bool? canAdd, String? reason}) => TrackItem.fromJson({
+      'id': 12,
+      'trackNumber': 'YT-ASSEMBLY',
+      'status': 'in_warehouse',
+      'statusName': 'На складе',
+      'createdAt': '2026-08-25T01:00:00.000Z',
+      'updatedAt': '2026-08-25T01:00:00.000Z',
+      if (canAdd != null) 'canAddToAssembly': canAdd,
+      if (reason != null) 'assemblyBlockReason': reason,
+    });
+
+    test('uses backend cooldown decision and explains it', () {
+      final value = parse(canAdd: false, reason: 'warehouse_arrival_cooldown');
+
+      expect(value.isAvailableForAssemblySelection, isFalse);
+      expect(value.assemblySelectionHint, contains('можно завтра'));
+    });
+
+    test('blocks an active return request', () {
+      final value = parse(canAdd: false, reason: 'return_requested');
+
+      expect(value.isAvailableForAssemblySelection, isFalse);
+      expect(value.assemblySelectionHint, 'По треку запрошен возврат');
+    });
+
+    test('keeps backward compatibility with an older backend', () {
+      expect(parse().isAvailableForAssemblySelection, isTrue);
+    });
+  });
+
   test('TrackReturnInfo parses persisted return and status label', () {
     final value = TrackReturnInfo.fromJson({
       'id': 18,

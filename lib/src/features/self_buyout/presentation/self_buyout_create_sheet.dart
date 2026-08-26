@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -193,8 +194,9 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
 
   Future<void> _pickImage() async {
     FocusScope.of(context).unfocus();
-    final source = await showModalBottomSheet<String>(
+    final source = await showBlurredModalBottomSheet<String>(
       context: context,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => SafeArea(
         child: Container(

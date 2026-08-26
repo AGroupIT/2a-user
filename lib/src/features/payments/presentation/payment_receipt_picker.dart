@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/locale_text.dart';
 
 const paymentReceiptAllowedExtensions = <String>[
@@ -59,9 +60,10 @@ String paymentReceiptMimeType(String extension) {
 Future<PaymentReceiptSelection?> pickPaymentReceipt(
   BuildContext context,
 ) async {
-  final source = await showModalBottomSheet<_PaymentReceiptSource>(
+  final source = await showBlurredModalBottomSheet<_PaymentReceiptSource>(
     context: context,
     useRootNavigator: true,
+    useSafeArea: false,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) => SafeArea(
       top: false,

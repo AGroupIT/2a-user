@@ -4,12 +4,18 @@ import 'package:flutter/material.dart';
 
 import 'app_layout.dart';
 
+const _mobileSheetBorderRadius = BorderRadius.vertical(
+  top: Radius.circular(30),
+);
+
 /// Project-wide modal bottom sheet with a dimmed + softly blurred backdrop.
 ///
 /// It intentionally mirrors the common subset of [showModalBottomSheet]
 /// arguments used in this app, so existing sheets can switch to it without
 /// rewriting their inner content. The sheet content still owns its internal
-/// layout, fixed handle, safe-area and keyboard rules.
+/// layout, fixed handle and keyboard rules. Bottom system navigation insets are
+/// protected by default so actions stay reachable on Android devices with
+/// gesture or three-button navigation.
 Future<T?> showBlurredModalBottomSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -17,7 +23,7 @@ Future<T?> showBlurredModalBottomSheet<T>({
   Color? barrierColor,
   bool isScrollControlled = false,
   bool useRootNavigator = false,
-  bool useSafeArea = false,
+  bool useSafeArea = true,
   bool isDismissible = true,
   bool enableDrag = true,
   ShapeBorder? shape,
@@ -237,10 +243,21 @@ class _BlurredModalBottomSheetPageState<T>
         borderRadius: const BorderRadius.horizontal(left: Radius.circular(30)),
         child: ColoredBox(color: Colors.white, child: sheet),
       );
-    }
+    } else {
+      // Paint the inset together with the modal surface. Wrapping only with
+      // SafeArea leaves a transparent strip above Android system navigation
+      // when callers use a transparent route background.
+      if (widget.useSafeArea) {
+        sheet = ColoredBox(
+          color: Colors.white,
+          child: SafeArea(top: false, child: sheet),
+        );
+      }
 
-    if (widget.useSafeArea) {
-      sheet = SafeArea(top: false, bottom: false, child: sheet);
+      // Clip the complete surface so every mobile sheet has the same rounded
+      // top corners, including legacy sheets whose inner content is
+      // rectangular.
+      sheet = ClipRRect(borderRadius: _mobileSheetBorderRadius, child: sheet);
     }
 
     if (widget.enableDrag) {

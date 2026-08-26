@@ -739,11 +739,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           subtitle: clientPartnerInviteActive
               ? tr(
                   context,
-                  ru: 'Компания ${clientPartnerInvite.agentName ?? '2A Logistic'} и префикс ${clientPartnerInvite.prefix ?? 'клиента'} будут назначены автоматически.',
-                  zh: '系统将自动分配公司 ${clientPartnerInvite.agentName ?? '2A Logistic'} 和客户前缀 ${clientPartnerInvite.prefix ?? ''}。',
+                  ru: 'Компания ${clientPartnerInvite.agentName ?? 'партнёра'} и префикс ${clientPartnerInvite.prefix ?? 'клиента'} будут назначены автоматически.',
+                  zh: '系统将自动分配合作伙伴公司和客户前缀 ${clientPartnerInvite.prefix ?? ''}。',
                 )
               : partnerLinkActive
-              ? 'Агент 2a-logistic.ru и код PL- будут назначены автоматически.'
+              ? 'Партнёр и клиентский код будут назначены автоматически.'
               : 'Если кодов нет — просто оставьте поля пустыми.',
         ),
         const SizedBox(height: 18),

@@ -47,9 +47,23 @@ void main() {
     await _pumpProgram(tester, ClientPartnerProgramData.fromJson(_programJson));
 
     expect(find.text('Партнёрская программа'), findsOneWidget);
-    expect(find.text('Ваш партнёрский кабинет'), findsOneWidget);
+    expect(find.text('Ваш партнёрский кабинет'), findsNothing);
+    expect(find.textContaining('Код партнёра'), findsNothing);
+    expect(find.text('Активна'), findsNothing);
+    expect(find.text('Партнёрский префикс'), findsOneWidget);
+    expect(find.text('PA'), findsWidgets);
+    expect(find.textContaining('За всё время'), findsNothing);
+    expect(find.text('9 клиентов'), findsNothing);
     expect(find.text(r'$17.50'), findsWidgets);
     expect(find.text('Ссылка приглашения'), findsOneWidget);
+    expect(
+      find.text('https://api.test/client-partner/invite/token'),
+      findsNothing,
+    );
+    expect(find.textContaining('ABCDEFGH'), findsNothing);
+    expect(find.text('Копировать ссылку'), findsOneWidget);
+    expect(find.text('Поделиться'), findsNothing);
+    expect(find.byIcon(Icons.ios_share_rounded), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Зарегистрировано'),
       300,
@@ -63,6 +77,9 @@ void main() {
     expect(find.text('18.250 кг'), findsOneWidget);
     expect(find.text('Доступно к выплате'), findsWidgets);
     expect(find.text('Выплачено'), findsWidgets);
+    expect(find.text('Ставка'), findsOneWidget);
+    expect(find.text('0.2500 USD/кг'), findsOneWidget);
+    expect(find.text('Условия начисления'), findsNothing);
     expect(find.text('Оплатили счета'), findsNothing);
     expect(find.text('Конверсия'), findsNothing);
     expect(find.text('Ожидает выплаты'), findsNothing);
@@ -77,7 +94,9 @@ void main() {
     );
 
     expect(find.text('合作伙伴计划'), findsOneWidget);
-    expect(find.text('您的合作伙伴中心'), findsOneWidget);
+    expect(find.text('您的合作伙伴中心'), findsNothing);
+    expect(find.text('合作伙伴前缀'), findsOneWidget);
+    expect(find.text('PA'), findsWidgets);
     expect(find.text('邀请链接'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('已注册'),
@@ -92,6 +111,8 @@ void main() {
     expect(find.text('18.250 公斤'), findsOneWidget);
     expect(find.text('可提现'), findsWidgets);
     expect(find.text('已支付'), findsWidgets);
+    expect(find.text('费率'), findsOneWidget);
+    expect(find.text('佣金规则'), findsNothing);
   });
 
   testWidgets('показывает нейтральное состояние обычному клиенту', (

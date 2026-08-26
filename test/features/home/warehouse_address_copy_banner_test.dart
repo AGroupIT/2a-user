@@ -13,15 +13,17 @@ void main() {
     expect(find.byType(Dialog), findsOneWidget);
     expect(find.text('Адрес склада скопирован'), findsOneWidget);
     expect(
-      find.textContaining('обязательно отправьте в чат поддержки скриншот'),
+      find.textContaining('Приложение автоматически сравнит'),
       findsOneWidget,
     );
+    expect(find.text('Проверить заполнение'), findsNothing);
     expect(find.text('Понятно'), findsOneWidget);
 
     await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Понятно'));
     await tester.tap(find.text('Понятно'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing);
@@ -35,9 +37,11 @@ void main() {
 
     expect(find.byType(Dialog), findsOneWidget);
     expect(find.text('仓库地址已复制'), findsOneWidget);
-    expect(find.textContaining('请务必把平台上的地址截图发送到客服聊天'), findsOneWidget);
+    expect(find.textContaining('应用会自动比较截图中的仓库地址'), findsOneWidget);
+    expect(find.text('检查填写'), findsNothing);
     expect(find.text('明白了'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('明白了'));
     await tester.tap(find.text('明白了'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing);

@@ -72,11 +72,12 @@ class PasskeyAuthService {
     try {
       if (isAndroidImpl()) {
         final availability = await _authenticator.getAvailability().android();
-        return availability.hasPasskeySupport;
+        return availability.hasPasskeySupport &&
+            availability.isUserVerifyingPlatformAuthenticatorAvailable == true;
       }
       if (isIOSImpl()) {
         final availability = await _authenticator.getAvailability().iOS();
-        return availability.hasPasskeySupport;
+        return availability.hasPasskeySupport && availability.hasBiometrics;
       }
     } catch (error) {
       debugPrint('Passkey availability check failed: $error');
@@ -85,10 +86,14 @@ class PasskeyAuthService {
     return false;
   }
 
-  Future<PasskeyLoginResult> authenticate({required String login}) async {
+  Future<PasskeyLoginResult> authenticate({String? login}) async {
+    final normalizedLogin = login?.trim();
     final optionsResponse = await _apiClient.post<Map<String, dynamic>>(
       '/client/passkeys/authenticate/options',
-      data: {'login': login.trim()},
+      data: {
+        if (normalizedLogin != null && normalizedLogin.isNotEmpty)
+          'login': normalizedLogin,
+      },
     );
 
     final options = _normalizeCredentialOptions(
@@ -194,13 +199,13 @@ class PasskeyAuthService {
         final serverError = responseData['error'];
         if (serverError is String && serverError.isNotEmpty) {
           if (error.response?.statusCode == 404) {
-            return 'К этому email или телефону ещё не привязан Face ID / отпечаток. Войдите с помощью пароля и подключите быстрый вход.';
+            return 'На устройстве нет подходящего ключа быстрого входа. Войдите с паролем и подключите его в профиле.';
           }
           return serverError;
         }
       }
       if (error.response?.statusCode == 404) {
-        return 'К этому email или телефону ещё не привязан Face ID / отпечаток. Войдите с помощью пароля и подключите быстрый вход.';
+        return 'На устройстве нет подходящего ключа быстрого входа. Войдите с паролем и подключите его в профиле.';
       }
       return 'Не удалось выполнить быстрый вход. Попробуйте войти с паролем';
     }
@@ -209,7 +214,7 @@ class PasskeyAuthService {
       return 'Вход отменён';
     }
     if (error is NoCredentialsAvailableException) {
-      return 'На этом устройстве нет привязанного Face ID / отпечатка для этого аккаунта. Войдите с помощью пароля.';
+      return 'На этом устройстве нет ключа быстрого входа. Войдите с помощью пароля.';
     }
     if (error is DomainNotAssociatedException) {
       return 'Домен приложения ещё не настроен для passkeys';
@@ -241,7 +246,7 @@ class PasskeyAuthService {
             return 'Сессия истекла. Войдите заново и повторите привязку.';
           }
           if (error.response?.statusCode == 409) {
-            return 'Этот Face ID / отпечаток уже привязан к другому аккаунту.';
+            return 'Этот ключ быстрого входа уже используется другим аккаунтом.';
           }
           return serverError;
         }

@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import FirebaseCore
 import FirebaseMessaging
+import Vision
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -21,11 +22,62 @@ import FirebaseMessaging
     if let registrar = self.registrar(forPlugin: "com.twoa.visual_effect_view") {
       registrar.register(VisualEffectViewFactory(messenger: registrar.messenger()), withId: "com.twoa.visual_effect_view")
     }
+    if let registrar = self.registrar(forPlugin: "com.twoalogistic.user.text_recognition") {
+      let channel = FlutterMethodChannel(
+        name: "com.twoalogistic.user/text_recognition",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "recognizeText" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        guard
+          let arguments = call.arguments as? [String: Any],
+          let path = arguments["path"] as? String,
+          !path.isEmpty
+        else {
+          result(FlutterError(code: "NO_PATH", message: "Image path is required", details: nil))
+          return
+        }
+        Self.recognizeText(at: path, result: result)
+      }
+    }
 
     // Регистрация для удалённых уведомлений
     application.registerForRemoteNotifications()
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private static func recognizeText(at path: String, result: @escaping FlutterResult) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let imageURL = URL(fileURLWithPath: path)
+      guard FileManager.default.fileExists(atPath: imageURL.path) else {
+        DispatchQueue.main.async {
+          result(FlutterError(code: "IMAGE_NOT_FOUND", message: "Selected image was not found", details: nil))
+        }
+        return
+      }
+
+      let request = VNRecognizeTextRequest()
+      request.recognitionLevel = .accurate
+      request.usesLanguageCorrection = false
+      request.recognitionLanguages = ["zh-Hans", "en-US"]
+
+      do {
+        let handler = VNImageRequestHandler(url: imageURL, options: [:])
+        try handler.perform([request])
+        let text = (request.results ?? [])
+          .compactMap { $0.topCandidates(1).first?.string }
+          .joined(separator: "\n")
+        DispatchQueue.main.async { result(text) }
+      } catch {
+        DispatchQueue.main.async {
+          result(FlutterError(code: "OCR_FAILED", message: error.localizedDescription, details: nil))
+        }
+      }
+    }
   }
   
   // Получение APNs токена

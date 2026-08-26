@@ -680,7 +680,7 @@ void main() {
           'version': 1,
           'status': 'published',
           'clientCnyRubRateSnapshot': '12.5',
-          'validUntil': '2026-08-10T00:00:00.000Z',
+          'validUntil': '2099-08-10T00:00:00.000Z',
           'options': [
             {
               'id': 501,

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -13,6 +14,7 @@ import 'package:gal/gal.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../../core/network/api_config.dart';
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
@@ -67,7 +69,7 @@ void _showStyledSnackBar(
   );
 }
 
-class PhotoViewerScreen extends StatefulWidget {
+class PhotoViewerScreen extends ConsumerStatefulWidget {
   final PhotoItem item;
   final List<PhotoItem>? allPhotos;
   final int? initialIndex;
@@ -80,10 +82,10 @@ class PhotoViewerScreen extends StatefulWidget {
   });
 
   @override
-  State<PhotoViewerScreen> createState() => _PhotoViewerScreenState();
+  ConsumerState<PhotoViewerScreen> createState() => _PhotoViewerScreenState();
 }
 
-class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
+class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   bool _isDownloading = false;
   double _swipeDy = 0;
   late PageController _pageController;
@@ -190,14 +192,15 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       }
 
       // Сохраняем в галерею
+      final companyName = ref.read(companyNameProvider);
       if (currentItem.isVideo) {
-        await Gal.putVideo(savePath, album: '2A Logistic');
+        await Gal.putVideo(savePath, album: companyName);
         // Удаляем временный файл только для видео
         try {
           await File(savePath).delete();
         } catch (_) {}
       } else {
-        await Gal.putImage(savePath, album: '2A Logistic');
+        await Gal.putImage(savePath, album: companyName);
       }
 
       if (mounted) {

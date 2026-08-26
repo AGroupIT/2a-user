@@ -5,6 +5,9 @@ import android.os.Build
 import android.provider.Settings
 import android.view.KeyEvent
 import androidx.core.content.FileProvider
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -12,6 +15,7 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.twoalogistic.user/update"
+    private val textRecognitionChannel = "com.twoalogistic.user/text_recognition"
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Prevent Android's call-key fallback from hitting restricted CLOSE_SYSTEM_DIALOGS.
@@ -50,6 +54,50 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            textRecognitionChannel
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "recognizeText") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+
+            val path = call.argument<String>("path")
+            if (path.isNullOrBlank()) {
+                result.error("NO_PATH", "Image path is required", null)
+                return@setMethodCallHandler
+            }
+
+            recognizeText(path, result)
+        }
+    }
+
+    private fun recognizeText(path: String, result: MethodChannel.Result) {
+        val imageFile = File(path)
+        if (!imageFile.exists()) {
+            result.error("IMAGE_NOT_FOUND", "Selected image was not found", null)
+            return
+        }
+
+        try {
+            val image = InputImage.fromFilePath(this, android.net.Uri.fromFile(imageFile))
+            val recognizer = TextRecognition.getClient(
+                ChineseTextRecognizerOptions.Builder().build()
+            )
+            recognizer.process(image)
+                .addOnSuccessListener { recognized ->
+                    result.success(recognized.text)
+                    recognizer.close()
+                }
+                .addOnFailureListener { error ->
+                    result.error("OCR_FAILED", error.message, null)
+                    recognizer.close()
+                }
+        } catch (error: Exception) {
+            result.error("OCR_FAILED", error.message, null)
+        }
     }
 
     private fun installApk(path: String) {

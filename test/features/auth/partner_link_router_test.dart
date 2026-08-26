@@ -39,7 +39,7 @@ void main() {
     await tester.pump();
     await tester.tap(passwordLoginButton);
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Вход в аккаунт 2a-logistic.ru'), findsOneWidget);
+    expect(find.text('Вход в аккаунт партнёра'), findsOneWidget);
     expect(find.text('Домен партнёра'), findsNothing);
 
     fixture.authNotifier.authenticate();

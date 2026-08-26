@@ -7,6 +7,7 @@ import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_diagnostics.dart';
 import '../../../core/services/update_service.dart';
+import '../../../core/services/platform_helper.dart';
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
@@ -19,7 +20,6 @@ import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
-import '../../shop/data/shop_availability_provider.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
@@ -163,17 +163,14 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
       selfBuyoutAvailability?.reason,
     );
     final showSelfBuyout = selfBuyoutAvailable || selfBuyoutWaitingForRates;
-    final showMarketplaces =
-        ref
-            .watch(shopAvailabilityProvider)
-            .asData
-            ?.value
-            .hasBrowsablePlatform ??
-        false;
     final showGarage =
         ref.watch(garageAvailabilityProvider).asData?.value.available ?? false;
     final showPartnerProgram =
         ref.watch(clientPartnerProgramProvider).asData?.value != null;
+    final showManualUpdateCheck = shouldShowManualUpdateMenu(
+      isAndroid: isAndroidImpl(),
+      isRustoreDistribution: UpdateService.isRustoreDistribution,
+    );
 
     return Container(
       constraints: BoxConstraints(
@@ -211,93 +208,50 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                     _QuickActionsGrid(
                       actions: [
                         _QuickActionData(
-                          icon: Icons.person_rounded,
-                          title: 'Профиль',
-                          subtitle: 'Аккаунт',
-                          onTap: () => _go(context, '/profile'),
-                        ),
-                        _QuickActionData(
-                          icon: Icons.support_agent_rounded,
-                          title: 'Поддержка',
-                          subtitle: 'Чат',
-                          onTap: () => _go(context, '/support'),
-                        ),
-                        _QuickActionData(
                           icon: Icons.account_balance_wallet_rounded,
-                          title: 'Оплата',
-                          subtitle: 'Чат по счетам',
+                          title: 'Чат по оплатам',
+                          subtitle: 'Оплата счетов',
                           color: const Color(0xFF4CAF50),
                           onTap: () => _go(context, '/payment-chat'),
                         ),
                         _QuickActionData(
-                          icon: Icons.calculate_rounded,
-                          title: 'Калькулятор',
-                          subtitle: 'Доставка',
-                          color: const Color(0xFF2196F3),
-                          onTap: () => _go(context, '/calculator'),
+                          icon: Icons.support_agent_rounded,
+                          title: 'Чат поддержки',
+                          subtitle: 'Помощь менеджера',
+                          onTap: () => _go(context, '/support'),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _MoreSection(
-                      title: 'Инструменты',
-                      children: [
-                        _MoreMenuTile(
-                          icon: Icons.description_rounded,
-                          title: 'Выкуп по бланку',
-                          subtitle: 'Загрузить бланк на выкуп товаров',
-                          iconColor: const Color(0xFFFF5722),
-                          onTap: () => _go(context, '/purchase-blanks'),
-                        ),
-                        if (showMarketplaces)
-                          _MoreMenuTile(
-                            icon: Icons.storefront_rounded,
-                            title: 'Маркетплейсы',
-                            subtitle: 'Каталоги 1688, JD и список выкупа',
-                            iconColor: const Color(0xFFFF6A00),
-                            onTap: () => _go(context, '/shop'),
-                          ),
                         if (showSelfBuyout)
-                          _MoreMenuTile(
+                          _QuickActionData(
                             icon: Icons.savings_rounded,
                             title: 'Самовыкуп',
                             subtitle: selfBuyoutWaitingForRates
-                                ? 'Заявки доступны, создание после обновления курсов'
-                                : 'Помощь с юанями для самостоятельной покупки',
-                            iconColor: selfBuyoutWaitingForRates
+                                ? 'Ожидаем курсы'
+                                : 'Оплата в юанях',
+                            color: selfBuyoutWaitingForRates
                                 ? const Color(0xFFF59E0B)
                                 : const Color(0xFF10B981),
                             onTap: () => _go(context, '/self-buyout'),
                           ),
                         if (showGarage)
-                          _MoreMenuTile(
+                          _QuickActionData(
                             icon: Icons.garage_rounded,
                             title: 'Гараж',
-                            subtitle:
-                                'Автомобили, подбор запчастей, заказы и оплата',
-                            iconColor: const Color(0xFF3B82F6),
+                            subtitle: 'Запчасти и заказы',
+                            color: const Color(0xFF3B82F6),
                             onTap: () => _go(context, '/garage'),
                           ),
-                        _MoreMenuTile(
-                          icon: Icons.shopping_bag_rounded,
-                          title: 'Совместные покупки',
-                          subtitle: 'Финансы и участие в СП',
-                          iconColor: const Color(0xFF9C27B0),
-                          onTap: () => _go(context, '/sp-finance'),
-                        ),
-                        _MoreMenuTile(
-                          icon: Icons.travel_explore_rounded,
-                          title: 'Поиск трека без кода',
-                          subtitle: 'Если склад ещё не привязал посылку',
-                          iconColor: const Color(0xFF00BCD4),
-                          onTap: () => _go(context, '/search-nocode'),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
                     _MoreSection(
-                      title: 'Аккаунт',
+                      title: 'Разделы',
                       children: [
+                        _MoreMenuTile(
+                          icon: Icons.person_rounded,
+                          title: 'Профиль',
+                          subtitle: 'Аккаунт и настройки',
+                          onTap: () => _go(context, '/profile'),
+                        ),
                         _MoreMenuTile(
                           icon: Icons.card_giftcard_rounded,
                           title: 'Реферальная программа',
@@ -313,12 +267,20 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                             iconColor: const Color(0xFF0F9D8A),
                             onTap: () => _go(context, '/partner-program'),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _MoreSection(
-                      title: 'Материалы',
-                      children: [
+                        _MoreMenuTile(
+                          icon: Icons.shopping_bag_rounded,
+                          title: 'Совместные покупки',
+                          subtitle: 'Финансы и участие в СП',
+                          iconColor: const Color(0xFF9C27B0),
+                          onTap: () => _go(context, '/sp-finance'),
+                        ),
+                        _MoreMenuTile(
+                          icon: Icons.travel_explore_rounded,
+                          title: 'Поиск трека без кода',
+                          subtitle: 'Если склад ещё не привязал посылку',
+                          iconColor: const Color(0xFF00BCD4),
+                          onTap: () => _go(context, '/search-nocode'),
+                        ),
                         _MoreMenuTile(
                           icon: Icons.newspaper_rounded,
                           title: 'Новости',
@@ -327,7 +289,7 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                         ),
                         _MoreMenuTile(
                           icon: Icons.rule_rounded,
-                          title: 'Правила оказания услуг',
+                          title: 'Правила',
                           subtitle: 'Условия работы склада и доставки',
                           onTap: () => _go(context, '/rules'),
                         ),
@@ -338,24 +300,17 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           iconColor: const Color(0xFFFF9800),
                           onTap: () => _go(context, '/tariffs'),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _MoreSection(
-                      title: 'Диагностика',
-                      children: [
-                        _MoreMenuTile(
-                          icon: Icons.system_update_rounded,
-                          title: _updateCheckRunning
-                              ? 'Проверяем обновление…'
-                              : 'Проверить обновление',
-                          subtitle: UpdateService.isRustoreDistribution
-                              ? 'RuStore-сборка обновляется через магазин'
-                              : 'Найти новую версию приложения',
-                          iconColor: const Color(0xFF4CAF50),
-                          loading: _updateCheckRunning,
-                          onTap: _checkForUpdate,
-                        ),
+                        if (showManualUpdateCheck)
+                          _MoreMenuTile(
+                            icon: Icons.system_update_rounded,
+                            title: _updateCheckRunning
+                                ? 'Проверяем обновления…'
+                                : 'Проверить обновления',
+                            subtitle: 'Найти новую версию приложения',
+                            iconColor: const Color(0xFF4CAF50),
+                            loading: _updateCheckRunning,
+                            onTap: _checkForUpdate,
+                          ),
                         _MoreMenuTile(
                           icon: Icons.wifi_rounded,
                           title: _networkDiagnosticsRunning
@@ -836,4 +791,12 @@ bool _isSelfBuyoutWaitingForRates(String? reason) {
   return reason == 'rate_stale' ||
       reason == 'no_rate' ||
       reason == 'rate_invalid';
+}
+
+@visibleForTesting
+bool shouldShowManualUpdateMenu({
+  required bool isAndroid,
+  required bool isRustoreDistribution,
+}) {
+  return isAndroid && !isRustoreDistribution;
 }

@@ -29,7 +29,7 @@ class FakeRulesRepository implements RulesRepository {
     const RuleItem(
       slug: 'general',
       title: 'Общие правила',
-      excerpt: 'Основные положения и условия работы с сервисом 2A Logistic.',
+      excerpt: 'Основные положения и условия работы с сервисом компании.',
       order: 1,
       content: '''
 ## Общие положения
@@ -106,8 +106,7 @@ class FakeRulesRepository implements RulesRepository {
 ### Способы связи
 
 - **Чат в приложении** — самый быстрый способ
-- **Telegram** — @twoa_manager
-- **Email** — support@2a-logistics.ru
+- **Чат в приложении** — самый быстрый способ связаться с поддержкой
 
 ### Время работы
 
@@ -168,7 +167,7 @@ class FakeRulesRepository implements RulesRepository {
 
 ---
 
-По вопросам оплаты обращайтесь в бухгалтерию: billing@2a-logistics.ru
+По вопросам оплаты обращайтесь через чат по оплатам в приложении.
 ''',
     ),
   ];

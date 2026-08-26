@@ -580,7 +580,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Восстановление аккаунта 2a-logistic.ru',
+                    'Восстановление аккаунта партнёра',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),

@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/services/showcase_service.dart';
@@ -35,6 +37,7 @@ import '../../tracks/presentation/tracks_screen.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/current_cny_rate_provider.dart';
 import 'home_cny_rate_card.dart';
+import 'warehouse_address_checker.dart';
 import 'warehouse_address_copy_banner.dart';
 
 void _showStyledSnackBar(
@@ -1836,16 +1839,30 @@ class _WarehouseSearchRow extends StatelessWidget {
   }
 }
 
-class _WarehouseDataBlock extends StatelessWidget {
+class _WarehouseDataBlock extends StatefulWidget {
   final String clientCode;
   final AgentInfo agent;
 
   const _WarehouseDataBlock({required this.clientCode, required this.agent});
 
   @override
+  State<_WarehouseDataBlock> createState() => _WarehouseDataBlockState();
+}
+
+class _WarehouseDataBlockState extends State<_WarehouseDataBlock> {
+  Timer? _highlightTimer;
+  bool _highlightChecker = false;
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final address = _warehouseAddressForClient(agent.warehouseAddress);
-    final phone = agent.warehousePhone?.trim() ?? '';
+    final address = _warehouseAddressForClient(widget.agent.warehouseAddress);
+    final phone = widget.agent.warehousePhone?.trim() ?? '';
 
     return Container(
       width: double.infinity,
@@ -1919,19 +1936,22 @@ class _WarehouseDataBlock extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final controls = <Widget>[
-                _WarehouseCodeTile(clientCode: clientCode),
+                _WarehouseCodeTile(clientCode: widget.clientCode),
                 if (address.isNotEmpty)
                   _WarehouseCopyButton(
                     label: 'Адрес склада',
                     icon: CupertinoIcons.doc_on_doc,
                     value: address,
                     showMarketplaceNotice: true,
+                    onMarketplaceNoticeClosed: _highlightCheckerButton,
                   ),
                 if (phone.isNotEmpty)
                   _WarehouseCopyButton(
                     label: 'Телефон склада',
                     icon: CupertinoIcons.phone,
                     value: phone,
+                    showMarketplaceNotice: true,
+                    onMarketplaceNoticeClosed: _highlightCheckerButton,
                   ),
               ];
               final useSingleRow = constraints.maxWidth >= 620;
@@ -1957,6 +1977,61 @@ class _WarehouseDataBlock extends StatelessWidget {
               );
             },
           ),
+          if (address.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.all(_highlightChecker ? 4 : 0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(19),
+                color: _highlightChecker
+                    ? context.brandPrimary.withValues(alpha: 0.14)
+                    : Colors.transparent,
+                boxShadow: _highlightChecker
+                    ? [
+                        BoxShadow(
+                          color: context.brandPrimary.withValues(alpha: 0.3),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : const [],
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => showWarehouseAddressChecker(
+                    context,
+                    expected: WarehouseAddressCheckData(
+                      clientCode: widget.clientCode,
+                      address: address,
+                      phone: phone,
+                    ),
+                  ),
+                  icon: const Icon(Icons.fact_check_outlined, size: 19),
+                  label: const Text('Проверить заполнение'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.brandPrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    elevation: 0,
+                    textStyle: const TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1967,7 +2042,16 @@ class _WarehouseDataBlock extends StatelessWidget {
         .replaceFirst(RegExp(r'\s*\(不要隐藏代码\s*[^)]*\)\s*$'), '')
         .trim();
     if (base.isEmpty) return '';
-    return '$base(不要隐藏代码 $clientCode)';
+    return '$base(不要隐藏代码 ${widget.clientCode})';
+  }
+
+  void _highlightCheckerButton() {
+    if (!mounted) return;
+    _highlightTimer?.cancel();
+    setState(() => _highlightChecker = true);
+    _highlightTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _highlightChecker = false);
+    });
   }
 }
 
@@ -2023,12 +2107,14 @@ class _WarehouseCopyButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool showMarketplaceNotice;
+  final VoidCallback? onMarketplaceNoticeClosed;
 
   const _WarehouseCopyButton({
     required this.label,
     required this.icon,
     required this.value,
     this.showMarketplaceNotice = false,
+    this.onMarketplaceNoticeClosed,
   });
 
   @override
@@ -2083,7 +2169,9 @@ class _WarehouseCopyButton extends StatelessWidget {
     }
     HapticFeedback.selectionClick();
     if (showMarketplaceNotice) {
-      showWarehouseAddressCopyBanner(context);
+      await showWarehouseAddressCopyBanner(context);
+      if (!context.mounted) return;
+      onMarketplaceNoticeClosed?.call();
       return;
     }
     _showStyledSnackBar(context, 'Текст скопирован');
@@ -2857,9 +2945,7 @@ class _TermsAcceptanceDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Получаем название компании из профиля клиента (agent.name)
-    final profile = ref.watch(clientProfileProvider);
-    final companyName = profile.asData?.value?.agent?.name ?? '2A Logistic';
+    final companyName = ref.watch(companyNameProvider);
 
     return PopScope(
       canPop: false, // Запрещаем закрытие диалога свайпом или кнопкой "назад"

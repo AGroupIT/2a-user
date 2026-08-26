@@ -28,7 +28,7 @@ class FakeNewsRepository implements NewsRepository {
   static final _items = <NewsItem>[
     NewsItem(
       slug: 'welcome',
-      title: 'Добро пожаловать в 2A Logistic',
+      title: 'Добро пожаловать!',
       excerpt: 'Мы обновили личный кабинет и готовим мобильное приложение.',
       imageUrl:
           'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800',
@@ -51,7 +51,7 @@ class FakeNewsRepository implements NewsRepository {
 
 ---
 
-Следите за обновлениями и не забудьте [подписаться на наш Telegram](https://t.me/twoa_logistics).
+Следите за обновлениями в приложении.
 
 *Спасибо, что вы с нами!*
 ''',
@@ -92,7 +92,7 @@ class FakeNewsRepository implements NewsRepository {
 
 ---
 
-Если у вас возникли вопросы, обратитесь в [поддержку](https://t.me/twoa_manager).
+Если у вас возникли вопросы, обратитесь в чат поддержки в приложении.
 ''',
       publishedAt: DateTime.now().subtract(const Duration(days: 5)),
     ),

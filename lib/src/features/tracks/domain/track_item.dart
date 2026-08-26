@@ -14,6 +14,7 @@ class TrackItem {
   final String? groupId;
   final TrackAssembly? assembly;
   final String? comment;
+  final String? invoiceNumber;
   final List<String> photoReportUrls;
   final ProductInfo? productInfo;
   final List<PhotoRequest> photoRequests;
@@ -22,6 +23,8 @@ class TrackItem {
   final int? clientCodeId;
   final List<StatusTimelineEntry> statusHistory;
   final List<TrackSpItem> spItems;
+  final bool? canAddToAssembly;
+  final String? assemblyBlockReason;
 
   const TrackItem({
     this.id,
@@ -35,6 +38,7 @@ class TrackItem {
     this.groupId,
     this.assembly,
     this.comment,
+    this.invoiceNumber,
     this.photoReportUrls = const [],
     this.productInfo,
     this.photoRequests = const [],
@@ -43,6 +47,8 @@ class TrackItem {
     this.clientCodeId,
     this.statusHistory = const [],
     this.spItems = const [],
+    this.canAddToAssembly,
+    this.assemblyBlockReason,
   });
 
   // Последний активный фотозапрос (не отмененный)
@@ -69,6 +75,20 @@ class TrackItem {
   /// оставлен для старых ответов API, где `statusCode` ещё не передавался.
   bool get isPending =>
       statusCode == 'pending' || (statusCode.isEmpty && status == 'В ожидании');
+
+  /// Серверный признак имеет приоритет. Fallback сохраняет совместимость со
+  /// старым backend, который ещё не возвращает причины блокировки.
+  bool get isAvailableForAssemblySelection =>
+      canAddToAssembly ??
+      ((statusCode == 'in_warehouse' || status == 'На складе') &&
+          assembly == null);
+
+  String? get assemblySelectionHint => switch (assemblyBlockReason) {
+    'warehouse_arrival_cooldown' =>
+      'Трек только поступил на склад. Добавить в сборку можно завтра.',
+    'return_requested' => 'По треку запрошен возврат',
+    _ => null,
+  };
 
   factory TrackItem.fromJson(Map<String, dynamic> json) {
     // Получаем код трека
@@ -155,6 +175,8 @@ class TrackItem {
       groupId: json['assemblyId']?.toString(),
       assembly: assembly,
       comment: json['note'] as String?, // note - это комментарий клиента
+      invoiceNumber:
+          json['invoiceNumber']?.toString() ?? assembly?.invoiceNumber,
       photoReportUrls: photoUrls,
       productInfo: productInfo,
       photoRequests: photoRequests,
@@ -163,6 +185,8 @@ class TrackItem {
       clientCodeId: clientCodeId,
       statusHistory: statusHistory,
       spItems: spItems,
+      canAddToAssembly: json['canAddToAssembly'] as bool?,
+      assemblyBlockReason: json['assemblyBlockReason']?.toString(),
     );
   }
 }
@@ -310,6 +334,7 @@ class TrackAssembly {
   final String? statusName;
   final String? statusColor;
   final String? comment;
+  final String? invoiceNumber;
 
   // Тариф
   final String? tariffName;
@@ -353,6 +378,7 @@ class TrackAssembly {
     this.statusName,
     this.statusColor,
     this.comment,
+    this.invoiceNumber,
     this.tariffName,
     this.tariffCost,
     this.packagingTypes = const [],
@@ -428,6 +454,7 @@ class TrackAssembly {
       statusName: json['statusName']?.toString(),
       statusColor: json['statusColor']?.toString(),
       comment: json['comment']?.toString(),
+      invoiceNumber: json['invoiceNumber']?.toString(),
       tariffName: json['tariffName']?.toString(),
       tariffCost: parseDouble(json['tariffCost']),
       packagingTypes: packagingTypes,
@@ -507,6 +534,8 @@ class PhotoRequest {
 
   String get statusLabel {
     switch (status) {
+      case 'pending':
+        return 'Ожидает выполнения';
       case 'new':
         return 'Новый';
       case 'at_warehouse':

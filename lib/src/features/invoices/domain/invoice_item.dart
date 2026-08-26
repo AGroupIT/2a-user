@@ -1,4 +1,5 @@
 import '../../../core/models/status_timeline_entry.dart';
+import '../../assemblies/domain/box.dart';
 
 class InvoiceItem {
   final String id;
@@ -37,6 +38,7 @@ class InvoiceItem {
   final int totalTracks;
   final int tracksWithPhoto;
   final List<String> scalePhotoUrls;
+  final List<Box> boxes;
   final String status;
   final String? statusName;
   final String? statusColor;
@@ -95,6 +97,7 @@ class InvoiceItem {
     this.totalTracks = 0,
     this.tracksWithPhoto = 0,
     this.scalePhotoUrls = const [],
+    this.boxes = const [],
     this.clientCode,
     this.bonusKgApplied = 0,
     this.clientPricePerKg,
@@ -174,6 +177,10 @@ class InvoiceItem {
   }
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
+    final invoiceNumber =
+        json['invoiceNumber'] as String? ??
+        json['number'] as String? ??
+        'INV-${json['id']}';
     final status = json['status'] as String? ?? 'unknown';
     final statusName = json['statusName'] as String?;
     final statusColor = json['statusColor'] as String?;
@@ -280,6 +287,7 @@ class InvoiceItem {
     int totalTracks = 0;
     int tracksWithPhoto = 0;
     final invoiceBoxIds = <int>{};
+    final fallbackBoxNumber = int.tryParse(invoiceNumber.split('-').last);
     void addInvoiceBoxId(dynamic value) {
       final id = int.tryParse(value?.toString() ?? '');
       if (id != null) invoiceBoxIds.add(id);
@@ -294,6 +302,7 @@ class InvoiceItem {
     }
 
     final List<String> scalePhotoUrls = [];
+    final List<Box> invoiceBoxes = [];
     final seenScalePhotoUrls = <String>{};
 
     void addScalePhoto(dynamic rawPhoto) {
@@ -320,10 +329,14 @@ class InvoiceItem {
       for (final rawBox in boxes) {
         if (rawBox is! Map) continue;
         final boxId = int.tryParse(rawBox['id']?.toString() ?? '');
-        if (invoiceBoxIds.isNotEmpty &&
-            (boxId == null || !invoiceBoxIds.contains(boxId))) {
+        final boxNumber = int.tryParse(rawBox['number']?.toString() ?? '');
+        final belongsToInvoice = invoiceBoxIds.isNotEmpty
+            ? boxId != null && invoiceBoxIds.contains(boxId)
+            : fallbackBoxNumber != null && boxNumber == fallbackBoxNumber;
+        if (!belongsToInvoice) {
           continue;
         }
+        invoiceBoxes.add(Box.fromJson(Map<String, dynamic>.from(rawBox)));
         addScalePhotos(rawBox['scalePhotos']);
       }
 
@@ -345,10 +358,7 @@ class InvoiceItem {
 
     return InvoiceItem(
       id: json['id'].toString(),
-      invoiceNumber:
-          json['invoiceNumber'] as String? ??
-          json['number'] as String? ??
-          'INV-${json['id']}',
+      invoiceNumber: invoiceNumber,
       createdAt: createdAt,
       updatedAt: updatedAt,
       sendDate: sendDate,
@@ -406,6 +416,7 @@ class InvoiceItem {
       totalTracks: totalTracks,
       tracksWithPhoto: tracksWithPhoto,
       scalePhotoUrls: scalePhotoUrls,
+      boxes: invoiceBoxes,
       clientCode: clientCode,
       bonusKgApplied: _parseDouble(json['bonusKgApplied']),
       clientPricePerKg: json['clientPricePerKg'] != null

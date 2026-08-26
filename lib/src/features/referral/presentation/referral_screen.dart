@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_input_decoration.dart';
@@ -168,6 +169,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     final referralAsync = ref.watch(referralProvider);
     final topPad = AppLayout.topBarTotalHeight(context);
     final bottomPad = AppLayout.bottomScrollPadding(context);
@@ -244,6 +246,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
                       controller: _linkCodeController,
                       isLinking: _isLinking,
                       onLink: _linkReferralCode,
+                      companyName: companyName,
                     )
                   else
                     _InfoCard(
@@ -1081,11 +1084,13 @@ class _LinkCodeCard extends StatelessWidget {
   final TextEditingController controller;
   final bool isLinking;
   final VoidCallback onLink;
+  final String companyName;
 
   const _LinkCodeCard({
     required this.controller,
     required this.isLinking,
     required this.onLink,
+    required this.companyName,
   });
 
   @override
@@ -1101,9 +1106,9 @@ class _LinkCodeCard extends StatelessWidget {
             title: 'Вас пригласили?',
           ),
           const SizedBox(height: 10),
-          const Text(
-            'Введите код человека, который пригласил вас в 2A Logistic. После условий программы бонус будет начислен автоматически.',
-            style: TextStyle(
+          Text(
+            'Введите код человека, который пригласил вас в $companyName. После условий программы бонус будет начислен автоматически.',
+            style: const TextStyle(
               color: AppColors.textSecondary,
               fontFamily: 'Gilroy',
               fontSize: 13.5,

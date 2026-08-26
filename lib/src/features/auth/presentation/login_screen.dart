@@ -182,11 +182,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _loginWithPasskey() async {
-    if (_loginCtrl.text.trim().isEmpty) {
-      _showError('Введите email или телефон');
-      return;
-    }
-
     if (_passkeyAvailabilityChecked && !_passkeyAvailable) {
       _showError('Это устройство не поддерживает быстрый вход');
       return;
@@ -198,9 +193,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final passkeyService = ref.read(passkeyAuthServiceProvider);
 
     try {
-      final result = await passkeyService.authenticate(
-        login: _loginCtrl.text.trim(),
-      );
+      final result = await passkeyService.authenticate();
 
       if (!mounted) return;
 
@@ -248,12 +241,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     final prefs = await SharedPreferences.getInstance();
     final prefSuffix = '${agentId ?? 'agent'}_$clientId';
-    final registeredKey = 'passkey_registered_v1_$prefSuffix';
     final dismissedKey = 'passkey_prompt_dismissed_v1_$prefSuffix';
-    if (prefs.getBool(registeredKey) == true ||
-        prefs.getBool(dismissedKey) == true) {
+    try {
+      final serverStatus = await ref
+          .read(passkeyAuthServiceProvider)
+          .getCurrentUserPasskeyStatus();
+      if (!mounted || serverStatus.enabled) return;
+    } catch (error) {
+      debugPrint('Passkey status check after login failed: $error');
       return;
     }
+    if (prefs.getBool(dismissedKey) == true) return;
 
     if (!mounted) return;
 
@@ -264,8 +262,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         return AlertDialog(
           title: const Text('Включить быстрый вход?'),
           content: const Text(
-            'После подключения вы сможете входить по Face ID или отпечатку, '
-            'без ввода домена партнёра и пароля.',
+            'После подключения вы сможете входить без телефона, домена '
+            'партнёра и пароля. Если у вас несколько аккаунтов, устройство '
+            'предложит выбрать нужного партнёра.',
           ),
           actions: [
             TextButton(
@@ -288,7 +287,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     try {
       await ref.read(passkeyAuthServiceProvider).registerCurrentUserPasskey();
-      await prefs.setBool(registeredKey, true);
+      await prefs.remove(dismissedKey);
       if (!mounted) return;
       AppToast.showFromSnackBar(
         context,
@@ -455,19 +454,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _buildTextField(
-                                controller: _loginCtrl,
-                                label: 'Email или телефон',
-                                hint: 'user@example.com',
-                                prefixIcon: Icons.person_rounded,
-                                keyboardType: TextInputType.emailAddress,
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: _verticalRevealTransition,
+                                child: _showPasswordLogin
+                                    ? _buildTextField(
+                                        key: const ValueKey(
+                                          'password-login-identifier',
+                                        ),
+                                        controller: _loginCtrl,
+                                        label: 'Email или телефон',
+                                        hint: 'user@example.com',
+                                        prefixIcon: Icons.person_rounded,
+                                        keyboardType:
+                                            TextInputType.emailAddress,
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey(
+                                          'passkey-login-identifier-hidden',
+                                        ),
+                                      ),
                               ),
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 280),
                                 switchInCurve: Curves.easeOutCubic,
                                 switchOutCurve: Curves.easeInCubic,
                                 transitionBuilder: _verticalRevealTransition,
-                                child: !_showPasswordLogin
+                                child:
+                                    !_showPasswordLogin &&
+                                        _passkeyAvailabilityChecked &&
+                                        _passkeyAvailable
                                     ? _buildPasskeyActions()
                                     : const SizedBox.shrink(
                                         key: ValueKey('passkey-hidden'),
@@ -561,18 +579,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
         ),
-        if (_passkeyAvailabilityChecked && !_passkeyAvailable) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Быстрый вход доступен только на устройствах с поддержкой passkeys.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textSecondary.withValues(alpha: 0.82),
-              fontSize: 12,
-              height: 1.25,
-            ),
+        const SizedBox(height: 8),
+        Text(
+          'Телефон и домен вводить не нужно. Если доступно несколько '
+          'профилей, выберите нужного партнёра в системном окне.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.textSecondary.withValues(alpha: 0.82),
+            fontSize: 12,
+            height: 1.25,
           ),
-        ],
+        ),
       ],
     );
   }
@@ -599,7 +616,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Вход в аккаунт 2a-logistic.ru',
+                    'Вход в аккаунт партнёра',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -738,6 +755,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildTextField({
+    Key? key,
     required TextEditingController controller,
     required String label,
     required String hint,
@@ -752,6 +770,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final accent = AuthVisuals.primary(context);
 
     return Column(
+      key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
