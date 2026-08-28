@@ -15,6 +15,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const token =
       '123e4567-e89b-12d3-a456-426614174000.1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const secondToken =
+      '223e4567-e89b-12d3-a456-426614174000.1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 
   testWidgets('публичная партнёрская ссылка ведёт в защищённую регистрацию', (
     tester,
@@ -150,6 +152,63 @@ void main() {
     expect(api.requestedPaths, hasLength(2));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('открытие ссылки B поверх A заменяет партнёра и токен', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _InviteApiClient(secondToken: secondToken);
+    final container = ProviderContainer(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        authProvider.overrideWith(_LoggedOutAuthNotifier.new),
+      ],
+    );
+    final router = container.read(routerProvider);
+    router.go('/client-partner/invite/$token');
+    addTearDown(() {
+      router.dispose();
+      container.dispose();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await _pumpUntil(
+      tester,
+      () => container.read(clientPartnerInviteProvider).isValidated,
+    );
+    expect(
+      container.read(clientPartnerInviteProvider).partnerName,
+      'Партнёр Иван',
+    );
+
+    router.go('/client-partner/invite/$secondToken');
+    await _pumpUntil(
+      tester,
+      () =>
+          container.read(clientPartnerInviteProvider).token == secondToken &&
+          container.read(clientPartnerInviteProvider).isValidated,
+    );
+
+    final state = container.read(clientPartnerInviteProvider);
+    expect(state.token, secondToken);
+    expect(state.partnerName, 'Партнёр Борис');
+    expect(state.prefix, 'PB');
+    await tester.pump();
+    expect(find.text('Партнёр Борис'), findsOneWidget);
+  });
+}
+
+Future<void> _pumpUntil(WidgetTester tester, bool Function() predicate) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return;
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  fail('Condition was not met in time');
 }
 
 class _LoggedOutAuthNotifier extends AuthNotifier {
@@ -162,11 +221,13 @@ class _InviteApiClient extends ApiClient {
     this.failFirst = false,
     this.colorPrimary = '#123456',
     this.colorSecondary = '#ABCDEF',
+    this.secondToken,
   });
 
   final bool failFirst;
   final String colorPrimary;
   final String colorSecondary;
+  final String? secondToken;
   final requestedPaths = <String>[];
   var _attempt = 0;
 
@@ -181,18 +242,19 @@ class _InviteApiClient extends ApiClient {
     if (failFirst && _attempt == 1) {
       throw DioException(requestOptions: RequestOptions(path: path));
     }
+    final isSecond = secondToken != null && path.contains(secondToken!);
     return Response<T>(
       requestOptions: RequestOptions(path: path),
       statusCode: 200,
       data:
           {
                 'data': {
-                  'partnerName': 'Партнёр Иван',
-                  'agentName': 'Agent A',
+                  'partnerName': isSecond ? 'Партнёр Борис' : 'Партнёр Иван',
+                  'agentName': isSecond ? 'Agent B' : 'Agent A',
                   'agentDomain': 'agent-a.test',
                   'colorPrimary': colorPrimary,
                   'colorSecondary': colorSecondary,
-                  'prefix': 'PA',
+                  'prefix': isSecond ? 'PB' : 'PA',
                   'shortCode': 'ABCDEFGH',
                 },
               }

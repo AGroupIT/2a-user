@@ -13,16 +13,34 @@ import '../../../core/ui/app_toast.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
+import 'garage_modal.dart';
 import 'garage_ui.dart';
+
+Future<int?> showGarageRequestFormModal(
+  BuildContext context, {
+  int? requestId,
+  int? initialVehicleId,
+}) {
+  return showGarageModalSheet<int>(
+    context: context,
+    child: GarageRequestFormScreen(
+      initialVehicleId: initialVehicleId,
+      requestId: requestId,
+      modal: true,
+    ),
+  );
+}
 
 class GarageRequestFormScreen extends ConsumerStatefulWidget {
   final int? initialVehicleId;
   final int? requestId;
+  final bool modal;
 
   const GarageRequestFormScreen({
     super.key,
     this.initialVehicleId,
     this.requestId,
+    this.modal = false,
   });
 
   @override
@@ -216,7 +234,11 @@ class _GarageRequestFormScreenState
       ref.invalidate(garageRequestsProvider);
       ref.invalidate(garageRequestProvider(request.id));
       _show(submit ? 'Заявка отправлена' : 'Черновик сохранён');
-      context.go('/garage/requests/${request.id}');
+      if (widget.modal) {
+        Navigator.of(context).pop(request.id);
+      } else {
+        context.go('/garage/requests/${request.id}');
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -230,7 +252,11 @@ class _GarageRequestFormScreenState
           'Черновик создан, но не все данные удалось сохранить. Откройте его и проверьте позиции.',
           error: true,
         );
-        context.go('/garage/requests/${partial.id}');
+        if (widget.modal) {
+          Navigator.of(context).pop(partial.id);
+        } else {
+          context.go('/garage/requests/${partial.id}');
+        }
       } else {
         _show('Не удалось сохранить заявку', error: true);
       }
@@ -244,15 +270,29 @@ class _GarageRequestFormScreenState
   @override
   Widget build(BuildContext context) {
     final vehicles = ref.watch(garageVehiclesControllerProvider);
-    final top = AppLayout.topBarTotalHeight(context);
-    final bottom = AppLayout.bottomScrollPadding(context);
+    final top = widget.modal ? 0.0 : AppLayout.topBarTotalHeight(context);
+    final bottom = widget.modal
+        ? MediaQuery.viewInsetsOf(context).bottom + 26
+        : AppLayout.bottomScrollPadding(context);
     final title = _isEditing ? 'Редактирование заявки' : 'Новая заявка';
 
     if (_loading || _loadError != null) {
       return ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 26),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 26,
+        ),
         children: [
-          GaragePageHeader(title: title),
+          if (widget.modal)
+            GarageModalHeader(
+              icon: Icons.playlist_add_rounded,
+              title: title,
+              subtitle: 'Автомобиль, детали и пожелания по подбору',
+            )
+          else
+            GaragePageHeader(title: title),
           const SizedBox(height: 12),
           if (_loading)
             const GarageCard(child: Center(child: CircularProgressIndicator()))
@@ -280,24 +320,26 @@ class _GarageRequestFormScreenState
     return Form(
       key: _formKey,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 26),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 26,
+        ),
         children: [
-          GaragePageHeader(title: title),
+          if (widget.modal)
+            GarageModalHeader(
+              icon: Icons.playlist_add_rounded,
+              title: title,
+              subtitle: 'Автомобиль, детали и пожелания по подбору',
+            )
+          else
+            GaragePageHeader(title: title),
           const SizedBox(height: 12),
-          const GarageCard(
-            child: Text(
-              'Добавьте одну или несколько деталей. Черновик хранится на сервере, его можно дополнять и отправить отдельной кнопкой.',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontFamily: 'Gilroy',
-                fontSize: 13,
-                height: 1.3,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          GarageCard(
+          GarageSectionCard(
+            icon: Icons.directions_car_outlined,
+            title: 'Основное',
+            subtitle: 'Выберите автомобиль и добавьте общий комментарий',
             child: vehicles.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => GarageSecondaryButton(

@@ -90,6 +90,8 @@ class ClientPartnerInviteState {
 class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
   late ApiClient _apiClient;
   bool _capturedDuringRestore = false;
+  int _captureGeneration = 0;
+  int _validationGeneration = 0;
 
   @override
   ClientPartnerInviteState build() {
@@ -133,6 +135,8 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
   Future<bool> captureToken(String rawToken) async {
     final token = rawToken.trim();
     _capturedDuringRestore = true;
+    final captureGeneration = ++_captureGeneration;
+    _validationGeneration += 1;
     if (!_inviteTokenPattern.hasMatch(token)) {
       state = const ClientPartnerInviteState(
         phase: ClientPartnerInvitePhase.error,
@@ -155,6 +159,9 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_inviteTokenKey, token);
       await prefs.setString(_inviteIdempotencyKey, idempotencyKey);
+      if (captureGeneration != _captureGeneration) {
+        await _persistCurrentInvite(prefs);
+      }
     } catch (error) {
       debugPrint('Client partner invite persist failed: $error');
     }
@@ -163,7 +170,9 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
 
   Future<bool> validate() async {
     final token = state.token;
-    if (token == null) return false;
+    final idempotencyKey = state.registrationIdempotencyKey;
+    if (token == null || idempotencyKey == null) return false;
+    final validationGeneration = ++_validationGeneration;
     state = state.copyWith(
       phase: ClientPartnerInvitePhase.validating,
       clearError: true,
@@ -174,6 +183,9 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
       );
       final data = response.data?['data'];
       if (data is! Map) throw StateError('Некорректный ответ сервера');
+      if (!_isCurrentValidation(validationGeneration, token, idempotencyKey)) {
+        return false;
+      }
       state = state.copyWith(
         phase: ClientPartnerInvitePhase.valid,
         partnerName: data['partnerName'] as String?,
@@ -187,6 +199,9 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
       );
       return true;
     } catch (error) {
+      if (!_isCurrentValidation(validationGeneration, token, idempotencyKey)) {
+        return false;
+      }
       state = state.copyWith(
         phase: ClientPartnerInvitePhase.error,
         error: _messageFromError(error),
@@ -197,6 +212,8 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
 
   Future<void> clear() async {
     _capturedDuringRestore = true;
+    _captureGeneration += 1;
+    _validationGeneration += 1;
     try {
       final prefs = await SharedPreferences.getInstance();
       await _clearPreferences(prefs);
@@ -211,6 +228,26 @@ class ClientPartnerInviteNotifier extends Notifier<ClientPartnerInviteState> {
   Future<void> _clearPreferences(SharedPreferences prefs) async {
     await prefs.remove(_inviteTokenKey);
     await prefs.remove(_inviteIdempotencyKey);
+  }
+
+  bool _isCurrentValidation(
+    int validationGeneration,
+    String token,
+    String idempotencyKey,
+  ) =>
+      validationGeneration == _validationGeneration &&
+      state.token == token &&
+      state.registrationIdempotencyKey == idempotencyKey;
+
+  Future<void> _persistCurrentInvite(SharedPreferences prefs) async {
+    final token = state.token;
+    final idempotencyKey = state.registrationIdempotencyKey;
+    if (token == null || idempotencyKey == null) {
+      await _clearPreferences(prefs);
+      return;
+    }
+    await prefs.setString(_inviteTokenKey, token);
+    await prefs.setString(_inviteIdempotencyKey, idempotencyKey);
   }
 
   String _messageFromError(Object error) {

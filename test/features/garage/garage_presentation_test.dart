@@ -14,6 +14,7 @@ import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_r
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_request_status_progress.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_ui.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_vehicle_form_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
 
 void main() {
@@ -229,73 +230,89 @@ void main() {
     );
   });
 
-  testWidgets(
-    'Garage start uses standard back header and request-first sections',
-    (tester) async {
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      final repository = _MockGarageRepository();
-      when(repository.getVehicles).thenAnswer((_) async => const []);
-      when(repository.getRequests).thenAnswer(
-        (_) async => [
-          GarageRequest.fromJson({
-            'id': 11,
-            'requestNumber': 'GAR-A-11',
-            'vehicleId': 7,
-            'status': 'new',
-            'createdAt': '2026-07-24T10:00:00.000Z',
-            'vehicleSnapshot': {
-              'make': 'Toyota',
-              'model': 'Camry',
-              'modelYear': 2020,
+  testWidgets('Garage start uses branded hero and compact sections', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    final repository = _MockGarageRepository();
+    when(repository.getVehicles).thenAnswer((_) async => const []);
+    when(repository.getRequests).thenAnswer(
+      (_) async => [
+        GarageRequest.fromJson({
+          'id': 11,
+          'requestNumber': 'GAR-A-11',
+          'vehicleId': 7,
+          'status': 'new',
+          'createdAt': '2026-07-24T10:00:00.000Z',
+          'vehicleSnapshot': {
+            'make': 'Toyota',
+            'model': 'Camry',
+            'modelYear': 2020,
+          },
+          'items': [
+            {
+              'id': 101,
+              'requestId': 11,
+              'orderNumber': 1,
+              'partName': 'Фильтр',
+              'quantity': 1,
             },
-            'items': [
-              {
-                'id': 101,
-                'requestId': 11,
-                'orderNumber': 1,
-                'partName': 'Фильтр',
-                'quantity': 1,
-              },
-            ],
-          }),
-        ],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            activeClientCodeProvider.overrideWithValue('A-001'),
-            garageRepositoryProvider.overrideWithValue(repository),
-            garageAvailabilityProvider.overrideWith(
-              (ref) async => const GarageAvailability(
-                available: true,
-                reason: null,
-                processorAgentId: 2,
-                vinLookupConfigured: true,
-              ),
-            ),
-            garageRequestStatusesProvider.overrideWith(
-              (ref) async => const <GarageRequestStatusDefinition>[],
-            ),
           ],
-          child: const MaterialApp(home: Scaffold(body: GarageScreen())),
-        ),
-      );
-      await tester.pumpAndSettle();
+        }),
+      ],
+    );
 
-      expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
-      expect(find.text('Автомобили'), findsOneWidget);
-      expect(find.text('Заявки'), findsOneWidget);
-      expect(find.text('Заказы'), findsNothing);
-      await tester.tap(find.text('Заявки'));
-      await tester.pumpAndSettle();
-      expect(find.text('GAR-A-11'), findsOneWidget);
-      expect(find.textContaining('1 запчасть'), findsOneWidget);
-      expect(find.textContaining('24.07.2026'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeClientCodeProvider.overrideWithValue('A-001'),
+          garageRepositoryProvider.overrideWithValue(repository),
+          garageAvailabilityProvider.overrideWith(
+            (ref) async => const GarageAvailability(
+              available: true,
+              reason: null,
+              processorAgentId: 2,
+              vinLookupConfigured: true,
+            ),
+          ),
+          garageRequestStatusesProvider.overrideWith(
+            (ref) async => const <GarageRequestStatusDefinition>[],
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: GarageScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.directions_car_filled_rounded), findsWidgets);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.text('Подбор запчастей'), findsOneWidget);
+    expect(find.text('Автомобили'), findsOneWidget);
+    expect(find.text('Заявки'), findsOneWidget);
+    expect(find.byKey(const ValueKey('garage-segment-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('garage-segment-1')), findsOneWidget);
+    expect(find.text('Заказы'), findsNothing);
+    await tester.tap(find.text('Добавить авто'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GarageVehicleFormScreen), findsOneWidget);
+    expect(
+      tester
+          .widget<GarageVehicleFormScreen>(find.byType(GarageVehicleFormScreen))
+          .modal,
+      isTrue,
+    );
+    expect(find.byType(GarageModalHeader), findsOneWidget);
+    Navigator.of(tester.element(find.byType(GarageVehicleFormScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(GarageVehicleFormScreen), findsNothing);
+    await tester.tap(find.text('Заявки'));
+    await tester.pumpAndSettle();
+    expect(find.text('GAR-A-11'), findsOneWidget);
+    expect(find.textContaining('1 запчасть'), findsOneWidget);
+    expect(find.textContaining('24.07.2026'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Garage invoice is separate and exposes Bank QR action', (
     tester,

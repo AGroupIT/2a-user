@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
@@ -10,6 +9,7 @@ import '../domain/garage_models.dart';
 import 'garage_invoice_card.dart';
 import 'garage_order_composition_card.dart';
 import 'garage_payment_sheet.dart';
+import 'garage_request_detail_screen.dart';
 import 'garage_ui.dart';
 
 class GarageOrderDetailScreen extends ConsumerStatefulWidget {
@@ -249,7 +249,10 @@ class _GarageOrderDetailScreenState
             onPressed: _working
                 ? null
                 : () async {
-                    await context.push('/garage/requests/${order.requestId}');
+                    await showGarageRequestDetailModal(
+                      context,
+                      requestId: order.requestId,
+                    );
                     if (!mounted) return;
                     await _refresh();
                   },

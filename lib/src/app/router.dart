@@ -179,9 +179,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         name: 'client-partner-invite',
         path: '/client-partner/invite/:token',
-        builder: (context, state) => ClientPartnerInviteScreen(
-          token: state.pathParameters['token'] ?? '',
-        ),
+        builder: (context, state) {
+          final token = state.pathParameters['token'] ?? '';
+          return ClientPartnerInviteScreen(key: ValueKey(token), token: token);
+        },
       ),
 
       StatefulShellRoute.indexedStack(

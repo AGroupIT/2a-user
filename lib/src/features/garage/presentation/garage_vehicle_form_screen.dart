@@ -7,12 +7,28 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_toast.dart';
 import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
+import 'garage_modal.dart';
 import 'garage_ui.dart';
+
+Future<bool?> showGarageVehicleFormModal(
+  BuildContext context, {
+  int? vehicleId,
+}) {
+  return showGarageModalSheet<bool>(
+    context: context,
+    child: GarageVehicleFormScreen(vehicleId: vehicleId, modal: true),
+  );
+}
 
 class GarageVehicleFormScreen extends ConsumerStatefulWidget {
   final int? vehicleId;
+  final bool modal;
 
-  const GarageVehicleFormScreen({super.key, this.vehicleId});
+  const GarageVehicleFormScreen({
+    super.key,
+    this.vehicleId,
+    this.modal = false,
+  });
 
   @override
   ConsumerState<GarageVehicleFormScreen> createState() =>
@@ -119,7 +135,11 @@ class _GarageVehicleFormScreenState
             ? 'Автомобиль добавлен'
             : 'Автомобиль обновлён',
       );
-      context.pop();
+      if (widget.modal) {
+        Navigator.of(context).pop(true);
+      } else {
+        context.pop();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -158,7 +178,11 @@ class _GarageVehicleFormScreenState
           .read(garageVehiclesControllerProvider.notifier)
           .deleteVehicle(vehicle.id);
       if (!mounted) return;
-      context.pop();
+      if (widget.modal) {
+        Navigator.of(context).pop(true);
+      } else {
+        context.pop();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -172,16 +196,30 @@ class _GarageVehicleFormScreenState
 
   @override
   Widget build(BuildContext context) {
-    final top = AppLayout.topBarTotalHeight(context);
-    final bottom = AppLayout.bottomScrollPadding(context);
+    final top = widget.modal ? 0.0 : AppLayout.topBarTotalHeight(context);
+    final bottom = widget.modal
+        ? MediaQuery.viewInsetsOf(context).bottom + 24
+        : AppLayout.bottomScrollPadding(context);
     final title = widget.vehicleId == null
         ? 'Добавление автомобиля'
         : 'Редактирование автомобиля';
     if (_loading) {
       return ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 24),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 24,
+        ),
         children: [
-          GaragePageHeader(title: title),
+          if (widget.modal)
+            GarageModalHeader(
+              icon: Icons.directions_car_filled_rounded,
+              title: title,
+              subtitle: 'Данные автомобиля для подбора запчастей',
+            )
+          else
+            GaragePageHeader(title: title),
           const SizedBox(height: 12),
           const GarageCard(child: Center(child: CircularProgressIndicator())),
         ],
@@ -190,11 +228,26 @@ class _GarageVehicleFormScreenState
     return Form(
       key: _formKey,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 24),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 24,
+        ),
         children: [
-          GaragePageHeader(title: title),
+          if (widget.modal)
+            GarageModalHeader(
+              icon: Icons.directions_car_filled_rounded,
+              title: title,
+              subtitle: 'Данные автомобиля для подбора запчастей',
+            )
+          else
+            GaragePageHeader(title: title),
           const SizedBox(height: 12),
-          GarageCard(
+          GarageSectionCard(
+            icon: Icons.badge_outlined,
+            title: 'Основные данные',
+            subtitle: 'VIN и понятное название автомобиля',
             child: Column(
               children: [
                 TextFormField(
@@ -227,7 +280,16 @@ class _GarageVehicleFormScreenState
                     hintText: 'Например, Семейный автомобиль',
                   ),
                 ),
-                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GarageSectionCard(
+            icon: Icons.directions_car_outlined,
+            title: 'Автомобиль',
+            subtitle: 'Марка, модель и год выпуска',
+            child: Column(
+              children: [
                 TextFormField(
                   controller: _make,
                   decoration: const InputDecoration(labelText: 'Марка *'),
@@ -253,7 +315,16 @@ class _GarageVehicleFormScreenState
                         : 'Введите год от 1886 до $max';
                   },
                 ),
-                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GarageSectionCard(
+            icon: Icons.tune_rounded,
+            title: 'Дополнительно',
+            subtitle: 'Комплектация и уточнения для менеджера',
+            child: Column(
+              children: [
                 TextFormField(
                   controller: _generation,
                   decoration: const InputDecoration(

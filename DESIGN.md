@@ -127,3 +127,10 @@
 - [ ] Should the home dashboard later expose unpaid invoice count or urgent statuses as a separate alert card? / owner: product / impact: prioritization.
 - [ ] Should warehouse data be pinned above promo for every agent, or only when address/phone exists? / owner: product / impact: information hierarchy.
 - [ ] Which `2A Организатор` capabilities ship in the first enabled cohort after the compatibility foundation: participant navigation, server calculation, or fulfillment links? / owner: product + engineering / impact: rollout order only; does not block documentation.
+
+## Garage visual contract
+- Main Garage follows the Self-buyout service-page composition: explicit back header, branded service hero with actions, then the Tracks-style horizontal segmented control and white 24px list cards.
+- Vehicle titles do not duplicate make/model; nickname is primary while vehicle data and VIN are supporting metadata.
+- Vehicle and request forms use semantic section cards while preserving validation, uploads, drafts, and API behavior.
+- Request detail shows the request number once in its branded hero; status and progress remain in the content.
+- Garage vehicle and request create/edit/detail flows open as root-navigator branded modal sheets; URL routes remain available only as deep-link fallbacks.

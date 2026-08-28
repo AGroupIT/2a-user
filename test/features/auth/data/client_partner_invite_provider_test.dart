@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const token =
       '123e4567-e89b-12d3-a456-426614174000.1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const secondToken =
+      '223e4567-e89b-12d3-a456-426614174000.1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -150,6 +154,34 @@ void main() {
     );
     expect(api.requestedPaths, hasLength(2));
   });
+
+  test('устаревший ответ A не перезаписывает новое приглашение B', () async {
+    final api = _DeferredInviteApiClient();
+    final container = ProviderContainer(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+    );
+    addTearDown(container.dispose);
+    final notifier = container.read(clientPartnerInviteProvider.notifier);
+
+    expect(await notifier.captureToken(token), isTrue);
+    final firstValidation = notifier.validate();
+    await api.waitUntilRequested(token);
+
+    expect(await notifier.captureToken(secondToken), isTrue);
+    final secondValidation = notifier.validate();
+    await api.waitUntilRequested(secondToken);
+
+    api.complete(secondToken, partnerName: 'Партнёр B', prefix: 'PB');
+    expect(await secondValidation, isTrue);
+    api.complete(token, partnerName: 'Партнёр A', prefix: 'PA');
+    expect(await firstValidation, isFalse);
+
+    final state = container.read(clientPartnerInviteProvider);
+    expect(state.token, secondToken);
+    expect(state.partnerName, 'Партнёр B');
+    expect(state.prefix, 'PB');
+    expect(state.isValidated, isTrue);
+  });
 }
 
 Future<void> _waitFor(bool Function() predicate) async {
@@ -225,5 +257,52 @@ class _RetryInviteApiClient extends _InviteApiClient {
       queryParameters: queryParameters,
       options: options,
     );
+  }
+}
+
+class _DeferredInviteApiClient extends ApiClient {
+  final _responses = <String, Completer<Response<Map<String, dynamic>>>>{};
+
+  Future<void> waitUntilRequested(String token) async {
+    await _waitFor(
+      () => _responses.containsKey(
+        '/public/client-partner-invites/${Uri.encodeComponent(token)}',
+      ),
+    );
+  }
+
+  void complete(
+    String token, {
+    required String partnerName,
+    required String prefix,
+  }) {
+    final path = '/public/client-partner-invites/${Uri.encodeComponent(token)}';
+    _responses[path]!.complete(
+      Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: path),
+        statusCode: 200,
+        data: {
+          'data': {
+            'partnerName': partnerName,
+            'agentName': 'Agent $prefix',
+            'agentDomain': '${prefix.toLowerCase()}.test',
+            'colorPrimary': '#123456',
+            'colorSecondary': '#ABCDEF',
+            'prefix': prefix,
+            'shortCode': 'ABCDEFGH',
+          },
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    final completer = _responses.putIfAbsent(path, Completer.new);
+    return await completer.future as Response<T>;
   }
 }

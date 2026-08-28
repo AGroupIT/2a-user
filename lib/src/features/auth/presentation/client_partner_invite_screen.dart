@@ -23,14 +23,27 @@ class _ClientPartnerInviteScreenState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final captured = await ref
-          .read(clientPartnerInviteProvider.notifier)
-          .captureToken(widget.token);
-      if (captured) {
-        await ref.read(clientPartnerInviteProvider.notifier).validate();
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _captureAndValidate(widget.token);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ClientPartnerInviteScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.token != widget.token) {
+      _captureAndValidate(widget.token);
+    }
+  }
+
+  Future<void> _captureAndValidate(String token) async {
+    final notifier = ref.read(clientPartnerInviteProvider.notifier);
+    final captured = await notifier.captureToken(token);
+    if (!mounted) return;
+    if (!captured || ref.read(clientPartnerInviteProvider).token != token) {
+      return;
+    }
+    await notifier.validate();
   }
 
   @override

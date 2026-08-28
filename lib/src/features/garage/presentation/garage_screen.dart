@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_toast.dart';
 import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
+import 'garage_request_detail_screen.dart';
+import 'garage_request_form_screen.dart';
 import 'garage_ui.dart';
+import 'garage_vehicle_form_screen.dart';
 
 class GarageScreen extends ConsumerStatefulWidget {
   const GarageScreen({super.key});
@@ -41,7 +43,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
       padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 22),
       children: [
         const GaragePageHeader(title: 'Гараж', fallbackLocation: '/'),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         ...children,
       ],
     );
@@ -77,9 +79,9 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
             padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 22),
             children: [
               const GaragePageHeader(title: 'Гараж', fallbackLocation: '/'),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               _buildHero(context),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               _buildSectionPicker(context),
               const SizedBox(height: 14),
               switch (_section) {
@@ -101,13 +103,13 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: context.brandGradient,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: context.brandPrimary.withValues(alpha: 0.2),
-            blurRadius: 28,
-            spreadRadius: -15,
-            offset: const Offset(0, 15),
+            color: context.brandPrimary.withValues(alpha: 0.20),
+            blurRadius: 26,
+            spreadRadius: -14,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
@@ -115,7 +117,19 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Добавьте автомобиль, отправьте список запчастей и оплатите согласованный заказ внутри приложения.',
+            'Подбор запчастей',
+            style: TextStyle(
+              color: Colors.white,
+              fontFamily: 'Gilroy',
+              fontSize: 22,
+              height: 1.1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Добавьте автомобиль и отправьте список деталей — менеджер подберёт подходящие варианты.',
             style: TextStyle(
               color: Color(0xE6FFFFFF),
               fontFamily: 'Gilroy',
@@ -132,7 +146,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
                 _HeroAction(
                   icon: Icons.directions_car_filled_rounded,
                   label: 'Добавить авто',
-                  onTap: () => context.push('/garage/vehicles/new'),
+                  onTap: () => showGarageVehicleFormModal(context),
                 ),
                 _HeroAction(
                   icon: Icons.playlist_add_rounded,
@@ -146,7 +160,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
                       );
                       return;
                     }
-                    context.push('/garage/requests/new');
+                    _openRequestForm(context);
                   },
                 ),
               ];
@@ -162,7 +176,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
                             width: double.infinity,
                             child: buttons[index],
                           ),
-                          if (index == 0) const SizedBox(height: 8),
+                          if (index == 0) const SizedBox(height: 6),
                         ],
                       ],
                     )
@@ -180,64 +194,20 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
     );
   }
 
+  Future<void> _openRequestForm(BuildContext context) async {
+    final requestId = await showGarageRequestFormModal(context);
+    if (!context.mounted || requestId == null) return;
+    await showGarageRequestDetailModal(context, requestId: requestId);
+  }
+
   Widget _buildSectionPicker(BuildContext context) {
-    const sections = [
-      (Icons.directions_car_rounded, 'Автомобили'),
-      (Icons.assignment_rounded, 'Заявки'),
-    ];
-    return GarageCard(
-      padding: const EdgeInsets.all(6),
-      child: Row(
-        children: [
-          for (var index = 0; index < sections.length; index++)
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(left: index == 0 ? 0 : 4),
-                child: Material(
-                  color: index == _section
-                      ? context.brandPrimary.withValues(alpha: 0.1)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => setState(() => _section = index),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 11,
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            sections[index].$1,
-                            size: 20,
-                            color: index == _section
-                                ? context.brandPrimary
-                                : AppColors.textSecondary,
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            sections[index].$2,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: index == _section
-                                  ? context.brandPrimary
-                                  : AppColors.textSecondary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return GarageSegmentedControl(
+      selectedIndex: _section,
+      items: const [
+        (icon: Icons.directions_car_rounded, label: 'Автомобили'),
+        (icon: Icons.assignment_rounded, label: 'Заявки'),
+      ],
+      onChanged: (index) => setState(() => _section = index),
     );
   }
 }
@@ -265,7 +235,7 @@ class _VehiclesSection extends StatelessWidget {
             action: GarageSecondaryButton(
               label: 'Добавить автомобиль',
               icon: Icons.add_rounded,
-              onPressed: () => context.push('/garage/vehicles/new'),
+              onPressed: () => showGarageVehicleFormModal(context),
             ),
           );
         }
@@ -274,7 +244,7 @@ class _VehiclesSection extends StatelessWidget {
             for (final vehicle in data.vehicles) ...[
               GarageCard(
                 onTap: () =>
-                    context.push('/garage/vehicles/${vehicle.id}/edit'),
+                    showGarageVehicleFormModal(context, vehicleId: vehicle.id),
                 child: Row(
                   children: [
                     _RoundIcon(icon: Icons.directions_car_filled_rounded),
@@ -284,7 +254,7 @@ class _VehiclesSection extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            garageVehicleLabel(vehicle),
+                            _vehicleTitle(vehicle),
                             style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontFamily: 'Gilroy',
@@ -294,7 +264,7 @@ class _VehiclesSection extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'VIN ${vehicle.vinNormalized}',
+                            _vehicleSubtitle(vehicle),
                             style: const TextStyle(
                               color: AppColors.textSecondary,
                               fontFamily: 'Gilroy',
@@ -316,10 +286,6 @@ class _VehiclesSection extends StatelessWidget {
                           ],
                         ],
                       ),
-                    ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.textSecondary,
                     ),
                   ],
                 ),
@@ -369,53 +335,65 @@ class _RequestsSection extends StatelessWidget {
                   );
                   final createdAt = request.createdAt;
                   return GarageCard(
-                    onTap: () => context.push('/garage/requests/${request.id}'),
-                    child: Column(
+                    onTap: () => showGarageRequestDetailModal(
+                      context,
+                      requestId: request.id,
+                    ),
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                request.requestNumber,
+                        _RoundIcon(icon: Icons.receipt_long_rounded),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      request.requestNumber,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontFamily: 'Gilroy',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  GarageStatusChip(
+                                    status: status,
+                                    definition: garageRequestStatusDefinition(
+                                      requestStatuses,
+                                      status,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${_partsCountLabel(request.items.length)}'
+                                '${createdAt == null ? '' : ' · ${_dateLabel(createdAt)}'}',
                                 style: const TextStyle(
-                                  color: AppColors.textPrimary,
+                                  color: AppColors.textSecondary,
                                   fontFamily: 'Gilroy',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ),
-                            GarageStatusChip(
-                              status: status,
-                              definition: garageRequestStatusDefinition(
-                                requestStatuses,
-                                status,
+                              const SizedBox(height: 4),
+                              Text(
+                                _snapshotLabel(request.vehicleSnapshot),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontFamily: 'Gilroy',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '${_partsCountLabel(request.items.length)}'
-                          '${createdAt == null ? '' : ' · ${_dateLabel(createdAt)}'}',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _snapshotLabel(request.vehicleSnapshot),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
+                            ],
                           ),
                         ),
                       ],
@@ -451,13 +429,15 @@ class _HeroAction extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: context.brandPrimary, size: 19),
-              const SizedBox(width: 7),
+              Icon(icon, color: context.brandPrimary, size: 20),
+              const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   label,
@@ -466,7 +446,7 @@ class _HeroAction extends StatelessWidget {
                   style: TextStyle(
                     color: context.brandPrimary,
                     fontFamily: 'Gilroy',
-                    fontSize: 13.5,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -477,6 +457,31 @@ class _HeroAction extends StatelessWidget {
       ),
     );
   }
+}
+
+String _vehicleTitle(GarageVehicle vehicle) {
+  final nickname = vehicle.nickname?.trim() ?? '';
+  if (nickname.isNotEmpty) return nickname;
+  return [
+    vehicle.make,
+    vehicle.model,
+    vehicle.modelYear.toString(),
+  ].where((value) => value.trim().isNotEmpty).join(' ');
+}
+
+String _vehicleSubtitle(GarageVehicle vehicle) {
+  final nickname = vehicle.nickname?.trim() ?? '';
+  final vehicleName = [
+    vehicle.make,
+    vehicle.model,
+    vehicle.modelYear.toString(),
+  ].where((value) => value.trim().isNotEmpty).join(' ');
+  if (nickname.isNotEmpty &&
+      vehicleName.isNotEmpty &&
+      nickname != vehicleName) {
+    return '$vehicleName · VIN ${vehicle.vinNormalized}';
+  }
+  return 'VIN ${vehicle.vinNormalized}';
 }
 
 class _RoundIcon extends StatelessWidget {

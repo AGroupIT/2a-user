@@ -129,15 +129,6 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              PurchaseBlankHeroChip(
-                icon: Icons.savings_rounded,
-                label: tr(context, ru: 'Самовыкуп', zh: '自助代购'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           Text(
             tr(context, ru: 'Помощь в самовыкупе', zh: '自助代购协助'),
             style: const TextStyle(

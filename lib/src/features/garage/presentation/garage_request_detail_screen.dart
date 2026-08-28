@@ -13,16 +13,36 @@ import '../application/garage_providers.dart';
 import '../domain/garage_models.dart';
 import 'garage_conversation_card.dart';
 import 'garage_invoice_card.dart';
+import 'garage_modal.dart';
 import 'garage_order_composition_card.dart';
 import 'garage_payment_sheet.dart';
+import 'garage_request_form_screen.dart';
 import 'garage_request_parts_card.dart';
 import 'garage_request_status_progress.dart';
 import 'garage_ui.dart';
 
+Future<void> showGarageRequestDetailModal(
+  BuildContext context, {
+  required int requestId,
+}) async {
+  int? nextRequestId = requestId;
+  while (nextRequestId != null && context.mounted) {
+    nextRequestId = await showGarageModalSheet<int>(
+      context: context,
+      child: GarageRequestDetailScreen(requestId: nextRequestId, modal: true),
+    );
+  }
+}
+
 class GarageRequestDetailScreen extends ConsumerStatefulWidget {
   final int requestId;
+  final bool modal;
 
-  const GarageRequestDetailScreen({super.key, required this.requestId});
+  const GarageRequestDetailScreen({
+    super.key,
+    required this.requestId,
+    this.modal = false,
+  });
 
   @override
   ConsumerState<GarageRequestDetailScreen> createState() =>
@@ -215,7 +235,11 @@ class _GarageRequestDetailScreenState
   }
 
   Future<void> _editDraft(GarageRequest request) async {
-    await context.push('/garage/requests/${request.id}/edit');
+    if (widget.modal) {
+      await showGarageRequestFormModal(context, requestId: request.id);
+    } else {
+      await context.push('/garage/requests/${request.id}/edit');
+    }
     if (!mounted) return;
     await _refresh();
   }
@@ -267,7 +291,11 @@ class _GarageRequestDetailScreenState
           .cloneRequest(request.id, idempotencyKey: const Uuid().v4());
       if (!mounted) return;
       ref.invalidate(garageRequestsProvider);
-      context.go('/garage/requests/${clone.id}');
+      if (widget.modal) {
+        Navigator.of(context).pop(clone.id);
+      } else {
+        context.go('/garage/requests/${clone.id}');
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _working = false);
@@ -285,21 +313,47 @@ class _GarageRequestDetailScreenState
     final requestStatuses =
         ref.watch(garageRequestStatusesProvider).asData?.value ??
         const <GarageRequestStatusDefinition>[];
-    final top = AppLayout.topBarTotalHeight(context);
-    final bottom = AppLayout.bottomScrollPadding(context);
+    final top = widget.modal ? 0.0 : AppLayout.topBarTotalHeight(context);
+    final bottom = widget.modal
+        ? MediaQuery.viewInsetsOf(context).bottom + 26
+        : AppLayout.bottomScrollPadding(context);
     return request.when(
       loading: () => ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 26),
-        children: const [
-          GaragePageHeader(title: 'Заявка Гаража'),
-          SizedBox(height: 12),
-          GarageCard(child: Center(child: CircularProgressIndicator())),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 26,
+        ),
+        children: [
+          if (widget.modal)
+            const GarageModalHeader(
+              icon: Icons.receipt_long_rounded,
+              title: 'Заявка Гаража',
+              subtitle: 'Загрузка данных заявки',
+            )
+          else
+            const GaragePageHeader(title: 'Заявка Гаража'),
+          const SizedBox(height: 12),
+          const GarageCard(child: Center(child: CircularProgressIndicator())),
         ],
       ),
       error: (error, _) => ListView(
-        padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, bottom + 26),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.modal ? 0 : top * 0.7 + 16,
+          16,
+          bottom + 26,
+        ),
         children: [
-          const GaragePageHeader(title: 'Заявка Гаража'),
+          if (widget.modal)
+            const GarageModalHeader(
+              icon: Icons.receipt_long_rounded,
+              title: 'Заявка Гаража',
+              subtitle: 'Карточка заявки недоступна',
+            )
+          else
+            const GaragePageHeader(title: 'Заявка Гаража'),
           const SizedBox(height: 12),
           GarageEmptyState(
             icon: Icons.error_outline_rounded,
@@ -317,10 +371,29 @@ class _GarageRequestDetailScreenState
       data: (value) {
         _prepareSelections(value);
         return Padding(
-          padding: EdgeInsets.fromLTRB(16, top * 0.7 + 16, 16, 0),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.modal ? 0 : top * 0.7 + 16,
+            16,
+            0,
+          ),
           child: Column(
             children: [
-              const GaragePageHeader(title: 'Заявка Гаража'),
+              if (widget.modal)
+                GarageModalHeader(
+                  icon: Icons.receipt_long_rounded,
+                  title: value.requestNumber,
+                  subtitle: 'Карточка заявки Гаража',
+                )
+              else ...[
+                const GaragePageHeader(title: 'Заявка Гаража'),
+                const SizedBox(height: 12),
+                GarageHeroHeader(
+                  icon: Icons.receipt_long_rounded,
+                  title: value.requestNumber,
+                  subtitle: 'Карточка заявки Гаража',
+                ),
+              ],
               const SizedBox(height: 12),
               _detailTabs(),
               const SizedBox(height: 8),
@@ -424,19 +497,22 @@ class _GarageRequestDetailScreenState
               curve: Curves.easeOutCubic,
               height: 42,
               decoration: BoxDecoration(
-                gradient: selected ? context.brandGradient : null,
-                borderRadius: BorderRadius.circular(14),
+                gradient: selected && !widget.modal
+                    ? context.brandGradient
+                    : null,
+                color: selected && widget.modal ? context.brandPrimary : null,
+                borderRadius: BorderRadius.circular(widget.modal ? 15 : 14),
               ),
               child: Material(
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(widget.modal ? 15 : 14),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   key: ValueKey('garage-detail-tab-$index'),
                   onTap: selected
                       ? null
                       : () => _tabController.animateTo(index),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(widget.modal ? 15 : 14),
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -469,17 +545,21 @@ class _GarageRequestDetailScreenState
           width: double.infinity,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: widget.modal ? const Color(0xFFF5F5F7) : Colors.white,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 18,
-                spreadRadius: -12,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            border: widget.modal
+                ? null
+                : Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            boxShadow: widget.modal
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 18,
+                      spreadRadius: -12,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
           ),
           child: AnimatedBuilder(
             animation: _tabController.animation!,
@@ -592,11 +672,11 @@ class _GarageRequestDetailScreenState
             children: [
               Expanded(
                 child: Text(
-                  request.requestNumber,
+                  'Статус заявки',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontFamily: 'Gilroy',
-                    fontSize: 22,
+                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
