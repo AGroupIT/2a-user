@@ -268,6 +268,13 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                             onTap: () => _go(context, '/partner-program'),
                           ),
                         _MoreMenuTile(
+                          icon: Icons.description_rounded,
+                          title: 'Выкуп по бланку',
+                          subtitle: 'Заявки на выкуп товаров по ссылкам',
+                          iconColor: const Color(0xFFFF5722),
+                          onTap: () => _go(context, '/purchase-blanks'),
+                        ),
+                        _MoreMenuTile(
                           icon: Icons.shopping_bag_rounded,
                           title: 'Совместные покупки',
                           subtitle: 'Финансы и участие в СП',
