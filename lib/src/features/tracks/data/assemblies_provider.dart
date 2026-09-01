@@ -433,6 +433,20 @@ class AssembliesApiService {
       return false;
     }
   }
+
+  /// Подтвердить фактическое получение сборки клиентом.
+  Future<bool> confirmAssemblyReceipt(int assemblyId) async {
+    try {
+      final response = await _apiClient.post(
+        '/client/assemblies/$assemblyId/confirm-receipt',
+      );
+      return response.statusCode == 200;
+    } on DioException catch (e) {
+      debugPrint('Error confirming assembly receipt: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return false;
+    }
+  }
 }
 
 /// Провайдер для API сервиса сборок

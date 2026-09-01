@@ -76,5 +76,44 @@ void main() {
     expect(value.statusLabel, 'В работе');
     expect(value.screenshotUrl, '/uploads/return.jpg');
     expect(value.updatedAt, DateTime.utc(2026, 8, 20, 2));
+    expect(value.clientConfirmedAt, isNull);
+    expect(value.canConfirmCompletion, isFalse);
+  });
+
+  test(
+    'completed return can be confirmed until client confirmation is stored',
+    () {
+      final completed = TrackReturnInfo.fromJson({
+        'id': 19,
+        'returnCode': 'SF-RETURNED',
+        'status': 'completed',
+        'createdAt': '2026-08-21T01:00:00.000Z',
+      });
+      final confirmed = TrackReturnInfo.fromJson({
+        'id': 19,
+        'returnCode': 'SF-RETURNED',
+        'status': 'completed',
+        'createdAt': '2026-08-21T01:00:00.000Z',
+        'clientConfirmedAt': '2026-08-22T03:00:00.000Z',
+      });
+
+      expect(completed.canConfirmCompletion, isTrue);
+      expect(confirmed.canConfirmCompletion, isFalse);
+      expect(confirmed.clientConfirmedAt, DateTime.utc(2026, 8, 22, 3));
+    },
+  );
+
+  test('assembly receipt confirmation follows canonical delivery statuses', () {
+    TrackAssembly assembly(String status) =>
+        TrackAssembly(id: 7, number: 'ASM-7', status: status);
+
+    expect(assembly('in_assembly').canConfirmReceipt, isFalse);
+    expect(assembly('shipped').canConfirmReceipt, isTrue);
+    expect(assembly('arrived_terminal').canConfirmReceipt, isTrue);
+    expect(assembly('ready_for_pickup').canConfirmReceipt, isTrue);
+    expect(assembly('delivered').canConfirmReceipt, isFalse);
+
+    expect(assembly('ready_for_pickup').canEditDelivery, isTrue);
+    expect(assembly('delivered').canEditDelivery, isFalse);
   });
 }

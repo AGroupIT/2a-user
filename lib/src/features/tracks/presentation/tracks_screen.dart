@@ -469,6 +469,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     BuildContext context, {
     required String title,
     required String message,
+    String? cancelLabel,
+    String? confirmLabel,
+    bool destructive = false,
   }) async {
     final res = await showBlurredModalBottomSheet<bool>(
       context: context,
@@ -508,14 +511,24 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => Navigator.of(sheetContext).pop(false),
-                        child: const Text('Нет'),
+                        child: Text(
+                          cancelLabel ?? tr(context, ru: 'Нет', zh: '取消'),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
                         onPressed: () => Navigator.of(sheetContext).pop(true),
-                        child: const Text('Да'),
+                        style: destructive
+                            ? FilledButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                                foregroundColor: Colors.white,
+                              )
+                            : null,
+                        child: Text(
+                          confirmLabel ?? tr(context, ru: 'Да', zh: '确认'),
+                        ),
                       ),
                     ),
                   ],
@@ -1451,6 +1464,59 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     return success;
   }
 
+  Future<bool> _confirmCompletedReturn(
+    BuildContext context,
+    TrackItem track,
+  ) async {
+    if (track.id == null) return false;
+    final confirmed = await _confirmAction(
+      context,
+      title: tr(
+        context,
+        ru: 'Подтвердить выполненный возврат?',
+        zh: '确认退货已完成？',
+      ),
+      message: tr(
+        context,
+        ru: 'После подтверждения трек ${track.code} будет удалён из системы без возможности восстановления.',
+        zh: '确认后，运单号 ${track.code} 将从系统中删除，且无法恢复。',
+      ),
+      cancelLabel: tr(context, ru: 'Отмена', zh: '取消'),
+      confirmLabel: tr(context, ru: 'Подтвердить и удалить', zh: '确认并删除'),
+      destructive: true,
+    );
+    if (!context.mounted || !confirmed) return false;
+
+    final success = await ref
+        .read(tracksApiServiceProvider)
+        .confirmCompletedTrackReturn(track.id!);
+    if (!context.mounted) return success;
+    if (success) {
+      _currentNotifier?.removeTrackOptimistically(track.id!);
+      setState(() {
+        _returnRequestedTracks.remove(track.code);
+        _selectedTracks.remove(track.code);
+        if (_selectedTracks.isEmpty) _selectedStatus = null;
+      });
+      _refreshTracks();
+      _showStyledSnackBar(
+        context,
+        tr(
+          context,
+          ru: 'Возврат подтверждён. Трек удалён.',
+          zh: '退货已确认，运单号已删除。',
+        ),
+      );
+    } else {
+      _showStyledSnackBar(
+        context,
+        tr(context, ru: 'Не удалось подтвердить возврат', zh: '无法确认退货'),
+        isError: true,
+      );
+    }
+    return success;
+  }
+
   Future<bool> _saveTrackComment(
     BuildContext context,
     TrackItem track,
@@ -1641,6 +1707,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     BuildContext context,
     TrackAssembly assembly,
   ) async {
+    if (!assembly.canEditDelivery) {
+      _showStyledSnackBar(
+        context,
+        tr(
+          context,
+          ru: 'Доставленная сборка доступна только для просмотра',
+          zh: '已送达的集运单仅可查看',
+        ),
+        isError: true,
+      );
+      return;
+    }
+
     // Текущий метод доставки
     String? selectedMethod = assembly.deliveryMethod;
     final nameController = TextEditingController(
@@ -1900,6 +1979,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     String? recipientCity,
     String? transportCompanyName,
   }) async {
+    if (!assembly.canEditDelivery) {
+      _showStyledSnackBar(
+        context,
+        tr(
+          context,
+          ru: 'Нельзя изменить способ получения доставленной сборки',
+          zh: '已送达的集运单无法修改收货方式',
+        ),
+        isError: true,
+      );
+      return false;
+    }
+
     final success = await ref
         .read(assembliesApiServiceProvider)
         .updateAssemblyDelivery(
@@ -1921,6 +2013,43 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       _showStyledSnackBar(
         context,
         'Ошибка сохранения способа получения',
+        isError: true,
+      );
+    }
+    return success;
+  }
+
+  Future<bool> _confirmAssemblyReceipt(
+    BuildContext context,
+    TrackAssembly assembly,
+  ) async {
+    final confirmed = await _confirmAction(
+      context,
+      title: tr(context, ru: 'Подтвердить получение?', zh: '确认收货？'),
+      message: tr(
+        context,
+        ru: 'Вы получили сборку ${assembly.number}? После подтверждения статус изменится на «Доставлена».',
+        zh: '您已收到集运单 ${assembly.number} 吗？确认后状态将更改为“已送达”。',
+      ),
+      cancelLabel: tr(context, ru: 'Отмена', zh: '取消'),
+      confirmLabel: tr(context, ru: 'Подтвердить получение', zh: '确认收货'),
+    );
+    if (!context.mounted || !confirmed) return false;
+
+    final success = await ref
+        .read(assembliesApiServiceProvider)
+        .confirmAssemblyReceipt(assembly.id);
+    if (!context.mounted) return success;
+    if (success) {
+      _refreshTracks();
+      _showStyledSnackBar(
+        context,
+        tr(context, ru: 'Получение подтверждено', zh: '已确认收货'),
+      );
+    } else {
+      _showStyledSnackBar(
+        context,
+        tr(context, ru: 'Не удалось подтвердить получение', zh: '无法确认收货'),
         isError: true,
       );
     }
@@ -4228,6 +4357,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             recipientCity: recipientCity,
             transportCompanyName: transportCompanyName,
           ),
+      onConfirmAssemblyReceipt: (assembly) =>
+          _confirmAssemblyReceipt(context, assembly),
       onDeleteTrack: (track) => _deleteTrack(track),
       onReturnRequest: (track) => _showReturnSheet(context, track),
       onRequestReturnInline: (track, code) =>
@@ -4239,6 +4370,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       onUpdateReturnCode: (trackId, returnCode) => ref
           .read(tracksApiServiceProvider)
           .updateTrackReturnCode(trackId: trackId, returnCode: returnCode),
+      onConfirmCompletedReturn: (track) =>
+          _confirmCompletedReturn(context, track),
       returnRequestedTracks: _returnRequestedTracks,
       tutorialActionsKey: tutorialActionsKey,
       tutorialAssemblyKey: tutorialAssemblyKey,
@@ -6928,6 +7061,7 @@ class _AssemblyCompactCard extends StatelessWidget {
   final int trackCount;
   final int boxCount;
   final bool hasDelivery;
+  final bool canEditDelivery;
   final ValueChanged<int> onOpen;
   final VoidCallback onComment;
   final VoidCallback onDelivery;
@@ -6940,6 +7074,7 @@ class _AssemblyCompactCard extends StatelessWidget {
     required this.trackCount,
     required this.boxCount,
     required this.hasDelivery,
+    required this.canEditDelivery,
     required this.onOpen,
     required this.onComment,
     required this.onDelivery,
@@ -6993,11 +7128,12 @@ class _AssemblyCompactCard extends StatelessWidget {
           label: 'Заметка',
           onTap: onComment,
         ),
-        ClientTrackQuickAction(
-          icon: Icons.local_shipping_outlined,
-          label: 'Доставка',
-          onTap: onDelivery,
-        ),
+        if (canEditDelivery)
+          ClientTrackQuickAction(
+            icon: Icons.local_shipping_outlined,
+            label: 'Доставка',
+            onTap: onDelivery,
+          ),
       ],
     );
   }
@@ -7066,7 +7202,7 @@ class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
 
   Future<void> _save() async {
     final method = _selectedMethod;
-    if (method == null || _saving) return;
+    if (!widget.assembly.canEditDelivery || method == null || _saving) return;
     if (method == 'transport_company') {
       if (_nameController.text.trim().isEmpty) {
         _showError('Укажите ФИО получателя');
@@ -7102,28 +7238,47 @@ class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final canEditDelivery = widget.assembly.canEditDelivery;
     final isTransport = _selectedMethod == 'transport_company';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!canEditDelivery) ...[
+          _TrackSheetNoticeCard(
+            icon: Icons.lock_outline_rounded,
+            text: tr(
+              context,
+              ru: 'Сборка уже доставлена. Способ получения и данные получателя доступны только для просмотра.',
+              zh: '集运单已送达。收货方式和收件人信息仅可查看。',
+            ),
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(height: 12),
+        ],
         _TrackFilterSectionCard(
           icon: Icons.delivery_dining_rounded,
           title: 'Вариант получения',
           child: Column(
             children: [
               _DeliveryOptionCard(
+                key: const ValueKey('assembly-delivery-option-self_pickup'),
                 title: 'Самовывоз',
                 subtitle: 'Забрать груз на терминале склада',
                 icon: Icons.storefront_rounded,
                 isSelected: _selectedMethod == 'self_pickup',
+                enabled: canEditDelivery,
                 onTap: () => setState(() => _selectedMethod = 'self_pickup'),
               ),
               const SizedBox(height: 10),
               _DeliveryOptionCard(
+                key: const ValueKey(
+                  'assembly-delivery-option-transport_company',
+                ),
                 title: 'Транспортная компания',
                 subtitle: 'Передадим груз выбранной ТК',
                 icon: Icons.local_shipping_rounded,
                 isSelected: isTransport,
+                enabled: canEditDelivery,
                 onTap: () =>
                     setState(() => _selectedMethod = 'transport_company'),
               ),
@@ -7148,6 +7303,7 @@ class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
               context,
               _transportCompanyController,
               hint: 'Название ТК (СДЭК, ПЭК и т. д.)',
+              enabled: canEditDelivery,
             ),
           ),
           const SizedBox(height: 12),
@@ -7160,10 +7316,12 @@ class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
                   context,
                   _nameController,
                   hint: 'ФИО получателя',
+                  enabled: canEditDelivery,
                 ),
                 const SizedBox(height: 10),
                 PhoneInputField(
                   controller: _phoneController,
+                  enabled: canEditDelivery,
                   isRequired: true,
                   hintText: 'Телефон получателя',
                   textInputAction: TextInputAction.next,
@@ -7174,17 +7332,20 @@ class _AssemblyDeliveryEditorState extends State<_AssemblyDeliveryEditor> {
                   _cityController,
                   hint: 'Город',
                   textInputAction: TextInputAction.done,
+                  enabled: canEditDelivery,
                 ),
               ],
             ),
           ),
         ],
-        const SizedBox(height: 12),
-        _TrackSheetPrimaryButton(
-          label: _saving ? 'Сохраняем…' : 'Сохранить доставку',
-          icon: Icons.check_rounded,
-          onTap: _selectedMethod == null || _saving ? null : _save,
-        ),
+        if (canEditDelivery) ...[
+          const SizedBox(height: 12),
+          _TrackSheetPrimaryButton(
+            label: _saving ? 'Сохраняем…' : 'Сохранить доставку',
+            icon: Icons.check_rounded,
+            onTap: _selectedMethod == null || _saving ? null : _save,
+          ),
+        ],
       ],
     );
   }
@@ -7630,6 +7791,7 @@ class _TrackGroupCard extends StatefulWidget {
   final ValueChanged<TrackAssembly> onAskGroupQuestion;
   final ValueChanged<TrackAssembly> onSelectDelivery;
   final _AssemblyDeliverySaver onSaveDelivery;
+  final Future<bool> Function(TrackAssembly assembly) onConfirmAssemblyReceipt;
   final ValueChanged<TrackItem> onDeleteTrack;
   final ValueChanged<TrackItem> onReturnRequest;
   final Future<bool> Function(TrackItem track, String returnCode)
@@ -7638,6 +7800,7 @@ class _TrackGroupCard extends StatefulWidget {
   final Future<TrackReturnInfo?> Function(int trackId) onLoadReturn;
   final Future<TrackReturnInfo?> Function(int trackId, String returnCode)
   onUpdateReturnCode;
+  final Future<bool> Function(TrackItem track) onConfirmCompletedReturn;
   final Set<String> returnRequestedTracks;
   final GlobalKey? tutorialActionsKey;
   final GlobalKey? tutorialAssemblyKey;
@@ -7683,12 +7846,14 @@ class _TrackGroupCard extends StatefulWidget {
     required this.onAskGroupQuestion,
     required this.onSelectDelivery,
     required this.onSaveDelivery,
+    required this.onConfirmAssemblyReceipt,
     required this.onDeleteTrack,
     required this.onReturnRequest,
     required this.onRequestReturnInline,
     required this.onWarehouseDelivery,
     required this.onLoadReturn,
     required this.onUpdateReturnCode,
+    required this.onConfirmCompletedReturn,
     required this.returnRequestedTracks,
     this.tutorialActionsKey,
     this.tutorialAssemblyKey,
@@ -8332,12 +8497,13 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         onPressed: () =>
                             widget.onEditGroupComment(widget.assembly!),
                       ),
-                      _ActionChipButton(
-                        icon: Icons.local_shipping_outlined,
-                        label: 'Доставка',
-                        onPressed: () =>
-                            widget.onSelectDelivery(widget.assembly!),
-                      ),
+                      if (widget.assembly!.canEditDelivery)
+                        _ActionChipButton(
+                          icon: Icons.local_shipping_outlined,
+                          label: 'Доставка',
+                          onPressed: () =>
+                              widget.onSelectDelivery(widget.assembly!),
+                        ),
                     ],
                   ),
                 ],
@@ -8919,6 +9085,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       trackCount: assembly.trackCount ?? widget.tracks.length,
       boxCount: assembly.boxes.length,
       hasDelivery: assembly.deliveryMethod != null,
+      canEditDelivery: assembly.canEditDelivery,
       onOpen: (tab) =>
           _showAssemblyDetailSheet(context, assembly, initialTab: tab),
       onComment: () => widget.onEditGroupComment(assembly),
@@ -8938,6 +9105,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final comment =
         (widget.groupComments[assembly.id.toString()] ?? assembly.comment ?? '')
             .trim();
+    var isConfirmingReceipt = false;
 
     await showBlurredModalBottomSheet<void>(
       context: context,
@@ -9111,6 +9279,27 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               selectedIndex: selectedTab,
               onSelected: (value) => setSheetState(() => selectedTab = value),
             ),
+            footer: selectedTab == 0 && assembly.canConfirmReceipt
+                ? _TrackSheetPrimaryButton(
+                    label: isConfirmingReceipt
+                        ? tr(context, ru: 'Подтверждаем…', zh: '确认中…')
+                        : tr(context, ru: 'Подтвердить получение', zh: '确认收货'),
+                    icon: Icons.inventory_2_outlined,
+                    onTap: isConfirmingReceipt
+                        ? null
+                        : () async {
+                            setSheetState(() => isConfirmingReceipt = true);
+                            final success = await widget
+                                .onConfirmAssemblyReceipt(assembly);
+                            if (!sheetContext.mounted) return;
+                            if (success) {
+                              Navigator.of(sheetContext).pop();
+                              return;
+                            }
+                            setSheetState(() => isConfirmingReceipt = false);
+                          },
+                  )
+                : null,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: KeyedSubtree(key: ValueKey(selectedTab), child: child),
@@ -9467,6 +9656,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final returnCodeController = TextEditingController();
     var isEditingReturn = false;
     var isSavingReturn = false;
+    var isConfirmingReturn = false;
     var isCreatingQuestion = false;
     var isSavingQuestion = false;
 
@@ -10338,6 +10528,36 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                             ),
                         ],
                       ),
+                      if (info.canConfirmCompletion) ...[
+                        const SizedBox(height: 14),
+                        _TrackSheetPrimaryButton(
+                          label: isConfirmingReturn
+                              ? tr(context, ru: 'Подтверждаем…', zh: '确认中…')
+                              : tr(
+                                  context,
+                                  ru: 'Подтвердить возврат',
+                                  zh: '确认退货',
+                                ),
+                          icon: Icons.delete_forever_outlined,
+                          onTap: isConfirmingReturn
+                              ? null
+                              : () async {
+                                  setSheetState(
+                                    () => isConfirmingReturn = true,
+                                  );
+                                  final success = await widget
+                                      .onConfirmCompletedReturn(track);
+                                  if (!sheetContext.mounted) return;
+                                  if (success) {
+                                    Navigator.of(sheetContext).pop();
+                                    return;
+                                  }
+                                  setSheetState(
+                                    () => isConfirmingReturn = false,
+                                  );
+                                },
+                        ),
+                      ],
                       if (canEditCode) ...[
                         const SizedBox(height: 14),
                         _TrackSheetPrimaryButton(
@@ -13230,6 +13450,7 @@ Widget _outlinedInput(
   BuildContext context,
   TextEditingController controller, {
   String? hint,
+  bool enabled = true,
   TextInputType? keyboardType,
   List<TextInputFormatter>? inputFormatters,
   ValueChanged<String>? onChanged,
@@ -13239,6 +13460,7 @@ Widget _outlinedInput(
   return AppGradientInputFrame(
     child: TextField(
       controller: controller,
+      enabled: enabled,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       onChanged: onChanged,
@@ -13280,13 +13502,16 @@ class _DeliveryOptionCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final bool isSelected;
+  final bool enabled;
   final VoidCallback onTap;
 
   const _DeliveryOptionCard({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.isSelected,
+    this.enabled = true,
     required this.onTap,
   });
 
@@ -13294,110 +13519,113 @@ class _DeliveryOptionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = context.brandPrimary;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
+    return Opacity(
+      opacity: enabled ? 1 : 0.62,
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? accent.withValues(alpha: 0.10)
-                : const Color(0xFFFFFFFF),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
               color: isSelected
-                  ? accent.withValues(alpha: 0.24)
-                  : Colors.black.withValues(alpha: 0.045),
+                  ? accent.withValues(alpha: 0.10)
+                  : const Color(0xFFFFFFFF),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isSelected
+                    ? accent.withValues(alpha: 0.24)
+                    : Colors.black.withValues(alpha: 0.045),
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.12),
+                        blurRadius: 14,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.12),
-                      blurRadius: 14,
-                      spreadRadius: -8,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? accent.withValues(alpha: 0.14)
-                      : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  icon,
-                  color: isSelected ? accent : AppColors.textSecondary,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isSelected ? accent : AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 15,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 12.5,
-                        height: 1.15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: isSelected ? accent : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
                     color: isSelected
-                        ? accent
-                        : Colors.black.withValues(alpha: 0.08),
+                        ? accent.withValues(alpha: 0.14)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: isSelected ? accent : AppColors.textSecondary,
+                    size: 21,
                   ),
                 ),
-                child: isSelected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      )
-                    : null,
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isSelected ? accent : AppColors.textPrimary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 15,
+                          height: 1.05,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 12.5,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: isSelected ? accent : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected
+                          ? accent
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: isSelected
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        )
+                      : null,
+                ),
+              ],
+            ),
           ),
         ),
       ),

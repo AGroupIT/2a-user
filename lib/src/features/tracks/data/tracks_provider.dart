@@ -1238,6 +1238,21 @@ class TracksApiService {
     }
   }
 
+  /// Подтвердить выполненный возврат и окончательно удалить трек у клиента.
+  Future<bool> confirmCompletedTrackReturn(int trackId) async {
+    try {
+      final response = await _apiClient.post(
+        '/client/tracks/$trackId/return/confirm',
+        data: {'acknowledgePermanentRemoval': true},
+      );
+      return response.statusCode == 200;
+    } on DioException catch (e) {
+      debugPrint('Error confirming completed track return: $e');
+      debugPrint('Response data: ${e.response?.data}');
+      return false;
+    }
+  }
+
   /// Отменить вопрос
   Future<bool> cancelTrackQuestion(int questionId) async {
     try {

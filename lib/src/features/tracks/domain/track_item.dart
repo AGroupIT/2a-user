@@ -399,6 +399,14 @@ class TrackAssembly {
     this.trackCount,
   });
 
+  bool get canConfirmReceipt => const {
+    'shipped',
+    'arrived_terminal',
+    'ready_for_pickup',
+  }.contains(status);
+
+  bool get canEditDelivery => status != 'delivered';
+
   factory TrackAssembly.fromJson(Map<String, dynamic> json) {
     // Парсим типы упаковки (API может возвращать packagingTypes или packagingNames)
     List<String> packagingTypes = [];
@@ -672,6 +680,7 @@ class TrackReturnInfo {
   final String? note;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final DateTime? clientConfirmedAt;
 
   const TrackReturnInfo({
     required this.id,
@@ -681,7 +690,11 @@ class TrackReturnInfo {
     this.note,
     required this.createdAt,
     this.updatedAt,
+    this.clientConfirmedAt,
   });
+
+  bool get canConfirmCompletion =>
+      status == 'completed' && clientConfirmedAt == null;
 
   String get statusLabel {
     return switch (status) {
@@ -704,6 +717,9 @@ class TrackReturnInfo {
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+      clientConfirmedAt: DateTime.tryParse(
+        json['clientConfirmedAt']?.toString() ?? '',
+      ),
     );
   }
 }
