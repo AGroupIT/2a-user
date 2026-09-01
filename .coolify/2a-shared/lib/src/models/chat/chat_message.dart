@@ -9,6 +9,7 @@ class ChatMessage {
   final String senderName;
   final String contentType; // 'text', 'image', 'file', 'track_info', 'invoice_info', 'system'
   final String content;
+  final String? channel;
   final Map<String, dynamic>? metadata;
   final bool isRead;
   final bool isEdited;
@@ -36,6 +37,7 @@ class ChatMessage {
     required this.senderName,
     required this.contentType,
     required this.content,
+    this.channel,
     this.metadata,
     required this.isRead,
     required this.isEdited,
@@ -59,6 +61,7 @@ class ChatMessage {
       senderName: (json['senderName'] ?? json['sender_name']) as String? ?? 'Неизвестный',
       contentType: (json['contentType'] ?? json['content_type']) as String? ?? 'text',
       content: json['content'] as String? ?? '',
+      channel: json['channel'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
       isRead: (json['isRead'] ?? json['is_read']) as bool? ?? false,
       isEdited: (json['isEdited'] ?? json['is_edited']) as bool? ?? false,
@@ -96,6 +99,7 @@ class ChatMessage {
       'senderName': senderName,
       'contentType': contentType,
       'content': content,
+      'channel': channel,
       'metadata': metadata,
       'isRead': isRead,
       'isEdited': isEdited,
@@ -119,6 +123,7 @@ class ChatMessage {
     String? senderName,
     String? contentType,
     String? content,
+    String? channel,
     Map<String, dynamic>? metadata,
     bool? isRead,
     bool? isEdited,
@@ -140,6 +145,7 @@ class ChatMessage {
       senderName: senderName ?? this.senderName,
       contentType: contentType ?? this.contentType,
       content: content ?? this.content,
+      channel: channel ?? this.channel,
       metadata: metadata ?? this.metadata,
       isRead: isRead ?? this.isRead,
       isEdited: isEdited ?? this.isEdited,
