@@ -6,6 +6,52 @@ import 'package:http_parser/http_parser.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/search_result.dart';
 
+enum TrackBindingRequestErrorCode {
+  trackNotFound,
+  trackNotAvailable,
+  requestExists,
+  clientCodeRequired,
+  clientCodeNotOwned,
+  clientCodeMismatch,
+  proofRequired,
+  unauthorized,
+  unknown;
+
+  static TrackBindingRequestErrorCode fromApi(String? code, {int? statusCode}) {
+    return switch (code) {
+      'TRACK_NOT_FOUND' => trackNotFound,
+      'TRACK_NOT_AVAILABLE' => trackNotAvailable,
+      'BINDING_REQUEST_EXISTS' => requestExists,
+      'CLIENT_CODE_REQUIRED' => clientCodeRequired,
+      'CLIENT_CODE_NOT_OWNED' => clientCodeNotOwned,
+      'CLIENT_CODE_MISMATCH' => clientCodeMismatch,
+      'BINDING_PROOF_REQUIRED' => proofRequired,
+      _ when statusCode == 401 => unauthorized,
+      _ => unknown,
+    };
+  }
+}
+
+class TrackBindingRequestException implements Exception {
+  const TrackBindingRequestException({required this.code, this.statusCode});
+
+  final TrackBindingRequestErrorCode code;
+  final int? statusCode;
+}
+
+class TrackBindingRequestResult {
+  const TrackBindingRequestResult._({required this.isSuccess, this.errorCode});
+
+  const TrackBindingRequestResult.success() : this._(isSuccess: true);
+
+  const TrackBindingRequestResult.failure(
+    TrackBindingRequestErrorCode errorCode,
+  ) : this._(isSuccess: false, errorCode: errorCode);
+
+  final bool isSuccess;
+  final TrackBindingRequestErrorCode? errorCode;
+}
+
 /// Репозиторий для поиска трек-номеров без привязки к коду клиента (nocode).
 /// Предназначен для экрана `TrackSearchNoCodeScreen`.
 abstract class SearchRepository {
@@ -47,10 +93,7 @@ class RealSearchRepository implements SearchRepository {
     try {
       final response = await _api.get(
         '/client/search',
-        queryParameters: {
-          'query': q,
-          'onlyNocode': 'true',
-        },
+        queryParameters: {'query': q, 'onlyNocode': 'true'},
       );
 
       if (response.statusCode == 200 && response.data != null) {
@@ -91,8 +134,8 @@ class RealSearchRepository implements SearchRepository {
     try {
       final currentPart =
           (currentClientCode != null && currentClientCode.isNotEmpty)
-              ? ' - ($currentClientCode)'
-              : ' - (nocode)';
+          ? ' - ($currentClientCode)'
+          : ' - (nocode)';
       await _api.post(
         '/questions',
         data: {
@@ -100,6 +143,8 @@ class RealSearchRepository implements SearchRepository {
           'trackNumber': trackNumber,
           'clientId': clientId,
           'clientCodeId': clientCodeId,
+          'targetClientCode': clientCode,
+          'questionType': 'track_binding',
           'question':
               'Прошу привязать трек $trackNumber$currentPart к моему коду клиента $clientCode',
           'photoUrls': [photoUrl],
@@ -107,7 +152,17 @@ class RealSearchRepository implements SearchRepository {
       );
     } on DioException catch (e) {
       debugPrint('[SearchRepository] requestBinding error: $e');
-      rethrow;
+      final responseData = e.response?.data;
+      final apiCode = responseData is Map
+          ? responseData['code']?.toString()
+          : null;
+      throw TrackBindingRequestException(
+        code: TrackBindingRequestErrorCode.fromApi(
+          apiCode,
+          statusCode: e.response?.statusCode,
+        ),
+        statusCode: e.response?.statusCode,
+      );
     }
   }
 

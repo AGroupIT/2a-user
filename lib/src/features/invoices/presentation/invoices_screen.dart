@@ -21,6 +21,7 @@ import '../../../core/network/api_config.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/bank_qr_payment_screen.dart';
+import '../../payments/presentation/client_payment_summary_panel.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
@@ -78,6 +79,36 @@ String _formatUsdAmount(num value, {bool withCents = false}) {
     return '\$${value.toStringAsFixed(2)}';
   }
   return '\$${money.format(value.round())}';
+}
+
+bool _isInvoiceUnpaid(InvoiceItem item) {
+  final status = item.status.toLowerCase();
+  return status == 'unpaid' || status == 'pending';
+}
+
+@visibleForTesting
+bool canOpenInvoiceBankQr(InvoiceItem item) {
+  final status = item.status.toLowerCase();
+  final isPayableStatus =
+      status == 'unpaid' ||
+      status == 'pending' ||
+      status == 'processing' ||
+      status == 'payment_review';
+  if (!isPayableStatus) return false;
+
+  final paymentSummary = item.paymentSummary;
+  if (paymentSummary != null) {
+    if (paymentSummary.isPartial) return true;
+    if (paymentSummary.isFullyCovered || paymentSummary.isUnknown) return false;
+  }
+
+  final hasBankQrPayment =
+      item.bankQrPaymentId != null ||
+      item.activeTopUp?.isPayableBankQr == true ||
+      item.paymentProvider == 'bank_qr' ||
+      item.paymentMethod == 'bank_qr';
+  return item.bankQrPaymentAvailable ||
+      (status == 'processing' && hasBankQrPayment);
 }
 
 Future<bool> _requestInvoicePaymentStatus(
@@ -1788,7 +1819,13 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final statusColor = _parseHexColor(item.statusColor);
+    final isPartial = item.paymentSummary?.isPartial == true;
+    final statusColor = isPartial
+        ? const Color(0xFFD97706)
+        : _parseHexColor(item.statusColor);
+    final statusText = isPartial
+        ? tr(context, ru: 'Частично оплачено', zh: '部分付款')
+        : item.statusName ?? item.status;
     final referralAsync = ref.watch(referralProvider);
     final invoiceStatuses =
         ref.watch(invoiceStatusesProvider).asData?.value ??
@@ -1888,7 +1925,7 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
                     onTap: () =>
                         _showInvoiceStatusTimeline(context, invoiceStatuses),
                     child: _InvoiceCardStatusPill(
-                      text: item.statusName ?? item.status,
+                      text: statusText,
                       color: statusColor,
                     ),
                   ),
@@ -2230,24 +2267,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     super.dispose();
   }
 
-  String get _statusCode => widget.item.status.toLowerCase();
-
-  bool get _isUnpaid => _statusCode == 'unpaid' || _statusCode == 'pending';
-
-  bool get _hasBankQrPayment =>
-      widget.item.bankQrPaymentId != null ||
-      widget.item.paymentProvider == 'bank_qr' ||
-      widget.item.paymentMethod == 'bank_qr';
-
-  bool get _canOpenBankQr =>
-      widget.item.bankQrPaymentAvailable ||
-      (_statusCode == 'processing' && _hasBankQrPayment);
+  InvoiceItem get _currentItem =>
+      ref.read(invoiceByIdProvider(widget.item.id)).asData?.value ??
+      widget.item;
 
   // Bank QR: открываем оплату в рублях как вложенную модалку в стиле счёта.
   Future<void> _openBankQr() async {
+    final item = _currentItem;
     if (!await _ensurePaymentOperatorsWorking()) return;
     if (!mounted) return;
-    if (_isUnpaid) {
+    if (_isInvoiceUnpaid(item)) {
       final choice = await _showBankQrAudienceWarning(context);
       if (!mounted || choice == null) return;
       if (choice == _BankQrAudienceChoice.manager) {
@@ -2267,8 +2296,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (_) => BankQrPaymentSheet(
-        invoiceId: widget.item.id,
-        invoiceNumber: widget.item.invoiceNumber,
+        invoiceId: item.id,
+        invoiceNumber: item.invoiceNumber,
       ),
     );
     if (changed == true && mounted) {
@@ -2408,7 +2437,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   }
 
   void _showInvoiceStatusTimeline(List<InvoiceStatus> statuses) {
-    final item = widget.item;
+    final item = _currentItem;
     showStatusTimelineSheet(
       context: context,
       title: 'Статус счёта',
@@ -2421,7 +2450,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   }
 
   Future<void> _applyBonusKg() async {
-    final item = widget.item;
+    final item = _currentItem;
     final kg = double.tryParse(_bonusKgCtrl.text.replaceAll(',', '.'));
     if (kg == null || kg <= 0) return;
 
@@ -2480,7 +2509,9 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
+    final item =
+        ref.watch(invoiceByIdProvider(widget.item.id)).asData?.value ??
+        widget.item;
     final operatorsSleeping = paymentOperatorStatusOrWorking(
       ref.watch(paymentOperatorStatusProvider),
     ).sleeping;
@@ -2500,11 +2531,14 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       0.0,
       item.totalCostUsd,
     );
-    final showBonusSection =
-        _isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
     final isPaymentReview = item.status.toLowerCase() == 'payment_review';
+    final paymentSummary = item.paymentSummary;
+    final isUnpaid = _isInvoiceUnpaid(item);
+    final canOpenBankQr = canOpenInvoiceBankQr(item);
+    final showBonusSection =
+        isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
     final showBankQrRateBanner =
-        _isUnpaid &&
+        isUnpaid &&
         !item.bankQrPaymentAvailable &&
         (item.bankQrPaymentUnavailableReason == 'rate_stale' ||
             item.bankQrPaymentUnavailableReason == 'no_rate' ||
@@ -2518,7 +2552,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         subtitle: 'Разбивка суммы и данные для оплаты',
         keyboardAware: true,
         pinnedChild: _InvoiceDetailSummaryCard(item: item),
-        footer: (_isUnpaid || _canOpenBankQr)
+        footer: (isUnpaid || canOpenBankQr)
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2530,21 +2564,27 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                       onTap: () => Navigator.of(context).pop(),
                     ),
                   ] else ...[
-                    if (_canOpenBankQr) ...[
+                    if (canOpenBankQr) ...[
                       _InvoicePrimaryButton(
                         label: tr(
                           context,
-                          ru: _isUnpaid
+                          ru: paymentSummary?.isPartial == true
+                              ? 'Доплатить ${paymentSummary!.remainingRub.display} по QR'
+                              : isUnpaid
                               ? 'Оплатить в рублях'
                               : 'Открыть QR оплаты',
-                          zh: _isUnpaid ? '用卢布支付' : '打开付款二维码',
+                          zh: paymentSummary?.isPartial == true
+                              ? '扫码补付 ${paymentSummary!.remainingRub.display}'
+                              : isUnpaid
+                              ? '用卢布支付'
+                              : '打开付款二维码',
                         ),
                         icon: Icons.qr_code_2_rounded,
                         onTap: _openBankQr,
                       ),
                       const SizedBox(height: 8),
                     ],
-                    if (_isUnpaid)
+                    if (isUnpaid)
                       _InvoiceSecondaryButton(
                         label: tr(
                           context,
@@ -2574,6 +2614,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             ],
             if (showBankQrRateBanner) ...[
               const _InvoiceBankQrRateBanner(),
+              const SizedBox(height: 12),
+            ],
+            if (paymentSummary != null) ...[
+              ClientPaymentSummaryPanel(
+                summary: paymentSummary,
+                terminalRefund: const {
+                  'cancelled',
+                  'refunded',
+                }.contains(item.status.toLowerCase()),
+              ),
               const SizedBox(height: 12),
             ],
             _buildSection('Курсы', [

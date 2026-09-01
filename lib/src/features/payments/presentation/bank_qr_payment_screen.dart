@@ -322,6 +322,21 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _BankQrSectionCard(
+          icon: Icons.payments_rounded,
+          title: tr(context, ru: 'Сумма к оплате', zh: '应付金额'),
+          child: Text(
+            _formatRubKopecks(res.sumKopecks),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _BankQrSectionCard(
           icon: Icons.qr_code_2_rounded,
           title: tr(context, ru: 'QR для оплаты', zh: '付款二维码'),
           child: Column(
@@ -428,6 +443,11 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
         ),
       ],
     );
+  }
+
+  String _formatRubKopecks(int kopecks) {
+    final safe = kopecks < 0 ? 0 : kopecks;
+    return '${safe ~/ 100}.${(safe % 100).toString().padLeft(2, '0')} ₽';
   }
 
   Widget _buildFooter() {

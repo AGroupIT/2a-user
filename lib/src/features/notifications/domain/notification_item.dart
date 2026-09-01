@@ -278,6 +278,7 @@ class NotificationItem {
         type = inferredType;
       }
     }
+    type = _paymentTargetType(data) ?? type;
 
     // Определяем маршрут
     String? route = _getRouteForType(type, data);
@@ -303,7 +304,8 @@ class NotificationItem {
           data['assemblyId']?.toString() ??
           data['invoiceId']?.toString() ??
           data['garageRequestId']?.toString() ??
-          data['garageOrderId']?.toString(),
+          data['garageOrderId']?.toString() ??
+          data['targetId']?.toString(),
       oldStatus: data['oldStatus'] as String? ?? data['old_status'] as String?,
       newStatus:
           data['newStatus'] as String? ??
@@ -320,7 +322,7 @@ class NotificationItem {
     String? body,
   }) {
     final typeStr = _readString(data, const ['type']) ?? '';
-    final type = _parseNotificationType(typeStr);
+    final type = _paymentTargetType(data) ?? _parseNotificationType(typeStr);
     final now = DateTime.now();
 
     return NotificationItem(
@@ -341,6 +343,7 @@ class NotificationItem {
         'invoiceId',
         'garageRequestId',
         'garageOrderId',
+        'targetId',
       ]),
       oldStatus: _readString(data, const ['oldStatus', 'old_status']),
       newStatus: _readString(data, const ['newStatus', 'new_status', 'status']),
@@ -358,10 +361,10 @@ class NotificationItem {
   }
 
   static String? routeFromPushData(Map<String, dynamic> data) {
-    return _getRouteForType(
-      _parseNotificationType(_readString(data, const ['type']) ?? ''),
-      data,
+    final parsedType = _parseNotificationType(
+      _readString(data, const ['type']) ?? '',
     );
+    return _getRouteForType(_paymentTargetType(data) ?? parsedType, data);
   }
 
   static String? tapPayloadFromPushData(Map<String, dynamic> data) {
@@ -624,6 +627,12 @@ class NotificationItem {
       'garage_order_id',
       'orderId',
     ]);
+    final targetType = _readString(data, const [
+      'targetType',
+      'target_type',
+    ])?.toLowerCase();
+    final targetId = _readString(data, const ['targetId', 'target_id']);
+    final routeId = _readString(data, const ['routeId', 'route_id']);
     final clientCodeQuery = <String, String>{
       if (clientCode != null) 'clientCode': clientCode,
     };
@@ -690,14 +699,23 @@ class NotificationItem {
         if (ruleId != null) return '/rules/$ruleId';
         return '/rules';
       case NotificationType.invoice:
-        if (invoiceId != null) {
+        final resolvedInvoiceId =
+            invoiceId ??
+            (targetType == 'invoice' ? (routeId ?? targetId) : null);
+        if (resolvedInvoiceId != null) {
           return _route('/invoices', {
             ...clientCodeQuery,
-            'invoiceId': invoiceId,
+            'invoiceId': resolvedInvoiceId,
           });
         }
         return '/invoices';
       case NotificationType.garage:
+        if (targetType == 'garage_invoice') {
+          final resolvedOrderId = routeId ?? garageOrderId;
+          if (resolvedOrderId != null) {
+            return '/garage/orders/$resolvedOrderId';
+          }
+        }
         if (garageRequestId != null) {
           return '/garage/requests/$garageRequestId';
         }
@@ -720,6 +738,17 @@ class NotificationItem {
       if (text.isNotEmpty) return text;
     }
     return null;
+  }
+
+  static NotificationType? _paymentTargetType(Map<String, dynamic> data) {
+    return switch (_readString(data, const [
+      'targetType',
+      'target_type',
+    ])?.toLowerCase()) {
+      'invoice' => NotificationType.invoice,
+      'garage_invoice' => NotificationType.garage,
+      _ => null,
+    };
   }
 
   /// Создать уведомление об изменении статуса трека

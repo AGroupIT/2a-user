@@ -9,6 +9,7 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/sheet_handle.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../payments/presentation/payment_qr_timing_warning.dart';
@@ -100,7 +101,11 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Не удалось подготовить QR для оплаты';
+        _error = tr(
+          context,
+          ru: 'Не удалось подготовить QR для оплаты',
+          zh: '无法生成付款二维码',
+        );
       });
     }
   }
@@ -134,7 +139,11 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _uploading = false);
-      AppToast.show(context, 'Не удалось отправить чек', isError: true);
+      AppToast.show(
+        context,
+        tr(context, ru: 'Не удалось отправить чек', zh: '无法提交付款凭证'),
+        isError: true,
+      );
     }
   }
 
@@ -170,9 +179,9 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Оплата автозапчастей',
-                        style: TextStyle(
+                      Text(
+                        tr(context, ru: 'Оплата автозапчастей', zh: '汽车配件付款'),
+                        style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontFamily: 'Gilroy',
                           fontSize: 20,
@@ -180,7 +189,11 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                         ),
                       ),
                       Text(
-                        'Заказ ${widget.orderNumber}',
+                        tr(
+                          context,
+                          ru: 'Заказ ${widget.orderNumber}',
+                          zh: '订单 ${widget.orderNumber}',
+                        ),
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontFamily: 'Gilroy',
@@ -204,7 +217,7 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                         const PaymentOperatorSleepingNotice(),
                         const SizedBox(height: 12),
                         GarageSecondaryButton(
-                          label: 'Закрыть',
+                          label: tr(context, ru: 'Закрыть', zh: '关闭'),
                           icon: Icons.close_rounded,
                           onPressed: () => Navigator.of(context).pop(false),
                         ),
@@ -218,10 +231,10 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                   : _error != null
                   ? GarageEmptyState(
                       icon: Icons.error_outline_rounded,
-                      title: 'Оплата недоступна',
+                      title: tr(context, ru: 'Оплата недоступна', zh: '无法付款'),
                       subtitle: _error!,
                       action: GarageSecondaryButton(
-                        label: 'Повторить',
+                        label: tr(context, ru: 'Повторить', zh: '重试'),
                         icon: Icons.refresh_rounded,
                         onPressed: _start,
                       ),
@@ -253,16 +266,20 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                   version: QrVersions.auto,
                   size: 220,
                   backgroundColor: Colors.white,
-                  errorStateBuilder: (_, _) => const SizedBox(
+                  errorStateBuilder: (_, _) => SizedBox(
                     width: 220,
                     height: 220,
-                    child: Center(child: Text('QR-код недоступен')),
+                    child: Center(
+                      child: Text(
+                        tr(context, ru: 'QR-код недоступен', zh: '二维码不可用'),
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                garageMoney(payment.amountRub, '₽'),
+                _formatRubKopecks(payment.sumKopecks),
                 style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontFamily: 'Gilroy',
@@ -270,6 +287,24 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                   fontWeight: FontWeight.w900,
                 ),
               ),
+              if (payment.invoiceNumber.trim().isNotEmpty) ...[
+                const SizedBox(height: 5),
+                SelectableText(
+                  tr(
+                    context,
+                    ru: 'Счёт ${payment.invoiceNumber}',
+                    zh: '账单 ${payment.invoiceNumber}',
+                  ),
+                  key: const ValueKey('garage-payment-invoice-number'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
               const SizedBox(height: 5),
               Text(
                 payment.purpose,
@@ -290,9 +325,9 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Чек об оплате',
-                style: TextStyle(
+              Text(
+                tr(context, ru: 'Чек об оплате', zh: '付款凭证'),
+                style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontFamily: 'Gilroy',
                   fontSize: 17,
@@ -300,9 +335,13 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Оплатите по QR, приложите фото или PDF чека. Платёж перейдёт на проверку.',
-                style: TextStyle(
+              Text(
+                tr(
+                  context,
+                  ru: 'Оплатите по QR, приложите фото или PDF чека. Платёж перейдёт на проверку.',
+                  zh: '扫码付款后，请上传图片或 PDF 凭证。付款将提交审核。',
+                ),
+                style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontFamily: 'Gilroy',
                   fontSize: 13,
@@ -312,7 +351,9 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
               ),
               const SizedBox(height: 12),
               GarageSecondaryButton(
-                label: _receiptBytes == null ? 'Приложить чек' : 'Заменить чек',
+                label: _receiptBytes == null
+                    ? tr(context, ru: 'Приложить чек', zh: '上传凭证')
+                    : tr(context, ru: 'Заменить чек', zh: '更换凭证'),
                 icon: Icons.attach_file_rounded,
                 onPressed: _uploading ? null : _pickReceipt,
               ),
@@ -335,7 +376,7 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
                       const SizedBox(width: 9),
                       Expanded(
                         child: Text(
-                          _receiptName ?? 'Чек',
+                          _receiptName ?? tr(context, ru: 'Чек', zh: '付款凭证'),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontFamily: 'Gilroy',
@@ -349,7 +390,11 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
               ],
               const SizedBox(height: 12),
               GaragePrimaryButton(
-                label: 'Я оплатил — отправить чек',
+                label: tr(
+                  context,
+                  ru: 'Я оплатил — отправить чек',
+                  zh: '我已付款 — 提交凭证',
+                ),
                 icon: Icons.check_circle_outline_rounded,
                 onPressed: _receiptBytes == null ? null : _upload,
                 loading: _uploading,
@@ -359,5 +404,10 @@ class _GaragePaymentSheetState extends ConsumerState<GaragePaymentSheet> {
         ),
       ],
     );
+  }
+
+  String _formatRubKopecks(int kopecks) {
+    final safe = kopecks < 0 ? 0 : kopecks;
+    return '${safe ~/ 100}.${(safe % 100).toString().padLeft(2, '0')} ₽';
   }
 }

@@ -197,7 +197,7 @@ class _GarageOrderDetailScreenState
       return GarageInvoiceCard(
         invoice: embedded,
         order: order,
-        onPay: _canPay(order, embedded) ? () => _pay(order) : null,
+        onPay: canPayGarageOrder(order, embedded) ? () => _pay(order) : null,
       );
     }
     final invoice = ref.watch(garageInvoiceProvider(order.id));
@@ -217,7 +217,7 @@ class _GarageOrderDetailScreenState
       data: (value) => GarageInvoiceCard(
         invoice: value,
         order: order,
-        onPay: _canPay(order, value) ? () => _pay(order) : null,
+        onPay: canPayGarageOrder(order, value) ? () => _pay(order) : null,
       ),
     );
   }
@@ -233,7 +233,9 @@ class _GarageOrderDetailScreenState
           'completed',
         }.contains(order.status);
     final canCancel =
-        !paid && {'awaiting_payment', 'payment_review'}.contains(order.status);
+        !paid &&
+        (order.invoice?.paymentSummary?.creditedRub.kopecks ?? 0) == 0 &&
+        {'awaiting_payment', 'payment_review'}.contains(order.status);
     final canEditSelection =
         order.status == 'awaiting_payment' &&
         order.paidAt == null &&
@@ -337,7 +339,21 @@ class _OrderProgress extends StatelessWidget {
   }
 }
 
-bool _canPay(GarageOrder order, GarageInvoice invoice) {
+@visibleForTesting
+bool canPayGarageOrder(GarageOrder order, GarageInvoice invoice) {
+  if (!{'awaiting_payment', 'payment_review'}.contains(order.status) ||
+      !{
+        'unpaid',
+        'awaiting_payment',
+        'payment_review',
+      }.contains(invoice.status)) {
+    return false;
+  }
+  final summary = invoice.paymentSummary;
+  if (summary != null) {
+    if (summary.isPartial) return true;
+    if (summary.isUnknown || summary.isFullyCovered) return false;
+  }
   return order.status == 'awaiting_payment' &&
       {'unpaid', 'awaiting_payment'}.contains(invoice.status);
 }

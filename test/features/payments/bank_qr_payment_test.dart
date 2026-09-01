@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/application/garage_providers.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/data/garage_repository.dart';
+import 'package:twoalogisticcabineuser/src/features/garage/domain/garage_models.dart';
 import 'package:twoalogisticcabineuser/src/features/garage/presentation/garage_payment_sheet.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/data/bank_qr_payment.dart';
 import 'package:twoalogisticcabineuser/src/features/payments/data/payment_operator_status.dart';
@@ -231,6 +232,48 @@ void main() {
           idempotencyKey: any(named: 'idempotencyKey'),
         ),
       );
+    });
+
+    testWidgets('Garage QR показывает номер счёта из backend-ответа', (
+      tester,
+    ) async {
+      final repository = _MockGarageRepository();
+      when(
+        () => repository.startBankQrPayment(
+          10,
+          idempotencyKey: any(named: 'idempotencyKey'),
+        ),
+      ).thenAnswer(
+        (_) async => const GarageBankQrPayment(
+          paymentId: 501,
+          garageInvoiceId: 77,
+          invoiceNumber: 'GI-2A-77-08-31-1',
+          amountRub: 1000,
+          sumKopecks: 100000,
+          purpose: 'Оплата услуг по заявке GI-2A-77-08-31-1',
+          qrPayload: 'ST00012|Name=Test|Sum=100000|Purpose=GI-2A-77-08-31-1',
+          status: 'pending',
+          reused: false,
+        ),
+      );
+
+      await tester.pumpApp(
+        const GaragePaymentSheet(orderId: 10, orderNumber: 'GO-10'),
+        overrides: [
+          garageRepositoryProvider.overrideWithValue(repository),
+          paymentOperatorStatusProvider.overrideWith(
+            (ref) => Stream.value(workingStatus),
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Счёт GI-2A-77-08-31-1'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('garage-payment-invoice-number')),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsOneWidget);
     });
   });
 

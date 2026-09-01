@@ -216,8 +216,25 @@ void _handleDeltaType(Ref ref, String type) {
 
     case 'notifications':
       ref.read(notificationsControllerProvider.notifier).refreshDebounced();
+      // T-Bank settlement currently emits only a notifications delta. Refresh
+      // every client payment target family so an already-open Invoice/Garage
+      // detail re-reads paymentSummary and terminal status immediately.
+      invalidatePaymentTargetProviders(ref);
       return;
   }
+}
+
+@visibleForTesting
+void invalidatePaymentTargetProviders(dynamic ref) {
+  ref.invalidate(invoicesListProvider);
+  ref.invalidate(invoicesDigestProvider);
+  ref.invalidate(invoicesCountProvider);
+  ref.invalidate(invoiceByIdProvider);
+  ref.invalidate(garageRequestsProvider);
+  ref.invalidate(garageRequestProvider);
+  ref.invalidate(garageOrdersProvider);
+  ref.invalidate(garageOrderProvider);
+  ref.invalidate(garageInvoiceProvider);
 }
 
 /// Принудительное обновление клиентских данных после восстановления сети.

@@ -101,6 +101,47 @@ void main() {
       );
     });
 
+    test('payment target routeId keeps Invoice and Garage ids distinct', () {
+      final invoice = NotificationItem.fromPushData({
+        'type': 'payment_partially_covered',
+        'targetType': 'invoice',
+        'targetId': '71',
+        'routeId': '71',
+      });
+      final garage = NotificationItem.fromPushData({
+        'type': 'payment_fully_covered',
+        'targetType': 'garage_invoice',
+        'targetId': '55',
+        'routeId': '44',
+      });
+
+      expect(invoice.type, NotificationType.invoice);
+      expect(invoice.route, '/invoices?invoiceId=71');
+      expect(garage.type, NotificationType.garage);
+      expect(garage.relatedId, '55');
+      expect(garage.route, '/garage/orders/44');
+      expect(
+        NotificationItem.routeFromPushData({
+          'type': 'payment_partially_covered',
+          'target_type': 'garage_invoice',
+          'target_id': '56',
+          'route_id': '45',
+        }),
+        '/garage/orders/45',
+      );
+    });
+
+    test('unknown payment target fails closed to a list route', () {
+      expect(
+        NotificationItem.routeFromPushData({
+          'type': 'payment_partially_covered',
+          'targetType': 'future_target',
+          'targetId': '99',
+        }),
+        '/invoices',
+      );
+    });
+
     test('encodes and decodes local notification tap payload', () {
       final payload = NotificationItem.tapPayloadFromPushData({
         'type': 'track_status_changed',

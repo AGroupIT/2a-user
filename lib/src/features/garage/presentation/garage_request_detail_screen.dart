@@ -424,7 +424,7 @@ class _GarageRequestDetailScreenState
                                 'Он появится после выбора запчастей и подтверждения покупки.',
                           )
                         else
-                          _invoice(value.order!),
+                          _invoice(value.order!, requestStatus: value.status),
                       ],
                     ),
                     _tabBody(
@@ -612,13 +612,18 @@ class _GarageRequestDetailScreenState
     );
   }
 
-  Widget _invoice(GarageOrder order) {
+  Widget _invoice(GarageOrder order, {required String requestStatus}) {
     final embedded = order.invoice;
     if (embedded != null) {
       return GarageInvoiceCard(
         invoice: embedded,
         order: order,
-        onPay: _canPayGarageOrder(order, embedded)
+        onPay:
+            canPayGarageRequestOrder(
+              order,
+              embedded,
+              requestStatus: requestStatus,
+            )
             ? () => _payOrder(order)
             : null,
       );
@@ -640,7 +645,10 @@ class _GarageRequestDetailScreenState
       data: (value) => GarageInvoiceCard(
         invoice: value,
         order: order,
-        onPay: _canPayGarageOrder(order, value) ? () => _payOrder(order) : null,
+        onPay:
+            canPayGarageRequestOrder(order, value, requestStatus: requestStatus)
+            ? () => _payOrder(order)
+            : null,
       ),
     );
   }
@@ -970,7 +978,30 @@ bool _canEditGarageOrderSelection(GarageOrder order) {
       order.invoice?.paidAt == null;
 }
 
-bool _canPayGarageOrder(GarageOrder order, GarageInvoice invoice) {
+@visibleForTesting
+bool canPayGarageRequestOrder(
+  GarageOrder order,
+  GarageInvoice invoice, {
+  required String requestStatus,
+}) {
+  if (!{
+        'unpaid',
+        'awaiting_payment',
+        'payment_review',
+      }.contains(requestStatus) ||
+      !{'awaiting_payment', 'payment_review'}.contains(order.status) ||
+      !{
+        'unpaid',
+        'awaiting_payment',
+        'payment_review',
+      }.contains(invoice.status)) {
+    return false;
+  }
+  final summary = invoice.paymentSummary;
+  if (summary != null) {
+    if (summary.isPartial) return true;
+    if (summary.isUnknown || summary.isFullyCovered) return false;
+  }
   return order.status == 'awaiting_payment' &&
       {'unpaid', 'awaiting_payment'}.contains(invoice.status);
 }

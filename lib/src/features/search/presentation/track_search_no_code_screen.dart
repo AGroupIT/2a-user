@@ -1194,26 +1194,29 @@ class _RequestBindingSheetState extends ConsumerState<_RequestBindingSheet> {
     final url = _photoUrl;
     if (url == null) return;
     setState(() => _sending = true);
-    final ok = await ref
+    final result = await ref
         .read(searchControllerProvider.notifier)
         .requestBinding(
           trackId: widget.result.id,
           trackNumber: widget.result.trackCode,
           clientCode: widget.activeClientCode,
           clientId: widget.clientId,
-          clientCodeId: null,
+          clientCodeId: ref.read(activeClientCodeIdProvider),
           currentClientCode: widget.result.clientCode,
           photoUrl: url,
         );
     if (!mounted) return;
     setState(() => _sending = false);
-    if (ok) {
+    if (result.isSuccess) {
       Navigator.of(context).pop();
       _showStyledSnackBar(context, 'Запрос на привязку отправлен');
     } else {
       _showStyledSnackBar(
         context,
-        'Ошибка при отправке запроса',
+        trackBindingRequestErrorMessage(
+          result.errorCode,
+          isZh: Localizations.localeOf(context).languageCode == 'zh',
+        ),
         isError: true,
       );
     }

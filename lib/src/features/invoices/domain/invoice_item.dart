@@ -1,5 +1,6 @@
 import '../../../core/models/status_timeline_entry.dart';
 import '../../assemblies/domain/box.dart';
+import '../../payments/data/client_payment_summary.dart';
 
 class InvoiceItem {
   final String id;
@@ -53,6 +54,8 @@ class InvoiceItem {
   final bool bankQrPaymentAvailable;
   final String? bankQrPaymentUnavailableReason;
   final int? bankQrPaymentId;
+  final ClientPaymentSummary? paymentSummary;
+  final ClientActiveTopUp? activeTopUp;
   final String? paymentProvider;
   final String? paymentMethod;
   final List<StatusTimelineEntry> statusHistory;
@@ -108,6 +111,8 @@ class InvoiceItem {
     this.bankQrPaymentAvailable = false,
     this.bankQrPaymentUnavailableReason,
     this.bankQrPaymentId,
+    this.paymentSummary,
+    this.activeTopUp,
     this.paymentProvider,
     this.paymentMethod,
     this.statusHistory = const [],
@@ -442,6 +447,8 @@ class InvoiceItem {
       bankQrPaymentUnavailableReason:
           json['bankQrPaymentUnavailableReason'] as String?,
       bankQrPaymentId: (json['bankQrPaymentId'] as num?)?.toInt(),
+      paymentSummary: ClientPaymentSummary.tryParse(json['paymentSummary']),
+      activeTopUp: ClientActiveTopUp.tryParse(json['activeTopUp']),
       paymentProvider: json['paymentProvider'] as String?,
       paymentMethod: json['paymentMethod'] as String?,
       statusHistory: statusHistory,

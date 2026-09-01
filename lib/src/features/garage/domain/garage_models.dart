@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../payments/data/client_payment_summary.dart';
+
 @immutable
 class GarageAvailability {
   final bool available;
@@ -1152,6 +1154,8 @@ class GarageInvoice {
   final double totalCny;
   final double totalRub;
   final int? activePaymentId;
+  final ClientPaymentSummary? paymentSummary;
+  final ClientActiveTopUp? activeTopUp;
   final DateTime? issuedAt;
   final DateTime? paidAt;
   final DateTime? cancelledAt;
@@ -1165,6 +1169,8 @@ class GarageInvoice {
     required this.totalCny,
     required this.totalRub,
     required this.activePaymentId,
+    this.paymentSummary,
+    this.activeTopUp,
     required this.issuedAt,
     required this.paidAt,
     required this.cancelledAt,
@@ -1181,6 +1187,8 @@ class GarageInvoice {
       totalCny: _nullableDouble(json['totalCny']) ?? 0,
       totalRub: _nullableDouble(json['totalRub']) ?? 0,
       activePaymentId: _nullableInt(json['activePaymentId']),
+      paymentSummary: ClientPaymentSummary.tryParse(json['paymentSummary']),
+      activeTopUp: ClientActiveTopUp.tryParse(json['activeTopUp']),
       issuedAt: _nullableDate(json['issuedAt'] ?? json['createdAt']),
       paidAt: _nullableDate(json['paidAt']),
       cancelledAt: _nullableDate(json['cancelledAt']),

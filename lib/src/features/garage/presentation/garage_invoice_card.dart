@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
+import '../../payments/presentation/client_payment_summary_panel.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../domain/garage_models.dart';
 import 'garage_ui.dart';
+
+@visibleForTesting
+bool isTerminalGarageRefund(GarageInvoice invoice, GarageOrder order) {
+  const terminalStatuses = {'cancelled', 'refunded'};
+  return terminalStatuses.contains(invoice.status.toLowerCase()) ||
+      terminalStatuses.contains(order.status.toLowerCase()) ||
+      order.refundState == 'refunded';
+}
 
 class GarageInvoiceCard extends ConsumerWidget {
   final GarageInvoice invoice;
@@ -99,13 +109,30 @@ class GarageInvoiceCard extends ConsumerWidget {
                 '${garageMoney(invoice.totalCny, '¥')} · ${garageMoney(invoice.totalRub, '₽')}',
             emphasized: true,
           ),
+          if (invoice.paymentSummary case final paymentSummary?) ...[
+            const SizedBox(height: 12),
+            ClientPaymentSummaryPanel(
+              summary: paymentSummary,
+              terminalRefund: isTerminalGarageRefund(invoice, order),
+            ),
+          ],
           if (onPay != null) ...[
             const SizedBox(height: 13),
             if (operatorsSleeping)
               const PaymentOperatorSleepingNotice(compact: true)
             else
               GaragePrimaryButton(
-                label: 'Оплатить по Bank QR',
+                label: invoice.paymentSummary?.isPartial == true
+                    ? tr(
+                        context,
+                        ru: 'Доплатить ${invoice.paymentSummary!.remainingRub.display} по QR',
+                        zh: '扫码补付 ${invoice.paymentSummary!.remainingRub.display}',
+                      )
+                    : tr(
+                        context,
+                        ru: 'Оплатить по Bank QR',
+                        zh: '使用 Bank QR 付款',
+                      ),
                 icon: Icons.qr_code_2_rounded,
                 onPressed: onPay,
               ),
