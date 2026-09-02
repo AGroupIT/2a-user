@@ -26,6 +26,7 @@ import '../../auth/data/passkey_auth_service.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../tracks/data/tracks_provider.dart';
 import '../../invoices/data/invoices_provider.dart';
+import '../../notifications/presentation/client_notification_preferences_section.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/invoice_export_data.dart';
 import '../data/track_export_data.dart';
@@ -490,6 +491,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                     // Password Change Section
                     _buildPasswordSection(),
+                    const SizedBox(height: 15),
+
+                    // Client push preferences
+                    const ClientNotificationPreferencesSection(),
                     const SizedBox(height: 15),
 
                     // Company Info Section

@@ -307,6 +307,13 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           iconColor: const Color(0xFFFF9800),
                           onTap: () => _go(context, '/tariffs'),
                         ),
+                        _MoreMenuTile(
+                          icon: Icons.calculate_rounded,
+                          title: 'Калькулятор',
+                          subtitle: 'Предварительный расчёт сборки',
+                          iconColor: const Color(0xFF2196F3),
+                          onTap: () => _go(context, '/calculator'),
+                        ),
                         if (showManualUpdateCheck)
                           _MoreMenuTile(
                             icon: Icons.system_update_rounded,

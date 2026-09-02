@@ -36,6 +36,11 @@ class PhoneInputField extends StatelessWidget {
     }
   }
 
+  static String? internationalValue(PhoneNumber phone) {
+    if (phone.nsn.trim().isEmpty || !phone.isValid()) return null;
+    return phone.international;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

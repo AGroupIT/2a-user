@@ -66,7 +66,11 @@ class _GarageConversationCardState
     }
   }
 
-  Future<void> _load({bool more = false, bool showLoader = true}) async {
+  Future<void> _load({
+    bool more = false,
+    bool showLoader = true,
+    bool preserveExisting = false,
+  }) async {
     final cursor = more ? _page?.nextCursor : null;
     if (more && cursor == null) return;
     final refresh = more ? _latestRefresh : ++_latestRefresh;
@@ -85,7 +89,18 @@ class _GarageConversationCardState
           .read(garageRepositoryProvider)
           .getRequestMessages(widget.request.id, cursor: cursor);
       if (!mounted || (!more && refresh != _latestRefresh)) return;
-      final merged = more && _page != null ? _page!.append(loaded) : loaded;
+      final currentPage = _page;
+      final pageToMerge = preserveExisting && currentPage != null
+          ? GarageMessagePage(
+              messages: loaded.messages,
+              nextCursor: currentPage.nextCursor,
+              unreadCount: loaded.unreadCount,
+              lastReadMessageId: loaded.lastReadMessageId,
+            )
+          : loaded;
+      final merged = (more || preserveExisting) && currentPage != null
+          ? currentPage.append(pageToMerge)
+          : pageToMerge;
       setState(() {
         _page = merged;
         _error = null;
@@ -142,7 +157,7 @@ class _GarageConversationCardState
     final reply = _replyTo;
     setState(() => _sending = true);
     try {
-      await ref
+      final sent = await ref
           .read(garageRepositoryProvider)
           .sendRequestMessage(
             widget.request.id,
@@ -159,10 +174,26 @@ class _GarageConversationCardState
       if (!mounted) return;
       _controller.clear();
       setState(() {
+        final currentPage = _page;
+        _page = currentPage == null
+            ? GarageMessagePage(
+                messages: [sent],
+                nextCursor: null,
+                unreadCount: 0,
+                lastReadMessageId: null,
+              )
+            : currentPage.append(
+                GarageMessagePage(
+                  messages: [sent],
+                  nextCursor: currentPage.nextCursor,
+                  unreadCount: currentPage.unreadCount,
+                  lastReadMessageId: currentPage.lastReadMessageId,
+                ),
+              );
         _replyTo = null;
         _pendingAttachments = const [];
       });
-      await _load(showLoader: false);
+      await _load(showLoader: false, preserveExisting: true);
       if (!mounted) return;
       setState(() => _sending = false);
     } catch (_) {
@@ -353,8 +384,18 @@ class _GarageConversationCardState
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              )
-            else
+              ),
+            if (_page?.nextCursor != null) ...[
+              const SizedBox(height: 8),
+              GarageSecondaryButton(
+                label: _loadingMore
+                    ? 'Загрузка…'
+                    : 'Показать предыдущие сообщения',
+                icon: Icons.expand_more_rounded,
+                onPressed: _loadingMore ? null : () => _load(more: true),
+              ),
+            ],
+            if (!(_page?.messages.isEmpty ?? true))
               for (final message in _page!.messages)
                 _MessageBubble(
                   message: message,
@@ -363,16 +404,6 @@ class _GarageConversationCardState
                       ? () => setState(() => _replyTo = message)
                       : null,
                 ),
-            if (_page?.nextCursor != null) ...[
-              const SizedBox(height: 8),
-              GarageSecondaryButton(
-                label: _loadingMore
-                    ? 'Загрузка…'
-                    : 'Показать следующие сообщения',
-                icon: Icons.expand_more_rounded,
-                onPressed: _loadingMore ? null : () => _load(more: true),
-              ),
-            ],
             const SizedBox(height: 12),
             if (_canWrite) _composer() else _readOnlyNotice(),
           ],

@@ -278,7 +278,11 @@ void main() {
       'POST /client/garage/requests/11/messages',
       'POST /client/garage/requests/11/messages/read',
     ]);
-    expect(client.calls[0].queryParameters, {'cursor': 60, 'take': 100});
+    expect(client.calls[0].queryParameters, {
+      'cursor': 60,
+      'take': 100,
+      'mode': 'latest',
+    });
     expect(client.calls[1].data, {
       'content': 'Да, нужен оригинал',
       'messageType': 'answer',

@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../firebase_options.dart';
 import '../../features/notifications/domain/notification_item.dart';
@@ -19,6 +20,11 @@ bool get _isIOS => isIOSImpl();
 
 /// Проверка Desktop (безопасно для Web)
 bool get _isDesktop => isDesktopImpl();
+
+String localNotificationChannelId(
+  String baseId, {
+  required bool soundEnabled,
+}) => '${baseId}_${soundEnabled ? 'sound' : 'silent'}';
 
 /// Background message handler (must be top-level)
 @pragma('vm:entry-point')
@@ -80,6 +86,20 @@ class PushNotificationService {
   static bool _messagingSupported = true; // FCM доступен в текущем браузере/ОС
   static Future<void>? _firebaseInitializationFuture;
   static final List<RemoteMessage> _pendingOpenedMessages = [];
+  static const _notificationsEnabledKey = 'push_notifications_enabled';
+  static const _soundEnabledKey = 'push_sound_enabled';
+  static const _badgeEnabledKey = 'push_badge_enabled';
+  static bool _preferencesLoaded = false;
+  static bool _notificationsEnabled = true;
+  static bool _soundEnabled = true;
+  static bool _badgeEnabled = true;
+
+  static ({bool notificationsEnabled, bool soundEnabled, bool badgeEnabled})
+  get devicePreferences => (
+    notificationsEnabled: _notificationsEnabled,
+    soundEnabled: _soundEnabled,
+    badgeEnabled: _badgeEnabled,
+  );
 
   // Callback для обработки нажатия на уведомление
   void Function(String? route)? onNotificationTap;
@@ -118,6 +138,43 @@ class PushNotificationService {
 
   static void clearActiveClient() {
     _activeClientId = null;
+  }
+
+  static Future<void> applyDevicePreferences({
+    bool? notificationsEnabled,
+    bool? soundEnabled,
+    bool? badgeEnabled,
+  }) async {
+    if (notificationsEnabled == null &&
+        soundEnabled == null &&
+        badgeEnabled == null) {
+      return;
+    }
+
+    _notificationsEnabled = notificationsEnabled ?? _notificationsEnabled;
+    _soundEnabled = soundEnabled ?? _soundEnabled;
+    _badgeEnabled = badgeEnabled ?? _badgeEnabled;
+    _preferencesLoaded = true;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (notificationsEnabled != null) {
+      await prefs.setBool(_notificationsEnabledKey, notificationsEnabled);
+    }
+    if (soundEnabled != null) {
+      await prefs.setBool(_soundEnabledKey, soundEnabled);
+    }
+    if (badgeEnabled != null) {
+      await prefs.setBool(_badgeEnabledKey, badgeEnabled);
+    }
+  }
+
+  static Future<void> _loadDevicePreferences() async {
+    if (_preferencesLoaded) return;
+    final prefs = await SharedPreferences.getInstance();
+    _notificationsEnabled = prefs.getBool(_notificationsEnabledKey) ?? true;
+    _soundEnabled = prefs.getBool(_soundEnabledKey) ?? true;
+    _badgeEnabled = prefs.getBool(_badgeEnabledKey) ?? true;
+    _preferencesLoaded = true;
   }
 
   /// Статическая инициализация Firebase после восстановления/создания сессии.
@@ -351,27 +408,36 @@ class PushNotificationService {
     if (!_isInitialized) {
       await service.initialize();
     }
+    if (!_notificationsEnabled) return;
 
-    const androidDetails = AndroidNotificationDetails(
-      'fcm_channel',
-      'Push уведомления',
-      channelDescription: 'Уведомления от сервера',
+    final item = NotificationItem.fromPushData(
+      message.data,
+      title: notification.title,
+      body: notification.body,
+    );
+    final channelConfig = service._getChannelConfig(item.type);
+    final androidDetails = AndroidNotificationDetails(
+      localNotificationChannelId(channelConfig.id, soundEnabled: _soundEnabled),
+      channelConfig.name,
+      channelDescription: channelConfig.description,
       importance: Importance.high,
       priority: Priority.high,
       icon: 'ic_notification',
+      playSound: _soundEnabled,
     );
 
-    const iosDetails = DarwinNotificationDetails(
+    final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
+      presentBadge: _badgeEnabled,
+      presentSound: _soundEnabled,
+      sound: _soundEnabled ? 'default' : null,
     );
 
     await service._notifications.show(
       message.hashCode,
       notification.title,
       notification.body,
-      const NotificationDetails(android: androidDetails, iOS: iosDetails),
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
       payload: NotificationItem.tapPayloadFromPushData(message.data),
     );
   }
@@ -489,7 +555,14 @@ class PushNotificationService {
       return;
     }
     try {
-      await _messaging?.unsubscribeFromTopic(topic);
+      final messaging = _messaging;
+      if (messaging == null) return;
+      await messaging
+          .unsubscribeFromTopic(topic)
+          .timeout(const Duration(seconds: 3));
+      debugPrint('🔔 Unsubscribed from: $topic');
+    } on TimeoutException {
+      debugPrint('🔔 Unsubscribe timed out for: $topic');
     } catch (e) {
       debugPrint('🔔 Unsubscribe error: $e');
     }
@@ -502,6 +575,8 @@ class PushNotificationService {
       _isInitialized = true;
       return;
     }
+
+    await _loadDevicePreferences();
 
     if (_isInitialized) {
       _setNotificationTapHandler(onTap);
@@ -648,11 +723,29 @@ class PushNotificationService {
           name: 'Счета',
           description: 'Уведомления о новых счетах на оплату',
         );
+      case NotificationType.paymentStatus:
+        return _ChannelConfig(
+          id: 'payment_status_channel',
+          name: 'Оплата',
+          description: 'Уведомления о состоянии и подтверждении оплаты',
+        );
+      case NotificationType.selfBuyout:
+        return _ChannelConfig(
+          id: 'self_buyout_channel',
+          name: 'Самовыкуп',
+          description: 'Уведомления по заявкам самовыкупа',
+        );
       case NotificationType.garage:
         return _ChannelConfig(
           id: 'garage_channel',
           name: 'Гараж',
           description: 'Уведомления по заявкам и заказам автозапчастей',
+        );
+      case NotificationType.broadcast:
+        return _ChannelConfig(
+          id: 'broadcast_channel',
+          name: 'Объявления',
+          description: 'Информационные сообщения компании',
         );
     }
   }
@@ -662,11 +755,12 @@ class PushNotificationService {
     if (!_isInitialized) {
       await initialize();
     }
+    if (!_notificationsEnabled) return;
 
     final channelConfig = _getChannelConfig(item.type);
 
     final androidDetails = AndroidNotificationDetails(
-      channelConfig.id,
+      localNotificationChannelId(channelConfig.id, soundEnabled: _soundEnabled),
       channelConfig.name,
       channelDescription: channelConfig.description,
       importance: Importance.high,
@@ -675,7 +769,7 @@ class PushNotificationService {
       icon: 'ic_notification',
       color: BrandColors.defaultColors.primary,
       enableVibration: true,
-      playSound: true,
+      playSound: _soundEnabled,
       category: _getCategoryForType(item.type),
       styleInformation: BigTextStyleInformation(
         item.message,
@@ -684,11 +778,11 @@ class PushNotificationService {
       ),
     );
 
-    const iosDetails = DarwinNotificationDetails(
+    final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      sound: 'default',
+      presentBadge: _badgeEnabled,
+      presentSound: _soundEnabled,
+      sound: _soundEnabled ? 'default' : null,
     );
 
     final details = NotificationDetails(
@@ -712,8 +806,11 @@ class PushNotificationService {
         return AndroidNotificationCategory.message;
       case NotificationType.trackStatus:
       case NotificationType.assemblyStatus:
+      case NotificationType.paymentStatus:
+      case NotificationType.selfBuyout:
         return AndroidNotificationCategory.status;
       case NotificationType.news:
+      case NotificationType.broadcast:
         return AndroidNotificationCategory.recommendation;
       default:
         return AndroidNotificationCategory.event;

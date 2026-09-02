@@ -5,12 +5,13 @@ import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
+import '../../../core/ui/phone_input_field.dart';
 import '../../../core/utils/error_utils.dart';
 import '../data/auth_provider.dart';
 import '../data/partner_link_provider.dart';
@@ -33,17 +34,10 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
-  final _phoneCtrl = TextEditingController();
+  late final PhoneController _phoneCtrl;
   final _domainCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
-
-  /// Маска для ввода телефона: +7 (999) 123-45-67
-  final _phoneMask = MaskTextInputFormatter(
-    mask: '+7 (###) ###-##-##',
-    filter: {'#': RegExp(r'[0-9]')},
-    type: MaskAutoCompletionType.lazy,
-  );
 
   String? _phoneError;
   String? _domainError;
@@ -67,6 +61,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   void initState() {
     super.initState();
+    _phoneCtrl = PhoneController(
+      initialValue: const PhoneNumber(isoCode: IsoCode.RU, nsn: ''),
+    );
     final detectedDomain = ref.read(partnerLinkProvider).hasPendingToken
         ? partnerLinkAgentDomain
         : AgentDomainResolver.currentAgentDomain;
@@ -92,23 +89,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  /// Валидация телефона для SMS.RU (формат: 79XXXXXXXXX)
   String? _validatePhone() {
-    final digits = _phoneMask.getUnmaskedText();
-
-    if (digits.isEmpty) {
+    if (_phoneCtrl.value.nsn.trim().isEmpty) {
       return 'Введите номер телефона';
     }
-
-    if (digits.length != 10) {
-      return 'Введите полный номер телефона (10 цифр после +7)';
-    }
-
-    if (!RegExp(r'^[0-9]+$').hasMatch(digits)) {
-      return 'Номер должен содержать только цифры';
-    }
-
-    return null;
+    return PhoneInputField.internationalValue(_phoneCtrl.value) == null
+        ? 'Введите корректный номер телефона'
+        : null;
   }
 
   /// Валидация домена компании
@@ -126,10 +113,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       ? partnerLinkAgentDomain
       : _domainCtrl.text.trim();
 
-  /// Получить телефон в формате для SMS.RU: 79XXXXXXXXX
   String _getPhoneForApi() {
-    final digits = _phoneMask.getUnmaskedText();
-    return '7$digits'; // +7 уже в маске, добавляем 7 к 10 цифрам
+    return PhoneInputField.internationalValue(_phoneCtrl.value)!;
   }
 
   /// Шаг 1: Запросить восстановление
@@ -654,42 +639,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: hasPhoneError
-                  ? Colors.red.shade400
-                  : const Color(0xFFE0E0E0),
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: TextField(
-            controller: _phoneCtrl,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [_phoneMask],
-            onChanged: (_) {
-              if (_phoneError != null) {
-                setState(() => _phoneError = null);
-              }
-            },
-            decoration: InputDecoration(
-              hintText: '+7 (999) 123-45-67',
-              hintStyle: const TextStyle(
-                color: Color(0xFFAAAAAA),
-                fontSize: 14,
-              ),
-              prefixIcon: Icon(
-                Icons.phone_rounded,
-                color: hasPhoneError ? Colors.red.shade400 : accent,
-                size: 20,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-            ),
-          ),
+        PhoneInputField(
+          controller: _phoneCtrl,
+          hintText: 'Номер телефона',
+          textInputAction: TextInputAction.done,
+          onChanged: (_) {
+            if (_phoneError != null) {
+              setState(() => _phoneError = null);
+            }
+          },
         ),
         if (hasPhoneError) ...[
           const SizedBox(height: 8),
@@ -935,11 +893,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   /// Форматирование номера для отображения
   String _formatPhoneDisplay() {
-    final digits = _phoneMask.getUnmaskedText();
-    if (digits.length == 10) {
-      return '+7 (${digits.substring(0, 3)}) ${digits.substring(3, 6)}-${digits.substring(6, 8)}-${digits.substring(8, 10)}';
-    }
-    return _phoneCtrl.text;
+    return _phoneCtrl.value.international;
   }
 
   Widget _buildPasswordStep() {

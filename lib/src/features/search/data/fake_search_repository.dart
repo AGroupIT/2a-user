@@ -52,11 +52,30 @@ class TrackBindingRequestResult {
   final TrackBindingRequestErrorCode? errorCode;
 }
 
+class SearchResultsPage {
+  const SearchResultsPage({
+    required this.items,
+    required this.total,
+    required this.hasMore,
+  });
+
+  final List<SearchResult> items;
+  final int total;
+  final bool hasMore;
+}
+
 /// Репозиторий для поиска трек-номеров без привязки к коду клиента (nocode).
 /// Предназначен для экрана `TrackSearchNoCodeScreen`.
 abstract class SearchRepository {
   /// Поиск ТОЛЬКО по nocode-трекам своего агента (фильтр по trackNumber contains).
   Future<List<SearchResult>> searchNoCodeTracks(String query);
+
+  /// Серверная страница каталога NOCODE. Пустой [query] означает весь каталог.
+  Future<SearchResultsPage> fetchNoCodeTracks({
+    String query = '',
+    int skip = 0,
+    int take = 20,
+  });
 
   /// Запрос привязки трека с приложенным скрином логистики.
   /// [photoUrl] получен через [uploadBindingPhoto].
@@ -87,38 +106,74 @@ class RealSearchRepository implements SearchRepository {
 
   @override
   Future<List<SearchResult>> searchNoCodeTracks(String query) async {
+    final page = await fetchNoCodeTracks(query: query, take: 50);
+    return page.items;
+  }
+
+  @override
+  Future<SearchResultsPage> fetchNoCodeTracks({
+    String query = '',
+    int skip = 0,
+    int take = 20,
+  }) async {
     final q = query.trim();
-    if (q.length < 3) return const [];
+    if (q.isNotEmpty && q.length < 3) {
+      return const SearchResultsPage(items: [], total: 0, hasMore: false);
+    }
 
     try {
       final response = await _api.get(
         '/client/search',
-        queryParameters: {'query': q, 'onlyNocode': 'true'},
+        queryParameters: {
+          if (q.isNotEmpty) 'query': q,
+          'onlyNocode': 'true',
+          'skip': skip,
+          'take': take,
+        },
       );
 
       if (response.statusCode == 200 && response.data != null) {
         final body = response.data;
         if (body is List) {
-          return body
+          final items = body
               .whereType<Map<String, dynamic>>()
               .map(SearchResult.fromJson)
               .toList();
+          return SearchResultsPage(
+            items: items,
+            total: items.length,
+            hasMore: false,
+          );
         }
         if (body is Map<String, dynamic>) {
           final list = body['data'] ?? body['results'] ?? body['items'];
           if (list is List) {
-            return list
+            final items = list
                 .whereType<Map<String, dynamic>>()
                 .map(SearchResult.fromJson)
                 .toList();
+            final total = _asInt(body['total']) ?? items.length;
+            final hasMore = body['hasMore'] is bool
+                ? body['hasMore'] as bool
+                : skip + items.length < total;
+            return SearchResultsPage(
+              items: items,
+              total: total,
+              hasMore: hasMore,
+            );
           }
         }
       }
-      return const [];
+      return const SearchResultsPage(items: [], total: 0, hasMore: false);
     } on DioException catch (e) {
-      debugPrint('[SearchRepository] searchNoCodeTracks error: $e');
+      debugPrint('[SearchRepository] fetchNoCodeTracks error: $e');
       rethrow;
     }
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
   }
 
   @override

@@ -5,11 +5,13 @@ import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/phone_input_field.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/client_partner_invite_provider.dart';
 import '../data/partner_link_provider.dart';
@@ -29,7 +31,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  late final PhoneController _phoneCtrl;
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
@@ -58,7 +60,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneCtrl.addListener(_handlePhoneChanged);
+    _phoneCtrl = PhoneController(
+      initialValue: const PhoneNumber(isoCode: IsoCode.RU, nsn: ''),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(registrationProvider.notifier).reset();
     });
@@ -66,7 +70,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
-    _phoneCtrl.removeListener(_handlePhoneChanged);
     _cancelPhoneVerificationTimers();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
@@ -86,25 +89,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   String? _normalizePhoneForApi() {
-    final digits = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
-    if (digits.length == 10) return '7$digits';
-    if (digits.length == 11 && digits.startsWith('8')) {
-      return '7${digits.substring(1)}';
-    }
-    if (digits.length == 11 && digits.startsWith('7')) return digits;
-    return null;
+    return PhoneInputField.internationalValue(_phoneCtrl.value);
   }
 
   String? _validatePhone() {
-    final digits = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return 'Введите номер телефона';
+    if (_phoneCtrl.value.nsn.trim().isEmpty) return 'Введите номер телефона';
     if (_normalizePhoneForApi() == null) {
-      return 'Введите полный номер телефона в формате +7 (999) 123-45-67';
+      return 'Введите корректный номер телефона';
     }
     return null;
   }
 
-  void _handlePhoneChanged() {
+  void _handlePhoneChanged(PhoneNumber _) {
     final currentPhone = _normalizePhoneForApi();
     final trackedPhone = _verifiedPhone ?? _verificationPhone;
     if (trackedPhone != null && currentPhone != trackedPhone) {
@@ -376,7 +372,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         .read(registrationProvider.notifier)
         .register(
           fullName: _nameCtrl.text,
-          phone: _phoneCtrl.text,
+          phone: _normalizePhoneForApi()!,
           email: _emailCtrl.text,
           password: _passwordCtrl.text,
           confirmPassword: _confirmPasswordCtrl.text,
@@ -628,13 +624,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           prefixIcon: Icons.person_rounded,
         ),
         const SizedBox(height: 16),
-        _buildTextField(
+        const Text(
+          'Телефон *',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 8),
+        PhoneInputField(
           controller: _phoneCtrl,
-          label: 'Телефон *',
-          hint: '+7 (999) 123-45-67',
-          prefixIcon: Icons.phone_rounded,
-          keyboardType: TextInputType.phone,
-          inputFormatters: [_PhoneInputFormatter()],
+          hintText: 'Номер телефона',
+          textInputAction: TextInputAction.next,
+          onChanged: _handlePhoneChanged,
         ),
         const SizedBox(height: 10),
         _buildPhoneVerificationSection(state),
@@ -1213,57 +1216,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _PhoneInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final text = newValue.text;
-    final digits = text.replaceAll(RegExp(r'\D'), '');
-
-    if (digits.isEmpty) return newValue.copyWith(text: '');
-
-    final buffer = StringBuffer();
-    int index = 0;
-
-    if (digits.isNotEmpty) {
-      buffer.write('+');
-      buffer.write(digits[index++]);
-    }
-    if (index < digits.length) {
-      buffer.write(' (');
-      for (int i = 0; i < 3 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-      buffer.write(')');
-    }
-    if (index < digits.length) {
-      buffer.write(' ');
-      for (int i = 0; i < 3 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-    if (index < digits.length) {
-      buffer.write('-');
-      for (int i = 0; i < 2 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-    if (index < digits.length) {
-      buffer.write('-');
-      for (int i = 0; i < 2 && index < digits.length; i++) {
-        buffer.write(digits[index++]);
-      }
-    }
-
-    return TextEditingValue(
-      text: buffer.toString(),
-      selection: TextSelection.collapsed(offset: buffer.length),
     );
   }
 }

@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/chat_presence_service.dart';
 import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/showcase_service.dart';
@@ -36,6 +37,10 @@ const _kTokenKey = 'auth_token';
 const _kClientIdKey = 'client_id';
 const _kClientNameKey = 'client_name';
 const _kClientDataKey = 'client_data';
+
+final logoutDeviceCleanupTimeoutProvider = Provider<Duration>(
+  (_) => const Duration(seconds: 3),
+);
 
 class LoginVerificationChallenge {
   final String login;
@@ -635,7 +640,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
         // Отправляем токен на сервер
         try {
-          await _apiClient.post(
+          final response = await _apiClient.post(
             '/devices',
             data: {
               'platform': platform,
@@ -643,6 +648,14 @@ class AuthNotifier extends Notifier<AuthState> {
               'deviceId': await _getDeviceId(),
             },
           );
+          final device = response.data;
+          if (device is Map<String, dynamic>) {
+            await PushNotificationService.applyDevicePreferences(
+              notificationsEnabled: device['notificationsEnabled'] as bool?,
+              soundEnabled: device['soundEnabled'] as bool?,
+              badgeEnabled: device['badgeEnabled'] as bool?,
+            );
+          }
           debugPrint('🔔 Device registered successfully');
         } catch (e) {
           debugPrint('🔔 Error registering device: $e');
@@ -663,7 +676,7 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _reRegisterDeviceToken(String newToken) async {
     try {
       final platform = getPlatformNameImpl();
-      await _apiClient.post(
+      final response = await _apiClient.post(
         '/devices',
         data: {
           'platform': platform,
@@ -671,6 +684,14 @@ class AuthNotifier extends Notifier<AuthState> {
           'deviceId': await _getDeviceId(),
         },
       );
+      final device = response.data;
+      if (device is Map<String, dynamic>) {
+        await PushNotificationService.applyDevicePreferences(
+          notificationsEnabled: device['notificationsEnabled'] as bool?,
+          soundEnabled: device['soundEnabled'] as bool?,
+          badgeEnabled: device['badgeEnabled'] as bool?,
+        );
+      }
       debugPrint('🔔 Device token re-registered after FCM refresh');
     } catch (e) {
       debugPrint('🔔 Error re-registering device token: $e');
@@ -705,11 +726,12 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       debugPrint('🚪 Starting logout process...');
       PushNotificationService.clearActiveClient();
+      ref.read(chatPresenceServiceProvider).stopForLogout();
 
       // Отписываемся от push-уведомлений
       try {
         await _unregisterFromPush();
-        debugPrint('✅ Unregistered from push');
+        debugPrint('✅ Push device cleanup completed or safely deferred');
       } catch (e) {
         debugPrint('⚠️ Error unregistering from push: $e');
         // Продолжаем logout даже если отписка от push не удалась
@@ -892,30 +914,45 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Отписка от push-уведомлений
   Future<void> _unregisterFromPush() async {
-    try {
-      final domain = state.userDomain;
+    final domain = state.userDomain;
 
-      // Деактивируем устройство на сервере только если есть токен
+    try {
+      // Device ID хранится локально и не зависит от Firebase/APNS.
+      // Поэтому logout не должен ждать getToken(), который на некоторых
+      // устройствах может зависнуть на минуты.
       if (_apiClient.hasToken) {
-        final fcmToken = await PushNotificationService.getFCMToken();
-        if (fcmToken != null) {
+        final deviceId = await _getDeviceId().timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => null,
+        );
+        if (deviceId != null) {
           try {
-            await _apiClient.delete('/devices', data: {'token': fcmToken});
+            await _apiClient
+                .delete('/devices', data: {'deviceId': deviceId})
+                .timeout(ref.read(logoutDeviceCleanupTimeoutProvider));
             debugPrint('🔔 Device deactivated successfully');
+          } on TimeoutException {
+            debugPrint('🔔 Device deactivation timed out; continuing logout');
           } catch (e) {
             debugPrint('🔔 Error deactivating device: $e');
           }
         }
       }
-
-      // Отписываемся от топиков
-      await PushNotificationService.unsubscribeFromTopic('clients');
-      if (domain != null) {
-        await PushNotificationService.unsubscribeFromTopic('domain_$domain');
-      }
     } catch (e) {
-      debugPrint('🔔 Error unregistering from push: $e');
+      debugPrint('🔔 Error deactivating device during logout: $e');
     }
+
+    // Топики больше не участвуют в адресации клиентских push. Их
+    // legacy-cleanup не должен блокировать очистку локальной сессии.
+    unawaited(_unsubscribeFromLegacyPushTopics(domain));
+  }
+
+  Future<void> _unsubscribeFromLegacyPushTopics(String? domain) async {
+    await PushNotificationService.unsubscribeFromTopic('clients');
+    if (domain != null) {
+      await PushNotificationService.unsubscribeFromTopic('domain_$domain');
+    }
+    debugPrint('🔔 Legacy push topics unsubscribed');
   }
 }
 

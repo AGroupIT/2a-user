@@ -39,28 +39,132 @@ String trackBindingRequestErrorMessage(
   };
 }
 
+class NoCodeCatalogState {
+  const NoCodeCatalogState({
+    this.items = const [],
+    this.total = 0,
+    this.hasMore = false,
+    this.query = '',
+    this.isLoadingMore = false,
+    this.loadMoreError,
+  });
+
+  final List<SearchResult> items;
+  final int total;
+  final bool hasMore;
+  final String query;
+  final bool isLoadingMore;
+  final Object? loadMoreError;
+
+  NoCodeCatalogState copyWith({
+    List<SearchResult>? items,
+    int? total,
+    bool? hasMore,
+    String? query,
+    bool? isLoadingMore,
+    Object? loadMoreError,
+    bool clearLoadMoreError = false,
+  }) {
+    return NoCodeCatalogState(
+      items: items ?? this.items,
+      total: total ?? this.total,
+      hasMore: hasMore ?? this.hasMore,
+      query: query ?? this.query,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : loadMoreError ?? this.loadMoreError,
+    );
+  }
+}
+
 final searchControllerProvider =
-    AsyncNotifierProvider<SearchController, List<SearchResult>>(
+    AsyncNotifierProvider<SearchController, NoCodeCatalogState>(
       SearchController.new,
     );
 
-class SearchController extends AsyncNotifier<List<SearchResult>> {
-  @override
-  Future<List<SearchResult>> build() async => const [];
+class SearchController extends AsyncNotifier<NoCodeCatalogState> {
+  static const _pageSize = 20;
+  int _requestVersion = 0;
 
-  /// Ищет только nocode-треки своего агента.
+  @override
+  Future<NoCodeCatalogState> build() async {
+    final page = await ref
+        .read(searchRepositoryProvider)
+        .fetchNoCodeTracks(take: _pageSize);
+    return NoCodeCatalogState(
+      items: page.items,
+      total: page.total,
+      hasMore: page.hasMore,
+    );
+  }
+
+  /// Фильтрует серверный каталог NOCODE. Пустой запрос возвращает весь каталог.
   Future<void> search(String query) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      state = const AsyncValue.data([]);
+    if (trimmed.isNotEmpty && trimmed.length < 3) return;
+
+    final requestVersion = ++_requestVersion;
+    state = const AsyncValue.loading();
+    final next = await AsyncValue.guard(() async {
+      final repo = ref.read(searchRepositoryProvider);
+      final page = await repo.fetchNoCodeTracks(
+        query: trimmed,
+        take: _pageSize,
+      );
+      return NoCodeCatalogState(
+        items: page.items,
+        total: page.total,
+        hasMore: page.hasMore,
+        query: trimmed,
+      );
+    });
+    if (requestVersion == _requestVersion) state = next;
+  }
+
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null ||
+        !current.hasMore ||
+        current.isLoadingMore ||
+        state.isLoading) {
       return;
     }
 
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      final repo = ref.read(searchRepositoryProvider);
-      return repo.searchNoCodeTracks(trimmed);
-    });
+    state = AsyncValue.data(
+      current.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
+    try {
+      final page = await ref
+          .read(searchRepositoryProvider)
+          .fetchNoCodeTracks(
+            query: current.query,
+            skip: current.items.length,
+            take: _pageSize,
+          );
+      final latest = state.value;
+      if (latest == null || latest.query != current.query) return;
+
+      final existingIds = latest.items.map((item) => item.id).toSet();
+      final newItems = page.items
+          .where((item) => existingIds.add(item.id))
+          .toList(growable: false);
+      state = AsyncValue.data(
+        latest.copyWith(
+          items: [...latest.items, ...newItems],
+          total: page.total,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+          clearLoadMoreError: true,
+        ),
+      );
+    } catch (error) {
+      final latest = state.value;
+      if (latest == null || latest.query != current.query) return;
+      state = AsyncValue.data(
+        latest.copyWith(isLoadingMore: false, loadMoreError: error),
+      );
+    }
   }
 
   /// Загружает фото и возвращает URL. null при ошибке.
@@ -93,18 +197,9 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
       // Локально помечаем трек как имеющий pending-вопрос.
       final current = state.value;
       if (current != null) {
-        final updated = current.map((item) {
+        final updated = current.items.map((item) {
           if (item.id == trackId) {
-            return SearchResult(
-              id: item.id,
-              trackCode: item.trackCode,
-              status: item.status,
-              statusZh: item.statusZh,
-              statusColor: item.statusColor,
-              updatedAt: item.updatedAt,
-              clientCode: item.clientCode,
-              clientCodeId: item.clientCodeId,
-              isNocode: item.isNocode,
+            return item.copyWith(
               hasQuestion: true,
               hasPendingQuestion: true,
               showBindButton: false,
@@ -112,7 +207,7 @@ class SearchController extends AsyncNotifier<List<SearchResult>> {
           }
           return item;
         }).toList();
-        state = AsyncValue.data(updated);
+        state = AsyncValue.data(current.copyWith(items: updated));
       }
 
       return const TrackBindingRequestResult.success();

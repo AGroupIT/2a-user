@@ -290,6 +290,7 @@ class RemoteGarageRepository implements GarageRepository {
       queryParameters: {
         if (cursor != null) 'cursor': cursor,
         'take': take.clamp(1, 100),
+        'mode': 'latest',
       },
     );
     return GarageMessagePage.fromJson(_stringKeyedMap(data));

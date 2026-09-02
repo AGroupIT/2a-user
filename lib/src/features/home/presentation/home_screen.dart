@@ -37,6 +37,7 @@ import '../../tracks/presentation/tracks_screen.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/current_cny_rate_provider.dart';
 import 'home_cny_rate_card.dart';
+import 'home_agent_contacts_card.dart';
 import 'warehouse_address_checker.dart';
 import 'warehouse_address_copy_banner.dart';
 
@@ -58,7 +59,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Флаг для показа диалога принятия правил
   bool _termsDialogShown = false;
-  final _noCodeSearchController = TextEditingController();
 
   final GlobalKey _quickCardsKey = GlobalKey();
   final GlobalKey _digestKey = GlobalKey();
@@ -67,12 +67,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _checkAndShowTermsDialog();
-  }
-
-  @override
-  void dispose() {
-    _noCodeSearchController.dispose();
-    super.dispose();
   }
 
   /// Проверить и показать диалог принятия правил если нужно
@@ -101,14 +95,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _openNoCodeSearch() {
-    final query = _noCodeSearchController.text.trim();
-    final location = query.length >= 3
-        ? Uri(
-            path: '/search-nocode',
-            queryParameters: {'query': query},
-          ).toString()
-        : '/search-nocode';
-    context.push(location);
+    context.push('/search-nocode');
   }
 
   @override
@@ -372,30 +359,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           clientCode: clientCode,
                           agent: agent!,
                         ),
-                        search: _NoCodeSearchCard(
-                          controller: _noCodeSearchController,
-                          onSearch: _openNoCodeSearch,
-                        ),
+                        search: _NoCodeSearchCard(onOpen: _openNoCodeSearch),
                       )
                     : _WarehouseDataBlock(
                         clientCode: clientCode,
                         agent: agent!,
                       ),
               ),
-              if (!useWideHomeLayout) const SizedBox(height: 15),
+              const SizedBox(height: 15),
+            ],
+            if (agent?.hasCompanyContacts == true) ...[
+              _HomeReveal(
+                order: 5,
+                child: HomeAgentContactsCard(agent: agent!),
+              ),
+              const SizedBox(height: 15),
             ],
             if (agent?.hasWarehouseContacts != true || !useWideHomeLayout) ...[
               _HomeReveal(
-                order: 5,
-                child: _NoCodeSearchCard(
-                  controller: _noCodeSearchController,
-                  onSearch: _openNoCodeSearch,
-                ),
+                order: 6,
+                child: _NoCodeSearchCard(onOpen: _openNoCodeSearch),
               ),
+              const SizedBox(height: 15),
             ],
-            const SizedBox(height: 15),
             _HomeReveal(
-              order: 6,
+              order: 7,
               child: KeyedSubtree(
                 key: _digestKey,
                 child: _DigestBlock(
@@ -2179,10 +2167,9 @@ class _WarehouseCopyButton extends StatelessWidget {
 }
 
 class _NoCodeSearchCard extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onSearch;
+  final VoidCallback onOpen;
 
-  const _NoCodeSearchCard({required this.controller, required this.onSearch});
+  const _NoCodeSearchCard({required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -2225,8 +2212,8 @@ class _NoCodeSearchCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Поиск трека без кода',
-                      maxLines: 1,
+                      'Товары без кода клиента',
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textPrimary,
@@ -2238,8 +2225,8 @@ class _NoCodeSearchCard extends StatelessWidget {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Если склад ещё не привязал посылку к вашему коду',
-                      maxLines: 1,
+                      'Эти товары не обязательно ваши, поэтому проверяйте логистику в вашем приложении',
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textSecondary,
@@ -2255,101 +2242,28 @@ class _NoCodeSearchCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stackSearchButton = constraints.maxWidth < 520;
-              final field = TextField(
-                controller: controller,
-                textInputAction: TextInputAction.search,
-                autocorrect: false,
-                enableSuggestions: false,
-                textCapitalization: TextCapitalization.characters,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton(
+              onPressed: onOpen,
+              style: FilledButton.styleFrom(
+                backgroundColor: context.brandPrimary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Перейти',
+                style: TextStyle(
                   fontFamily: 'Gilroy',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w900,
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Трек-номер',
-                  hintStyle: TextStyle(
-                    color: AppColors.textSecondary.withValues(alpha: 0.72),
-                    fontFamily: 'Gilroy',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: context.brandPrimary,
-                    size: 20,
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(
-                      color: Colors.black.withValues(alpha: 0.05),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(
-                      color: Colors.black.withValues(alpha: 0.05),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(
-                      color: context.brandPrimary.withValues(alpha: 0.55),
-                      width: 1.4,
-                    ),
-                  ),
-                ),
-                onSubmitted: (_) => onSearch(),
-              );
-              final button = SizedBox(
-                width: stackSearchButton ? double.infinity : null,
-                height: 48,
-                child: FilledButton(
-                  onPressed: onSearch,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: context.brandPrimary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Найти',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy',
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              );
-
-              if (stackSearchButton) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [field, const SizedBox(height: 8), button],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(child: field),
-                  const SizedBox(width: 8),
-                  button,
-                ],
-              );
-            },
+              ),
+            ),
           ),
         ],
       ),

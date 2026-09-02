@@ -31,8 +31,17 @@ enum NotificationType {
   /// Новый счёт на оплату
   invoice,
 
+  /// Событие по оплате, которое не относится только к одному счёту
+  paymentStatus,
+
+  /// Событие по заявке самовыкупа
+  selfBuyout,
+
   /// Событие по заявке или заказу в Гараже
   garage,
+
+  /// Общая информационная рассылка
+  broadcast,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -56,8 +65,14 @@ extension NotificationTypeExtension on NotificationType {
         return 'Правила оказания услуг';
       case NotificationType.invoice:
         return 'Счёт';
+      case NotificationType.paymentStatus:
+        return 'Оплата';
+      case NotificationType.selfBuyout:
+        return 'Самовыкуп';
       case NotificationType.garage:
         return 'Гараж';
+      case NotificationType.broadcast:
+        return 'Объявление';
     }
   }
 
@@ -81,8 +96,14 @@ extension NotificationTypeExtension on NotificationType {
         return Icons.description_rounded;
       case NotificationType.invoice:
         return Icons.receipt_long_rounded;
+      case NotificationType.paymentStatus:
+        return Icons.payments_rounded;
+      case NotificationType.selfBuyout:
+        return Icons.shopping_cart_checkout_rounded;
       case NotificationType.garage:
         return Icons.directions_car_filled_rounded;
+      case NotificationType.broadcast:
+        return Icons.campaign_rounded;
     }
   }
 
@@ -104,8 +125,14 @@ extension NotificationTypeExtension on NotificationType {
         return '/rules';
       case NotificationType.invoice:
         return '/invoices';
+      case NotificationType.paymentStatus:
+        return '/invoices';
+      case NotificationType.selfBuyout:
+        return '/self-buyout';
       case NotificationType.garage:
         return '/garage';
+      case NotificationType.broadcast:
+        return '/';
     }
   }
 
@@ -121,6 +148,7 @@ extension NotificationTypeExtension on NotificationType {
           'track_arrived_warehouse',
           'track_shipped',
           'track_delivered',
+          'track_client_code_changed',
         ];
       case NotificationType.assemblyStatus:
         return const [
@@ -129,6 +157,7 @@ extension NotificationTypeExtension on NotificationType {
           'assembly_status_changed',
           'assembly_status_change',
           'track_added_to_assembly',
+          'assembly_delivery_method_reminder',
         ];
       case NotificationType.photoReportStatus:
         return const [
@@ -163,6 +192,24 @@ extension NotificationTypeExtension on NotificationType {
           'invoice_status_changed',
           'invoice_paid',
           'invoice_arrival',
+          'invoice_payment_rejected',
+          'invoice_payment_reminder',
+        ];
+      case NotificationType.paymentStatus:
+        return const [
+          'payment_operator_status_changed',
+          'payment_partially_covered',
+          'payment_fully_covered',
+        ];
+      case NotificationType.selfBuyout:
+        return const [
+          'self_buyout_verification_approved',
+          'self_buyout_verification_rejected',
+          'self_buyout_payment_approved',
+          'self_buyout_payment_rejected',
+          'self_buyout_transfer_proof_uploaded',
+          'self_buyout_completed',
+          'self_buyout_cancelled',
         ];
       case NotificationType.garage:
         return const [
@@ -176,7 +223,19 @@ extension NotificationTypeExtension on NotificationType {
           'garage_offer_accepted',
           'garage_client_question',
           'garage_client_message',
+          'garage_clarification_required',
+          'garage_employee_reply',
+          'garage_request_status_changed',
+          'garage_part_purchased',
+          'garage_purchase_started',
+          'garage_order_status',
+          'garage_order_completed',
+          'garage_refund_request_approved',
+          'garage_refund_request_rejected',
+          'garage_refund_completed',
         ];
+      case NotificationType.broadcast:
+        return const ['broadcast'];
     }
   }
 }
@@ -405,8 +464,22 @@ class NotificationItem {
     // Приводим к нижнему регистру для универсального сравнения
     final type = typeStr.toLowerCase().trim();
 
+    // Сначала используем точные aliases. Это сохраняет старые payload и не
+    // позволяет, например, self_buyout_payment_* ошибочно попасть в «Счета».
+    for (final candidate in NotificationType.values) {
+      if (candidate.backendTypeAliases.contains(type)) return candidate;
+    }
+
     if (type == 'garage' || type.startsWith('garage_')) {
       return NotificationType.garage;
+    }
+
+    if (type.startsWith('self_buyout_')) {
+      return NotificationType.selfBuyout;
+    }
+
+    if (type == 'broadcast' || type.startsWith('broadcast_')) {
+      return NotificationType.broadcast;
     }
 
     // Трек статусы (включая создание нового трека)
@@ -463,9 +536,12 @@ class NotificationItem {
     // Счета
     if (type.contains('invoice') ||
         type.contains('счет') ||
-        type.contains('счёт') ||
-        type.contains('payment')) {
+        type.contains('счёт')) {
       return NotificationType.invoice;
+    }
+
+    if (type.contains('payment') || type.contains('оплат')) {
+      return NotificationType.paymentStatus;
     }
 
     // Точные совпадения для обратной совместимости
@@ -524,6 +600,22 @@ class NotificationItem {
 
     if (combined.contains('гараж') || combined.contains('garage')) {
       return NotificationType.garage;
+    }
+
+    if (combined.contains('самовыкуп') ||
+        combined.contains('self-buyout') ||
+        combined.contains('self buyout')) {
+      return NotificationType.selfBuyout;
+    }
+
+    if (combined.contains('рассылк') ||
+        combined.contains('объявлен') ||
+        combined.contains('broadcast')) {
+      return NotificationType.broadcast;
+    }
+
+    if (combined.contains('оператор') && combined.contains('оплат')) {
+      return NotificationType.paymentStatus;
     }
 
     // Сообщение от поддержки / чат
@@ -709,6 +801,10 @@ class NotificationItem {
           });
         }
         return '/invoices';
+      case NotificationType.paymentStatus:
+        return '/invoices';
+      case NotificationType.selfBuyout:
+        return '/self-buyout';
       case NotificationType.garage:
         if (targetType == 'garage_invoice') {
           final resolvedOrderId = routeId ?? garageOrderId;
@@ -723,6 +819,8 @@ class NotificationItem {
           return '/garage/orders/$garageOrderId';
         }
         return '/garage';
+      case NotificationType.broadcast:
+        return '/';
     }
   }
 

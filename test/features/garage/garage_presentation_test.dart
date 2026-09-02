@@ -423,6 +423,82 @@ void main() {
     expect(find.text('Введите ответ сотруднику'), findsOneWidget);
   });
 
+  testWidgets('Garage conversation keeps a successfully sent message visible', (
+    tester,
+  ) async {
+    final repository = _MockGarageRepository();
+    final request = _conversationRequest(
+      lastMessageAt: '2026-07-23T10:00:00.000Z',
+    );
+    final initialPage = GarageMessagePage.fromJson({
+      'messages': [
+        {
+          'id': 71,
+          'requestId': 11,
+          'senderType': 'employee',
+          'senderId': 5,
+          'senderName': 'Менеджер',
+          'messageType': 'comment',
+          'content': 'Первое сообщение',
+          'createdAt': '2026-07-23T10:00:00.000Z',
+        },
+      ],
+      'nextCursor': 71,
+      'unreadCount': 0,
+      'lastReadMessageId': 71,
+    });
+    final sent = GarageRequestMessage.fromJson({
+      'id': 72,
+      'requestId': 11,
+      'senderType': 'client',
+      'senderName': 'Клиент',
+      'messageType': 'comment',
+      'content': 'Новое сообщение клиента',
+      'createdAt': '2026-07-23T10:01:00.000Z',
+    });
+    when(
+      () => repository.getRequestMessages(11, cursor: null, take: 100),
+    ).thenAnswer((_) async => initialPage);
+    when(
+      () => repository.sendRequestMessage(
+        11,
+        content: 'Новое сообщение клиента',
+        messageType: 'comment',
+        replyToMessageId: null,
+        resolveQuestion: false,
+        attachmentIds: const <int>[],
+      ),
+    ).thenAnswer((_) async => sent);
+    when(
+      () => repository.markRequestMessagesRead(11, lastReadMessageId: 72),
+    ).thenAnswer(
+      (_) async => const GarageMessageReadCursor(
+        lastReadMessageId: 72,
+        lastReadAt: null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [garageRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          home: Scaffold(body: GarageConversationCard(request: request)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Новое сообщение клиента');
+    await tester.tap(find.byTooltip('Отправить'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Первое сообщение'), findsOneWidget);
+    expect(find.text('Новое сообщение клиента'), findsOneWidget);
+    verify(
+      () => repository.getRequestMessages(11, cursor: null, take: 100),
+    ).called(2);
+  });
+
   testWidgets('Garage conversation silently refreshes on message timestamp', (
     tester,
   ) async {

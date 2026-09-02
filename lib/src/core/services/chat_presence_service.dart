@@ -6,10 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../network/api_client.dart';
 
 /// Тип чата для отслеживания присутствия
-enum ChatType {
-  support,
-  payment,
-}
+enum ChatType { support, payment }
 
 /// Состояние присутствия клиента в чатах
 class ChatPresenceState {
@@ -31,7 +28,9 @@ class ChatPresenceState {
   }) {
     return ChatPresenceState(
       openChat: clearChat ? null : (openChat ?? this.openChat),
-      conversationId: clearChat ? null : (conversationId ?? this.conversationId),
+      conversationId: clearChat
+          ? null
+          : (conversationId ?? this.conversationId),
       isAppInBackground: isAppInBackground ?? this.isAppInBackground,
     );
   }
@@ -39,17 +38,19 @@ class ChatPresenceState {
 
 /// Провайдер для ChatPresenceService
 final chatPresenceServiceProvider = Provider<ChatPresenceService>((ref) {
-  return ChatPresenceService(ref.read(apiClientProvider));
+  final service = ChatPresenceService(ref.read(apiClientProvider));
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 /// Сервис для управления присутствием клиента в чатах
-/// 
+///
 /// Когда клиент открывает чат, сервис информирует сервер.
 /// Сервер не будет отправлять push-уведомления пока чат открыт.
 class ChatPresenceService {
   final ApiClient _apiClient;
   Timer? _heartbeatTimer;
-  
+
   // Интервал heartbeat (каждые 2 минуты)
   static const Duration _heartbeatInterval = Duration(minutes: 2);
 
@@ -66,8 +67,10 @@ class ChatPresenceService {
           'isOpen': true,
         },
       );
-      debugPrint('[ChatPresence] Opened ${chatType.name} chat (conversation: $conversationId)');
-      
+      debugPrint(
+        '[ChatPresence] Opened ${chatType.name} chat (conversation: $conversationId)',
+      );
+
       // Запускаем heartbeat для поддержания присутствия
       _startHeartbeat(chatType, conversationId);
     } catch (e) {
@@ -81,13 +84,10 @@ class ChatPresenceService {
     try {
       // Останавливаем heartbeat
       _stopHeartbeat();
-      
+
       await _apiClient.put(
         '/client/chat-presence',
-        data: {
-          'chatType': chatType.name,
-          'isOpen': false,
-        },
+        data: {'chatType': chatType.name, 'isOpen': false},
       );
       debugPrint('[ChatPresence] Closed ${chatType.name} chat');
     } catch (e) {
@@ -100,7 +100,7 @@ class ChatPresenceService {
   Future<void> onAppPaused() async {
     try {
       _stopHeartbeat();
-      
+
       await _apiClient.delete('/client/chat-presence');
       debugPrint('[ChatPresence] App paused - cleared all presence');
     } catch (e) {
@@ -119,7 +119,7 @@ class ChatPresenceService {
   /// Запустить heartbeat для поддержания присутствия
   void _startHeartbeat(ChatType chatType, int? conversationId) {
     _stopHeartbeat();
-    
+
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) async {
       try {
         await _apiClient.put(
@@ -141,6 +141,11 @@ class ChatPresenceService {
   void _stopHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+  }
+
+  /// Сразу останавливает heartbeat перед очисткой токена.
+  void stopForLogout() {
+    _stopHeartbeat();
   }
 
   /// Освободить ресурсы

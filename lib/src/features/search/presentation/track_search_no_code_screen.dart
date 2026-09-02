@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/help_dialog.dart';
@@ -16,6 +17,7 @@ import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../clients/application/client_codes_controller.dart';
+import '../../photos/presentation/photo_viewer_screen.dart';
 import '../domain/search_result.dart';
 import 'search_controller.dart';
 
@@ -158,7 +160,7 @@ class _SearchPageHeader extends StatelessWidget {
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
-            'Поиск трека',
+            'Товары без кода',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -189,20 +191,24 @@ class _SearchHelpButton extends StatelessWidget {
       child: InkWell(
         onTap: () => showHelpDialog(
           context,
-          title: 'Как работает этот поиск',
+          title: 'Как найти свой товар',
           content: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Здесь собраны только треки, которые пока не привязаны ни к одному коду клиента.',
+                'Здесь собраны товары, которые склад пока не привязал ни к одному коду клиента.',
               ),
               SizedBox(height: 8),
-              Text('1) Введите минимум 3 символа трек-номера.'),
-              SizedBox(height: 8),
-              Text('2) Нажмите «Запросить привязку», если нашли свой трек.'),
+              Text(
+                '1) Сверьте трек-номер и фотографии с логистикой в вашем приложении.',
+              ),
               SizedBox(height: 8),
               Text(
-                '3) Приложите скрин логистики: ТТН, накладную или другое подтверждение.',
+                '2) При необходимости используйте поиск: введите минимум 3 символа.',
+              ),
+              SizedBox(height: 8),
+              Text(
+                '3) Если нашли свой товар, запросите привязку и приложите подтверждение логистики.',
               ),
             ],
           ),
@@ -284,7 +290,7 @@ class _SearchHeroCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Трек без кода клиента',
+                          'Товары без кода клиента',
                           style: TextStyle(
                             color: Colors.white,
                             fontFamily: 'Gilroy',
@@ -296,7 +302,7 @@ class _SearchHeroCard extends StatelessWidget {
                         ),
                         SizedBox(height: 7),
                         Text(
-                          'Найдите посылку, которую склад ещё не привязал к вашему коду, и отправьте запрос с подтверждением.',
+                          'Проверяйте трек-номер и фотографии: товар в каталоге не обязательно принадлежит вам.',
                           style: TextStyle(
                             color: Color(0xE6FFFFFF),
                             fontFamily: 'Gilroy',
@@ -416,8 +422,7 @@ class _SearchGlowCircle extends StatelessWidget {
   }
 }
 
-/// Экран поиска треков без кода клиента (nocode).
-/// Открывается из нижнего меню "Ещё" → "Поиск по трек-номеру без кода".
+/// Каталог товаров без кода клиента (NOCODE) с фотоотчётами склада.
 class TrackSearchNoCodeScreen extends ConsumerStatefulWidget {
   const TrackSearchNoCodeScreen({super.key, this.initialQuery});
 
@@ -433,7 +438,7 @@ class _TrackSearchNoCodeScreenState
   final _ctrl = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-  bool _hasSearched = false;
+  String? _validationMessage;
 
   @override
   void initState() {
@@ -442,6 +447,7 @@ class _TrackSearchNoCodeScreenState
       if (!mounted) return;
       setState(() {});
     });
+    _scrollController.addListener(_onScroll);
     final initialQuery = widget.initialQuery?.trim();
     if (initialQuery == null || initialQuery.isEmpty) return;
 
@@ -458,6 +464,7 @@ class _TrackSearchNoCodeScreenState
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _focusNode.dispose();
     _scrollController.dispose();
     _ctrl.dispose();
@@ -466,9 +473,29 @@ class _TrackSearchNoCodeScreenState
 
   void _run() {
     FocusScope.of(context).unfocus();
-    if (_ctrl.text.trim().length < 3) return;
-    setState(() => _hasSearched = true);
-    ref.read(searchControllerProvider.notifier).search(_ctrl.text);
+    final query = _ctrl.text.trim();
+    if (query.isNotEmpty && query.length < 3) {
+      setState(
+        () => _validationMessage = 'Введите минимум 3 символа трек-номера.',
+      );
+      return;
+    }
+    setState(() => _validationMessage = null);
+    ref.read(searchControllerProvider.notifier).search(query);
+  }
+
+  void _clearSearch() {
+    _ctrl.clear();
+    setState(() => _validationMessage = null);
+    ref.read(searchControllerProvider.notifier).search('');
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.extentAfter < 420) {
+      ref.read(searchControllerProvider.notifier).loadMore();
+    }
   }
 
   @override
@@ -480,207 +507,230 @@ class _TrackSearchNoCodeScreenState
 
     return Stack(
       children: [
-        ListView(
+        CustomScrollView(
           controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(
-            16,
-            topPad * 0.7 + 16,
-            16,
-            bottomPad + 16,
-          ),
-          children: [
-            const _SearchPageHeader(),
-            const SizedBox(height: 12),
-            const _SearchHeroCard(),
-            const SizedBox(height: 14),
-            Container(
-              decoration: _searchCardDecoration(),
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      focusNode: _focusNode,
-                      textInputAction: TextInputAction.search,
-                      style: const TextStyle(
-                        color: _searchTextColor,
-                        fontFamily: 'Gilroy',
-                        fontSize: 15,
-                        height: 18 / 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      decoration: appInputDecoration(
-                        context,
-                        prefixIcon: _focusNode.hasFocus
-                            ? null
-                            : Icon(
-                                Icons.search_rounded,
-                                color: context.brandPrimary,
-                                size: 22,
-                              ),
-                        suffixIcon: _ctrl.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(
-                                  Icons.close_rounded,
-                                  color: _searchMutedTextColor,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(() {
-                                  _ctrl.selection =
-                                      const TextSelection.collapsed(offset: 0);
-                                  _ctrl.clear();
-                                  _hasSearched = false;
-                                }),
-                              )
-                            : null,
-                        hintText: 'Введите трек-номер',
-                        hintStyle: const TextStyle(
-                          fontFamily: 'Gilroy',
-                          fontSize: 14,
-                          height: 16 / 14,
-                          color: Color(0x662F2F2F),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        fillColor: const Color(0xFFF8FAFC),
-                        borderColor: const Color(0xFFE1E5ED),
-                        focusedBorderColor: context.brandPrimary,
-                        focusedWidth: 1.6,
-                        radius: 18,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 13,
-                        ),
-                      ),
-                      onChanged: (_) => setState(() => _hasSearched = false),
-                      onSubmitted: (_) => _run(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 54,
-                    height: 54,
-                    child: FilledButton(
-                      onPressed: _run,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: context.brandPrimary,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Icon(Icons.arrow_forward_rounded, size: 24),
-                    ),
-                  ),
-                ],
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(16, topPad * 0.7 + 16, 16, 0),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  const _SearchPageHeader(),
+                  const SizedBox(height: 12),
+                  const _SearchHeroCard(),
+                  const SizedBox(height: 14),
+                  _buildSearchField(context),
+                  const SizedBox(height: 8),
+                  _buildCatalogNotice(context),
+                  const SizedBox(height: 14),
+                ]),
               ),
             ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.black.withValues(alpha: 0.025),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: context.brandPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Поиск работает только по трекам без привязки. Для запроса понадобится фото подтверждения.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 12.5,
-                        height: 1.18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            results.when(
-              loading: () => Container(
-                decoration: _searchCardDecoration(),
-                padding: const EdgeInsets.symmetric(vertical: 26),
-                child: Center(
-                  child: CircularProgressIndicator(color: context.brandPrimary),
-                ),
-              ),
-              error: (e, _) {
-                final info = ErrorUtils.getErrorInfo(e);
-                return _SearchStateCard(
-                  icon: info.icon,
-                  title: info.title,
-                  message: info.message,
-                  isError: true,
-                );
-              },
-              data: (items) {
-                final q = _ctrl.text.trim();
-                if (q.isEmpty) {
-                  return const _SearchStateCard(
-                    icon: Icons.search_rounded,
-                    title: 'Введите трек-номер',
-                    message:
-                        'Мы проверим только посылки, которые ещё не привязаны к коду клиента.',
-                  );
-                }
-                if (q.length < 3) {
-                  return const _SearchStateCard(
-                    icon: Icons.info_outline_rounded,
-                    title: 'Слишком короткий запрос',
-                    message: 'Введите минимум 3 символа трек-номера.',
-                  );
-                }
-                if (!_hasSearched) {
-                  return const _SearchStateCard(
-                    icon: Icons.keyboard_return_rounded,
-                    title: 'Запустите поиск',
-                    message:
-                        'Нажмите оранжевую кнопку или «Готово» на клавиатуре.',
-                  );
-                }
-                if (items.isEmpty) {
-                  return const _SearchStateCard(
-                    icon: Icons.search_off_rounded,
-                    title: 'Ничего не найдено',
-                    message:
-                        'Проверьте трек-номер или попробуйте позже: склад мог ещё не добавить посылку.',
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ResultsHeader(count: items.length),
-                    const SizedBox(height: 10),
-                    for (var i = 0; i < items.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 10),
-                      _NoCodeResultTile(
-                        result: items[i],
-                        activeClientCode: activeClientCode,
-                      ),
-                    ],
-                  ],
-                );
-              },
-            ),
+            ..._buildResultSlivers(results, activeClientCode),
+            SliverToBoxAdapter(child: SizedBox(height: bottomPad + 16)),
           ],
         ),
         ScrollToTopButton(controller: _scrollController),
       ],
+    );
+  }
+
+  Widget _buildSearchField(BuildContext context) {
+    return Container(
+      decoration: _searchCardDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focusNode,
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(
+                color: _searchTextColor,
+                fontFamily: 'Gilroy',
+                fontSize: 15,
+                height: 18 / 15,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: appInputDecoration(
+                context,
+                prefixIcon: _focusNode.hasFocus
+                    ? null
+                    : Icon(
+                        Icons.search_rounded,
+                        color: context.brandPrimary,
+                        size: 22,
+                      ),
+                suffixIcon: _ctrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: _searchMutedTextColor,
+                          size: 20,
+                        ),
+                        onPressed: _clearSearch,
+                      )
+                    : null,
+                hintText: 'Поиск по трек-номеру',
+                hintStyle: const TextStyle(
+                  fontFamily: 'Gilroy',
+                  fontSize: 14,
+                  height: 16 / 14,
+                  color: Color(0x662F2F2F),
+                  fontWeight: FontWeight.w600,
+                ),
+                fillColor: const Color(0xFFF8FAFC),
+                borderColor: _validationMessage == null
+                    ? const Color(0xFFE1E5ED)
+                    : const Color(0xFFE53935),
+                focusedBorderColor: _validationMessage == null
+                    ? context.brandPrimary
+                    : const Color(0xFFE53935),
+                focusedWidth: 1.6,
+                radius: 18,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+              ),
+              onChanged: (_) => setState(() => _validationMessage = null),
+              onSubmitted: (_) => _run(),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 54,
+            height: 54,
+            child: FilledButton(
+              onPressed: _run,
+              style: FilledButton.styleFrom(
+                backgroundColor: context.brandPrimary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                elevation: 0,
+              ),
+              child: const Icon(Icons.search_rounded, size: 24),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCatalogNotice(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.025)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: context.brandPrimary,
+          ),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Каталог показывает все товары без кода клиента. Сверяйте фотографии и трек-номер с логистикой в вашем приложении.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontSize: 12.5,
+                height: 1.18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildResultSlivers(
+    AsyncValue<NoCodeCatalogState> results,
+    String? activeClientCode,
+  ) {
+    return results.when(
+      loading: () => [
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(
+            child: Container(
+              decoration: _searchCardDecoration(),
+              padding: const EdgeInsets.symmetric(vertical: 26),
+              child: Center(
+                child: CircularProgressIndicator(color: context.brandPrimary),
+              ),
+            ),
+          ),
+        ),
+      ],
+      error: (error, _) {
+        final info = ErrorUtils.getErrorInfo(error);
+        return [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverToBoxAdapter(
+              child: _SearchStateCard(
+                icon: info.icon,
+                title: info.title,
+                message: info.message,
+                isError: true,
+              ),
+            ),
+          ),
+        ];
+      },
+      data: (catalog) {
+        if (catalog.items.isEmpty) {
+          return const [
+            SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(
+                child: _SearchStateCard(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Товаров пока нет',
+                  message:
+                      'Ничего не найдено. Очистите поиск или проверьте каталог позже.',
+                ),
+              ),
+            ),
+          ];
+        }
+
+        return [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _ResultsHeader(count: catalog.total),
+                  );
+                }
+                if (index <= catalog.items.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _NoCodeResultTile(
+                      result: catalog.items[index - 1],
+                      activeClientCode: activeClientCode,
+                    ),
+                  );
+                }
+                return _CatalogLoadMoreFooter(catalog: catalog);
+              }, childCount: catalog.items.length + 2),
+            ),
+          ),
+        ];
+      },
     );
   }
 }
@@ -722,6 +772,50 @@ class _ResultsHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CatalogLoadMoreFooter extends ConsumerWidget {
+  const _CatalogLoadMoreFooter({required this.catalog});
+
+  final NoCodeCatalogState catalog;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (catalog.isLoadingMore) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: context.brandPrimary,
+            ),
+          ),
+        ),
+      );
+    }
+    if (catalog.loadMoreError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: OutlinedButton.icon(
+          onPressed: () =>
+              ref.read(searchControllerProvider.notifier).loadMore(),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Загрузить ещё раз'),
+        ),
+      );
+    }
+    if (!catalog.hasMore) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: OutlinedButton(
+        onPressed: () => ref.read(searchControllerProvider.notifier).loadMore(),
+        child: const Text('Показать ещё'),
+      ),
     );
   }
 }
@@ -905,6 +999,8 @@ class _NoCodeResultTileState extends ConsumerState<_NoCodeResultTile> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          _PhotoReportSection(result: r),
           if (r.hasPendingQuestion) ...[
             const SizedBox(height: 10),
             _PendingRequestBanner(color: Colors.orange.shade700),
@@ -1004,6 +1100,157 @@ class _NoCodeResultTileState extends ConsumerState<_NoCodeResultTile> {
         result: widget.result,
         activeClientCode: code,
         clientId: clientId,
+      ),
+    );
+  }
+}
+
+class _PhotoReportSection extends StatelessWidget {
+  const _PhotoReportSection({required this.result});
+
+  final SearchResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = result.photoReportPhotos;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: _searchSoftDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.photo_library_outlined,
+                color: context.brandPrimary,
+                size: 19,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Фото товара',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              if (photos.isNotEmpty)
+                Text(
+                  '${photos.length}',
+                  style: TextStyle(
+                    color: context.brandPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (photos.isEmpty)
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: context.brandPrimary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    result.hasPhotoReportRequest
+                        ? Icons.hourglass_top_rounded
+                        : Icons.add_a_photo_outlined,
+                    color: context.brandPrimary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    result.hasPhotoReportRequest
+                        ? 'Фотоотчёт ещё готовится. Фотографии появятся здесь после выполнения задачи складом.'
+                        : 'Фотоотчёт создаётся. Фотографии появятся здесь после выполнения задачи складом.',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 12.5,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              height: 104,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: photos.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final photo = photos[index];
+                  return Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () =>
+                          Navigator.of(context, rootNavigator: true).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PhotoViewerScreen(
+                                item: photo,
+                                allPhotos: photos,
+                                initialIndex: index,
+                              ),
+                            ),
+                          ),
+                      child: SizedBox.square(
+                        dimension: 104,
+                        child: photo.isVideo
+                            ? DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      context.brandPrimary.withValues(
+                                        alpha: 0.82,
+                                      ),
+                                      Colors.black.withValues(alpha: 0.56),
+                                    ],
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.play_circle_fill_rounded,
+                                  color: Colors.white,
+                                  size: 38,
+                                ),
+                              )
+                            : AppCachedMediaImage(
+                                url: photo.url,
+                                fit: BoxFit.cover,
+                                thumbnailSize: 480,
+                                memCacheWidth: 320,
+                                memCacheHeight: 320,
+                                maxWidthDiskCache: 640,
+                                maxHeightDiskCache: 640,
+                                filterQuality: FilterQuality.medium,
+                              ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -131,6 +131,101 @@ void main() {
       );
     });
 
+    test(
+      'classifies all self-buyout events before generic payment aliases',
+      () {
+        const types = [
+          'self_buyout_verification_approved',
+          'self_buyout_verification_rejected',
+          'self_buyout_payment_approved',
+          'self_buyout_payment_rejected',
+          'self_buyout_transfer_proof_uploaded',
+          'self_buyout_completed',
+          'self_buyout_cancelled',
+        ];
+
+        for (final type in types) {
+          final item = NotificationItem.fromPushData({'type': type});
+          expect(item.type, NotificationType.selfBuyout, reason: type);
+          expect(item.route, '/self-buyout', reason: type);
+        }
+      },
+    );
+
+    test('classifies reminders, operator status and broadcasts', () {
+      final deliveryReminder = NotificationItem.fromPushData({
+        'type': 'assembly_delivery_method_reminder',
+        'assemblyId': '1581',
+      });
+      final invoiceReminder = NotificationItem.fromPushData({
+        'type': 'invoice_payment_reminder',
+        'invoiceId': '71',
+      });
+      final operatorStatus = NotificationItem.fromPushData({
+        'type': 'payment_operator_status_changed',
+        'route': '/self-buyout',
+      });
+      final broadcast = NotificationItem.fromPushData({
+        'type': 'broadcast',
+        'broadcastId': '9',
+      });
+
+      expect(deliveryReminder.type, NotificationType.assemblyStatus);
+      expect(deliveryReminder.route, '/tracks?assemblyId=1581');
+      expect(invoiceReminder.type, NotificationType.invoice);
+      expect(invoiceReminder.route, '/invoices?invoiceId=71');
+      expect(operatorStatus.type, NotificationType.paymentStatus);
+      expect(operatorStatus.route, '/self-buyout');
+      expect(broadcast.type, NotificationType.broadcast);
+      expect(broadcast.route, '/');
+    });
+
+    test('keeps current and legacy Garage aliases compatible', () {
+      const types = [
+        'garage_payment_approved',
+        'garage_clarification_required',
+        'garage_employee_reply',
+        'garage_request_status_changed',
+        'garage_part_purchased',
+        'garage_purchase_started',
+        'garage_order_status',
+        'garage_order_completed',
+        'garage_payment_rejected',
+        'garage_refund_request_approved',
+        'garage_refund_request_rejected',
+        'garage_refund_completed',
+      ];
+
+      for (final type in types) {
+        expect(
+          NotificationItem.fromPushData({'type': type}).type,
+          NotificationType.garage,
+          reason: type,
+        );
+      }
+    });
+
+    test('keeps track and assembly legacy payloads working', () {
+      final trackTransfer = NotificationItem.fromPushData({
+        'type': 'track_client_code_changed',
+        'trackId': '10',
+      });
+      final addedToAssembly = NotificationItem.fromPushData({
+        'type': 'track_added_to_assembly',
+        'assemblyId': '20',
+      });
+      final unknown = NotificationItem.fromPushData({
+        'type': 'future_unknown_event',
+      });
+
+      expect(trackTransfer.type, NotificationType.trackStatus);
+      expect(trackTransfer.route, '/tracks?trackId=10');
+      expect(addedToAssembly.type, NotificationType.assemblyStatus);
+      expect(addedToAssembly.route, '/tracks?assemblyId=20');
+      expect(unknown.type, NotificationType.trackStatus);
+      expect(unknown.route, '/tracks');
+    });
+
     test('unknown payment target fails closed to a list route', () {
       expect(
         NotificationItem.routeFromPushData({
