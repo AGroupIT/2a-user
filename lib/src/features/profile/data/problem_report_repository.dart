@@ -7,6 +7,8 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import '../../../core/logging/client_log_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_diagnostics.dart';
+import '../../../core/services/app_distribution.dart';
+import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/runtime/app_runtime_info.dart';
 import '../../auth/data/auth_provider.dart';
 import 'problem_report_queue.dart';
@@ -61,6 +63,16 @@ class ProblemReportRepository {
         ? profile.codes.first.code
         : null;
     final runtime = await _runtimeSnapshot();
+    Map<String, dynamic> pushDiagnostics;
+    try {
+      pushDiagnostics = await PushNotificationService.diagnosticSnapshot()
+          .timeout(const Duration(seconds: 4));
+    } catch (error) {
+      pushDiagnostics = {
+        'collectionStatus': 'failed',
+        'errorType': error.runtimeType.toString(),
+      };
+    }
     final sentryLastEventId = _validatedSentryEventId(_sentryLastEventId());
     NetworkDiagnosticReport? diagnostics;
     try {
@@ -81,6 +93,8 @@ class ProblemReportRepository {
       'apiErrors': ClientLogService.instance.lastApiErrors(limit: 20),
       'runtime': {
         ...runtime.toJson(),
+        'appDistribution': appDistribution,
+        'pushNotifications': pushDiagnostics,
         if (sentryLastEventId != null) 'sentryLastEventId': sentryLastEventId,
         if (diagnostics != null) 'networkDiagnostics': diagnostics.toJson(),
       },

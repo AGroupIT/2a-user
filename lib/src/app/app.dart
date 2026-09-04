@@ -175,6 +175,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       unawaited(
         ref.read(appUpdateGateProvider.notifier).check(reason: 'resume'),
       );
+      unawaited(ref.read(authProvider.notifier).refreshPushRegistration());
       Future.microtask(() {
         if (!mounted) return;
         if (!ref.read(authProvider).isLoggedIn) return;

@@ -18,6 +18,9 @@ bool get _isMobilePlatform => isMobilePlatformImpl();
 /// Проверка iOS (безопасно для Web)
 bool get _isIOS => isIOSImpl();
 
+/// Проверка Android (безопасно для Web)
+bool get _isAndroid => isAndroidImpl();
+
 /// Проверка Desktop (безопасно для Web)
 bool get _isDesktop => isDesktopImpl();
 
@@ -30,6 +33,7 @@ String localNotificationChannelId(
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PushNotificationService._recordPushReceived();
   if (kDebugMode) {
     debugPrint('🔔 Background FCM message: ${message.messageId}');
   }
@@ -89,10 +93,17 @@ class PushNotificationService {
   static const _notificationsEnabledKey = 'push_notifications_enabled';
   static const _soundEnabledKey = 'push_sound_enabled';
   static const _badgeEnabledKey = 'push_badge_enabled';
+  static const _lastPushReceivedAtKey = 'push_last_received_at';
+  static const _lastRegistrationAtKey = 'push_last_registration_at';
+  static const _lastRegistrationErrorKey = 'push_last_registration_error';
   static bool _preferencesLoaded = false;
   static bool _notificationsEnabled = true;
   static bool _soundEnabled = true;
   static bool _badgeEnabled = true;
+  static String? _authorizationStatus;
+  static DateTime? _lastTokenObtainedAt;
+  static DateTime? _lastRegistrationAttemptAt;
+  static int _registrationAttemptCount = 0;
 
   static ({bool notificationsEnabled, bool soundEnabled, bool badgeEnabled})
   get devicePreferences => (
@@ -138,6 +149,101 @@ class PushNotificationService {
 
   static void clearActiveClient() {
     _activeClientId = null;
+  }
+
+  static void recordDeviceRegistrationAttempt() {
+    _lastRegistrationAttemptAt = DateTime.now().toUtc();
+    _registrationAttemptCount++;
+  }
+
+  static Future<void> recordDeviceRegistrationSuccess() async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastRegistrationAtKey, now);
+      await prefs.remove(_lastRegistrationErrorKey);
+    } catch (_) {}
+  }
+
+  static Future<void> recordDeviceRegistrationFailure(String message) async {
+    try {
+      final normalized = message.trim();
+      final safeMessage = normalized.length > 300
+          ? normalized.substring(0, 300)
+          : normalized;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastRegistrationErrorKey, safeMessage);
+    } catch (_) {}
+  }
+
+  /// Безопасная диагностика push без FCM token и других секретов.
+  static Future<Map<String, dynamic>> diagnosticSnapshot() async {
+    await _loadDevicePreferences();
+    String? authorizationStatus = _authorizationStatus;
+    bool? systemNotificationsEnabled;
+    bool? defaultChannelPresent;
+    bool? silentChannelPresent;
+
+    try {
+      final messaging = _messaging;
+      if (messaging != null) {
+        authorizationStatus = (await messaging.getNotificationSettings())
+            .authorizationStatus
+            .name;
+      }
+    } catch (_) {}
+
+    if (_isAndroid) {
+      try {
+        final service = PushNotificationService();
+        await service.initialize();
+        final android = service._notifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        systemNotificationsEnabled = await android?.areNotificationsEnabled();
+        final channels = await android?.getNotificationChannels();
+        defaultChannelPresent = channels?.any(
+          (channel) => channel.id == 'fcm_channel',
+        );
+        silentChannelPresent = channels?.any(
+          (channel) => channel.id == 'fcm_channel_silent',
+        );
+      } catch (_) {}
+    }
+
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (_) {}
+    return {
+      'firebaseReady': _firebaseReady,
+      'messagingSupported': _messagingSupported,
+      'messagingAddressAvailable': _fcmTokenObtained,
+      'notificationPermissionStatus': authorizationStatus ?? 'unknown',
+      'systemNotificationsEnabled': systemNotificationsEnabled,
+      'notificationsEnabledInApp': _notificationsEnabled,
+      'soundEnabledInApp': _soundEnabled,
+      'defaultChannelPresent': defaultChannelPresent,
+      'silentChannelPresent': silentChannelPresent,
+      'registrationAttemptCount': _registrationAttemptCount,
+      'lastMessagingAddressAt': _lastTokenObtainedAt?.toIso8601String(),
+      'lastRegistrationAttemptAt': _lastRegistrationAttemptAt
+          ?.toIso8601String(),
+      'lastRegistrationAt': prefs?.getString(_lastRegistrationAtKey),
+      'lastRegistrationError': prefs?.getString(_lastRegistrationErrorKey),
+      'lastPushReceivedAt': prefs?.getString(_lastPushReceivedAtKey),
+    };
+  }
+
+  static Future<void> _recordPushReceived() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _lastPushReceivedAtKey,
+        DateTime.now().toUtc().toIso8601String(),
+      );
+    } catch (_) {}
   }
 
   static Future<void> applyDevicePreferences({
@@ -240,13 +346,21 @@ class PushNotificationService {
         _messaging = messaging;
         debugPrint('🔔 Firebase Messaging instance created');
 
+        // Каналы должны существовать до первого background push. Особенно это
+        // важно на OEM-прошивках, которые не всегда корректно создают fallback.
+        if (_isAndroid) {
+          await PushNotificationService().initialize();
+        }
+
         // Запрос разрешений
         try {
           final settings = await _messaging!
               .requestPermission(alert: true, badge: true, sound: true)
               .timeout(const Duration(seconds: 5));
+          _authorizationStatus = settings.authorizationStatus.name;
           debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
         } catch (e) {
+          _authorizationStatus = 'request_failed';
           debugPrint('🔔 FCM Permission request failed/timed out: $e');
         }
 
@@ -292,6 +406,7 @@ class PushNotificationService {
 
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
+          unawaited(_recordPushReceived());
           debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
           if (!_isMessageForActiveClient(message)) {
             debugPrint('🔔 Foreground FCM skipped: recipient mismatch');
@@ -303,6 +418,7 @@ class PushNotificationService {
 
         // Message opened app
         FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          unawaited(_recordPushReceived());
           debugPrint('🔔 FCM opened app: ${message.notification?.title}');
           if (!_isMessageForActiveClient(message)) {
             debugPrint('🔔 FCM opened app skipped: recipient mismatch');
@@ -313,6 +429,7 @@ class PushNotificationService {
 
         final initialMessage = await _messaging!.getInitialMessage();
         if (initialMessage != null) {
+          unawaited(_recordPushReceived());
           Future.microtask(() {
             debugPrint(
               '🔔 FCM initial message: ${initialMessage.notification?.title}',
@@ -383,7 +500,9 @@ class PushNotificationService {
         final token = await getFCMToken().timeout(const Duration(seconds: 10));
         if (token != null) {
           _fcmTokenObtained = true;
+          _lastTokenObtainedAt = DateTime.now().toUtc();
           debugPrint('🔔 FCM token obtained on retry');
+          onTokenRefreshed?.call(token);
           return;
         }
       } catch (e) {
@@ -516,6 +635,8 @@ class PushNotificationService {
       }
 
       if (token != null) {
+        _fcmTokenObtained = true;
+        _lastTokenObtainedAt = DateTime.now().toUtc();
         debugPrint('🔔 FCM token получен');
       } else {
         debugPrint('🔔 FCM Token не получен (null)');
@@ -604,6 +725,31 @@ class PushNotificationService {
         initSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
+
+      if (_isAndroid) {
+        final android = _notifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        await android?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'fcm_channel',
+            'Основные уведомления',
+            description: 'Важные уведомления 2A Logistic',
+            importance: Importance.high,
+            playSound: true,
+          ),
+        );
+        await android?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'fcm_channel_silent',
+            'Основные уведомления без звука',
+            description: 'Уведомления 2A Logistic без звука',
+            importance: Importance.high,
+            playSound: false,
+          ),
+        );
+      }
 
       final launchDetails = await _notifications
           .getNotificationAppLaunchDetails();

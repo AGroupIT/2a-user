@@ -43,6 +43,26 @@ void main() {
         localNotificationChannelId('chat_channel', soundEnabled: false),
         'chat_channel_silent',
       );
+
+      PushNotificationService.recordDeviceRegistrationAttempt();
+      await PushNotificationService.recordDeviceRegistrationFailure(
+        'temporary registration failure',
+      );
+      final failedDiagnostics =
+          await PushNotificationService.diagnosticSnapshot();
+      expect(failedDiagnostics['registrationAttemptCount'], greaterThan(0));
+      expect(failedDiagnostics['notificationPermissionStatus'], isNotNull);
+      expect(
+        failedDiagnostics['lastRegistrationError'],
+        'temporary registration failure',
+      );
+      expect(failedDiagnostics, isNot(contains('token')));
+
+      await PushNotificationService.recordDeviceRegistrationSuccess();
+      final successfulDiagnostics =
+          await PushNotificationService.diagnosticSnapshot();
+      expect(successfulDiagnostics['lastRegistrationAt'], isNotNull);
+      expect(successfulDiagnostics['lastRegistrationError'], isNull);
     },
   );
 }

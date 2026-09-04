@@ -13,6 +13,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/services/chat_presence_service.dart';
 import '../../../core/services/platform_helper.dart';
 import '../../../core/services/push_notification_service.dart';
+import '../../../core/services/runtime/app_runtime_info.dart';
 import '../../../core/services/showcase_service.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../assemblies/data/assemblies_provider.dart';
@@ -37,6 +38,13 @@ const _kTokenKey = 'auth_token';
 const _kClientIdKey = 'client_id';
 const _kClientNameKey = 'client_name';
 const _kClientDataKey = 'client_data';
+
+@visibleForTesting
+Duration pushRegistrationRetryDelay(int attempt) {
+  const delays = [15, 30, 60, 120, 300];
+  final index = attempt.clamp(0, delays.length - 1);
+  return Duration(seconds: delays[index]);
+}
 
 final logoutDeviceCleanupTimeoutProvider = Provider<Duration>(
   (_) => const Duration(seconds: 3),
@@ -148,6 +156,10 @@ class AuthNotifier extends Notifier<AuthState> {
   // Предотвращает race condition когда _loadAuthState() завершается ПОСЛЕ того,
   // как пользователь уже нажал "Войти" и login() изменил state.
   bool _initialLoadDone = false;
+  Timer? _pushRegistrationRetryTimer;
+  int _pushRegistrationRetryAttempt = 0;
+  bool _pushRegistrationInFlight = false;
+  String? _pendingRefreshedPushToken;
 
   @override
   AuthState build() {
@@ -158,9 +170,13 @@ class AuthNotifier extends Notifier<AuthState> {
     // Без этого при обновлении токена Firebase старый становится невалидным и пуши пропадают.
     PushNotificationService.onTokenRefreshed = (newToken) {
       if (state.isLoggedIn) {
-        _reRegisterDeviceToken(newToken);
+        unawaited(_registerForPush(state.userDomain ?? '', token: newToken));
       }
     };
+    ref.onDispose(() {
+      _pushRegistrationRetryTimer?.cancel();
+      PushNotificationService.onTokenRefreshed = null;
+    });
 
     _loadAuthState();
     return const AuthState();
@@ -627,61 +643,45 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Регистрация устройства для push-уведомлений
-  Future<void> _registerForPush(String domain) async {
-    try {
-      await PushNotificationService.initializeFirebase();
-      final fcmToken = await PushNotificationService.getFCMToken();
-      if (fcmToken != null) {
-        debugPrint('🔔 FCM token for client received');
-
-        // Определяем платформу через хелпер
-        final platform = getPlatformNameImpl();
-
-        // Отправляем токен на сервер
-        try {
-          final response = await _apiClient.post(
-            '/devices',
-            data: {
-              'platform': platform,
-              'token': fcmToken,
-              'deviceId': await _getDeviceId(),
-            },
-          );
-          final device = response.data;
-          if (device is Map<String, dynamic>) {
-            await PushNotificationService.applyDevicePreferences(
-              notificationsEnabled: device['notificationsEnabled'] as bool?,
-              soundEnabled: device['soundEnabled'] as bool?,
-              badgeEnabled: device['badgeEnabled'] as bool?,
-            );
-          }
-          debugPrint('🔔 Device registered successfully');
-        } catch (e) {
-          debugPrint('🔔 Error registering device: $e');
-        }
-      }
-
-      // Клиентские push отправляются точечно по DeviceToken. Общие topic'и
-      // оставляем только как legacy cleanup, чтобы после смены аккаунта
-      // телефон не получал широкие рассылки старых подписок.
-      await PushNotificationService.unsubscribeFromTopic('clients');
-      await PushNotificationService.unsubscribeFromTopic('domain_$domain');
-    } catch (e) {
-      debugPrint('🔔 Error registering for push: $e');
-    }
+  /// Повторно проверяет FCM и актуализирует устройство на backend. Вызывается
+  /// после входа, восстановления сессии, token refresh и возврата приложения.
+  Future<void> refreshPushRegistration() async {
+    final domain = state.userDomain;
+    if (!state.isLoggedIn || domain == null || domain.isEmpty) return;
+    await _registerForPush(domain);
   }
 
-  /// Перерегистрация device token при обновлении FCM токена Firebase
-  Future<void> _reRegisterDeviceToken(String newToken) async {
+  /// Регистрация устройства для push-уведомлений с автоматическим retry.
+  Future<void> _registerForPush(String domain, {String? token}) async {
+    if (!state.isLoggedIn) return;
+    if (_pushRegistrationInFlight) {
+      if (token != null && token.isNotEmpty) {
+        _pendingRefreshedPushToken = token;
+      }
+      return;
+    }
+
+    _pushRegistrationInFlight = true;
+    PushNotificationService.recordDeviceRegistrationAttempt();
     try {
-      final platform = getPlatformNameImpl();
+      await PushNotificationService.initializeFirebase();
+      final fcmToken = token ?? await PushNotificationService.getFCMToken();
+      if (fcmToken == null || fcmToken.isEmpty) {
+        throw StateError('FCM token is not available');
+      }
+
+      final runtime = await AppRuntimeInfo.instance.snapshot();
       final response = await _apiClient.post(
         '/devices',
         data: {
-          'platform': platform,
-          'token': newToken,
+          'platform': getPlatformNameImpl(),
+          'token': fcmToken,
           'deviceId': await _getDeviceId(),
+          'deviceName': runtime.device,
+          'deviceModel': runtime.device,
+          'osVersion': runtime.osVersion,
+          'appVersion': runtime.appVersion,
+          'locale': PlatformDispatcher.instance.locale.languageCode,
         },
       );
       final device = response.data;
@@ -692,10 +692,65 @@ class AuthNotifier extends Notifier<AuthState> {
           badgeEnabled: device['badgeEnabled'] as bool?,
         );
       }
-      debugPrint('🔔 Device token re-registered after FCM refresh');
+
+      _pushRegistrationRetryTimer?.cancel();
+      _pushRegistrationRetryTimer = null;
+      _pushRegistrationRetryAttempt = 0;
+      await PushNotificationService.recordDeviceRegistrationSuccess();
+      ClientLogService.instance.add(
+        type: 'push_device_registered',
+        level: 'info',
+        message: 'Устройство зарегистрировано для push-уведомлений',
+        data: {
+          'platform': getPlatformNameImpl(),
+          'appVersion': runtime.appVersion,
+        },
+      );
+      debugPrint('🔔 Device registered successfully');
+
+      // Клиентские push отправляются точечно по DeviceToken. Общие topic'и
+      // оставляем только как legacy cleanup, чтобы после смены аккаунта
+      // телефон не получал широкие рассылки старых подписок.
+      await PushNotificationService.unsubscribeFromTopic('clients');
+      await PushNotificationService.unsubscribeFromTopic('domain_$domain');
     } catch (e) {
-      debugPrint('🔔 Error re-registering device token: $e');
+      final errorMessage = ErrorUtils.getErrorInfo(e).message;
+      await PushNotificationService.recordDeviceRegistrationFailure(
+        errorMessage,
+      );
+      ClientLogService.instance.add(
+        type: 'push_device_registration_failed',
+        level: 'warning',
+        message: 'Не удалось зарегистрировать устройство для push',
+        data: {
+          'attempt': _pushRegistrationRetryAttempt + 1,
+          'error': errorMessage,
+        },
+      );
+      debugPrint('🔔 Error registering for push: $e');
+      _schedulePushRegistrationRetry();
+    } finally {
+      _pushRegistrationInFlight = false;
+      final pendingToken = _pendingRefreshedPushToken;
+      _pendingRefreshedPushToken = null;
+      if (pendingToken != null && state.isLoggedIn) {
+        unawaited(
+          _registerForPush(state.userDomain ?? domain, token: pendingToken),
+        );
+      }
     }
+  }
+
+  void _schedulePushRegistrationRetry() {
+    if (!state.isLoggedIn || _pushRegistrationRetryTimer?.isActive == true) {
+      return;
+    }
+    final delay = pushRegistrationRetryDelay(_pushRegistrationRetryAttempt);
+    _pushRegistrationRetryAttempt++;
+    _pushRegistrationRetryTimer = Timer(delay, () {
+      _pushRegistrationRetryTimer = null;
+      unawaited(refreshPushRegistration());
+    });
   }
 
   /// Получить уникальный ID устройства
@@ -725,6 +780,10 @@ class AuthNotifier extends Notifier<AuthState> {
     _isLoggingOut = true;
     try {
       debugPrint('🚪 Starting logout process...');
+      _pushRegistrationRetryTimer?.cancel();
+      _pushRegistrationRetryTimer = null;
+      _pushRegistrationRetryAttempt = 0;
+      _pendingRefreshedPushToken = null;
       PushNotificationService.clearActiveClient();
       ref.read(chatPresenceServiceProvider).stopForLogout();
 
