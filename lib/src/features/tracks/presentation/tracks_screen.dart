@@ -69,6 +69,23 @@ String? _assemblySelectionHint(
   return track.assemblySelectionHint;
 }
 
+@visibleForTesting
+bool shouldAutofillGroupedTracksViewport({
+  required bool isGroupedMode,
+  required bool hasMore,
+  required bool isLoading,
+  required bool hasError,
+  required bool hasScrollClients,
+  required double maxScrollExtent,
+}) {
+  return isGroupedMode &&
+      hasMore &&
+      !isLoading &&
+      !hasError &&
+      hasScrollClients &&
+      maxScrollExtent <= 1;
+}
+
 /// Парсит HEX цвет из строки (например "#FF5733" или "FF5733")
 Color? parseHexColor(String? hexString) {
   if (hexString == null || hexString.isEmpty) return null;
@@ -351,6 +368,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
   bool _isRefreshing = false;
   DateTime? _lastLoadMoreTime;
+  bool _groupedViewportAutofillScheduled = false;
   String? _handledInitialTargetKey;
   String? _initialClientSwitchTarget;
   String? _filtersInitializedForClientCode;
@@ -419,6 +437,51 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       _currentNotifier = newNotifier;
       _currentNotifier?.addListener(_onNotifierStateChanged);
     }
+  }
+
+  void _scheduleGroupedViewportAutofill({
+    required String clientCode,
+    required PaginatedTracksState tracksState,
+    required TracksFilterParams currentFilters,
+  }) {
+    if (_groupedViewportAutofillScheduled ||
+        _viewMode != ViewMode.groups ||
+        tracksState.filters != currentFilters ||
+        tracksState.isLoading ||
+        !tracksState.hasMore ||
+        tracksState.error != null) {
+      return;
+    }
+
+    _groupedViewportAutofillScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _groupedViewportAutofillScheduled = false;
+      if (!mounted) return;
+
+      final notifier = ref.read(paginatedTracksProvider(clientCode));
+      final latestState = notifier.state;
+      final latestFilters = _getFilterParams(clientCode);
+      final hasScrollClients = _scrollController.hasClients;
+      final maxScrollExtent = hasScrollClients
+          ? _scrollController.position.maxScrollExtent
+          : double.infinity;
+
+      if (!identical(_currentNotifier, notifier) ||
+          latestState.filters != latestFilters) {
+        return;
+      }
+
+      if (shouldAutofillGroupedTracksViewport(
+        isGroupedMode: _viewMode == ViewMode.groups,
+        hasMore: latestState.hasMore,
+        isLoading: latestState.isLoading,
+        hasError: latestState.error != null,
+        hasScrollClients: hasScrollClients,
+        maxScrollExtent: maxScrollExtent,
+      )) {
+        unawaited(notifier.loadMore());
+      }
+    });
   }
 
   /// Метод для обновления списка треков
@@ -4616,6 +4679,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         groups,
         clientCode,
         isLoading: tracksState.isLoading,
+      );
+      _scheduleGroupedViewportAutofill(
+        clientCode: clientCode,
+        tracksState: tracksState,
+        currentFilters: currentFilters,
       );
     }
     final bottomScrollPad =
