@@ -52,11 +52,22 @@ class StaleDataNoticeNotifier extends Notifier<StaleDataNotice?> {
   }
 }
 
+/// A scoped opt-out for isolated sessions that must not share persisted or
+/// in-flight responses with the signed-in application.
+final staleDataCacheEnabledProvider = Provider<bool>((_) => true);
+
 class StaleDataCache {
   StaleDataCache._();
 
   static const _prefix = 'stale_data_cache_v1';
   static const defaultTimeout = Duration(seconds: 8);
+  static const maxAge = Duration(days: 7);
+  static const maxEntries = 100;
+  static const maxBytes = 4 * 1024 * 1024;
+  static const maxEntryBytes = 512 * 1024;
+  static int _generation = 0;
+  static Future<void> _pendingWrite = Future<void>.value();
+  static final Map<String, Future<Response<dynamic>>> _inFlight = {};
 
   static String buildKey(String namespace, Map<String, dynamic> parts) {
     final normalized =
@@ -76,11 +87,46 @@ class StaleDataCache {
     required Future<Response<dynamic>> Function() request,
     Duration timeout = defaultTimeout,
   }) async {
-    try {
+    if (ref.mounted && !ref.read(staleDataCacheEnabledProvider)) {
       final response = await request().timeout(timeout);
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      throw StateError(
+        'Unexpected response for $label: ${response.statusCode}',
+      );
+    }
+    final generation = _generation;
+    try {
+      // Preserve a successful late response for the next visit, even when the
+      // current reader has already fallen back to its saved snapshot.
+      final flightKey = '$generation:$cacheKey';
+      final pending = _inFlight.putIfAbsent(flightKey, () {
+        final future = request().then((response) {
+          if (response.statusCode == 200 &&
+              response.data is Map<String, dynamic>) {
+            unawaited(
+              _write(
+                cacheKey,
+                response.data as Map<String, dynamic>,
+                generation,
+              ),
+            );
+          }
+          return response;
+        });
+        future.then<void>(
+          (_) => _inFlight.remove(flightKey),
+          onError: (Object error, StackTrace stack) {
+            _inFlight.remove(flightKey);
+          },
+        );
+        return future;
+      });
+      final response = await pending.timeout(timeout);
+      if (generation != _generation) throw StateError('Cache session changed');
       final data = response.data;
       if (response.statusCode == 200 && data is Map<String, dynamic>) {
-        unawaited(_write(cacheKey, data));
         return data;
       }
       throw StateError(
@@ -92,8 +138,10 @@ class StaleDataCache {
       }
 
       final cached = await _read(cacheKey);
-      if (cached != null) {
-        ref.read(staleDataNoticeProvider.notifier).show(label);
+      if (cached != null && generation == _generation) {
+        if (ref.mounted) {
+          ref.read(staleDataNoticeProvider.notifier).show(label);
+        }
         ClientLogService.instance.add(
           type: 'stale_cache_hit',
           level: 'warning',
@@ -124,6 +172,16 @@ class StaleDataCache {
   }
 
   static Future<void> clearAll() async {
+    // Fence responses started by the previous login before any asynchronous IO.
+    _generation++;
+    final previousWrite = _pendingWrite;
+    final clear = _clear(previousWrite);
+    _pendingWrite = clear;
+    await clear;
+  }
+
+  static Future<void> _clear(Future<void> previousWrite) async {
+    await previousWrite;
     try {
       final prefs = await SharedPreferences.getInstance();
       final keys = prefs
@@ -141,14 +199,59 @@ class StaleDataCache {
     }
   }
 
-  static Future<void> _write(String cacheKey, Map<String, dynamic> data) async {
+  static Future<void> _write(
+    String cacheKey,
+    Map<String, dynamic> data,
+    int generation,
+  ) {
+    final write = _pendingWrite.then(
+      (_) => _writeCurrent(cacheKey, data, generation),
+    );
+    _pendingWrite = write;
+    return write;
+  }
+
+  static Future<void> _writeCurrent(
+    String cacheKey,
+    Map<String, dynamic> data,
+    int generation,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (generation != _generation) return;
       final payload = <String, dynamic>{
         'cachedAt': DateTime.now().toUtc().toIso8601String(),
         'data': data,
       };
-      await prefs.setString('$_prefix:$cacheKey', jsonEncode(payload));
+      final encoded = jsonEncode(payload);
+      if (utf8.encode(encoded).length > maxEntryBytes) return;
+      await prefs.setString('$_prefix:$cacheKey', encoded);
+      final entries = <({String key, DateTime at, int bytes})>[];
+      for (final key in prefs.getKeys().where(
+        (key) => key.startsWith('$_prefix:'),
+      )) {
+        final raw = prefs.getString(key);
+        DateTime? at;
+        try {
+          at = DateTime.tryParse(
+            (jsonDecode(raw ?? '') as Map)['cachedAt']?.toString() ?? '',
+          );
+        } catch (_) {}
+        if (at == null || DateTime.now().toUtc().difference(at) > maxAge) {
+          await prefs.remove(key);
+        } else {
+          entries.add((key: key, at: at, bytes: utf8.encode(raw!).length));
+        }
+      }
+      entries.sort((a, b) => a.at.compareTo(b.at));
+      var bytes = entries.fold<int>(0, (total, entry) => total + entry.bytes);
+      var count = entries.length;
+      for (final entry in entries) {
+        if (count <= maxEntries && bytes <= maxBytes) break;
+        await prefs.remove(entry.key);
+        bytes -= entry.bytes;
+        count--;
+      }
     } catch (error) {
       ClientLogService.instance.add(
         type: 'stale_cache_write_error',
@@ -166,6 +269,11 @@ class StaleDataCache {
       if (raw == null || raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
+      final cachedAt = DateTime.tryParse(decoded['cachedAt']?.toString() ?? '');
+      if (cachedAt == null ||
+          DateTime.now().toUtc().difference(cachedAt) > maxAge) {
+        return null;
+      }
       final data = decoded['data'];
       return data is Map<String, dynamic> ? data : null;
     } catch (error) {

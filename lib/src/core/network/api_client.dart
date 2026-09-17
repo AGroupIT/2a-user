@@ -54,6 +54,9 @@ class ApiClient {
   int _inFlightRequests = 0;
   int _activeGetRequests = 0;
   final Queue<Completer<void>> _getRequestQueue = Queue<Completer<void>>();
+  final HttpClientAdapter Function()? _adapterFactory;
+  final Future<Map<String, String>> Function()? _runtimeHeaders;
+  final Duration _requestTimeout;
   DateTime? _lastConnectionResetAt;
   String? _baseUrlOverride;
   DateTime? _fallbackActivatedAt;
@@ -76,7 +79,13 @@ class ApiClient {
     _onAppUpdateRequired = callback;
   }
 
-  ApiClient() {
+  ApiClient({
+    HttpClientAdapter Function()? adapterFactory,
+    Future<Map<String, String>> Function()? runtimeHeaders,
+    Duration requestTimeout = ApiConfig.overallRequestTimeout,
+  }) : _adapterFactory = adapterFactory,
+       _runtimeHeaders = runtimeHeaders,
+       _requestTimeout = requestTimeout {
     _dio = _createDio();
     ClientLogService.instance.add(
       type: 'api_base_url_config',
@@ -114,7 +123,7 @@ class ApiClient {
       dio.transformer = SyncTransformer();
     }
 
-    final nativeAdapter = createNativeHttpAdapter();
+    final nativeAdapter = _adapterFactory?.call() ?? createNativeHttpAdapter();
     if (nativeAdapter != null) {
       dio.httpClientAdapter = nativeAdapter;
     }
@@ -258,13 +267,12 @@ class ApiClient {
   }
 
   static bool _isPreSendError(DioException e) {
-    return e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.connectionError ||
-        e.type == DioExceptionType.sendTimeout;
+    // sendTimeout/connectionError can occur after the server received a write.
+    return e.type == DioExceptionType.connectionTimeout;
   }
 
   Duration _effectiveOverallTimeout(Options? options) {
-    final base = ApiConfig.overallRequestTimeout;
+    final base = _requestTimeout;
     final send = options?.sendTimeout ?? Duration.zero;
     final receive = options?.receiveTimeout ?? Duration.zero;
     if (send == Duration.zero && receive == Duration.zero) return base;
@@ -323,6 +331,7 @@ class ApiClient {
     required bool idempotent,
     Options? options,
     bool allowRetry = true,
+    bool enforceTimeout = true,
   }) async {
     _restorePrimaryBaseUrlIfNeeded();
     _inFlightRequests++;
@@ -336,7 +345,7 @@ class ApiClient {
 
     try {
       final timeout = _effectiveOverallTimeout(options);
-      return await run().timeout(timeout);
+      return await (enforceTimeout ? run().timeout(timeout) : run());
     } on TimeoutException {
       ClientLogService.instance.apiTimeout(
         method: method,
@@ -350,16 +359,39 @@ class ApiClient {
     }
   }
 
-  Future<T> _runWithGetSlot<T>(String path, Future<T> Function() action) async {
-    await _acquireGetSlot(path);
+  Future<T> _runWithGetSlot<T>(
+    String path,
+    Future<T> Function() action,
+    CancelToken cancelToken,
+    Duration timeout,
+  ) async {
+    var deadlineExceeded = false;
+    final timer = Timer(timeout, () {
+      deadlineExceeded = true;
+      cancelToken.cancel('GET deadline exceeded');
+    });
     try {
-      return await action();
+      await _acquireGetSlot(path, cancelToken);
+      try {
+        if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+        return await Future.any([
+          action(),
+          cancelToken.whenCancel.then<T>((error) => throw error),
+        ]);
+      } finally {
+        _releaseGetSlot();
+      }
+    } on DioException catch (_) {
+      if (deadlineExceeded) {
+        throw TimeoutException('GET deadline exceeded', timeout);
+      }
+      rethrow;
     } finally {
-      _releaseGetSlot();
+      timer.cancel();
     }
   }
 
-  Future<void> _acquireGetSlot(String path) async {
+  Future<void> _acquireGetSlot(String path, CancelToken cancelToken) async {
     if (_activeGetRequests < _maxConcurrentGetRequests) {
       _activeGetRequests++;
       return;
@@ -378,18 +410,26 @@ class ApiClient {
         'maxConcurrentGetRequests': _maxConcurrentGetRequests,
       },
     );
-    await completer.future;
-    _activeGetRequests++;
+    try {
+      await Future.any([
+        completer.future,
+        cancelToken.whenCancel.then<void>((error) => throw error),
+      ]);
+    } catch (_) {
+      // If a slot was reserved before cancellation won, hand it on.
+      if (!_getRequestQueue.remove(completer)) _releaseGetSlot();
+      rethrow;
+    }
   }
 
   void _releaseGetSlot() {
-    if (_activeGetRequests > 0) {
-      _activeGetRequests--;
+    if (_getRequestQueue.isEmpty) {
+      if (_activeGetRequests > 0) _activeGetRequests--;
+      return;
     }
-    if (_getRequestQueue.isEmpty) return;
     final next = _getRequestQueue.removeFirst();
     if (!next.isCompleted) {
-      scheduleMicrotask(next.complete);
+      next.complete();
     }
   }
 
@@ -551,12 +591,25 @@ class ApiClient {
         }
 
         try {
-          options.headers.addAll(await AppRuntimeInfo.instance.headers());
+          options.headers.addAll(
+            await (_runtimeHeaders?.call() ?? AppRuntimeInfo.instance.headers())
+                .timeout(
+                  const Duration(seconds: 1),
+                  onTimeout: () => const <String, String>{},
+                ),
+          );
         } catch (error) {
-          await ClientLogService.instance.captureNonFatal(
-            'Не удалось подготовить runtime headers',
-            error: error,
-            data: {'requestId': requestId, 'path': _safeRequestPath(options)},
+          unawaited(
+            ClientLogService.instance
+                .captureNonFatal(
+                  'Не удалось подготовить runtime headers',
+                  error: error,
+                  data: {
+                    'requestId': requestId,
+                    'path': _safeRequestPath(options),
+                  },
+                )
+                .catchError((Object _) {}),
           );
         }
 
@@ -1369,6 +1422,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    final cancelToken = CancelToken();
     return _runWithGetSlot(
       path,
       () => _request(
@@ -1376,12 +1430,16 @@ class ApiClient {
           path,
           queryParameters: queryParameters,
           options: options,
+          cancelToken: cancelToken,
         ),
         method: 'GET',
         path: path,
         idempotent: true,
         options: options,
+        enforceTimeout: false,
       ),
+      cancelToken,
+      _effectiveOverallTimeout(options),
     );
   }
 

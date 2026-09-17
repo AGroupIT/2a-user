@@ -1,4 +1,6 @@
-enum PackagingRemovalOption { none, transportOnly, all }
+import '../../../core/models/packaging_removal.dart';
+
+export '../../../core/models/packaging_removal.dart';
 
 enum AssemblyPlacePreference { singleIfPossible, splitAllowed }
 
@@ -91,6 +93,7 @@ class CalculatorTariff {
   final bool paidPhotoReport;
   final double? packagingRemovalTransportPrice;
   final double? packagingRemovalAllPrice;
+  final bool supportsPackagingRemovalTargets;
   final List<CalculatorWeightTier> weightTiers;
   final List<CalculatorDensityTier> densityTiers;
   final List<CalculatorPackagingSurcharge> packagingSurcharges;
@@ -103,6 +106,7 @@ class CalculatorTariff {
     this.paidPhotoReport = true,
     this.packagingRemovalTransportPrice,
     this.packagingRemovalAllPrice,
+    this.supportsPackagingRemovalTargets = false,
     this.weightTiers = const [],
     this.densityTiers = const [],
     this.packagingSurcharges = const [],
@@ -117,6 +121,8 @@ class CalculatorTariff {
       baseCost: _number(json['baseCost']),
       pricingType: json['pricingType'] as String? ?? 'weight',
       paidPhotoReport: json['paidPhotoReport'] != false,
+      supportsPackagingRemovalTargets:
+          json['supportsPackagingRemovalTargets'] == true,
       packagingRemovalTransportPrice:
           json['packagingRemovalTransportPrice'] == null
           ? null
@@ -244,6 +250,7 @@ class AssemblyCostInput {
   });
 
   bool get isValid =>
+      packagingRemoval.isSupported(tariff.supportsPackagingRemovalTargets) &&
       weightKg > 0 &&
       volumeM3 > 0 &&
       places > 0 &&
@@ -433,8 +440,9 @@ double? _resolveRemovalPrice(
 ) {
   final price = switch (option) {
     PackagingRemovalOption.none => null,
-    PackagingRemovalOption.transportOnly =>
-      tariff.packagingRemovalTransportPrice,
+    PackagingRemovalOption.transportOnly ||
+    PackagingRemovalOption.boxOnly ||
+    PackagingRemovalOption.bagOnly => tariff.packagingRemovalTransportPrice,
     PackagingRemovalOption.all => tariff.packagingRemovalAllPrice,
   };
   return price != null && price > 0 ? price : null;

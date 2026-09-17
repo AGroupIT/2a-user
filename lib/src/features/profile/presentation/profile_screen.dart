@@ -1,3 +1,4 @@
+import '../../training/presentation/training_target.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -869,14 +870,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(width: 10),
               Expanded(child: Text('Личные данные', style: _sectionTitleStyle)),
-              IconButton(
-                onPressed: () => _startEditing(profile),
-                icon: Icon(
-                  Icons.edit_outlined,
-                  size: 20,
-                  color: context.brandPrimary,
+              TrainingTarget(
+                id: 'profile.edit',
+                child: IconButton(
+                  onPressed: () => _startEditing(profile),
+                  icon: Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: context.brandPrimary,
+                  ),
+                  tooltip: 'Редактировать',
                 ),
-                tooltip: 'Редактировать',
               ),
             ],
           ),

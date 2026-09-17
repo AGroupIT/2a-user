@@ -7,11 +7,8 @@ enum AppMediaImageVariant { thumbnail, full }
 
 /// Единая загрузка медиа для карточек/превью.
 ///
-/// Важно: сейчас превью намеренно грузятся через тот же рабочий media URL,
-/// что и fullscreen viewer. Backend-thumbnail endpoint может ломать превью
-/// на карточках, хотя оригинал при клике открывается корректно. Когда
-/// thumbnail-пайплайн будет стабильно проверен на production, сюда можно
-/// вернуть ApiConfig.getMediaThumbnailUrl для AppMediaImageVariant.thumbnail.
+/// Превью используют уменьшенную копию, а при недоступности thumbnail
+/// автоматически загружают оригинал (включая работу со старым backend).
 class AppCachedMediaImage extends StatelessWidget {
   const AppCachedMediaImage({
     super.key,
@@ -51,9 +48,21 @@ class AppCachedMediaImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = switch (variant) {
-      AppMediaImageVariant.thumbnail => ApiConfig.getMediaUrl(url),
+      AppMediaImageVariant.thumbnail => ApiConfig.getMediaThumbnailUrl(
+        url,
+        size: thumbnailSize,
+        preserveAspectRatio: true,
+      ),
       AppMediaImageVariant.full => ApiConfig.getMediaUrl(url),
     };
+    final originalUrl = ApiConfig.getMediaUrl(url);
+    return _image(
+      imageUrl,
+      fallbackUrl: imageUrl == originalUrl ? null : originalUrl,
+    );
+  }
+
+  Widget _image(String imageUrl, {String? fallbackUrl}) {
     final fallbackErrorWidget = errorWidget ?? _defaultErrorWidget;
 
     return CachedNetworkImage(
@@ -70,6 +79,7 @@ class AppCachedMediaImage extends StatelessWidget {
       imageBuilder: imageBuilder,
       placeholder: placeholder ?? _defaultPlaceholder,
       errorWidget: (context, url, error) {
+        if (fallbackUrl != null) return _image(fallbackUrl);
         debugPrint('[AppCachedMediaImage] failed: $url — $error');
         return fallbackErrorWidget(context, url, error);
       },

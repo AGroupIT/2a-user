@@ -24,6 +24,7 @@ import '../features/auth/application/sentry_context_provider.dart';
 import '../features/auth/data/auth_provider.dart';
 import '../features/notifications/application/notifications_controller.dart';
 import '../features/profile/data/problem_report_repository.dart';
+import '../features/training/presentation/training_tour_host.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
 
@@ -273,7 +274,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           child: child ?? const SizedBox.shrink(),
         );
         return AppUpdateGate(
-          child: Stack(children: [content, const DemoModeBanner()]),
+          child: TrainingTourHost(
+            router: router,
+            child: Stack(children: [content, const DemoModeBanner()]),
+          ),
         );
       },
     );

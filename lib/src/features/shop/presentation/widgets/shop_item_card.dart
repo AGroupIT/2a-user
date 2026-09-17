@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -7,11 +8,28 @@ import '../../domain/shop_item.dart';
 class ShopItemCard extends StatelessWidget {
   final ShopItem item;
   final VoidCallback? onTap;
+  final bool trainingTarget;
 
-  const ShopItemCard({super.key, required this.item, this.onTap});
+  const ShopItemCard({
+    super.key,
+    required this.item,
+    this.onTap,
+    this.trainingTarget = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final title = Text(
+      item.title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: AppColors.textPrimary,
+        height: 1.3,
+      ),
+    );
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -46,8 +64,9 @@ class ShopItemCard extends StatelessWidget {
                               child: SizedBox(
                                 width: 24,
                                 height: 24,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             ),
                           ),
@@ -75,7 +94,9 @@ class ShopItemCard extends StatelessWidget {
                       bottom: 6,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(8),
@@ -83,8 +104,11 @@ class ShopItemCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.photo_library,
-                                size: 12, color: Colors.white),
+                            const Icon(
+                              Icons.photo_library,
+                              size: 12,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               '${item.images.length}',
@@ -109,17 +133,9 @@ class ShopItemCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Title
-                  Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                      height: 1.3,
-                    ),
-                  ),
+                  trainingTarget
+                      ? TrainingTarget(id: 'shop.product.open', child: title)
+                      : title,
                   const SizedBox(height: 6),
 
                   // Price
@@ -138,8 +154,11 @@ class ShopItemCard extends StatelessWidget {
                     Row(
                       children: [
                         if (item.quantity != null) ...[
-                          Icon(Icons.inventory_2_outlined,
-                              size: 12, color: Colors.grey.shade500),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 12,
+                            color: Colors.grey.shade500,
+                          ),
                           const SizedBox(width: 3),
                           Text(
                             '${item.quantity}',
@@ -153,8 +172,11 @@ class ShopItemCard extends StatelessWidget {
                           const SizedBox(width: 8),
                         if (item.totalSales != null &&
                             item.totalSales! > 0) ...[
-                          Icon(Icons.shopping_bag_outlined,
-                              size: 12, color: Colors.grey.shade500),
+                          Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 12,
+                            color: Colors.grey.shade500,
+                          ),
                           const SizedBox(width: 3),
                           Text(
                             '${item.totalSales} продаж',
@@ -187,8 +209,11 @@ class ShopItemCard extends StatelessWidget {
                         if (item.vendorScore != null &&
                             item.vendorScore! > 0) ...[
                           const SizedBox(width: 4),
-                          Icon(Icons.star_rounded,
-                              size: 13, color: Colors.amber.shade600),
+                          Icon(
+                            Icons.star_rounded,
+                            size: 13,
+                            color: Colors.amber.shade600,
+                          ),
                           const SizedBox(width: 1),
                           Text(
                             '${item.vendorScore}',

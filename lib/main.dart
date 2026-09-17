@@ -15,6 +15,7 @@ import 'src/core/config/sentry_config.dart';
 import 'src/core/logging/client_log_service.dart';
 import 'src/core/persistence/shared_preferences_provider.dart';
 import 'src/core/services/analytics_service.dart';
+import 'src/core/ui/startup_screen.dart';
 
 /// Запрос разрешения на отслеживание (ATT) для iOS
 Future<void> _requestTrackingPermission() async {
@@ -34,7 +35,7 @@ Future<void> _requestTrackingPermission() async {
 
 Future<PackageInfo?> _loadPackageInfo() async {
   try {
-    return await PackageInfo.fromPlatform();
+    return await PackageInfo.fromPlatform().timeout(const Duration(seconds: 3));
   } catch (e) {
     debugPrint('PackageInfo init failed (non-blocking): $e');
     return null;
@@ -42,6 +43,7 @@ Future<PackageInfo?> _loadPackageInfo() async {
 }
 
 bool _globalErrorLoggingInstalled = false;
+bool _analyticsStartupStarted = false;
 
 void _installGlobalErrorLogging() {
   if (_globalErrorLoggingInstalled) return;
@@ -328,7 +330,12 @@ void _handleUncaughtZoneError(Object error, StackTrace stackTrace) {
   }
 }
 
-Future<void> _bootstrapApp() async {
+Future<void>? _bootstrapPending;
+
+Future<void> _bootstrapApp() => _bootstrapPending ??= _bootstrapAppOnce()
+    .whenComplete(() => _bootstrapPending = null);
+
+Future<void> _bootstrapAppOnce() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (kReleaseMode) {
@@ -341,43 +348,58 @@ Future<void> _bootstrapApp() async {
   PaintingBinding.instance.imageCache.maximumSizeBytes =
       100 * 1024 * 1024; // 100 МБ
 
-  // Запрос разрешения на отслеживание (ATT) - ОБЯЗАТЕЛЬНО до AppMetrica
-  await _requestTrackingPermission();
-
-  // Инициализация AppMetrica не должна блокировать первый экран приложения.
-  unawaited(
-    AnalyticsService.initialize()
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            debugPrint('AppMetrica init timed out (non-blocking)');
-          },
-        )
-        .catchError((e) {
-          debugPrint('AppMetrica init failed (non-blocking): $e');
-        }),
-  );
+  runApp(const StartupScreen());
+  // ATT remains before analytics, but neither delays the first visible frame.
+  // A stuck ATT request skips analytics rather than bypassing consent ordering.
+  if (!_analyticsStartupStarted) {
+    _analyticsStartupStarted = true;
+    unawaited(() async {
+      try {
+        await WidgetsBinding.instance.endOfFrame;
+        await _requestTrackingPermission().timeout(const Duration(seconds: 15));
+        await AnalyticsService.initialize().timeout(const Duration(seconds: 5));
+      } catch (e) {
+        debugPrint('Analytics startup failed (non-blocking): $e');
+      }
+    }());
+  }
 
   // Инициализация SharedPreferences для showcase
-  final sharedPreferences = await SharedPreferences.getInstance();
+  final SharedPreferences sharedPreferences;
+  try {
+    sharedPreferences = await SharedPreferences.getInstance().timeout(
+      const Duration(seconds: 10),
+    );
+  } catch (e) {
+    debugPrint('Essential local storage unavailable: $e');
+    runApp(StartupScreen(onRetry: () => unawaited(_bootstrapApp())));
+    return;
+  }
   final packageInfo = await _loadPackageInfo();
 
-  // Инициализация Sentry для error tracking (только в release с DSN)
-  if (!SentryConfig.enabled) {
-    // В debug без DSN — запускаем без Sentry чтобы не спамить native логи
+  var launched = false;
+  void launchApp({bool withSentry = false}) {
+    if (launched) return; // A late Sentry appRunner must not reset navigation.
+    launched = true;
     _installGlobalErrorLogging();
     runApp(
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(sharedPreferences),
         ],
-        child: const App(),
+        child: withSentry ? SentryWidget(child: const App()) : const App(),
       ),
     );
+  }
+
+  // Инициализация Sentry для error tracking (только в release с DSN)
+  if (!SentryConfig.enabled) {
+    // В debug без DSN — запускаем без Sentry чтобы не спамить native логи
+    launchApp();
     return;
   }
-  await SentryFlutter.init(
-    (options) {
+  try {
+    await SentryFlutter.init((options) {
       options.dsn = SentryConfig.dsn;
       options.environment = SentryConfig.environment;
       if (packageInfo != null) {
@@ -406,17 +428,11 @@ Future<void> _bootstrapApp() async {
       options.privacy.maskAllText = true;
       options.privacy.maskAllImages = true;
       options.beforeSend = _filterSentryEvent;
-    },
-    appRunner: () {
-      _installGlobalErrorLogging();
-      runApp(
-        ProviderScope(
-          overrides: [
-            sharedPreferencesProvider.overrideWithValue(sharedPreferences),
-          ],
-          child: SentryWidget(child: const App()),
-        ),
-      );
-    },
-  );
+    }, appRunner: () => launchApp(withSentry: true)).timeout(
+      const Duration(seconds: 10),
+    );
+  } catch (e) {
+    debugPrint('Sentry startup failed (non-blocking): $e');
+    launchApp();
+  }
 }

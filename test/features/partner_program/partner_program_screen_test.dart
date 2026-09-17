@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:twoalogisticcabineuser/src/features/partner_program/data/client_partner_program_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/partner_program/presentation/partner_program_screen.dart';
@@ -62,6 +63,17 @@ void main() {
     );
     expect(find.textContaining('ABCDEFGH'), findsNothing);
     expect(find.text('Копировать ссылку'), findsOneWidget);
+    final inviteTarget = find.byWidgetPredicate(
+      (widget) => widget is TrainingTarget && widget.id == 'partner.invite',
+    );
+    expect(inviteTarget, findsOneWidget);
+    final copyButton = find.descendant(
+      of: inviteTarget,
+      matching: find.byWidgetPredicate((widget) => widget is FilledButton),
+    );
+    expect(copyButton, findsOneWidget);
+    expect(tester.getRect(inviteTarget), tester.getRect(copyButton));
+    expect(tester.getSize(inviteTarget).height, lessThanOrEqualTo(60));
     expect(find.text('Поделиться'), findsNothing);
     expect(find.byIcon(Icons.ios_share_rounded), findsOneWidget);
     await tester.scrollUntilVisible(

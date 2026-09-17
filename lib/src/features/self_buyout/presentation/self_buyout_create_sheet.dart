@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -392,7 +393,13 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SheetHandle(),
+            Center(
+              child: TrainingTarget(
+                id: 'selfbuyout.sheet.dismiss',
+                onActivate: () => Navigator.of(context).pop(),
+                child: const SizedBox(width: 42, child: SheetHandle()),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SelfBuyoutGradientHeader(
@@ -449,15 +456,22 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + bottomPadding),
-              child: SelfBuyoutPrimaryButton(
-                label: correctionRequest == null
-                    ? tr(context, ru: 'Создать заявку', zh: '创建申请')
-                    : tr(context, ru: 'Отправить на рассмотрение', zh: '提交审核'),
-                icon: correctionRequest == null
-                    ? Icons.check_rounded
-                    : Icons.send_rounded,
-                isLoading: _submitting,
-                onTap: _submitting ? null : _submit,
+              child: TrainingTarget(
+                id: 'selfbuyout.submit',
+                child: SelfBuyoutPrimaryButton(
+                  label: correctionRequest == null
+                      ? tr(context, ru: 'Создать заявку', zh: '创建申请')
+                      : tr(
+                          context,
+                          ru: 'Отправить на рассмотрение',
+                          zh: '提交审核',
+                        ),
+                  icon: correctionRequest == null
+                      ? Icons.check_rounded
+                      : Icons.send_rounded,
+                  isLoading: _submitting,
+                  onTap: _submitting ? null : _submit,
+                ),
               ),
             ),
           ],
@@ -667,10 +681,13 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             _minimumAmountNotice(widget.availability!.minCny!),
             const SizedBox(height: 10),
           ],
-          _amountField(
-            controller: _cnyCtrl,
-            label: tr(context, ru: 'Нужно юаней (RMB)', zh: '需要人民币 (RMB)'),
-            onChanged: _onCnyChanged,
+          TrainingTarget(
+            id: 'selfbuyout.amount',
+            child: _amountField(
+              controller: _cnyCtrl,
+              label: tr(context, ru: 'Нужно юаней (RMB)', zh: '需要人民币 (RMB)'),
+              onChanged: _onCnyChanged,
+            ),
           ),
           const SizedBox(height: 10),
           _amountField(
@@ -850,12 +867,15 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             ),
           ),
           const SizedBox(height: 10),
-          SelfBuyoutSecondaryButton(
-            label: _fileBytes == null
-                ? tr(context, ru: 'Приложить QR/изображение', zh: '附上二维码/图片')
-                : tr(context, ru: 'Заменить изображение', zh: '更换图片'),
-            icon: Icons.qr_code_2_rounded,
-            onTap: _pickImage,
+          TrainingTarget(
+            id: 'selfbuyout.requisites',
+            child: SelfBuyoutSecondaryButton(
+              label: _fileBytes == null
+                  ? tr(context, ru: 'Приложить QR/изображение', zh: '附上二维码/图片')
+                  : tr(context, ru: 'Заменить изображение', zh: '更换图片'),
+              icon: Icons.qr_code_2_rounded,
+              onTap: _pickImage,
+            ),
           ),
           if (_fileBytes != null) ...[
             const SizedBox(height: 10),
@@ -935,31 +955,34 @@ class _SelfBuyoutCreateSheetState extends ConsumerState<SelfBuyoutCreateSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          InkWell(
-            onTap: () => setState(() => _warningAccepted = !_warningAccepted),
-            borderRadius: BorderRadius.circular(10),
-            child: Row(
-              children: [
-                Icon(
-                  _warningAccepted
-                      ? Icons.check_box_rounded
-                      : Icons.check_box_outline_blank_rounded,
-                  color: context.brandPrimary,
-                  size: 22,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    tr(context, ru: 'Я понимаю условия', zh: '我已了解条款'),
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontFamily: 'Gilroy',
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
+          TrainingTarget(
+            id: 'selfbuyout.terms',
+            child: InkWell(
+              onTap: () => setState(() => _warningAccepted = !_warningAccepted),
+              borderRadius: BorderRadius.circular(10),
+              child: Row(
+                children: [
+                  Icon(
+                    _warningAccepted
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded,
+                    color: context.brandPrimary,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      tr(context, ru: 'Я понимаю условия', zh: '我已了解条款'),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/app_colors.dart';
@@ -42,6 +43,9 @@ class _SelfBuyoutAlipayQrInstructionSheetState
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final VoidCallback? continueWithAnswer = _alipayTopUpExperienced == null
+        ? null
+        : () => Navigator.of(context).pop(_alipayTopUpExperienced);
     final steps = [
       tr(
         context,
@@ -75,7 +79,13 @@ class _SelfBuyoutAlipayQrInstructionSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SheetHandle(),
+            Center(
+              child: TrainingTarget(
+                id: 'selfbuyout.sheet.dismiss',
+                onActivate: () => Navigator.of(context).pop(),
+                child: const SizedBox(width: 42, child: SheetHandle()),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SelfBuyoutGradientHeader(
@@ -154,12 +164,16 @@ class _SelfBuyoutAlipayQrInstructionSheetState
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, 12 + bottomPadding),
-              child: SelfBuyoutPrimaryButton(
-                label: tr(context, ru: 'Понятно, продолжить', zh: '明白，继续'),
-                icon: Icons.arrow_forward_rounded,
-                onTap: _alipayTopUpExperienced == null
-                    ? null
-                    : () => Navigator.of(context).pop(_alipayTopUpExperienced),
+              child: TrainingTarget(
+                id: _alipayTopUpExperienced == null
+                    ? 'selfbuyout.instruction.continue.waiting'
+                    : 'selfbuyout.instruction.continue',
+                onActivate: continueWithAnswer,
+                child: SelfBuyoutPrimaryButton(
+                  label: tr(context, ru: 'Понятно, продолжить', zh: '明白，继续'),
+                  icon: Icons.arrow_forward_rounded,
+                  onTap: continueWithAnswer,
+                ),
               ),
             ),
           ],
@@ -206,18 +220,24 @@ class _ExperienceQuestion extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _ExperienceOption(
-                  label: tr(context, ru: 'Да', zh: '是'),
-                  selected: value == true,
-                  onTap: () => onChanged(true),
+                child: TrainingTarget(
+                  id: 'selfbuyout.experience.yes',
+                  child: _ExperienceOption(
+                    label: tr(context, ru: 'Да', zh: '是'),
+                    selected: value == true,
+                    onTap: () => onChanged(true),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _ExperienceOption(
-                  label: tr(context, ru: 'Нет', zh: '否'),
-                  selected: value == false,
-                  onTap: () => onChanged(false),
+                child: TrainingTarget(
+                  id: 'selfbuyout.experience.no',
+                  child: _ExperienceOption(
+                    label: tr(context, ru: 'Нет', zh: '否'),
+                    selected: value == false,
+                    onTap: () => onChanged(false),
+                  ),
                 ),
               ),
             ],

@@ -1,3 +1,4 @@
+import '../../training/presentation/training_target.dart';
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -708,6 +709,16 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    ref.listen(paymentChatControllerProvider, (previous, next) {
+      final previousLast = previous?.messages.lastOrNull?.id;
+      final nextLast = next.messages.lastOrNull?.id;
+      if (nextLast != null &&
+          nextLast != previousLast &&
+          (!_scrollController.hasClients ||
+              _scrollController.position.extentAfter < 160)) {
+        _scrollToBottom();
+      }
+    });
     final bottomSafeInset = MediaQuery.viewPaddingOf(context).bottom;
     final composerBottomInset = keyboardInset > 0
         ? keyboardInset + 10
@@ -834,17 +845,61 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       return _buildEmptyState();
     }
 
-    // Автопрокрутка вниз
-    _scrollToBottom();
+    // Older history is prepended; it must not send the reader to the bottom.
+    if (!_scrollController.hasClients) _scrollToBottom();
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: messages.length,
+      itemCount: messages.length + (chatState.hasMoreHistory ? 1 : 0),
       addAutomaticKeepAlives: false,
       addSemanticIndexes: false,
       itemBuilder: (context, index) {
-        final message = messages[index];
+        if (chatState.hasMoreHistory && index == 0) {
+          return TextButton(
+            onPressed: chatState.isLoadingHistory
+                ? null
+                : () async {
+                    final previousExtent = _scrollController.hasClients
+                        ? _scrollController.position.maxScrollExtent
+                        : 0.0;
+                    final previousOffset = _scrollController.hasClients
+                        ? _scrollController.offset
+                        : 0.0;
+                    await ref
+                        .read(paymentChatControllerProvider.notifier)
+                        .loadOlderMessages();
+                    if (!mounted) return;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && _scrollController.hasClients) {
+                        final position = _scrollController.position;
+                        _scrollController.jumpTo(
+                          (previousOffset +
+                                  position.maxScrollExtent -
+                                  previousExtent)
+                              .clamp(0.0, position.maxScrollExtent),
+                        );
+                      }
+                    });
+                  },
+            child: Text(
+              tr(
+                context,
+                ru: chatState.isLoadingHistory
+                    ? 'Загрузка…'
+                    : chatState.historyError
+                    ? 'Не удалось загрузить. Повторить'
+                    : 'Предыдущие сообщения',
+                zh: chatState.isLoadingHistory
+                    ? '加载中…'
+                    : chatState.historyError
+                    ? '加载失败，重试'
+                    : '更早的消息',
+              ),
+            ),
+          );
+        }
+        final message = messages[index - (chatState.hasMoreHistory ? 1 : 0)];
         return _buildMessageBubble(message);
       },
     );
@@ -1716,41 +1771,45 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                           borderColor: const Color(0xFFE1E5ED),
                           focusedBorderColor: context.brandPrimary,
                           builder: (context, focusNode) {
-                            return TextField(
-                              controller: _textController,
-                              focusNode: focusNode,
-                              minLines: 1,
-                              maxLines: 4,
-                              textInputAction: TextInputAction.newline,
-                              decoration: InputDecoration(
-                                hintText: tr(
-                                  context,
-                                  ru: 'Введите сообщение...',
-                                  zh: '输入消息...',
+                            return TrainingTarget(
+                              id: 'payment.message',
+                              child: TextField(
+                                controller: _textController,
+                                focusNode: focusNode,
+                                minLines: 1,
+                                maxLines: 4,
+                                textInputAction: TextInputAction.newline,
+                                decoration: InputDecoration(
+                                  hintText: tr(
+                                    context,
+                                    ru: 'Введите сообщение...',
+                                    zh: '输入消息...',
+                                  ),
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFFB0B4BE),
+                                    fontFamily: 'Gilroy',
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 14,
+                                  ),
+                                  isDense: true,
                                 ),
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFFB0B4BE),
+                                style: const TextStyle(
                                   fontFamily: 'Gilroy',
-                                  fontSize: 14.5,
+                                  fontSize: 15,
+                                  height: 1.25,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 14,
-                                ),
-                                isDense: true,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
                               ),
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy',
-                                fontSize: 15,
-                                height: 1.25,
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textCapitalization: TextCapitalization.sentences,
                             );
                           },
                         ),

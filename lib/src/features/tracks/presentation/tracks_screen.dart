@@ -12,6 +12,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phone_form_field/phone_form_field.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/network/api_config.dart';
+import '../../../core/models/packaging_removal.dart';
+import '../../../core/ui/packaging_removal_text.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
@@ -32,6 +34,7 @@ import '../../auth/data/auth_provider.dart';
 import '../../assembly_scan_sessions/presentation/assembly_scan_sessions_section.dart';
 import '../../assembly_scan_sessions/presentation/assembly_scan_track_video_link.dart';
 import '../data/tracks_provider.dart';
+import '../../training/presentation/training_target.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
 import '../../assemblies/domain/box.dart';
@@ -2122,13 +2125,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   /// Подтверждение снятия упаковки: что именно снимаем + согласие с рисками.
   Future<bool> _confirmPackagingRemoval(
     BuildContext context, {
-    required String removal,
+    required PackagingRemovalOption removal,
     Tariff? tariff,
   }) async {
-    final isRemoveAll = removal == 'all';
-    final optionLabel = isRemoveAll
-        ? 'Снять всю упаковку'
-        : 'Только транспортировочную';
+    final isRemoveAll = removal == PackagingRemovalOption.all;
+    final optionLabel = packagingRemovalLabel(context, removal);
     final specialPrice = isRemoveAll
         ? tariff?.packagingRemovalAllPrice
         : tariff?.packagingRemovalTransportPrice;
@@ -2139,10 +2140,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         : fallbackPrice > 0
         ? '\$${fallbackPrice.toStringAsFixed(2)} / кг'
         : null;
-    final priceSource = isRemoveAll
-        ? 'Снятие всей упаковки'
-        : 'Снятие транспортировочной упаковки';
-
     final result = await showBlurredModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -2153,14 +2150,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       builder: (sheetContext) {
         return _TrackSheetSurface(
           icon: Icons.inventory_2_outlined,
-          title: 'Снятие упаковки',
+          title: tr(sheetContext, ru: 'Снятие упаковки', zh: '拆除包装'),
           subtitle: optionLabel,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Что мы снимем:',
-                style: TextStyle(
+              Text(
+                tr(sheetContext, ru: 'Что мы снимем:', zh: '拆除范围：'),
+                style: const TextStyle(
                   color: Colors.black87,
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
@@ -2169,9 +2166,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               const SizedBox(height: 8),
               _TrackSheetNoticeCard(
                 icon: Icons.inventory_2_outlined,
-                text: isRemoveAll
-                    ? 'Снимаем вообще всю упаковку, которую можно безопасно снять: транспортировочную, внешнюю, заводскую/розничную и внутренние защитные материалы. Товар может остаться без оригинальной упаковки.'
-                    : 'Снимаем только транспортировочную упаковку: внешние коробки/мешки продавца, лишний скотч и мятый картон. Заводскую/розничную упаковку товара не вскрываем.',
+                text: packagingRemovalDescription(sheetContext, removal),
                 color: context.brandPrimary,
               ),
               const SizedBox(height: 10),
@@ -2179,23 +2174,37 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 _TrackSheetNoticeCard(
                   icon: Icons.local_shipping_outlined,
                   text: hasSpecialPrice
-                      ? 'Цена доставки по выбранному тарифу будет $priceText. Значение взято из поля тарифа «$priceSource».'
-                      : 'Для этого варианта в тарифе не задана отдельная цена, поэтому останется обычная цена тарифа: $priceText.',
+                      ? tr(
+                          sheetContext,
+                          ru: 'Цена доставки по выбранному тарифу будет $priceText.',
+                          zh: '所选运价的运输费用为 $priceText。',
+                        )
+                      : tr(
+                          sheetContext,
+                          ru: 'Для этого варианта в тарифе не задана отдельная цена, поэтому останется обычная цена тарифа: $priceText.',
+                          zh: '此选项未设置单独运价，将使用标准运价：$priceText。',
+                        ),
                   color: Colors.blueGrey.shade700,
                 ),
                 const SizedBox(height: 10),
               ],
               _TrackSheetNoticeCard(
                 icon: Icons.error_outline_rounded,
-                text:
-                    'Если продавец изначально отправил неполный комплект, не тот товар или товар с несоответствием, после удаления оригинальной/транспортировочной упаковки доказать это будет невозможно.',
+                text: tr(
+                  sheetContext,
+                  ru: 'Если продавец изначально отправил неполный комплект, не тот товар или товар с несоответствием, после удаления оригинальной/транспортировочной упаковки доказать это будет невозможно.',
+                  zh: '如果卖家发货时存在缺件、发错货或商品不符，拆除原包装或运输包装后将无法证明这些问题。',
+                ),
                 color: Colors.deepOrange.shade700,
               ),
               const SizedBox(height: 10),
               _TrackSheetNoticeCard(
                 icon: Icons.warning_amber_rounded,
-                text:
-                    'Я прошу удалить упаковку на усмотрение компании. Риски повреждения товара из-за уменьшения защитных слоёв и невозможности доказать претензию продавцу беру на себя.',
+                text: tr(
+                  sheetContext,
+                  ru: 'Я прошу удалить выбранную упаковку. Риски повреждения товара из-за уменьшения защитных слоёв и невозможности доказать претензию продавцу беру на себя.',
+                  zh: '我要求拆除所选包装，并自行承担因保护层减少造成商品损坏及无法向卖家举证索赔的风险。',
+                ),
                 color: Colors.orange.shade800,
               ),
               const SizedBox(height: 14),
@@ -2203,14 +2212,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 children: [
                   Expanded(
                     child: _TrackSheetSecondaryButton(
-                      label: 'Отмена',
+                      label: tr(sheetContext, ru: 'Отмена', zh: '取消'),
                       onTap: () => Navigator.of(sheetContext).pop(false),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: _TrackSheetPrimaryButton(
-                      label: 'Подтверждаю',
+                      label: tr(sheetContext, ru: 'Подтверждаю', zh: '确认'),
                       icon: Icons.check_circle_outline_rounded,
                       onTap: () => Navigator.of(sheetContext).pop(true),
                     ),
@@ -2222,12 +2231,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         );
       },
     );
+    if (!context.mounted) return false;
     return result ?? false;
   }
 
-  String? _packagingRemovalPriceText(Tariff? tariff, String removal) {
-    if (tariff == null || removal == 'none') return null;
-    final specialPrice = removal == 'all'
+  String? _packagingRemovalPriceText(
+    Tariff? tariff,
+    PackagingRemovalOption removal,
+  ) {
+    if (tariff == null || removal == PackagingRemovalOption.none) return null;
+    final specialPrice = removal == PackagingRemovalOption.all
         ? tariff.packagingRemovalAllPrice
         : tariff.packagingRemovalTransportPrice;
     final price = specialPrice != null && specialPrice > 0
@@ -2238,25 +2251,28 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   }
 
   String _packagingRemovalInlineText({
-    required String removal,
+    required PackagingRemovalOption removal,
     required String? priceText,
   }) {
     final pricePart = priceText == null
-        ? 'Цена доставки будет рассчитана по выбранному тарифу.'
-        : 'Цена доставки по выбранному тарифу: $priceText.';
-
-    if (removal == 'all') {
-      return 'Будет снята вся упаковка: транспортировочная, внешняя, заводская/розничная и внутренние защитные материалы, если это безопасно для товара. $pricePart';
-    }
-
-    return 'Будет снята только транспортировочная упаковка: внешние коробки/мешки продавца, лишний скотч и мятый картон. Заводскую/розничную упаковку товара не вскрываем. $pricePart';
+        ? tr(
+            context,
+            ru: 'Цена доставки будет рассчитана по выбранному тарифу.',
+            zh: '运费将按所选运价计算。',
+          )
+        : tr(
+            context,
+            ru: 'Цена доставки по выбранному тарифу: $priceText.',
+            zh: '所选运价的运输费用：$priceText。',
+          );
+    return '${packagingRemovalDescription(context, removal)} $pricePart';
   }
 
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
     bool hasFragileGoods = false;
     String? placePreference;
-    String packagingRemoval = 'none';
+    var packagingRemoval = PackagingRemovalOption.none;
     String selectedInsurance = 'no';
     String? insuranceAmount;
     String goodsDescription = '';
@@ -2408,7 +2424,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               required String label,
             }) {
               final selected = placePreference == value;
-              return ChoiceChip(
+              final chip = ChoiceChip(
                 selected: selected,
                 showCheckmark: selected,
                 checkmarkColor: Colors.white,
@@ -2434,10 +2450,27 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 ),
                 onSelected: (_) => setSheetState(() => placePreference = value),
               );
+              return TrainingTarget(
+                id: 'assembly.places.$value',
+                child: TrainingTarget(
+                  id: selected
+                      ? 'assembly.places.selected'
+                      : 'assembly.places.$value.unselected',
+                  child: TrainingTarget(
+                    id:
+                        selected ||
+                            (placePreference == null &&
+                                value == 'single_if_possible')
+                        ? 'assembly.places'
+                        : 'assembly.places.$value.option',
+                    child: chip,
+                  ),
+                ),
+              );
             }
 
             Widget packagingRemovalChip({
-              required String value,
+              required PackagingRemovalOption value,
               required String label,
             }) {
               final selected = packagingRemoval == value;
@@ -2466,8 +2499,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   fontWeight: FontWeight.w800,
                 ),
                 onSelected: (_) async {
-                  if (value == 'none') {
-                    setSheetState(() => packagingRemoval = 'none');
+                  if (value == PackagingRemovalOption.none) {
+                    setSheetState(
+                      () => packagingRemoval = PackagingRemovalOption.none,
+                    );
                     return;
                   }
                   if (packagingRemoval == value) return;
@@ -2476,6 +2511,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     removal: value,
                     tariff: selectedTariff,
                   );
+                  if (!sheetContext.mounted) return;
                   if (confirmed) {
                     setSheetState(() => packagingRemoval = value);
                   }
@@ -2609,9 +2645,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             Widget tariffOptionTile(Tariff tariff, {required bool selected}) {
               final transportRemovalPrice = _packagingRemovalPriceText(
                 tariff,
-                'transport_only',
+                PackagingRemovalOption.transportOnly,
               );
-              final allRemovalPrice = _packagingRemovalPriceText(tariff, 'all');
+              final allRemovalPrice = _packagingRemovalPriceText(
+                tariff,
+                PackagingRemovalOption.all,
+              );
               return InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => setSheetState(() {
@@ -2619,8 +2658,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   // Цена снятия упаковки зависит от тарифа. Если тариф поменяли
                   // после подтверждения снятия — просим выбрать вариант заново,
                   // чтобы клиент видел и подтверждал уже актуальную цену.
-                  if (packagingRemoval != 'none') {
-                    packagingRemoval = 'none';
+                  if (packagingRemoval != PackagingRemovalOption.none) {
+                    packagingRemoval = PackagingRemovalOption.none;
                   }
                 }),
                 child: AnimatedContainer(
@@ -2694,9 +2733,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               Text(
                                 [
                                   if (transportRemovalPrice != null)
-                                    'снять транспортировочную — $transportRemovalPrice',
+                                    tr(
+                                      context,
+                                      ru: '${tariff.supportsPackagingRemovalTargets ? 'Коробка / сумка' : 'Транспортировочная упаковка'} — $transportRemovalPrice',
+                                      zh: '${tariff.supportsPackagingRemovalTargets ? '盒子 / 袋子包装' : '运输包装'} — $transportRemovalPrice',
+                                    ),
                                   if (allRemovalPrice != null)
-                                    'снять всю — $allRemovalPrice',
+                                    '${packagingRemovalLabel(context, PackagingRemovalOption.all)} — $allRemovalPrice',
                                 ].join('; '),
                                 style: const TextStyle(
                                   color: Colors.black54,
@@ -2801,31 +2844,57 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     children: [
                       if (currentStep > 0) ...[
                         Expanded(
-                          child: _TrackSheetSecondaryButton(
-                            label: 'Назад',
-                            onTap: () => goToStep(currentStep - 1),
+                          child: TrainingTarget(
+                            id: 'assembly.wizard.back-to-tariff',
+                            onActivate: () => goToStep(currentStep - 1),
+                            child: TrainingTarget(
+                              id: currentStep == 3
+                                  ? 'assembly.wizard.back-to-packaging'
+                                  : 'assembly.wizard.back',
+                              onActivate: () => goToStep(currentStep - 1),
+                              child: _TrackSheetSecondaryButton(
+                                label: 'Назад',
+                                onTap: () => goToStep(currentStep - 1),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
                       ],
                       Expanded(
                         flex: currentStep > 0 ? 1 : 2,
-                        child: _TrackSheetPrimaryButton(
-                          label: currentStep < 3
-                              ? 'Далее'
-                              : 'Отправить на сборку',
-                          icon: currentStep < 3
-                              ? Icons.arrow_forward_rounded
-                              : Icons.inventory_2_rounded,
-                          onTap: canContinue
-                              ? () {
-                                  if (currentStep < 3) {
-                                    goToStep(currentStep + 1);
-                                    return;
-                                  }
-                                  Navigator.of(sheetContext).pop(true);
-                                }
-                              : null,
+                        child: TrainingTarget(
+                          id: currentStep == 3
+                              ? 'assembly.review'
+                              : 'assembly.wizard.next',
+                          child: TrainingTarget(
+                            id: 'assembly.wizard.next.$currentStep',
+                            child: TrainingTarget(
+                              id: canContinue
+                                  ? 'assembly.wizard.ready.$currentStep'
+                                  : 'assembly.wizard.waiting.$currentStep',
+                              onActivate: canContinue && currentStep < 3
+                                  ? () => goToStep(currentStep + 1)
+                                  : null,
+                              child: _TrackSheetPrimaryButton(
+                                label: currentStep < 3
+                                    ? 'Далее'
+                                    : 'Отправить на сборку',
+                                icon: currentStep < 3
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.inventory_2_rounded,
+                                onTap: canContinue
+                                    ? () {
+                                        if (currentStep < 3) {
+                                          goToStep(currentStep + 1);
+                                          return;
+                                        }
+                                        Navigator.of(sheetContext).pop(true);
+                                      }
+                                    : null,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -2899,9 +2968,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                 setSheetState(() => hasFragileGoods = value),
                           ),
                           const Divider(height: 18),
-                          const Text(
-                            'Снять упаковку',
-                            style: TextStyle(
+                          Text(
+                            tr(sheetContext, ru: 'Снять упаковку', zh: '拆除包装'),
+                            style: const TextStyle(
                               color: Colors.black54,
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -2912,21 +2981,34 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              packagingRemovalChip(
-                                value: 'none',
-                                label: 'Не снимать',
-                              ),
-                              packagingRemovalChip(
-                                value: 'transport_only',
-                                label: 'Только транспортировочную',
-                              ),
-                              packagingRemovalChip(
-                                value: 'all',
-                                label: 'Снять всю',
-                              ),
+                              for (final option
+                                  in PackagingRemovalOption.available(
+                                    supportsTargets:
+                                        selectedTariff
+                                            ?.supportsPackagingRemovalTargets ==
+                                        true,
+                                    current: packagingRemoval,
+                                  ))
+                                packagingRemovalChip(
+                                  value: option,
+                                  label: packagingRemovalLabel(
+                                    sheetContext,
+                                    option,
+                                  ),
+                                ),
                             ],
                           ),
-                          if (packagingRemoval != 'none') ...[
+                          if (selectedTariff?.supportsPackagingRemovalTargets !=
+                              true) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              packagingRemovalTargetsUnavailableText(
+                                sheetContext,
+                              ),
+                            ),
+                          ],
+                          if (packagingRemoval !=
+                              PackagingRemovalOption.none) ...[
                             const SizedBox(height: 8),
                             Text(
                               _packagingRemovalInlineText(
@@ -2955,9 +3037,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              placePreferenceChip(
-                                value: 'single_if_possible',
-                                label: 'По возможности 1 место',
+                              TrainingTarget(
+                                id: placePreference == null
+                                    ? 'assembly.required.places'
+                                    : 'assembly.places.chosen',
+                                child: placePreferenceChip(
+                                  value: 'single_if_possible',
+                                  label: 'По возможности 1 место',
+                                ),
                               ),
                               placePreferenceChip(
                                 value: 'split_allowed',
@@ -3038,81 +3125,100 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                         ),
                       )
                     else
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF7F8FA),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE8EAEE)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Text(
-                              'Тариф доставки',
-                              style: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Выберите один тариф для этой сборки.',
-                              style: TextStyle(
-                                color: Colors.black54,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            ...tariffs.map(
-                              (t) => Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: tariffOptionTile(
-                                  t,
-                                  selected: selectedTariff?.id == t.id,
-                                ),
-                              ),
-                            ),
-                            if (requiresAssemblyGoodsDescription) ...[
-                              const SizedBox(height: 6),
-                              const Divider(height: 18),
+                      TrainingTarget(
+                        id: 'assembly.tariff.section',
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F8FA),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE8EAEE)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
                               const Text(
-                                'Описание товаров',
+                                'Тариф доставки',
                                 style: TextStyle(
                                   color: Colors.black87,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Не заполнены данные о товаре в ${tracksWithoutProductInfo.length} треках. Укажите общее описание товаров для сборки.',
-                                style: const TextStyle(
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Выберите один тариф для этой сборки.',
+                                style: TextStyle(
                                   color: Colors.black54,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 10),
-                              _outlinedInput(
-                                context,
-                                goodsDescriptionController,
-                                hint:
-                                    'Пример:\n'
-                                    'Джинсы 4 шт\n'
-                                    'Кроссовки белые Nike 2 шт\n'
-                                    'Розовый слон 1 шт\n'
-                                    'Детский комбинезон 2 шт',
-                                keyboardType: TextInputType.multiline,
-                                maxLines: 4,
-                                onChanged: (value) => setSheetState(
-                                  () => goodsDescription = value.trim(),
+                              ...tariffs.map(
+                                (t) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: TrainingTarget(
+                                    id:
+                                        t.id ==
+                                            (selectedTariff?.id ??
+                                                tariffs.first.id)
+                                        ? 'assembly.tariff'
+                                        : 'assembly.tariff.${t.id}',
+                                    child: tariffOptionTile(
+                                      t,
+                                      selected: selectedTariff?.id == t.id,
+                                    ),
+                                  ),
                                 ),
                               ),
+                              if (requiresAssemblyGoodsDescription) ...[
+                                const SizedBox(height: 6),
+                                const Divider(height: 18),
+                                const Text(
+                                  'Описание товаров',
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Не заполнены данные о товаре в ${tracksWithoutProductInfo.length} треках. Укажите общее описание товаров для сборки.',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TrainingTarget(
+                                  id: 'assembly.goods-description',
+                                  child: TrainingTarget(
+                                    id: !hasAssemblyGoodsDescription
+                                        ? 'assembly.required.goods-description'
+                                        : 'assembly.goods-description.filled',
+                                    child: _outlinedInput(
+                                      context,
+                                      goodsDescriptionController,
+                                      hint:
+                                          'Пример:\n'
+                                          'Джинсы 4 шт\n'
+                                          'Кроссовки белые Nike 2 шт\n'
+                                          'Розовый слон 1 шт\n'
+                                          'Детский комбинезон 2 шт',
+                                      keyboardType: TextInputType.multiline,
+                                      maxLines: 4,
+                                      onChanged: (value) => setSheetState(
+                                        () => goodsDescription = value.trim(),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     const Divider(height: 24),
@@ -3128,55 +3234,80 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F8FA),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE8EAEE)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'Основная упаковка',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Выберите один вариант. Без основной упаковки сборку создать нельзя.',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          if (primaryPackagingTypes.isEmpty)
+                    TrainingTarget(
+                      id: 'assembly.packaging.section',
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F8FA),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE8EAEE)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                             const Text(
-                              'Нет доступной основной упаковки',
+                              'Основная упаковка',
                               style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
                               ),
-                            )
-                          else
-                            ...primaryPackagingTypes.map(
-                              (p) => Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: packagingOptionTile(
-                                  p,
-                                  selected: selectedPackingIds.contains(p.id),
-                                  primary: true,
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Выберите один вариант. Без основной упаковки сборку создать нельзя.',
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            if (primaryPackagingTypes.isEmpty)
+                              const Text(
+                                'Нет доступной основной упаковки',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
+                            else
+                              ...primaryPackagingTypes.map(
+                                (p) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: TrainingTarget(
+                                    id: p.id == primaryPackagingTypes.first.id
+                                        ? 'assembly.packaging'
+                                        : 'assembly.packaging.${p.id}',
+                                    child: TrainingTarget(
+                                      id: selectedPackingIds.contains(p.id)
+                                          ? 'assembly.packaging.selected'
+                                          : 'assembly.packaging.${p.id}.unselected',
+                                      child: TrainingTarget(
+                                        id:
+                                            !hasPrimaryPackaging &&
+                                                p.id ==
+                                                    primaryPackagingTypes
+                                                        .first
+                                                        .id
+                                            ? 'assembly.required.packaging'
+                                            : 'assembly.packaging.${p.id}.choice',
+                                        child: packagingOptionTile(
+                                          p,
+                                          selected: selectedPackingIds.contains(
+                                            p.id,
+                                          ),
+                                          primary: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -3291,99 +3422,113 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                           ),
                         ),
                         const Spacer(),
-                        Switch.adaptive(
-                          value: selectedInsurance == 'yes',
-                          activeColor: context.brandPrimary,
-                          onChanged: (v) => setSheetState(
-                            () => selectedInsurance = v ? 'yes' : 'no',
+                        TrainingTarget(
+                          id: 'assembly.insurance',
+                          child: Switch.adaptive(
+                            value: selectedInsurance == 'yes',
+                            activeColor: context.brandPrimary,
+                            onChanged: (v) => setSheetState(
+                              () => selectedInsurance = v ? 'yes' : 'no',
+                            ),
                           ),
                         ),
                       ],
                     ),
                     if (selectedInsurance == 'yes') ...[
                       const SizedBox(height: 4),
-                      _outlinedInput(
-                        context,
-                        insuranceAmountController,
-                        hint: 'Сумма товаров в юанях',
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        onChanged: (value) {
-                          setSheetState(() => insuranceAmount = value);
-                        },
+                      TrainingTarget(
+                        id: 'assembly.insurance-amount',
+                        child: TrainingTarget(
+                          id: insuranceAmount?.isNotEmpty == true
+                              ? 'assembly.insurance-amount.filled'
+                              : 'assembly.required.insurance-amount',
+                          child: _outlinedInput(
+                            context,
+                            insuranceAmountController,
+                            hint: 'Сумма товаров в юанях',
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: (value) {
+                              setSheetState(() => insuranceAmount = value);
+                            },
+                          ),
+                        ),
                       ),
                     ],
                   ],
                   const SizedBox(height: 16),
                   if (currentStep == 3)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: context.brandPrimary.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: context.brandPrimary.withValues(alpha: 0.12),
+                    TrainingTarget(
+                      id: 'assembly.review.summary',
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: context.brandPrimary.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: context.brandPrimary.withValues(alpha: 0.12),
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            '4. Подтверждение',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              '4. Подтверждение',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          _SummaryLine(
-                            label: 'Описание товаров',
-                            value: requiresAssemblyGoodsDescription
-                                ? goodsDescription
-                                : 'По данным треков',
-                          ),
-                          _SummaryLine(
-                            label: 'Хрупкий груз',
-                            value: hasFragileGoods ? 'Да' : 'Нет',
-                          ),
-                          _SummaryLine(
-                            label: 'Снятие упаковки',
-                            value: switch (packagingRemoval) {
-                              'transport_only' =>
-                                'Только транспортировочную${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
-                              'all' =>
-                                'Снять всю${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
-                              _ => 'Не снимать',
-                            },
-                          ),
-                          _SummaryLine(
-                            label: 'Места',
-                            value: switch (placePreference) {
-                              'single_if_possible' => 'По возможности 1 место',
-                              'split_allowed' => 'Можно разделить',
-                              _ => 'Не выбрано',
-                            },
-                          ),
-                          _SummaryLine(
-                            label: 'Тариф',
-                            value: selectedTariff?.name ?? 'Не выбран',
-                          ),
-                          _SummaryLine(
-                            label: 'Упаковка',
-                            value: selectedPackagingNames.isEmpty
-                                ? 'Не выбрана'
-                                : selectedPackagingNames.join(', '),
-                          ),
-                          _SummaryLine(
-                            label: 'Страховка',
-                            value: selectedInsurance == 'yes'
-                                ? 'Да, ${insuranceAmount ?? ''} ¥'
-                                : 'Нет',
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            _SummaryLine(
+                              label: 'Описание товаров',
+                              value: requiresAssemblyGoodsDescription
+                                  ? goodsDescription
+                                  : 'По данным треков',
+                            ),
+                            _SummaryLine(
+                              label: 'Хрупкий груз',
+                              value: hasFragileGoods ? 'Да' : 'Нет',
+                            ),
+                            _SummaryLine(
+                              label: tr(
+                                sheetContext,
+                                ru: 'Снятие упаковки',
+                                zh: '拆除包装',
+                              ),
+                              value:
+                                  '${packagingRemovalLabel(sheetContext, packagingRemoval)}${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
+                            ),
+                            _SummaryLine(
+                              label: 'Места',
+                              value: switch (placePreference) {
+                                'single_if_possible' =>
+                                  'По возможности 1 место',
+                                'split_allowed' => 'Можно разделить',
+                                _ => 'Не выбрано',
+                              },
+                            ),
+                            _SummaryLine(
+                              label: 'Тариф',
+                              value: selectedTariff?.name ?? 'Не выбран',
+                            ),
+                            _SummaryLine(
+                              label: 'Упаковка',
+                              value: selectedPackagingNames.isEmpty
+                                  ? 'Не выбрана'
+                                  : selectedPackagingNames.join(', '),
+                            ),
+                            _SummaryLine(
+                              label: 'Страховка',
+                              value: selectedInsurance == 'yes'
+                                  ? 'Да, ${insuranceAmount ?? ''} ¥'
+                                  : 'Нет',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -3646,7 +3791,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         packagingTypeIds: selectedPackingIds.toList(),
         hasFragileGoods: hasFragileGoods,
         placePreference: placePreference!,
-        packagingRemoval: packagingRemoval,
+        packagingRemoval: packagingRemoval.apiValue,
+        packagingRemovalTarget: packagingRemoval.target,
+        supportsPackagingRemovalTargets:
+            selectedTariff?.supportsPackagingRemovalTargets == true,
         hasInsurance: selectedInsurance == 'yes',
         insuranceAmount: selectedInsurance == 'yes' && insuranceAmount != null
             ? double.tryParse(insuranceAmount!)
@@ -3674,7 +3822,9 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         if (!context.mounted) return;
         final message =
             createResult.message ??
-            (createResult.errorCode == trackWarehouseArrivalCooldownCode
+            (createResult.errorCode == packagingRemovalTargetsUnsupportedCode
+                ? packagingRemovalTargetsUnavailableText(context)
+                : createResult.errorCode == trackWarehouseArrivalCooldownCode
                 ? 'Этот трек только поступил на склад. Отправить его можно завтра.'
                 : 'Ошибка создания сборки');
         _showStyledSnackBar(context, message, isError: true);
@@ -4340,10 +4490,12 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     _GroupBucket group, {
     GlobalKey? tutorialActionsKey,
     GlobalKey? tutorialAssemblyKey,
+    Set<String> trainingTargets = const {},
     List<TrackStatus>? trackStatuses,
     List<TrackStatus>? assemblyStatuses,
   }) {
     return _TrackGroupCard(
+      trainingTargets: trainingTargets,
       assembly: group.assembly,
       tracks: group.tracks,
       trackStatuses:
@@ -4492,25 +4644,32 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _TracksSearchField(
-                      query: _query,
-                      onChanged: (value) => _onSearchChanged(value, clientCode),
-                      onClear: () => _onSearchChanged('', clientCode),
+                    child: TrainingTarget(
+                      id: 'tracks.search',
+                      child: _TracksSearchField(
+                        query: _query,
+                        onChanged: (value) =>
+                            _onSearchChanged(value, clientCode),
+                        onClear: () => _onSearchChanged('', clientCode),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _HeaderIconButton(
-                    key: _filtersKey,
-                    icon: Icons.filter_alt_rounded,
-                    tooltip: 'Фильтр',
-                    isActive: activeFilters,
-                    onTap: () => _showTrackFiltersSheet(
-                      clientCode,
-                      tracksState.tracks,
-                      trackStatuses: trackStatuses,
-                      assemblyStatuses: assemblyStatuses,
-                      photoRequestStatuses: photoRequestStatuses,
-                      questionStatuses: questionStatuses,
+                  TrainingTarget(
+                    id: 'tracks.filter',
+                    child: _HeaderIconButton(
+                      key: _filtersKey,
+                      icon: Icons.filter_alt_rounded,
+                      tooltip: 'Фильтр',
+                      isActive: activeFilters,
+                      onTap: () => _showTrackFiltersSheet(
+                        clientCode,
+                        tracksState.tracks,
+                        trackStatuses: trackStatuses,
+                        assemblyStatuses: assemblyStatuses,
+                        photoRequestStatuses: photoRequestStatuses,
+                        questionStatuses: questionStatuses,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -4521,9 +4680,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     onTap: () => _showSortSheet(clientCode),
                   ),
                   const SizedBox(width: 8),
-                  _HeaderAddTrackButton(
-                    key: _fabKey,
-                    onTap: () => showAddTracksDialog(context, ref),
+                  TrainingTarget(
+                    id: 'tracks.add',
+                    onActivate: () => showAddTracksDialog(context, ref),
+                    child: _HeaderAddTrackButton(
+                      key: _fabKey,
+                      onTap: () => showAddTracksDialog(context, ref),
+                    ),
                   ),
                 ],
               ),
@@ -4856,12 +5019,25 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                   ),
                   const SizedBox(width: 10),
                   Flexible(
-                    child: _TrackSheetPrimaryButton(
-                      label: _actionLabel(),
-                      icon: Icons.inventory_2_rounded,
-                      onTap: _selectedStatus == null
-                          ? null
-                          : () => _bulkAction(context),
+                    child: TrainingTarget(
+                      id: _selectedStatus == 'На складе'
+                          ? 'assembly.submit'
+                          : 'tracks.bulkAction',
+                      onActivate: _selectedStatus == 'На складе'
+                          ? () => _bulkAction(context)
+                          : null,
+                      child: TrainingTarget(
+                        id: _selectedTracks.length >= 2
+                            ? 'assembly.selection.multiple'
+                            : 'assembly.selection.single',
+                        child: _TrackSheetPrimaryButton(
+                          label: _actionLabel(),
+                          icon: Icons.inventory_2_rounded,
+                          onTap: _selectedStatus == null
+                              ? null
+                              : () => _bulkAction(context),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -4939,6 +5115,62 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       ];
     }
 
+    final trainingActionsIndex = groups.indexWhere(
+      (group) => group.assembly == null && group.tracks.length == 1,
+    );
+    final trainingByGroup = <int, Set<String>>{};
+    final assignedTrainingTargets = <String>{};
+    for (var i = 0; i < groups.length; i++) {
+      final group = groups[i];
+      final ids = <String>{};
+      if (group.assembly != null) {
+        ids.addAll({
+          'assembly.open',
+          'assembly.status',
+          'assembly.tracks',
+          'assembly.places',
+          'assembly.delivery',
+        });
+      } else if (group.tracks.length == 1) {
+        final track = group.tracks.single;
+        ids.addAll({
+          'track.open',
+          'track.status',
+          'track.product',
+          'track.photos',
+        });
+        final hasQuestion =
+            track.questions.any((q) => q.status != 'cancelled') ||
+            (_askedQuestions[track.code] ?? '').trim().isNotEmpty;
+        if ((track.status == 'В ожидании' || track.status == 'На складе') &&
+            !hasQuestion) {
+          ids.add('track.question');
+        }
+        if (track.status == 'На складе' &&
+            track.statusCode == 'in_warehouse' &&
+            !_returnRequestedTracks.contains(track.code)) {
+          ids.add('track.return');
+        }
+        if (track.assembly == null &&
+            (track.statusCode == 'pending' ||
+                track.statusCode == 'in_warehouse') &&
+            !track.questions.any(
+              (q) =>
+                  q.status != 'cancelled' &&
+                  q.questionType == _clientCodeTransferQuestionType &&
+                  q.isActive,
+            )) {
+          ids.add('track.transfer');
+        }
+        if (track.status == 'На складе' &&
+            _canSelectTrackForAssembly(track, _returnRequestedTracks)) {
+          ids.add('tracks.selection');
+        }
+      }
+      trainingByGroup[i] = ids.difference(assignedTrainingTargets);
+      assignedTrainingTargets.addAll(ids);
+    }
+
     // SliverList.builder — ленивый рендеринг: только видимые карточки строятся
     return [
       SliverPadding(
@@ -4982,10 +5214,13 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             final isFirstAssembly =
                 g.assembly != null &&
                 groups.sublist(0, index).every((gr) => gr.assembly == null);
-            final trackCard = _buildTrackGroupCard(
+            Widget trackCard = _buildTrackGroupCard(
               g,
-              tutorialActionsKey: index == 0 ? _actionsRowKey : null,
+              tutorialActionsKey: index == trainingActionsIndex
+                  ? _actionsRowKey
+                  : null,
               tutorialAssemblyKey: isFirstAssembly ? _assemblyKey : null,
+              trainingTargets: trainingByGroup[index] ?? const {},
             );
             final groupTargetKey = _groupTargetKey(g);
             final highlighted = _highlightedGroupKey == groupTargetKey;
@@ -5777,20 +6012,39 @@ class _TracksViewModeSwitch extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _TracksViewModeSegment(
-              icon: Icons.local_shipping_rounded,
-              label: 'Треки',
-              selected: value == ViewMode.singles,
-              onTap: () => onChanged(ViewMode.singles),
+            child: TrainingTarget(
+              id: value == ViewMode.singles
+                  ? 'tracks.view.singles.active'
+                  : 'tracks.view.switch-to-singles',
+              onActivate: value != ViewMode.singles
+                  ? () => onChanged(ViewMode.singles)
+                  : null,
+              child: _TracksViewModeSegment(
+                icon: Icons.local_shipping_rounded,
+                label: 'Треки',
+                selected: value == ViewMode.singles,
+                onTap: () => onChanged(ViewMode.singles),
+              ),
             ),
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: _TracksViewModeSegment(
-              icon: Icons.inventory_2_rounded,
-              label: 'Сборки',
-              selected: value == ViewMode.groups,
-              onTap: () => onChanged(ViewMode.groups),
+            child: TrainingTarget(
+              id: 'tracks.view.groups',
+              child: TrainingTarget(
+                id: value == ViewMode.groups
+                    ? 'tracks.view.groups.active'
+                    : 'tracks.view.switch-to-groups',
+                onActivate: value != ViewMode.groups
+                    ? () => onChanged(ViewMode.groups)
+                    : null,
+                child: _TracksViewModeSegment(
+                  icon: Icons.inventory_2_rounded,
+                  label: 'Сборки',
+                  selected: value == ViewMode.groups,
+                  onTap: () => onChanged(ViewMode.groups),
+                ),
+              ),
             ),
           ),
         ],
@@ -6034,7 +6288,13 @@ class _TrackSheetSurface extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SheetHandle(),
+                  Center(
+                    child: TrainingTarget(
+                      id: 'track.sheet.dismiss-handle',
+                      onActivate: () => Navigator.of(context).pop(),
+                      child: const SizedBox(width: 42, child: SheetHandle()),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                     child: _TrackSheetHeader(
@@ -6315,20 +6575,23 @@ class _TrackFiltersSheetState extends State<_TrackFiltersSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _TrackFilterSectionCard(
-            icon: Icons.flag_rounded,
-            title: 'Статус',
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final option in statusOptions)
-                  _FilterChipButton(
-                    label: option.label,
-                    selected: option.code == _statusCode,
-                    onTap: () => setState(() => _statusCode = option.code),
-                  ),
-              ],
+          TrainingTarget(
+            id: 'tracks.statuses',
+            child: _TrackFilterSectionCard(
+              icon: Icons.flag_rounded,
+              title: 'Статус',
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final option in statusOptions)
+                    _FilterChipButton(
+                      label: option.label,
+                      selected: option.code == _statusCode,
+                      onTap: () => setState(() => _statusCode = option.code),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -7123,6 +7386,7 @@ class _TrackSheetCompactAction extends StatelessWidget {
 
 class _AssemblyCompactCard extends StatelessWidget {
   final String number;
+  final Set<String> trainingTargets;
   final String? name;
   final String status;
   final Color? statusColor;
@@ -7135,6 +7399,7 @@ class _AssemblyCompactCard extends StatelessWidget {
   final VoidCallback onDelivery;
 
   const _AssemblyCompactCard({
+    this.trainingTargets = const {},
     required this.number,
     required this.name,
     required this.status,
@@ -7151,7 +7416,10 @@ class _AssemblyCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = context.brandPrimary;
+    String? target(String id) => trainingTargets.contains(id) ? id : null;
     return ClientTrackCompactCard(
+      trainingOpenId: target('assembly.open'),
+      trainingStatusId: target('assembly.status'),
       trackNumber: number,
       status: status,
       statusColor: statusColor ?? accent,
@@ -7167,6 +7435,7 @@ class _AssemblyCompactCard extends StatelessWidget {
       indicators: [
         ClientTrackIndicator(
           icon: Icons.local_shipping_outlined,
+          trainingTargetId: target('assembly.tracks'),
           title: 'Треки',
           value: '$trackCount',
           label: 'Треки',
@@ -7175,6 +7444,7 @@ class _AssemblyCompactCard extends StatelessWidget {
         ),
         ClientTrackIndicator(
           icon: Icons.inventory_2_outlined,
+          trainingTargetId: target('assembly.places'),
           title: 'Места',
           value: '$boxCount',
           label: 'Места',
@@ -7183,6 +7453,7 @@ class _AssemblyCompactCard extends StatelessWidget {
         ),
         ClientTrackIndicator(
           icon: Icons.local_shipping_rounded,
+          trainingTargetId: target('assembly.delivery'),
           title: 'Доставка',
           value: hasDelivery ? 'Выбрана' : '',
           label: 'Доставка',
@@ -7444,10 +7715,16 @@ class _AssemblyDetailTabs extends StatelessWidget {
           children: [
             for (var index = 0; index < labels.length; index++) ...[
               if (index > 0) const SizedBox(width: 6),
-              _AssemblyDetailTabButton(
-                label: labels[index],
-                selected: selectedIndex == index,
-                onTap: () => onSelected(index),
+              TrainingTarget(
+                id: 'assembly.tab.${const ['main', 'video', 'delivery', 'places', 'tracks'][index]}',
+                onActivate: selectedIndex != index
+                    ? () => onSelected(index)
+                    : null,
+                child: _AssemblyDetailTabButton(
+                  label: labels[index],
+                  selected: selectedIndex == index,
+                  onTap: () => onSelected(index),
+                ),
               ),
             ],
           ],
@@ -7594,16 +7871,19 @@ class _FiltersState extends State<_Filters> {
         Row(
           children: [
             Expanded(
-              child: _CustomDropdown<ViewMode>(
-                value: widget.viewMode,
-                label: 'Вид',
-                items: const [
-                  _DropdownItem(value: ViewMode.all, label: 'Все'),
-                  _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
-                  _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
-                ],
-                onChanged: (v) =>
-                    v != null ? widget.onViewModeChanged(v) : null,
+              child: TrainingTarget(
+                id: 'tracks.view.selector',
+                child: _CustomDropdown<ViewMode>(
+                  value: widget.viewMode,
+                  label: 'Вид',
+                  items: const [
+                    _DropdownItem(value: ViewMode.all, label: 'Все'),
+                    _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+                    _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
+                  ],
+                  onChanged: (v) =>
+                      v != null ? widget.onViewModeChanged(v) : null,
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -7754,15 +8034,18 @@ class _FiltersNewState extends State<_FiltersNew> {
           child: Row(
             children: [
               // Вид
-              _MiniDropdown<ViewMode>(
-                value: widget.viewMode,
-                items: const [
-                  _DropdownItem(value: ViewMode.all, label: 'Все'),
-                  _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
-                  _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
-                ],
-                onChanged: (v) =>
-                    v != null ? widget.onViewModeChanged(v) : null,
+              TrainingTarget(
+                id: 'tracks.view.selector',
+                child: _MiniDropdown<ViewMode>(
+                  value: widget.viewMode,
+                  items: const [
+                    _DropdownItem(value: ViewMode.all, label: 'Все'),
+                    _DropdownItem(value: ViewMode.groups, label: 'Сборки'),
+                    _DropdownItem(value: ViewMode.singles, label: 'Одиночные'),
+                  ],
+                  onChanged: (v) =>
+                      v != null ? widget.onViewModeChanged(v) : null,
+                ),
               ),
               const SizedBox(width: 6),
               // Статус
@@ -7872,8 +8155,10 @@ class _TrackGroupCard extends StatefulWidget {
   final Set<String> returnRequestedTracks;
   final GlobalKey? tutorialActionsKey;
   final GlobalKey? tutorialAssemblyKey;
+  final Set<String> trainingTargets;
 
   const _TrackGroupCard({
+    this.trainingTargets = const {},
     required this.assembly,
     required this.tracks,
     required this.trackStatuses,
@@ -8009,10 +8294,20 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         ? widget.groupQuestionUpdatedAt[widget.assembly!.id.toString()]
         : null;
     if (widget.assembly == null && widget.tracks.length == 1) {
-      return _buildTrackCard(context, df, widget.tracks.first);
+      final card = _buildTrackCard(context, df, widget.tracks.first);
+      if (widget.tutorialActionsKey == null) return card;
+      return TrainingTarget(
+        id: 'tracks.card',
+        child: KeyedSubtree(key: widget.tutorialActionsKey, child: card),
+      );
     }
     if (widget.assembly != null) {
-      return _buildAssemblyCard(context);
+      final card = _buildAssemblyCard(context);
+      if (widget.tutorialAssemblyKey == null) return card;
+      return TrainingTarget(
+        id: 'assembly.card',
+        child: KeyedSubtree(key: widget.tutorialAssemblyKey, child: card),
+      );
     }
 
     return Container(
@@ -9001,11 +9296,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final indicatorMuted = AppColors.textSecondary;
     final successColor = const Color(0xFF168A5B);
     final warningColor = const Color(0xFFD97706);
+    String? target(String id) =>
+        !embeddedInAssembly && widget.trainingTargets.contains(id) ? id : null;
     final indicators = <ClientTrackIndicator>[
       ClientTrackIndicator(
         icon: hasProductInfo
             ? Icons.inventory_2_rounded
             : Icons.inventory_2_outlined,
+        trainingTargetId: target('track.product'),
         title: 'Товар',
         value: hasProductInfo ? 'Заполнено' : 'Не заполнено',
         label: hasProductInfo ? 'Товар заполнен' : 'Товар не заполнен',
@@ -9016,6 +9314,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         icon: photoDone
             ? Icons.photo_library_rounded
             : Icons.photo_library_outlined,
+        trainingTargetId: target('track.photos'),
         title: 'Фото',
         value: photoDone
             ? 'Готово'
@@ -9073,6 +9372,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       if (!embeddedInAssembly && canAskQuestion && !hasQuestion)
         ClientTrackQuickAction(
           icon: Icons.help_outline_rounded,
+          trainingTargetId: target('track.question'),
           label: 'Вопрос',
           onTap: () => closeDetailsThen(() => widget.onAskQuestion(track)),
         )
@@ -9090,6 +9390,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       if (canTransferClientCode)
         ClientTrackQuickAction(
           icon: Icons.swap_horiz_rounded,
+          trainingTargetId: target('track.transfer'),
           label: 'Перенести',
           onTap: () => widget.onTransferClientCode(track),
         ),
@@ -9115,12 +9416,16 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       if (!embeddedInAssembly && canRequestReturn)
         ClientTrackQuickAction(
           icon: Icons.assignment_return_outlined,
+          trainingTargetId: target('track.return'),
           label: 'Возврат',
           onTap: () => widget.onReturnRequest(track),
         ),
     ];
 
     return ClientTrackCompactCard(
+      trainingOpenId: target('track.open'),
+      trainingStatusId: target('track.status'),
+      trainingSelectionId: target('tracks.selection'),
       trackNumber: track.code,
       status: track.status,
       statusColor: statusColor,
@@ -9144,6 +9449,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final assembly = widget.assembly!;
     final statusColor = parseHexColor(assembly.statusColor);
     return _AssemblyCompactCard(
+      trainingTargets: widget.trainingTargets,
       number: assembly.number,
       name: assembly.name,
       status: assembly.statusName?.isNotEmpty == true
@@ -9184,21 +9490,26 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
+          // This root modal can outlive the card that opened it.
+          final context = sheetContext;
           Widget mainTab() => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  onTap: () => _showAssemblyStatusTimeline(context, assembly),
+              TrainingTarget(
+                id: 'assembly.status.details',
+                child: Material(
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(18),
-                  child: _TrackSheetMetaCard(
-                    icon: Icons.inventory_2_rounded,
-                    title: 'Текущий статус',
-                    value: assembly.statusName?.isNotEmpty == true
-                        ? assembly.statusName!
-                        : assembly.status,
+                  child: InkWell(
+                    onTap: () => _showAssemblyStatusTimeline(context, assembly),
+                    borderRadius: BorderRadius.circular(18),
+                    child: _TrackSheetMetaCard(
+                      icon: Icons.inventory_2_rounded,
+                      title: 'Текущий статус',
+                      value: assembly.statusName?.isNotEmpty == true
+                          ? assembly.statusName!
+                          : assembly.status,
+                    ),
                   ),
                 ),
               ),
@@ -9743,6 +10054,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
+            // All tabs and their callbacks belong to the modal, not the card.
+            final context = sheetContext;
             Widget buildMainTab() {
               final hasProductInfo =
                   productName.trim().isNotEmpty ||
@@ -10042,7 +10355,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       alignment: Alignment.centerLeft,
                       child: _TaskStatusBadge(
                         text: photoStatus,
-                        color: _taskStatusColor(photoStatus),
+                        color: _taskStatusColor(sheetContext, photoStatus),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -10549,7 +10862,10 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         alignment: Alignment.centerLeft,
                         child: _TaskStatusBadge(
                           text: info.statusLabel,
-                          color: _taskStatusColor(info.statusLabel),
+                          color: _taskStatusColor(
+                            sheetContext,
+                            info.statusLabel,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -10889,7 +11205,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     required bool canCancel,
   }) async {
     final df = DateFormat('dd.MM.yyyy', 'ru');
-    final statusColor = _taskStatusColor(statusLabel);
+    final statusColor = _taskStatusColor(context, statusLabel);
     await showBlurredModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -11150,7 +11466,8 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
   }
 
-  Color _taskStatusColor(String statusLabel) {
+  // A root modal can outlive this card; use its live context when rebuilding.
+  Color _taskStatusColor(BuildContext context, String statusLabel) {
     final normalized = statusLabel.toLowerCase();
     if (normalized.contains('выполн') || normalized.contains('отвеч')) {
       return const Color(0xFF27C47A);
@@ -13120,31 +13437,36 @@ class _MiniDropdown<T> extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 for (final item in items)
-                  ListTile(
-                    dense: true,
-                    title: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontWeight: item.value == value
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: item.value == value
-                            ? context.brandPrimary
-                            : Colors.black87,
-                        fontSize: 14,
+                  TrainingTarget(
+                    id: item.value == ViewMode.groups
+                        ? 'tracks.view.groups'
+                        : 'tracks.view.option.${item.value}',
+                    child: ListTile(
+                      dense: true,
+                      title: Text(
+                        item.label,
+                        style: TextStyle(
+                          fontWeight: item.value == value
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: item.value == value
+                              ? context.brandPrimary
+                              : Colors.black87,
+                          fontSize: 14,
+                        ),
                       ),
+                      trailing: item.value == value
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 18,
+                              color: context.brandPrimary,
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onChanged(item.value);
+                      },
                     ),
-                    trailing: item.value == value
-                        ? Icon(
-                            Icons.check_rounded,
-                            size: 18,
-                            color: context.brandPrimary,
-                          )
-                        : null,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      onChanged(item.value);
-                    },
                   ),
                 const SizedBox(height: 8),
               ],
@@ -13217,6 +13539,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
   }
 
   void _showMenu() {
+    final targetContainer = ProviderScope.containerOf(context, listen: false);
     final renderBox =
         _targetKey.currentContext?.findRenderObject() as RenderBox?;
     final double menuWidth = renderBox?.size.width ?? 200;
@@ -13258,7 +13581,7 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                             final isFirst = index == 0;
                             final isLast = index == widget.items.length - 1;
 
-                            return InkWell(
+                            final option = InkWell(
                               onTap: () {
                                 setState(() {
                                   _selectedValue = item.value;
@@ -13311,6 +13634,15 @@ class _CustomDropdownState<T> extends State<_CustomDropdown<T>> {
                                 ),
                               ),
                             );
+                            return item.value == ViewMode.groups
+                                ? UncontrolledProviderScope(
+                                    container: targetContainer,
+                                    child: TrainingTarget(
+                                      id: 'tracks.view.groups',
+                                      child: option,
+                                    ),
+                                  )
+                                : option;
                           }).toList(),
                         ),
                       ),

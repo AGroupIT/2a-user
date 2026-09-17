@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -53,29 +54,32 @@ class _ShopSearchBarState extends State<ShopSearchBar> {
             ),
           ],
         ),
-        child: TextField(
-          controller: _controller,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _submit(),
-          style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Поиск товаров...',
-            hintStyle: TextStyle(fontSize: 15, color: Colors.grey.shade400),
-            prefixIcon: Icon(
-              CupertinoIcons.search,
-              size: 22,
-              color: Colors.grey.shade400,
-            ),
-            suffixIcon: IconButton(
-              icon: Icon(
-                CupertinoIcons.arrow_right_circle_fill,
-                size: 24,
-                color: context.brandPrimary,
+        child: TrainingTarget(
+          id: 'shop.search',
+          child: TextField(
+            controller: _controller,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _submit(),
+            style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Поиск товаров...',
+              hintStyle: TextStyle(fontSize: 15, color: Colors.grey.shade400),
+              prefixIcon: Icon(
+                CupertinoIcons.search,
+                size: 22,
+                color: Colors.grey.shade400,
               ),
-              onPressed: _submit,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  CupertinoIcons.arrow_right_circle_fill,
+                  size: 24,
+                  color: context.brandPrimary,
+                ),
+                onPressed: _submit,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
       ),

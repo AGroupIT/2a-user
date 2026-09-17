@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -197,7 +198,7 @@ class _NewsCardsGrid extends StatelessWidget {
                 child: i == 0
                     ? KeyedSubtree(
                         key: firstItemKey,
-                        child: _NewsCard(item: items[i]),
+                        child: _NewsCard(item: items[i], trainingTarget: true),
                       )
                     : _NewsCard(item: items[i]),
               ),
@@ -262,7 +263,8 @@ class _NewsSectionHeader extends StatelessWidget {
 class _NewsCard extends StatelessWidget {
   final NewsItem item;
 
-  const _NewsCard({required this.item});
+  const _NewsCard({required this.item, this.trainingTarget = false});
+  final bool trainingTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -292,17 +294,22 @@ class _NewsCard extends StatelessWidget {
                   children: [
                     NewsDatePill(label: df.format(item.publishedAt)),
                     const SizedBox(height: 12),
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w900,
-                        fontSize: 19,
-                        height: 1.08,
-                        letterSpacing: -0.2,
+                    TrainingTarget(
+                      id: trainingTarget
+                          ? 'news.open'
+                          : 'news.open.${item.slug}',
+                      child: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontFamily: 'Gilroy',
+                          fontWeight: FontWeight.w900,
+                          fontSize: 19,
+                          height: 1.08,
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ),
                     if (item.excerpt.trim().isNotEmpty) ...[

@@ -231,8 +231,12 @@ class _SessionRow extends StatelessWidget {
                         Text(
                           tr(
                             context,
-                            ru: 'Подход $approachNumber',
-                            zh: '第 $approachNumber 次',
+                            ru: session.stopReason == 'manual_upload'
+                                ? 'Добавлено вручную'
+                                : 'Подход $approachNumber',
+                            zh: session.stopReason == 'manual_upload'
+                                ? '手动添加'
+                                : '第 $approachNumber 次',
                           ),
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,

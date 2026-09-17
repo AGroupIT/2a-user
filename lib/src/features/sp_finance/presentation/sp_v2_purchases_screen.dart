@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -465,6 +466,7 @@ class _PurchaseDirectoryGrid extends StatelessWidget {
                       child: _SpV2PurchaseCard(
                         purchase: purchase,
                         showKind: showKind,
+                        trainingTarget: purchase.id == state.purchases.first.id,
                       ),
                     ),
                   )
@@ -893,7 +895,12 @@ class _SpV2PurchaseCard extends StatelessWidget {
   final SpV2Purchase purchase;
   final bool showKind;
 
-  const _SpV2PurchaseCard({required this.purchase, required this.showKind});
+  const _SpV2PurchaseCard({
+    required this.purchase,
+    required this.showKind,
+    this.trainingTarget = false,
+  });
+  final bool trainingTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -983,17 +990,25 @@ class _SpV2PurchaseCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          purchase.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontFamily: 'Gilroy',
-                            fontSize: 18,
-                            height: 1.08,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.2,
+                        TrainingTarget(
+                          id: trainingTarget
+                              ? 'organizer.open'
+                              : 'organizer.open.${purchase.id}',
+                          onActivate: () => context.push(
+                            '/sp-finance/purchases/${purchase.id}',
+                          ),
+                          child: Text(
+                            purchase.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontFamily: 'Gilroy',
+                              fontSize: 18,
+                              height: 1.08,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.2,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 5),

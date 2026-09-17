@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -143,25 +144,34 @@ class _GarageScreenState extends ConsumerState<GarageScreen> {
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 420;
               final buttons = [
-                _HeroAction(
-                  icon: Icons.directions_car_filled_rounded,
-                  label: 'Добавить авто',
-                  onTap: () => showGarageVehicleFormModal(context),
+                TrainingTarget(
+                  id: 'garage.vehicle.create',
+                  onActivate: () => showGarageVehicleFormModal(context),
+                  child: _HeroAction(
+                    icon: Icons.directions_car_filled_rounded,
+                    label: 'Добавить авто',
+                    onTap: () => showGarageVehicleFormModal(context),
+                  ),
                 ),
-                _HeroAction(
-                  icon: Icons.playlist_add_rounded,
-                  label: 'Новая заявка',
-                  onTap: () {
-                    if (vehicles.isEmpty) {
-                      AppToast.show(
-                        context,
-                        'Сначала добавьте автомобиль',
-                        icon: Icons.info_outline_rounded,
-                      );
-                      return;
-                    }
-                    _openRequestForm(context);
-                  },
+                TrainingTarget(
+                  id: vehicles.isEmpty
+                      ? 'garage.request.create.unavailable'
+                      : 'garage.request.create',
+                  child: _HeroAction(
+                    icon: Icons.playlist_add_rounded,
+                    label: 'Новая заявка',
+                    onTap: () {
+                      if (vehicles.isEmpty) {
+                        AppToast.show(
+                          context,
+                          'Сначала добавьте автомобиль',
+                          icon: Icons.info_outline_rounded,
+                        );
+                        return;
+                      }
+                      _openRequestForm(context);
+                    },
+                  ),
                 ),
               ];
               return compact

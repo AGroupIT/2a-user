@@ -18,6 +18,7 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
 import '../../../core/utils/clipboard_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../assemblies/data/assemblies_provider.dart';
 import '../../assemblies/domain/assembly_item.dart';
 import '../../auth/data/auth_provider.dart';
@@ -31,6 +32,8 @@ import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../referral/data/referral_provider.dart';
 import '../../tracks/data/tracks_provider.dart';
+import '../../training/presentation/training_target.dart';
+import '../../training/presentation/training_home_invitation.dart';
 import '../../tracks/domain/track_item.dart';
 import '../../tracks/presentation/add_tracks_dialog.dart';
 import '../../tracks/presentation/tracks_screen.dart';
@@ -163,6 +166,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? ref.watch(currentCnyRateProvider)
         : const AsyncValue.loading();
     final staleNotice = ref.watch(staleDataNoticeProvider);
+    final retryFailed = <VoidCallback>[
+      if (tracksDigestAsync.hasError)
+        () => ref.invalidate(tracksDigestProvider(clientCode)),
+      if (assembliesDigestAsync.hasError)
+        () => ref.invalidate(assembliesDigestProvider(clientCode)),
+      if (invoicesDigestAsync.hasError)
+        () => ref.invalidate(invoicesDigestProvider(clientCode)),
+      if (tracksCountAsync.hasError)
+        () => ref.invalidate(tracksCountProvider(clientCode)),
+      if (assembliesCountAsync.hasError)
+        () => ref.invalidate(assembliesCountProvider(clientCode)),
+      if (invoicesCountAsync.hasError)
+        () => ref.invalidate(invoicesCountProvider(clientCode)),
+      if (tracksWeeklyCountAsync.hasError)
+        () => ref.invalidate(tracksWeeklyCountProvider(clientCode)),
+      if (assembliesWeeklyCountAsync.hasError)
+        () => ref.invalidate(assembliesWeeklyCountProvider(clientCode)),
+      if (invoicesWeeklyCountAsync.hasError)
+        () => ref.invalidate(invoicesWeeklyCountProvider(clientCode)),
+    ];
 
     final tracksCount = tracksCountAsync.asData?.value;
     final assembliesCount = assembliesCountAsync.asData?.value;
@@ -211,22 +234,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.invalidate(invoicesWeeklyCountProvider(clientCode));
       ref.invalidate(referralProvider);
       ref.invalidate(currentCnyRateProvider);
-      await Future.wait([
-        ref.read(tracksDigestProvider(clientCode).future),
-        ref.read(assembliesDigestProvider(clientCode).future),
-        ref.read(invoicesDigestProvider(clientCode).future),
-        ref.read(
-          photosRecentProvider((clientCode: clientCode, limit: 12)).future,
-        ),
-        ref.read(tracksCountProvider(clientCode).future),
-        ref.read(assembliesCountProvider(clientCode).future),
-        ref.read(invoicesCountProvider(clientCode).future),
-        ref.read(tracksWeeklyCountProvider(clientCode).future),
-        ref.read(assembliesWeeklyCountProvider(clientCode).future),
-        ref.read(invoicesWeeklyCountProvider(clientCode).future),
-        ref.read(referralProvider.future),
-        ref.read(currentCnyRateProvider.future),
-      ]);
+      try {
+        await Future.wait([
+          ref.read(tracksDigestProvider(clientCode).future),
+          ref.read(assembliesDigestProvider(clientCode).future),
+          ref.read(invoicesDigestProvider(clientCode).future),
+          ref.read(
+            photosRecentProvider((clientCode: clientCode, limit: 12)).future,
+          ),
+          ref.read(tracksCountProvider(clientCode).future),
+          ref.read(assembliesCountProvider(clientCode).future),
+          ref.read(invoicesCountProvider(clientCode).future),
+          ref.read(tracksWeeklyCountProvider(clientCode).future),
+          ref.read(assembliesWeeklyCountProvider(clientCode).future),
+          ref.read(invoicesWeeklyCountProvider(clientCode).future),
+          ref.read(referralProvider.future),
+          ref.read(currentCnyRateProvider.future),
+        ]);
+      } catch (error) {
+        // Each failed provider renders its own error; successful cards remain.
+        debugPrint('[Home] partial refresh failed: $error');
+      }
     }
 
     return TutorialScreenWrapper(
@@ -297,6 +325,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
             ),
             const SizedBox(height: 15),
+            const TrainingHomeInvitation(),
             if (useWideHomeLayout) ...[
               _HomeReveal(
                 order: 1,
@@ -316,6 +345,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onDismiss: () =>
                       ref.read(staleDataNoticeProvider.notifier).clear(),
                 ),
+              ),
+              const SizedBox(height: 15),
+            ],
+            if (retryFailed.isNotEmpty) ...[
+              MaterialBanner(
+                key: const ValueKey('dashboard-load-error'),
+                leading: const Icon(Icons.sync_problem_rounded),
+                content: Text(
+                  tr(
+                    context,
+                    ru: 'Часть данных не удалось загрузить. Доступные данные показаны ниже.',
+                    zh: '部分数据加载失败。已加载的数据仍显示在下方。',
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      for (final retry in retryFailed) {
+                        retry();
+                      }
+                    },
+                    child: Text(tr(context, ru: 'Повторить', zh: '重试')),
+                  ),
+                ],
               ),
               const SizedBox(height: 15),
             ],
@@ -355,15 +408,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 order: 4,
                 child: useWideHomeLayout
                     ? _WarehouseSearchRow(
-                        warehouse: _WarehouseDataBlock(
-                          clientCode: clientCode,
-                          agent: agent!,
+                        warehouse: TrainingTarget(
+                          id: 'warehouse.address',
+                          child: _WarehouseDataBlock(
+                            clientCode: clientCode,
+                            agent: agent!,
+                          ),
                         ),
                         search: _NoCodeSearchCard(onOpen: _openNoCodeSearch),
                       )
-                    : _WarehouseDataBlock(
-                        clientCode: clientCode,
-                        agent: agent!,
+                    : TrainingTarget(
+                        id: 'warehouse.address',
+                        child: _WarehouseDataBlock(
+                          clientCode: clientCode,
+                          agent: agent!,
+                        ),
                       ),
               ),
               const SizedBox(height: 15),
@@ -1851,6 +1910,14 @@ class _WarehouseDataBlockState extends State<_WarehouseDataBlock> {
   Widget build(BuildContext context) {
     final address = _warehouseAddressForClient(widget.agent.warehouseAddress);
     final phone = widget.agent.warehousePhone?.trim() ?? '';
+    void openAddressChecker() => showWarehouseAddressChecker(
+      context,
+      expected: WarehouseAddressCheckData(
+        clientCode: widget.clientCode,
+        address: address,
+        phone: phone,
+      ),
+    );
 
     return Container(
       width: double.infinity,
@@ -1926,20 +1993,26 @@ class _WarehouseDataBlockState extends State<_WarehouseDataBlock> {
               final controls = <Widget>[
                 _WarehouseCodeTile(clientCode: widget.clientCode),
                 if (address.isNotEmpty)
-                  _WarehouseCopyButton(
-                    label: 'Адрес склада',
-                    icon: CupertinoIcons.doc_on_doc,
-                    value: address,
-                    showMarketplaceNotice: true,
-                    onMarketplaceNoticeClosed: _highlightCheckerButton,
+                  TrainingTarget(
+                    id: 'warehouse.copy-address',
+                    child: _WarehouseCopyButton(
+                      label: 'Адрес склада',
+                      icon: CupertinoIcons.doc_on_doc,
+                      value: address,
+                      showMarketplaceNotice: true,
+                      onMarketplaceNoticeClosed: _highlightCheckerButton,
+                    ),
                   ),
                 if (phone.isNotEmpty)
-                  _WarehouseCopyButton(
-                    label: 'Телефон склада',
-                    icon: CupertinoIcons.phone,
-                    value: phone,
-                    showMarketplaceNotice: true,
-                    onMarketplaceNoticeClosed: _highlightCheckerButton,
+                  TrainingTarget(
+                    id: 'warehouse.copy-phone',
+                    child: _WarehouseCopyButton(
+                      label: 'Телефон склада',
+                      icon: CupertinoIcons.phone,
+                      value: phone,
+                      showMarketplaceNotice: true,
+                      onMarketplaceNoticeClosed: _highlightCheckerButton,
+                    ),
                   ),
               ];
               final useSingleRow = constraints.maxWidth >= 620;
@@ -1967,53 +2040,50 @@ class _WarehouseDataBlockState extends State<_WarehouseDataBlock> {
           ),
           if (address.isNotEmpty) ...[
             const SizedBox(height: 8),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.all(_highlightChecker ? 4 : 0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(19),
-                color: _highlightChecker
-                    ? context.brandPrimary.withValues(alpha: 0.14)
-                    : Colors.transparent,
-                boxShadow: _highlightChecker
-                    ? [
-                        BoxShadow(
-                          color: context.brandPrimary.withValues(alpha: 0.3),
-                          blurRadius: 18,
-                          spreadRadius: 2,
-                        ),
-                      ]
-                    : const [],
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => showWarehouseAddressChecker(
-                    context,
-                    expected: WarehouseAddressCheckData(
-                      clientCode: widget.clientCode,
-                      address: address,
-                      phone: phone,
-                    ),
-                  ),
-                  icon: const Icon(Icons.fact_check_outlined, size: 19),
-                  label: const Text('Проверить заполнение'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: context.brandPrimary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    elevation: 0,
-                    textStyle: const TextStyle(
-                      fontFamily: 'Gilroy',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
+            TrainingTarget(
+              id: 'warehouse.check',
+              onActivate: openAddressChecker,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.all(_highlightChecker ? 4 : 0),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(19),
+                  color: _highlightChecker
+                      ? context.brandPrimary.withValues(alpha: 0.14)
+                      : Colors.transparent,
+                  boxShadow: _highlightChecker
+                      ? [
+                          BoxShadow(
+                            color: context.brandPrimary.withValues(alpha: 0.3),
+                            blurRadius: 18,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : const [],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: openAddressChecker,
+                    icon: const Icon(Icons.fact_check_outlined, size: 19),
+                    label: const Text('Проверить заполнение'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: context.brandPrimary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      elevation: 0,
+                      textStyle: const TextStyle(
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ),
@@ -2493,7 +2563,7 @@ class _TrackDigestList extends ConsumerWidget {
       loading: () => const _DigestStateCard(child: CircularProgressIndicator()),
       error: (e, _) => _DigestStateCard(
         child: Text(
-          'Не удалось загрузить треки: $e',
+          tr(context, ru: 'Не удалось загрузить треки', zh: '无法加载运单'),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.red),
         ),
@@ -2534,7 +2604,7 @@ class _AssemblyDigestList extends StatelessWidget {
       loading: () => const _DigestStateCard(child: CircularProgressIndicator()),
       error: (e, _) => _DigestStateCard(
         child: Text(
-          'Не удалось загрузить сборки: $e',
+          tr(context, ru: 'Не удалось загрузить сборки', zh: '无法加载集运包裹'),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.red),
         ),
@@ -2623,7 +2693,7 @@ class _InvoiceDigestList extends StatelessWidget {
       loading: () => const _DigestStateCard(child: CircularProgressIndicator()),
       error: (e, _) => _DigestStateCard(
         child: Text(
-          'Не удалось загрузить счета: $e',
+          tr(context, ru: 'Не удалось загрузить счета', zh: '无法加载账单'),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.red),
         ),

@@ -160,6 +160,9 @@ class AuthNotifier extends Notifier<AuthState> {
   int _pushRegistrationRetryAttempt = 0;
   bool _pushRegistrationInFlight = false;
   String? _pendingRefreshedPushToken;
+  int _pushSessionGeneration = 0;
+  bool _pushReceiptFlushInFlight = false;
+  Timer? _pushReceiptRetryTimer;
 
   @override
   AuthState build() {
@@ -173,9 +176,14 @@ class AuthNotifier extends Notifier<AuthState> {
         unawaited(_registerForPush(state.userDomain ?? '', token: newToken));
       }
     };
+    PushNotificationService.onReceiptQueued = () =>
+        unawaited(_flushPushReceipts());
     ref.onDispose(() {
+      _pushSessionGeneration++;
       _pushRegistrationRetryTimer?.cancel();
+      _pushReceiptRetryTimer?.cancel();
       PushNotificationService.onTokenRefreshed = null;
+      PushNotificationService.onReceiptQueued = null;
     });
 
     _loadAuthState();
@@ -378,6 +386,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
         // Извлекаем данные клиента
         final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
+        await _prepareClientIdentity(clientId);
         final clientName =
             userData['fullName'] as String? ??
             userData['name'] as String? ??
@@ -581,6 +590,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // Извлекаем данные клиента
       final clientId = userData['id'] as int? ?? userData['clientId'] as int?;
+      await _prepareClientIdentity(clientId);
       final email = userData['email'] as String? ?? '';
       final clientName =
           userData['fullName'] as String? ??
@@ -649,11 +659,97 @@ class AuthNotifier extends Notifier<AuthState> {
     final domain = state.userDomain;
     if (!state.isLoggedIn || domain == null || domain.isEmpty) return;
     await _registerForPush(domain);
+    await _flushPushReceipts();
+  }
+
+  Future<void> _prepareClientIdentity(int? nextClientId) async {
+    _pushSessionGeneration++;
+    _pushRegistrationInFlight = false;
+    _pendingRefreshedPushToken = null;
+    _pushRegistrationRetryTimer?.cancel();
+    _pushRegistrationRetryTimer = null;
+    if (state.clientId != nextClientId) {
+      await StaleDataCache.clearAll();
+      await clearCachedClientProfile();
+    }
+  }
+
+  Future<void> _flushPushReceipts({int retryAttempt = 0}) async {
+    if (_pushReceiptFlushInFlight || !state.isLoggedIn || _isLoggingOut) return;
+    _pushReceiptFlushInFlight = true;
+    final generation = _pushSessionGeneration;
+    final clientId = state.clientId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // background isolate may have queued receipts
+      final deviceId = prefs.getString('device_id');
+      if (deviceId == null || clientId == null) return;
+      final keys = prefs
+          .getKeys()
+          .where((key) => key.startsWith('push_receipt_'))
+          .toList();
+      var sent = 0;
+      for (final key in keys) {
+        if (generation != _pushSessionGeneration ||
+            _isLoggingOut ||
+            !state.isLoggedIn) {
+          return;
+        }
+        final raw = prefs.getString(key);
+        if (raw == null) continue;
+        try {
+          final item = jsonDecode(raw) as Map<String, dynamic>;
+          final queuedAt = DateTime.tryParse(
+            item['queuedAt']?.toString() ?? '',
+          );
+          if (queuedAt == null ||
+              DateTime.now().difference(queuedAt).inDays >= 7) {
+            await prefs.remove(key);
+            continue;
+          }
+          if (item['recipientId'] != clientId || sent >= 50) continue;
+          await _apiClient
+              .post(
+                '/client/push-receipts',
+                data: {
+                  'deviceId': deviceId,
+                  'notificationId': item['notificationId'],
+                  'event': item['event'],
+                },
+              )
+              .timeout(const Duration(seconds: 5));
+          await prefs.remove(key);
+          sent++;
+        } catch (error) {
+          if (error is DioException &&
+              error.response?.statusCode == 404 &&
+              retryAttempt < 2 &&
+              _pushReceiptRetryTimer?.isActive != true) {
+            _pushReceiptRetryTimer = Timer(
+              Duration(seconds: 2 << retryAttempt),
+              () {
+                _pushReceiptRetryTimer = null;
+                if (generation == _pushSessionGeneration) {
+                  unawaited(_flushPushReceipts(retryAttempt: retryAttempt + 1));
+                }
+              },
+            );
+          }
+          // Older servers may not have this optional endpoint. Keep the
+          // receipt until next resume rather than blocking auth or retrying hot.
+          return;
+        }
+      }
+    } catch (_) {
+      // Diagnostics must never change login or notification handling.
+    } finally {
+      _pushReceiptFlushInFlight = false;
+    }
   }
 
   /// Регистрация устройства для push-уведомлений с автоматическим retry.
   Future<void> _registerForPush(String domain, {String? token}) async {
-    if (!state.isLoggedIn) return;
+    if (!state.isLoggedIn || _isLoggingOut) return;
     if (_pushRegistrationInFlight) {
       if (token != null && token.isNotEmpty) {
         _pendingRefreshedPushToken = token;
@@ -662,41 +758,68 @@ class AuthNotifier extends Notifier<AuthState> {
     }
 
     _pushRegistrationInFlight = true;
+    final generation = _pushSessionGeneration;
+    final clientId = state.clientId;
+    bool sessionIsCurrent() =>
+        generation == _pushSessionGeneration &&
+        !_isLoggingOut &&
+        state.isLoggedIn &&
+        state.clientId == clientId;
     PushNotificationService.recordDeviceRegistrationAttempt();
     try {
-      await PushNotificationService.initializeFirebase();
+      await PushNotificationService.initializeFirebase().timeout(
+        const Duration(seconds: 40),
+      );
+      if (!sessionIsCurrent()) return;
       final fcmToken = token ?? await PushNotificationService.getFCMToken();
+      if (!sessionIsCurrent()) return;
       if (fcmToken == null || fcmToken.isEmpty) {
         throw StateError('FCM token is not available');
       }
 
-      final runtime = await AppRuntimeInfo.instance.snapshot();
-      final response = await _apiClient.post(
-        '/devices',
-        data: {
-          'platform': getPlatformNameImpl(),
-          'token': fcmToken,
-          'deviceId': await _getDeviceId(),
-          'deviceName': runtime.device,
-          'deviceModel': runtime.device,
-          'osVersion': runtime.osVersion,
-          'appVersion': runtime.appVersion,
-          'locale': PlatformDispatcher.instance.locale.languageCode,
-        },
+      final runtime = await AppRuntimeInfo.instance.snapshot().timeout(
+        const Duration(seconds: 5),
       );
+      final deviceId = await _getDeviceId().timeout(const Duration(seconds: 2));
+      Map<String, dynamic>? pushDiagnostics;
+      try {
+        pushDiagnostics = await PushNotificationService.diagnosticSnapshot()
+            .timeout(const Duration(seconds: 4));
+      } catch (_) {}
+      if (!sessionIsCurrent()) return;
+      final response = await _apiClient
+          .post(
+            '/devices',
+            data: {
+              'platform': getPlatformNameImpl(),
+              'token': fcmToken,
+              'deviceId': deviceId,
+              'deviceName': runtime.device,
+              'deviceModel': runtime.device,
+              'osVersion': runtime.osVersion,
+              'appVersion': runtime.appVersion,
+              'locale': PlatformDispatcher.instance.locale.languageCode,
+              if (pushDiagnostics != null) 'pushDiagnostics': pushDiagnostics,
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+      if (!sessionIsCurrent()) return;
       final device = response.data;
       if (device is Map<String, dynamic>) {
         await PushNotificationService.applyDevicePreferences(
           notificationsEnabled: device['notificationsEnabled'] as bool?,
           soundEnabled: device['soundEnabled'] as bool?,
           badgeEnabled: device['badgeEnabled'] as bool?,
-        );
+        ).timeout(const Duration(seconds: 3));
       }
+      if (!sessionIsCurrent()) return;
 
       _pushRegistrationRetryTimer?.cancel();
       _pushRegistrationRetryTimer = null;
       _pushRegistrationRetryAttempt = 0;
-      await PushNotificationService.recordDeviceRegistrationSuccess();
+      await PushNotificationService.recordDeviceRegistrationSuccess().timeout(
+        const Duration(seconds: 3),
+      );
       ClientLogService.instance.add(
         type: 'push_device_registered',
         level: 'info',
@@ -707,6 +830,7 @@ class AuthNotifier extends Notifier<AuthState> {
         },
       );
       debugPrint('🔔 Device registered successfully');
+      unawaited(_flushPushReceipts());
 
       // Клиентские push отправляются точечно по DeviceToken. Общие topic'и
       // оставляем только как legacy cleanup, чтобы после смены аккаунта
@@ -714,10 +838,11 @@ class AuthNotifier extends Notifier<AuthState> {
       await PushNotificationService.unsubscribeFromTopic('clients');
       await PushNotificationService.unsubscribeFromTopic('domain_$domain');
     } catch (e) {
+      if (!sessionIsCurrent()) return;
       final errorMessage = ErrorUtils.getErrorInfo(e).message;
       await PushNotificationService.recordDeviceRegistrationFailure(
         errorMessage,
-      );
+      ).timeout(const Duration(seconds: 3)).catchError((_) {});
       ClientLogService.instance.add(
         type: 'push_device_registration_failed',
         level: 'warning',
@@ -730,13 +855,15 @@ class AuthNotifier extends Notifier<AuthState> {
       debugPrint('🔔 Error registering for push: $e');
       _schedulePushRegistrationRetry();
     } finally {
-      _pushRegistrationInFlight = false;
-      final pendingToken = _pendingRefreshedPushToken;
-      _pendingRefreshedPushToken = null;
-      if (pendingToken != null && state.isLoggedIn) {
-        unawaited(
-          _registerForPush(state.userDomain ?? domain, token: pendingToken),
-        );
+      if (generation == _pushSessionGeneration) {
+        _pushRegistrationInFlight = false;
+        final pendingToken = _pendingRefreshedPushToken;
+        _pendingRefreshedPushToken = null;
+        if (pendingToken != null && sessionIsCurrent()) {
+          unawaited(
+            _registerForPush(state.userDomain ?? domain, token: pendingToken),
+          );
+        }
       }
     }
   }
@@ -778,6 +905,8 @@ class AuthNotifier extends Notifier<AuthState> {
       return;
     }
     _isLoggingOut = true;
+    _pushSessionGeneration++;
+    _pushReceiptRetryTimer?.cancel();
     try {
       debugPrint('🚪 Starting logout process...');
       _pushRegistrationRetryTimer?.cancel();
@@ -785,6 +914,9 @@ class AuthNotifier extends Notifier<AuthState> {
       _pushRegistrationRetryAttempt = 0;
       _pendingRefreshedPushToken = null;
       PushNotificationService.clearActiveClient();
+      // Revoke the installation address even when the authenticated DELETE
+      // cannot reach our backend. Run in parallel so logout remains bounded.
+      final revokePushToken = PushNotificationService.revokeTokenForLogout();
       ref.read(chatPresenceServiceProvider).stopForLogout();
 
       // Отписываемся от push-уведомлений
@@ -795,6 +927,7 @@ class AuthNotifier extends Notifier<AuthState> {
         debugPrint('⚠️ Error unregistering from push: $e');
         // Продолжаем logout даже если отписка от push не удалась
       }
+      await revokePushToken;
 
       // Очищаем токен в ApiClient (он сам очистит и localStorage на web, и SecureStorage на мобильных)
       try {

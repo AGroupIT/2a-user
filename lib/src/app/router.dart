@@ -58,6 +58,9 @@ import '../features/purchase_blanks/presentation/purchase_blanks_screen.dart';
 import '../features/self_buyout/presentation/self_buyout_screen.dart';
 import '../features/support/presentation/support_chat_screen.dart';
 import '../features/tracks/presentation/tracks_screen.dart';
+import '../features/training/presentation/training_entry_screen.dart';
+import '../features/training/presentation/assembly_practice_screen.dart';
+import '../features/training/presentation/training_target.dart';
 import 'widgets/app_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -195,7 +198,8 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 name: 'home',
                 path: '/',
-                builder: (context, state) => const HomeScreen(),
+                builder: (context, state) =>
+                    const TrainingTarget(id: 'route.home', child: HomeScreen()),
               ),
             ],
           ),
@@ -205,7 +209,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 name: 'photos',
                 path: '/photos',
-                builder: (context, state) => const PhotosScreen(),
+                builder: (context, state) => const TrainingTarget(
+                  id: 'route.photos',
+                  child: PhotosScreen(),
+                ),
               ),
             ],
           ),
@@ -217,11 +224,16 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/tracks',
                 builder: (context, state) {
                   final query = state.uri.queryParameters;
-                  return TracksScreen(
-                    initialTrackId: int.tryParse(query['trackId'] ?? ''),
-                    initialTrackCode: query['trackCode'],
-                    initialAssemblyId: int.tryParse(query['assemblyId'] ?? ''),
-                    initialClientCode: query['clientCode'],
+                  return TrainingTarget(
+                    id: 'route.tracks',
+                    child: TracksScreen(
+                      initialTrackId: int.tryParse(query['trackId'] ?? ''),
+                      initialTrackCode: query['trackCode'],
+                      initialAssemblyId: int.tryParse(
+                        query['assemblyId'] ?? '',
+                      ),
+                      initialClientCode: query['clientCode'],
+                    ),
                   );
                 },
               ),
@@ -233,9 +245,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 name: 'invoices',
                 path: '/invoices',
-                builder: (context, state) => InvoicesScreen(
-                  initialInvoiceId: state.uri.queryParameters['invoiceId'],
-                  initialClientCode: state.uri.queryParameters['clientCode'],
+                builder: (context, state) => TrainingTarget(
+                  id: 'route.invoices',
+                  child: InvoicesScreen(
+                    initialInvoiceId: state.uri.queryParameters['invoiceId'],
+                    initialClientCode: state.uri.queryParameters['clientCode'],
+                  ),
                 ),
               ),
             ],
@@ -248,7 +263,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/support',
                 builder: (context, state) {
                   final initialMessage = state.extra as String?;
-                  return SupportChatScreen(initialMessage: initialMessage);
+                  return TrainingTarget(
+                    id: 'route.support',
+                    child: SupportChatScreen(initialMessage: initialMessage),
+                  );
                 },
               ),
             ],
@@ -256,6 +274,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(path: '/more', redirect: (context, state) => '/'),
+      GoRoute(
+        name: 'training',
+        path: '/training',
+        redirect: (context, state) =>
+            state.uri.queryParameters['practice'] == 'true'
+            ? '/training/assembly'
+            : null,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => AppScaffold(
+          title: tr(context, ru: 'Обучение', zh: '学习'),
+          child: TrainingEntryScreen(
+            initialLessonId: state.uri.queryParameters['lesson'],
+            initialPractice: state.uri.queryParameters['practice'] == 'true',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/training/assembly',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => AppScaffold(
+          title: tr(context, ru: 'Треки · Учебный пример', zh: '运单 · 练习示例'),
+          child: const AssemblyPracticeScreen(),
+        ),
+      ),
       GoRoute(
         name: 'calculator',
         path: '/calculator',
@@ -265,7 +307,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(
             title: 'Калькулятор доставки',
-            child: CalculatorScreen(),
+            child: TrainingTarget(
+              id: 'route.calculator',
+              child: CalculatorScreen(),
+            ),
           ),
         ),
       ),
@@ -278,8 +323,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           AppScaffold(
             title: 'Поиск по трек-номеру',
-            child: TrackSearchNoCodeScreen(
-              initialQuery: state.uri.queryParameters['query'],
+            child: TrainingTarget(
+              id: 'route.search-nocode',
+              child: TrackSearchNoCodeScreen(
+                initialQuery: state.uri.queryParameters['query'],
+              ),
             ),
           ),
         ),
@@ -317,15 +365,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             state,
             AppScaffold(
               title: 'Чат по оплате',
-              child: PaymentChatScreen(
-                initialMessage: initialMessage,
-                invoiceId: invoiceId,
-                invoiceNumber: invoiceNumber,
-                amount: amount,
-                totalCostCny: totalCostCny,
-                totalCostRub: totalCostRub,
-                clientRubRate: clientRubRate,
-                clientYuanRate: clientYuanRate,
+              child: TrainingTarget(
+                id: 'route.payment-chat',
+                child: PaymentChatScreen(
+                  initialMessage: initialMessage,
+                  invoiceId: invoiceId,
+                  invoiceNumber: invoiceNumber,
+                  amount: amount,
+                  totalCostCny: totalCostCny,
+                  totalCostRub: totalCostRub,
+                  clientRubRate: clientRubRate,
+                  clientYuanRate: clientYuanRate,
+                ),
               ),
             ),
           );
@@ -338,7 +389,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Новости', child: NewsListScreen()),
+          const AppScaffold(
+            title: 'Новости',
+            child: TrainingTarget(id: 'route.news', child: NewsListScreen()),
+          ),
         ),
         routes: [
           GoRoute(
@@ -366,7 +420,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Профиль', child: ProfileScreen()),
+          const AppScaffold(
+            title: 'Профиль',
+            child: TrainingTarget(id: 'route.profile', child: ProfileScreen()),
+          ),
         ),
       ),
       GoRoute(
@@ -376,7 +433,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Правила', child: RulesScreen()),
+          const AppScaffold(
+            title: 'Правила',
+            child: TrainingTarget(id: 'route.rules', child: RulesScreen()),
+          ),
         ),
         routes: [
           GoRoute(
@@ -406,7 +466,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(
             title: 'Реферальная программа',
-            child: ReferralScreen(),
+            child: TrainingTarget(
+              id: 'route.referral',
+              child: ReferralScreen(),
+            ),
           ),
         ),
       ),
@@ -419,7 +482,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(
             title: 'Партнёрская программа',
-            child: PartnerProgramScreen(),
+            child: TrainingTarget(
+              id: 'route.partner-program',
+              child: PartnerProgramScreen(),
+            ),
           ),
         ),
       ),
@@ -430,7 +496,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Тарифы', child: TariffsScreen()),
+          const AppScaffold(
+            title: 'Тарифы',
+            child: TrainingTarget(id: 'route.tariffs', child: TariffsScreen()),
+          ),
         ),
       ),
       GoRoute(
@@ -442,7 +511,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(
             title: 'Маркетплейсы',
-            child: MarketplaceAccessGate(child: ShopScreen()),
+            child: MarketplaceAccessGate(
+              child: TrainingTarget(id: 'route.shop', child: ShopScreen()),
+            ),
           ),
         ),
         routes: [
@@ -547,8 +618,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 name: 'sp-finance',
                 path: '/sp-finance',
-                builder: (context, state) =>
-                    const SpV2PurchasesScreen(embedded: true),
+                builder: (context, state) => const TrainingTarget(
+                  id: 'route.sp-finance',
+                  child: SpV2PurchasesScreen(embedded: true),
+                ),
                 routes: [
                   GoRoute(
                     name: 'sp-v2-purchase-detail',
@@ -793,7 +866,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Гараж', child: GarageScreen()),
+          const AppScaffold(
+            title: 'Гараж',
+            child: TrainingTarget(id: 'route.garage', child: GarageScreen()),
+          ),
         ),
         routes: [
           GoRoute(
@@ -930,7 +1006,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _adaptivePage(
           context,
           state,
-          const AppScaffold(title: 'Самовыкуп', child: SelfBuyoutScreen()),
+          const AppScaffold(
+            title: 'Самовыкуп',
+            child: TrainingTarget(
+              id: 'route.self-buyout',
+              child: SelfBuyoutScreen(),
+            ),
+          ),
         ),
       ),
       GoRoute(
@@ -942,7 +1024,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           const AppScaffold(
             title: 'Выкуп по бланку',
-            child: PurchaseBlanksScreen(),
+            child: TrainingTarget(
+              id: 'route.purchase-blanks',
+              child: PurchaseBlanksScreen(),
+            ),
           ),
         ),
         routes: [

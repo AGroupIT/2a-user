@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_input_decoration.dart';
@@ -541,60 +542,63 @@ class _TrackSearchNoCodeScreenState
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _ctrl,
-              focusNode: _focusNode,
-              textInputAction: TextInputAction.search,
-              style: const TextStyle(
-                color: _searchTextColor,
-                fontFamily: 'Gilroy',
-                fontSize: 15,
-                height: 18 / 15,
-                fontWeight: FontWeight.w700,
-              ),
-              decoration: appInputDecoration(
-                context,
-                prefixIcon: _focusNode.hasFocus
-                    ? null
-                    : Icon(
-                        Icons.search_rounded,
-                        color: context.brandPrimary,
-                        size: 22,
-                      ),
-                suffixIcon: _ctrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: _searchMutedTextColor,
-                          size: 20,
-                        ),
-                        onPressed: _clearSearch,
-                      )
-                    : null,
-                hintText: 'Поиск по трек-номеру',
-                hintStyle: const TextStyle(
+            child: TrainingTarget(
+              id: 'nocode.search',
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focusNode,
+                textInputAction: TextInputAction.search,
+                style: const TextStyle(
+                  color: _searchTextColor,
                   fontFamily: 'Gilroy',
-                  fontSize: 14,
-                  height: 16 / 14,
-                  color: Color(0x662F2F2F),
-                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  height: 18 / 15,
+                  fontWeight: FontWeight.w700,
                 ),
-                fillColor: const Color(0xFFF8FAFC),
-                borderColor: _validationMessage == null
-                    ? const Color(0xFFE1E5ED)
-                    : const Color(0xFFE53935),
-                focusedBorderColor: _validationMessage == null
-                    ? context.brandPrimary
-                    : const Color(0xFFE53935),
-                focusedWidth: 1.6,
-                radius: 18,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 13,
+                decoration: appInputDecoration(
+                  context,
+                  prefixIcon: _focusNode.hasFocus
+                      ? null
+                      : Icon(
+                          Icons.search_rounded,
+                          color: context.brandPrimary,
+                          size: 22,
+                        ),
+                  suffixIcon: _ctrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: _searchMutedTextColor,
+                            size: 20,
+                          ),
+                          onPressed: _clearSearch,
+                        )
+                      : null,
+                  hintText: 'Поиск по трек-номеру',
+                  hintStyle: const TextStyle(
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 16 / 14,
+                    color: Color(0x662F2F2F),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  fillColor: const Color(0xFFF8FAFC),
+                  borderColor: _validationMessage == null
+                      ? const Color(0xFFE1E5ED)
+                      : const Color(0xFFE53935),
+                  focusedBorderColor: _validationMessage == null
+                      ? context.brandPrimary
+                      : const Color(0xFFE53935),
+                  focusedWidth: 1.6,
+                  radius: 18,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 13,
+                  ),
                 ),
+                onChanged: (_) => setState(() => _validationMessage = null),
+                onSubmitted: (_) => _run(),
               ),
-              onChanged: (_) => setState(() => _validationMessage = null),
-              onSubmitted: (_) => _run(),
             ),
           ),
           const SizedBox(width: 10),

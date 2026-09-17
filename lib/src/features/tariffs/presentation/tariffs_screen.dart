@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -150,6 +151,7 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
                       key: _weightTiersKey,
                       child: _DeliveryTariffCard(
                         tariff: data.deliveryTariffs[i],
+                        trainingTarget: true,
                       ),
                     )
                   else
@@ -244,7 +246,11 @@ class _SectionTitle extends StatelessWidget {
 class _DeliveryTariffCard extends StatelessWidget {
   final UserDeliveryTariff tariff;
 
-  const _DeliveryTariffCard({required this.tariff});
+  const _DeliveryTariffCard({
+    required this.tariff,
+    this.trainingTarget = false,
+  });
+  final bool trainingTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -266,15 +272,20 @@ class _DeliveryTariffCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      tariff.name,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 18,
-                        height: 22 / 18,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.15,
+                    TrainingTarget(
+                      id: trainingTarget
+                          ? 'tariffs.name'
+                          : 'tariffs.name.${tariff.id}',
+                      child: Text(
+                        tariff.name,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontFamily: 'Gilroy',
+                          fontSize: 18,
+                          height: 22 / 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.15,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),

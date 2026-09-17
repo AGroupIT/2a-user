@@ -82,14 +82,20 @@ class ApiConfig {
   /// Оригинальный URL сохраняется для полноэкранного просмотра/скачивания,
   /// а превью идут через /api/uploads/thumb/{size}/..., чтобы не тянуть
   /// тяжёлые фото в маленькие плитки на web/iOS/Android.
-  static String getMediaThumbnailUrl(String path, {int size = 360}) {
+  static String getMediaThumbnailUrl(
+    String path, {
+    int size = 360,
+    bool preserveAspectRatio = false,
+  }) {
     final mediaUrl = getMediaUrl(path);
     if (mediaUrl.isEmpty) return '';
     if (!supportsMediaThumbnail(mediaUrl)) return mediaUrl;
 
     const uploadsMarker = '/api/uploads/';
     final uploadsIndex = mediaUrl.indexOf(uploadsMarker);
-    if (uploadsIndex == -1 || mediaUrl.contains('/api/uploads/thumb/')) {
+    if (uploadsIndex == -1 ||
+        mediaUrl.contains('/api/uploads/thumb/') ||
+        mediaUrl.contains('/api/uploads/preview/')) {
       return mediaUrl;
     }
 
@@ -98,11 +104,14 @@ class ApiConfig {
     final relativePath = mediaUrl.substring(
       uploadsIndex + uploadsMarker.length,
     );
-    if (relativePath.isEmpty || relativePath.startsWith('thumb/')) {
+    if (relativePath.isEmpty ||
+        relativePath.startsWith('thumb/') ||
+        relativePath.startsWith('preview/')) {
       return mediaUrl;
     }
 
-    return '${prefix}thumb/$normalizedSize/$relativePath';
+    final variant = preserveAspectRatio ? 'preview' : 'thumb';
+    return '$prefix$variant/$normalizedSize/$relativePath';
   }
 
   static bool supportsMediaThumbnail(String path) {

@@ -466,10 +466,42 @@ class PaginatedTracksNotifier {
       try {
         final currentCount = _state.tracks.length;
         final take = currentCount > _pageSize ? currentCount : _pageSize;
-        final result = await _fetchTracks(
-          skip: 0,
-          take: take,
-          filters: requestFilters,
+        final refreshed = <TrackItem>[];
+        final seenIds = <Object>{};
+        var total = _state.total;
+        do {
+          final remaining = take - refreshed.length;
+          final page = await _fetchTracks(
+            skip: refreshed.length,
+            take: remaining < _pageSize ? remaining : _pageSize,
+            filters: requestFilters,
+          );
+          if (_state.filters != requestFilters) {
+            _queueSilentRefresh(Duration.zero);
+            return;
+          }
+          if (refreshed.isNotEmpty && total != page.total) {
+            throw StateError('Track total changed during refresh');
+          }
+          total = page.total;
+          if (page.tracks.isEmpty) {
+            if (refreshed.length < total) {
+              throw StateError('Incomplete track refresh');
+            }
+            break;
+          }
+          for (final track in page.tracks) {
+            if (!seenIds.add(track.id ?? track.code)) {
+              throw StateError('Track pages changed during refresh');
+            }
+          }
+          // Group pages may exceed take to keep an assembly together. Their
+          // cursor is a track offset, so advance by the actual response length.
+          refreshed.addAll(page.tracks);
+        } while (refreshed.length < take && refreshed.length < total);
+        final result = _TracksResult(
+          tracks: _sortTracksDesc(refreshed, requestFilters.sortBy),
+          total: total,
         );
         if (_state.filters != requestFilters) {
           await loadInitial(silent: true);
@@ -601,6 +633,7 @@ class PaginatedTracksNotifier {
       'take': take,
       'skip': skip,
       'sortBy': requestFilters.sortBy,
+      'compact': 'assemblies-v1',
     };
 
     // Фильтр по статусу (код статуса из БД)
@@ -662,9 +695,22 @@ class PaginatedTracksNotifier {
     final tracksJson = data['data'] as List<dynamic>? ?? [];
     final total = data['total'] as int? ?? 0;
 
-    final tracks = tracksJson
-        .map((json) => TrackItem.fromJson(json as Map<String, dynamic>))
-        .toList();
+    final tracks = tracksJson.map((json) {
+      final row = Map<String, dynamic>.from(json as Map<String, dynamic>);
+      if (data['encoding'] == 'assemblies-v1') {
+        final assemblyRef = row['assemblyRef'];
+        if (assemblyRef != null) {
+          final assembly =
+              (data['assembliesById'] as Map<String, dynamic>?)?[assemblyRef
+                  .toString()];
+          if (assembly is! Map<String, dynamic>) {
+            throw StateError('Missing compact assembly');
+          }
+          row['assembly'] = assembly;
+        }
+      }
+      return TrackItem.fromJson(row);
+    }).toList();
 
     if (kDebugMode) {
       debugPrint('Fetched ${tracks.length} tracks, total: $total');
@@ -853,7 +899,7 @@ final tracksDigestProvider = FutureProvider.family<List<TrackItem>, String>((
     return _sortTracksByCreatedAtDesc(tracks);
   } catch (e) {
     debugPrint('Error loading tracks digest: $e');
-    return [];
+    rethrow;
   }
 });
 
@@ -918,7 +964,7 @@ final tracksCountProvider = FutureProvider.family<int, String>((
     return data['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading tracks count: $e');
-    return 0;
+    rethrow;
   }
 });
 
@@ -951,7 +997,7 @@ final tracksWeeklyCountProvider = FutureProvider.family<int, String>((
     return data['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading weekly tracks count: $e');
-    return 0;
+    rethrow;
   }
 });
 

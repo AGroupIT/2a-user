@@ -126,13 +126,70 @@
 - SP test/screenshot expectations: add regression fixtures before business-logic edits; validate 320/390 px, tablet, desktop web, and macOS; visually compare against existing 2A surfaces, not against copied foreign assets.
 
 ## Open questions
+- [ ] Validate the assembly exercise and real-screen walkthrough with several clients before production rollout. / owner: product / impact: learning effectiveness.
 - [ ] Should the home dashboard later expose unpaid invoice count or urgent statuses as a separate alert card? / owner: product / impact: prioritization.
 - [ ] Should warehouse data be pinned above promo for every agent, or only when address/phone exists? / owner: product / impact: information hierarchy.
 - [ ] Which `2A Организатор` capabilities ship in the first enabled cohort after the compatibility foundation: participant navigation, server calculation, or fulfillment links? / owner: product + engineering / impact: rollout order only; does not block documentation.
 
 ## Garage visual contract
+- Garage vehicle and request create/edit/detail flows open as root-navigator branded modal sheets; URL routes remain available only as deep-link fallbacks.
 - Main Garage follows the Self-buyout service-page composition: explicit back header, branded service hero with actions, then the Tracks-style horizontal segmented control and white 24px list cards.
 - Vehicle titles do not duplicate make/model; nickname is primary while vehicle data and VIN are supporting metadata.
 - Vehicle and request forms use semantic section cards while preserving validation, uploads, drafts, and API behavior.
 - Request detail shows the request number once in its branded hero; status and progress remain in the content.
-- Garage vehicle and request create/edit/detail flows open as root-navigator branded modal sheets; URL routes remain available only as deep-link fallbacks.
+
+## Client training: approved first-stage prototype (2026-09-14, historical)
+
+This section records the original prototype. Its separate assembly exercise is superseded by the production-form practice contract below; its validation is historical.
+- User-approved scope: write the complete 12-topic excursion, then implement a local interactive assembly lesson. The concrete pain points are assembly submission, finding Self-buyout, checking entered details, locating tariffs, and understanding track statuses.
+- Entry: `Ещё → Обучение` on mobile and `Обучение` in the desktop side navigation; authenticated `/training`. A standalone `lib/training_preview.dart` allows local review without account or production bootstrap.
+- Content source: `docs/training-excursion.md` and localized `training_lessons.dart`. Every topic has steps, explanatory copy, and an action cue. All copy uses existing RU/ZH `tr` localization.
+- Existing visual contract applies: agent brand colors, white 24px cards, text-first controls, wrap rather than overflow, flexible mobile/desktop widths. This is an additive learning surface using existing patterns; existing Pixso business screens are preserved.
+- Prototype interaction: read topics sequentially or pick one, skip/revisit, return to the catalog, resume the last reading step. Assembly practice uses only fictional local data; no backend calls, old demo mode, real orders, payments, or status mutations.
+- Progress: per account and domain, device-local versioned storage; distinguish in-progress, read, skipped and practiced. Reviewing does not erase previous completion. Exercise drafts live only while the exercise is open; reading position and completion persist. Cross-device progress is a later API phase.
+- Availability: introductory content explains conditional services and does not provide buttons to unavailable business actions. Exact per-client availability and anchored real-screen tours are a later stage.
+- Validation: test invalid exercise input, eligible track selection, review confirmation, account-isolated persistence, resume/skip semantics, and mobile/Chinese layout. Render the standalone preview for visual review.
+- Not yet delivered by this stage: full real-screen spotlight tours, Home invitation, cross-device sync, production onboarding analytics, or client usability study. The local prototype is the review artifact for those decisions.
+
+## Client training: real-screen excursion (2026-09-14, stage 2)
+- Reading catalog and lesson pages also use `TrainingUi`: white card decoration, explicit Gilroy title/body/caption styles and the existing 48px rectangular actions. Do not inherit generic Material surface tint or headline sizes. Under `AppScaffold`, reserve only the floating toolbar height/margins; the scaffold already reserves the status-bar inset. Desktop reading has no floating-toolbar gap and follows `AppLayout.contentMaxWidth`. For assembly instructions, show a single primary practice launcher instead of duplicate show-in-app/practice actions.
+- Precise-target correction requested by the user: all 56 steps use semantic control/value anchors. Never substitute an entire route, card or action row for a button/field/tab. Return and client-code transfer are separate steps; assembly video has its own step. For hidden controls, highlight the actual prerequisite button with its own instruction, then switch to the intended control after manual opening. Assembly tabs remain targetable inside the open detail sheet; returning to earlier wizard parameters must point to its Back button. Existing business handlers and conditional availability remain authoritative. See `docs/training-targets.md` for the complete map.
+- Visual correction requested by the user: Home invitation follows `_NoCodeSearchCard` (white card, subtle border/shadow, branded icon tile, Gilroy bold title and rectangular 48px CTA). Coach windows use the same white surface, Gilroy hierarchy, soft task/notice inset and 15px action-button radii as existing branded sheets. Use `TrainingUi` for these two learning surfaces; generic Material surface tint, default typography and pill CTAs do not match the app. The coach remains a floating, collapsible overlay with 24px corners so the actual page stays interactive; it is not a blocking modal route.
+- User-requested focus contrast: keep the target undimmed, increase the surrounding black scrim to 46%, and use an 8px white outer edge plus a 4px brand outline. Darken very light brand colors for the outline only so the selected element stays identifiable on white and dark surfaces. The spotlight still ignores pointer events.
+- User-approved continuation: connect the complete excursion to actual app screens. The catalog contains 12 topics / 56 RU/ZH steps, including separate Rules, Return, Transfer and Video steps.
+- Home offers a dismissible invitation; it never starts a tour automatically. The Training catalog starts/resumes the full tour; each topic can launch its own real-screen guide. Reading instructions remain available; assembly practice opens the production Tracks screen with an isolated local data session, as specified below.
+- The coach navigates to existing routes and highlights registered, visible widget geometry. It offers Next, Back, Skip, Exit and collapse/expand. The translucent spotlight passes input to the actual page; only the coach intercepts its own controls. On narrow screens/large text its content scrolls; keyboard and safe-area insets remain respected.
+- Never perform business operations automatically. The user has authorized automatic opening/closing of views after highlighting; choosing real tracks, sending requests, creating assemblies and paying stay explicit user actions in existing interfaces. Completing a step records a viewed explanation, not a successful business action.
+- Use passive anchors and existing TutorialScreenWrapper keys; do not enable the legacy demo mode. Hide anchors belonging to inactive routes, Offstage branches or content covered by a root modal. Wait for delayed targets and offer an explanation/retry if missing or outside the visible surface. Automatically scroll once per target appearance; do not fight manual scrolling.
+- Self-buyout, Shop, Garage and Partner Program use existing availability providers. Loading, error and unavailable states have different copy; unavailable services are described without automatically navigating to them. Preserve the existing Self-buyout rule allowing the screen to explain a missing/stale rate.
+- Keep the Router child mounted in the same slot while the coach starts/stops or auth changes. The coach owns a local Overlay for tooltip support above the app Navigator; it must not block page input outside the card.
+- Real-tour progress is versioned device-local storage scoped by domain, client id and active client code. Writes are serialized; failed saving exposes retry. Account changes stop the tour. Interrupted tours resume only on user launch; finished tours restart from the beginning without erasing viewed-step history.
+- Data-dependent targets require the relevant real records/forms. Overview steps highlight the specific title, value or navigation control they explain. Missing controls show guidance or allow skipping; whole-card fallbacks are forbidden. The assembly practice uses the production form and creates only a local fixture result in its isolated session.
+- Validation: controller persistence/races, account switching, modal coverage, late/offscreen targets, service gating, 320px RU/ZH with text scale 1.5, preserved Router/form state, pointer pass-through, actual TariffsScreen rendering with local fixtures, and web compilation. See `docs/training-tour-validation.md`.
+- Deferred: server progress sync, learning analytics, automatic verification of real business completion, physical-device and client usability studies.
+
+
+## Client training: assembly practice in the production form (2026-09-14)
+- Route `/training/assembly` mounts `AssemblyPracticeScreen` → an independent, parentless `ProviderContainer` → the ordinary `TracksScreen`. Reuse the actual cards, controls, validation and four-step assembly wizard. Do not maintain a second assembly UI or a simplified training-only confirmation checkbox.
+- Reuse the existing floating coach for ten RU/ZH steps: select two warehouse tracks, open the wizard, inspect tariff, enter goods description, choose places, select packaging, review and submit, switch to assemblies, open the result, inspect its status. Action steps advance from actual form/selection/result state; explanatory steps retain manual Next. The coach never presses business controls for the user.
+- Supply two warehouse fixtures and one pending/in-transit fixture. A missing product description exercises the actual form requirement. Clearly label the route and fixture tariffs/numbers as a training example.
+- Retain production providers and service contracts behind a local transport without network access or fallback. Disable shared data caching. Only the allowed assembly POST creates an in-memory result; reject unsupported requests. Preserve the caller's provider container in root sheets and dropdowns.
+- Dispose the local data session on exit and create fresh fixtures on restart. Practice uses its own controller/storage key and must not overwrite the ordinary tour's resume position. Recording `practiced` follows local assembly creation and exposes failed-save retry; it does not certify a production operation.
+- The Training screen delegates practice through `onStartPractice`. A standalone reading preview without this callback hides practice instead of mounting the historical duplicate form.
+- Current verification must cover the real wizard, invalid input, target-driven advancement, modal/container lifecycle, exit/restart, save failure, account scope and preserved ordinary-tour progress. Historical prototype tests/builds below or in earlier reports are not evidence for this replacement. Record fresh results in `docs/training-tour-validation.md`.
+
+### Tour reachability audit (2026-09-14)
+
+- The current tour has 56 explanations in 12 topics, plus 10 assembly practice hints. Self-buyout follows the real form: amount, recipient QR, terms, submit, existing request and current status.
+- Until the actual target has appeared, show a preparation instruction instead of describing invisible fields. Disable Next; explicit Skip stays available and does not count as viewed. Never select an Alipay experience answer or submit a business form automatically.
+- Preparation anchors reflect enabled controls and missing required values. Respect unavailable rates/operators and empty lists. Switch between Tracks/Assemblies using existing controls; dismiss the current sheet before explaining the list beneath it.
+- Measure the exact control. Paint both spotlight strokes outside its bounds, preserving small status text. Position the scrollable coach in the larger free space above/below the target and reset its scroll on step/preparation changes.
+- Follow the actual GoRouter state on imperative push/pop. Defer router-triggered coach rebuilds until after layout to preserve initialization and unsaved page state.
+
+### Automatic navigation during a tour (user-approved)
+
+- In the ordinary tour, highlight the exact prerequisite for 1200ms before calling its explicitly registered existing view/navigation handler. Never infer a button action or synthesize pointer input.
+- TrainingTarget.onActivate and TrainingTargetBindings.actions are opt-in navigation hooks. Only the current visible registration may run. Saves, payments, real-track selection, form values, consents, experience answers and native file pickers remain manual.
+- Primary assembly/organizer tabs open automatically, then wait for Next. Explanations never advance automatically. The assembly exercise remains manual practice.
+- Cancel pending activation on step/route/access changes, hidden target, collapse, exit or disposal. Re-check context/access before executing. Manual opening wins over queued automatic opening. Limit each action to once per step, except tariff Back (up to three existing wizard pages).
+- The existing coach notice announces automatic activation. Collapsing pauses it; expanding can schedule it again. No alternate application view or duplicate business form is introduced.

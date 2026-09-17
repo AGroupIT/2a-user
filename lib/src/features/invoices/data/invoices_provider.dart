@@ -6,6 +6,7 @@ import '../../../core/cache/stale_data_cache.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/demo_mode_provider.dart';
 import '../domain/invoice_item.dart';
+import '../domain/early_payment_benefit.dart';
 
 /// Модель статуса счёта
 class InvoiceStatus {
@@ -76,6 +77,37 @@ Future<void> requestInvoicePayment(
   await apiClient.post('/client/invoices/$invoiceId/request-payment');
 }
 
+/// Выбирает одно из предложенных сервером преимуществ ранней оплаты.
+///
+/// Клиент передаёт только тип и ключ идемпотентности. Все суммы, доступность и
+/// срок предложения остаются серверными данными.
+Future<EarlyPaymentBenefit> selectEarlyPaymentBenefit(
+  ApiClient apiClient, {
+  required String invoiceId,
+  required EarlyPaymentBenefitType benefitType,
+  required String idempotencyKey,
+}) async {
+  final response = await apiClient.post(
+    '/client/invoices/$invoiceId/early-payment-benefit',
+    data: {
+      'benefitType': benefitType.serverValue,
+      'idempotencyKey': idempotencyKey,
+    },
+  );
+  final responseData = response.data;
+  if (responseData is! Map) {
+    throw const FormatException('Invalid early-payment benefit response');
+  }
+  final nestedData = responseData['data'];
+  final benefitJson =
+      responseData['earlyPaymentBenefit'] ??
+      (nestedData is Map ? nestedData['earlyPaymentBenefit'] : null);
+  if (benefitJson is! Map) {
+    throw const FormatException('Missing early-payment benefit response');
+  }
+  return EarlyPaymentBenefit.fromJson(Map<String, dynamic>.from(benefitJson));
+}
+
 /// Провайдер для получения списка счетов
 final invoicesListProvider = FutureProvider.family<List<InvoiceItem>, String>((
   ref,
@@ -130,7 +162,7 @@ final invoicesDigestProvider = FutureProvider.family<List<InvoiceItem>, String>(
           .toList();
     } catch (e) {
       debugPrint('Error loading invoices digest: $e');
-      return [];
+      rethrow;
     }
   },
 );
@@ -216,7 +248,7 @@ final invoicesCountProvider = FutureProvider.family<int, String>((
     return data['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading invoices count: $e');
-    return 0;
+    rethrow;
   }
 });
 
@@ -249,7 +281,7 @@ final invoicesWeeklyCountProvider = FutureProvider.family<int, String>((
     return data['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading weekly invoices count: $e');
-    return 0;
+    rethrow;
   }
 });
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../application/notifications_controller.dart';
@@ -75,7 +76,16 @@ class _NotificationsSheetState extends ConsumerState<NotificationsSheet> {
         ),
         child: Column(
           children: [
-            const SheetHandle(),
+            Center(
+              child: SizedBox(
+                width: 42,
+                child: TrainingTarget(
+                  id: 'notification.sheet.dismiss',
+                  onActivate: () => Navigator.of(context).pop(),
+                  child: SheetHandle(),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: _NotificationsHeader(

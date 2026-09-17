@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_layout.dart';
 
@@ -36,10 +37,24 @@ Future<T?> showBlurredModalBottomSheet<T>({
     from: context,
     to: navigator.context,
   );
+  ProviderContainer? callerContainer;
+  try {
+    callerContainer = ProviderScope.containerOf(context, listen: false);
+  } on StateError {
+    // Standalone UI callers may have no Riverpod scope.
+  }
+  final capturedContainer = callerContainer;
 
   return navigator.push<T>(
     _BlurredModalBottomSheetRoute<T>(
-      builder: builder,
+      // Root-navigator sheets must retain the caller's account/data scope.
+      // Its existing owner remains responsible for the container's lifetime.
+      builder: capturedContainer == null
+          ? builder
+          : (_) => UncontrolledProviderScope(
+              container: capturedContainer,
+              child: Builder(builder: builder),
+            ),
       capturedThemes: capturedThemes,
       backgroundColor: backgroundColor,
       modalBarrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.24),

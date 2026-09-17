@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/app_colors.dart';
+import '../../../training/presentation/training_target.dart';
+
+Widget _trainingTarget(String? id, Widget child, {VoidCallback? onActivate}) =>
+    id == null
+    ? child
+    : TrainingTarget(id: id, onActivate: onActivate, child: child);
 
 class ClientTrackIndicator {
   final IconData icon;
@@ -9,6 +15,7 @@ class ClientTrackIndicator {
   final String label;
   final Color color;
   final int tabIndex;
+  final String? trainingTargetId;
 
   const ClientTrackIndicator({
     required this.icon,
@@ -17,6 +24,7 @@ class ClientTrackIndicator {
     required this.label,
     required this.color,
     required this.tabIndex,
+    this.trainingTargetId,
   });
 }
 
@@ -25,12 +33,14 @@ class ClientTrackQuickAction {
   final String label;
   final VoidCallback onTap;
   final bool destructive;
+  final String? trainingTargetId;
 
   const ClientTrackQuickAction({
     required this.icon,
     required this.label,
     required this.onTap,
     this.destructive = false,
+    this.trainingTargetId,
   });
 }
 
@@ -50,6 +60,9 @@ class ClientTrackCompactCard extends StatelessWidget {
   final String entityLabel;
   final IconData leadingIcon;
   final bool showCopyAction;
+  final String? trainingOpenId;
+  final String? trainingStatusId;
+  final String? trainingSelectionId;
 
   const ClientTrackCompactCard({
     super.key,
@@ -68,6 +81,9 @@ class ClientTrackCompactCard extends StatelessWidget {
     this.entityLabel = 'Трек',
     this.leadingIcon = Icons.local_shipping_rounded,
     this.showCopyAction = true,
+    this.trainingOpenId,
+    this.trainingStatusId,
+    this.trainingSelectionId,
   });
 
   @override
@@ -123,10 +139,13 @@ class ClientTrackCompactCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       if (selectable) ...[
-                        _SelectionButton(
-                          selected: selected,
-                          accent: accent,
-                          onTap: onToggleSelection!,
+                        _trainingTarget(
+                          trainingSelectionId,
+                          _SelectionButton(
+                            selected: selected,
+                            accent: accent,
+                            onTap: onToggleSelection!,
+                          ),
                         ),
                         const SizedBox(width: 10),
                       ] else ...[
@@ -141,18 +160,22 @@ class ClientTrackCompactCard extends StatelessWidget {
                             Row(
                               children: [
                                 Flexible(
-                                  child: Text(
-                                    trackNumber,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'Gilroy',
-                                      fontSize: 16,
-                                      height: 1.1,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.1,
-                                      color: AppColors.textPrimary,
+                                  child: _trainingTarget(
+                                    trainingOpenId,
+                                    Text(
+                                      trackNumber,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontFamily: 'Gilroy',
+                                        fontSize: 16,
+                                        height: 1.1,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.1,
+                                        color: AppColors.textPrimary,
+                                      ),
                                     ),
+                                    onActivate: () => onOpenDetails(0),
                                   ),
                                 ),
                                 if (showCopyAction) ...[
@@ -182,7 +205,10 @@ class ClientTrackCompactCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 7),
-                      _StatusPill(text: status, color: statusColor),
+                      _trainingTarget(
+                        trainingStatusId,
+                        _StatusPill(text: status, color: statusColor),
+                      ),
                     ],
                   ),
                   if (indicators.isNotEmpty) ...[
@@ -509,9 +535,12 @@ class _IndicatorPanel extends StatelessWidget {
         for (var index = 0; index < indicators.length; index++) ...[
           if (index > 0) const SizedBox(width: 6),
           Expanded(
-            child: _IndicatorCell(
-              indicator: indicators[index],
-              onTap: () => onOpenDetails(indicators[index].tabIndex),
+            child: _trainingTarget(
+              indicators[index].trainingTargetId,
+              _IndicatorCell(
+                indicator: indicators[index],
+                onTap: () => onOpenDetails(indicators[index].tabIndex),
+              ),
             ),
           ),
         ],
@@ -629,46 +658,49 @@ class _QuickActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = action.destructive ? Colors.redAccent : context.brandPrimary;
-    return Semantics(
-      button: true,
-      label: action.label,
-      excludeSemantics: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: ValueKey('client-track-action-${action.label}'),
-          onTap: action.onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 25,
-                  height: 25,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
+    return _trainingTarget(
+      action.trainingTargetId,
+      Semantics(
+        button: true,
+        label: action.label,
+        excludeSemantics: true,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: ValueKey('client-track-action-${action.label}'),
+            onTap: action.onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 25,
+                    height: 25,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(action.icon, size: 14, color: color),
                   ),
-                  child: Icon(action.icon, size: 14, color: color),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  action.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Gilroy',
-                    fontSize: 9,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    color: action.destructive
-                        ? color
-                        : AppColors.textPrimary.withValues(alpha: 0.76),
+                  const SizedBox(height: 1),
+                  Text(
+                    action.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontSize: 9,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      color: action.destructive
+                          ? color
+                          : AppColors.textPrimary.withValues(alpha: 0.76),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

@@ -1,3 +1,4 @@
+import '../../training/presentation/training_target.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -655,35 +656,38 @@ class _WarehouseAddressCheckerSheetState
                 ],
               ],
               const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: _checking ? null : _pickAndCheck,
-                icon: _checking
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.add_photo_alternate_outlined),
-                label: Text(
-                  _checking
-                      ? 'Проверяем…'
-                      : _previewBytes == null
-                      ? 'Выбрать скриншот'
-                      : 'Проверить другой скриншот',
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: context.brandPrimary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 17),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+              TrainingTarget(
+                id: 'warehouse.screenshot',
+                child: FilledButton.icon(
+                  onPressed: _checking ? null : _pickAndCheck,
+                  icon: _checking
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(
+                    _checking
+                        ? 'Проверяем…'
+                        : _previewBytes == null
+                        ? 'Выбрать скриншот'
+                        : 'Проверить другой скриншот',
                   ),
-                  textStyle: const TextStyle(
-                    fontFamily: 'Gilroy',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.brandPrimary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 17),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Gilroy',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),

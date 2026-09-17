@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
@@ -17,6 +18,7 @@ import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/utils/clipboard_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../garage/application/garage_providers.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
@@ -75,6 +77,7 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
       label: 'Главная',
       route: '/',
       shellIndex: 0,
+      trainingTargetId: 'nav.home',
     ),
     _SideNavEntry(
       icon: CupertinoIcons.photo_on_rectangle,
@@ -152,6 +155,7 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
     final cabinetItems = <_SideNavEntry>[
       _primaryItems.first,
       _SideNavEntry(
+        trainingTargetId: 'nav.notifications',
         icon: CupertinoIcons.bell,
         selectedIcon: CupertinoIcons.bell_fill,
         label: unreadNotifications > 0
@@ -180,6 +184,12 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
     final partnerProgramAvailable =
         ref.watch(clientPartnerProgramProvider).asData?.value != null;
     final serviceItems = <_SideNavEntry>[
+      _SideNavEntry(
+        icon: Icons.school_rounded,
+        selectedIcon: Icons.school_rounded,
+        label: tr(context, ru: 'Обучение', zh: '学习'),
+        route: '/training',
+      ),
       const _SideNavEntry(
         icon: Icons.person_rounded,
         selectedIcon: Icons.person_rounded,
@@ -217,6 +227,7 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
           selectedIcon: Icons.savings_rounded,
           label: 'Самовыкуп',
           route: '/self-buyout',
+          trainingTargetId: 'menu.self-buyout',
         ),
       if (garageAvailable)
         const _SideNavEntry(
@@ -290,6 +301,7 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
         icon: Icons.bug_report_outlined,
         selectedIcon: Icons.bug_report_outlined,
         label: 'Проблема',
+        trainingTargetId: 'menu.report',
         action: isProfileLoading ? null : () => _openProblemReport(profile),
         loading: isProfileLoading,
       ),
@@ -375,7 +387,10 @@ class _DesktopSideNavState extends ConsumerState<DesktopSideNav> {
                 ),
               ),
               const SizedBox(height: 10),
-              _SideClientSwitcherButton(expanded: expanded),
+              TrainingTarget(
+                id: 'nav.code',
+                child: _SideClientSwitcherButton(expanded: expanded),
+              ),
             ],
           ),
         ),
@@ -577,6 +592,7 @@ class _SideNavEntry {
   final bool loading;
   final bool hasBadge;
   final bool attention;
+  final String? trainingTargetId;
 
   const _SideNavEntry({
     required this.icon,
@@ -588,6 +604,7 @@ class _SideNavEntry {
     this.loading = false,
     this.hasBadge = false,
     this.attention = false,
+    this.trainingTargetId,
   });
 }
 
@@ -654,18 +671,26 @@ class _SideNavSection extends StatelessWidget {
               ),
             ),
           for (var i = 0; i < entries.length; i++) ...[
-            _SideNavButton(
-              icon: entries[i].icon,
-              selectedIcon: entries[i].selectedIcon,
-              label: entries[i].label,
-              expanded: expanded,
-              selected: isSelected(entries[i], currentPath),
-              loading: entries[i].loading,
-              hasBadge: entries[i].hasBadge,
-              attention: entries[i].attention,
-              onTap: entries[i].action == null && entries[i].route == null
-                  ? null
-                  : () => onTap(entries[i]),
+            Builder(
+              builder: (context) {
+                final button = _SideNavButton(
+                  icon: entries[i].icon,
+                  selectedIcon: entries[i].selectedIcon,
+                  label: entries[i].label,
+                  expanded: expanded,
+                  selected: isSelected(entries[i], currentPath),
+                  loading: entries[i].loading,
+                  hasBadge: entries[i].hasBadge,
+                  attention: entries[i].attention,
+                  onTap: entries[i].action == null && entries[i].route == null
+                      ? null
+                      : () => onTap(entries[i]),
+                );
+                final targetId = entries[i].trainingTargetId;
+                return targetId == null
+                    ? button
+                    : TrainingTarget(id: targetId, child: button);
+              },
             ),
             if (i < entries.length - 1) const SizedBox(height: 8),
           ],

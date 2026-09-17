@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/paged_list_loader.dart';
 import 'sp_v2_models.dart';
 
 MediaType? _mediaTypeForMimeType(String? mimeType) {
@@ -136,13 +137,13 @@ class SpV2Repository {
   }
 
   Future<List<SpV2Customer>> getCustomers({String? query}) async {
-    final response = await _apiClient.get(
-      '/client/sp-v2/customers',
-      queryParameters: {
-        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
-      },
+    final data = await loadPagedList(
+      query: {if (query != null && query.trim().isNotEmpty) 'q': query.trim()},
+      fetchPage: (params) async => (await _apiClient.get(
+        '/client/sp-v2/customers',
+        queryParameters: params,
+      )).data,
     );
-    final data = response.data as List<dynamic>;
     return data
         .whereType<Map<String, dynamic>>()
         .map(SpV2Customer.fromJson)

@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -157,7 +158,10 @@ class _TopBarContent extends StatelessWidget {
             fit: FlexFit.loose,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: ClientSwitcherButton(),
+              child: TrainingTarget(
+                id: 'nav.code',
+                child: ClientSwitcherButton(),
+              ),
             ),
           ),
         const _ActionsPill(),
@@ -198,7 +202,10 @@ class _ActionsPill extends ConsumerWidget {
               ),
               SizedBox(width: 6 * scale),
             ],
-            const NotificationsBellButton(),
+            const TrainingTarget(
+              id: 'nav.notifications',
+              child: NotificationsBellButton(),
+            ),
             SizedBox(width: 6 * scale),
             _TopBarActionButton(
               tooltip: 'Чат поддержки',

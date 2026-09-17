@@ -1,6 +1,7 @@
 import '../../../core/models/status_timeline_entry.dart';
 import '../../assemblies/domain/box.dart';
 import '../../payments/data/client_payment_summary.dart';
+import 'early_payment_benefit.dart';
 
 class InvoiceItem {
   final String id;
@@ -58,6 +59,7 @@ class InvoiceItem {
   final ClientActiveTopUp? activeTopUp;
   final String? paymentProvider;
   final String? paymentMethod;
+  final EarlyPaymentBenefit? earlyPaymentBenefit;
   final List<StatusTimelineEntry> statusHistory;
 
   const InvoiceItem({
@@ -115,6 +117,7 @@ class InvoiceItem {
     this.activeTopUp,
     this.paymentProvider,
     this.paymentMethod,
+    this.earlyPaymentBenefit,
     this.statusHistory = const [],
   });
 
@@ -451,6 +454,11 @@ class InvoiceItem {
       activeTopUp: ClientActiveTopUp.tryParse(json['activeTopUp']),
       paymentProvider: json['paymentProvider'] as String?,
       paymentMethod: json['paymentMethod'] as String?,
+      earlyPaymentBenefit: json['earlyPaymentBenefit'] is Map
+          ? EarlyPaymentBenefit.fromJson(
+              Map<String, dynamic>.from(json['earlyPaymentBenefit'] as Map),
+            )
+          : null,
       statusHistory: statusHistory,
     );
   }

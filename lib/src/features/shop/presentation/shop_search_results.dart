@@ -207,6 +207,7 @@ class _ShopSearchResultsState extends ConsumerState<ShopSearchResults> {
             final item = _allItems[index];
             return ShopItemCard(
               item: item,
+              trainingTarget: index == 0,
               onTap: () {
                 context.push(
                   Uri(

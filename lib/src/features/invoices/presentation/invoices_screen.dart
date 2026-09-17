@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
@@ -31,6 +35,7 @@ import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../referral/data/referral_provider.dart';
 import '../../shell/application/shell_branch_provider.dart';
 import '../data/invoices_provider.dart';
+import '../domain/early_payment_benefit.dart';
 import '../domain/invoice_item.dart';
 
 String _localizeMarket(String market) {
@@ -84,6 +89,78 @@ String _formatUsdAmount(num value, {bool withCents = false}) {
 bool _isInvoiceUnpaid(InvoiceItem item) {
   final status = item.status.toLowerCase();
   return status == 'unpaid' || status == 'pending';
+}
+
+@visibleForTesting
+bool canStartInvoicePayment(InvoiceItem item) =>
+    item.earlyPaymentBenefit?.requiresSelectionBeforePayment != true;
+
+String _earlyPaymentBenefitTitle(
+  BuildContext context,
+  EarlyPaymentBenefitType type,
+) {
+  return switch (type) {
+    EarlyPaymentBenefitType.priceLock => tr(
+      context,
+      ru: 'Защита от изменения таможенных пошлин',
+      zh: '海关税费变动保障',
+    ),
+    EarlyPaymentBenefitType.freeInsurance => tr(
+      context,
+      ru: 'Бесплатная страховка',
+      zh: '免费货物保险',
+    ),
+    EarlyPaymentBenefitType.bonusKg => tr(
+      context,
+      ru: 'Бонусные килограммы',
+      zh: '奖励公斤数',
+    ),
+  };
+}
+
+IconData _earlyPaymentBenefitIcon(EarlyPaymentBenefitType type) {
+  return switch (type) {
+    EarlyPaymentBenefitType.priceLock => Icons.lock_outline_rounded,
+    EarlyPaymentBenefitType.freeInsurance => Icons.verified_user_outlined,
+    EarlyPaymentBenefitType.bonusKg => Icons.scale_outlined,
+  };
+}
+
+String _earlyPaymentBenefitValue(
+  BuildContext context,
+  EarlyPaymentBenefitOption option,
+) {
+  final value = option.projectedValue;
+  return switch (option.type) {
+    EarlyPaymentBenefitType.priceLock =>
+      value.unitRate == null
+          ? tr(context, ru: 'Текущая цена доставки', zh: '当前运输价格')
+          : '\$${value.unitRate!.toStringAsFixed(2)}/${value.unit == 'm3' ? 'м³' : 'кг'}',
+    EarlyPaymentBenefitType.freeInsurance =>
+      value.waivedInsuranceUsd == null || value.waivedInsuranceUsd! <= 0
+          ? tr(context, ru: 'Страховка за наш счёт', zh: '保险费用由我们承担')
+          : tr(
+              context,
+              ru: 'Экономия \$${value.waivedInsuranceUsd!.toStringAsFixed(2)}',
+              zh: '节省 \$${value.waivedInsuranceUsd!.toStringAsFixed(2)}',
+            ),
+    EarlyPaymentBenefitType.bonusKg =>
+      value.bonusKg == null
+          ? tr(context, ru: 'Начисление после оплаты', zh: '付款后发放')
+          : '+${value.bonusKg!.toStringAsFixed(3)} кг',
+  };
+}
+
+String _earlyPaymentIdempotencyKey(
+  String invoiceId,
+  EarlyPaymentBenefitType type,
+) {
+  final random = Random.secure();
+  final nonce = List<int>.generate(
+    12,
+    (_) => random.nextInt(256),
+  ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+  return 'early-payment:$invoiceId:${type.serverValue}:$nonce';
 }
 
 @visibleForTesting
@@ -510,6 +587,9 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
       data: (items) {
         _maybeOpenInitialInvoice(items, clientCode);
         final filtered = _applyFilters(items);
+        final firstPayableIndex = filtered.indexWhere(
+          (item) => _isInvoiceUnpaid(item) || canOpenInvoiceBankQr(item),
+        );
 
         return TutorialScreenWrapper(
           screenKey: 'invoices',
@@ -603,6 +683,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                     final invoiceTile = ClientInvoiceTile(
                       item: filtered[invoiceIndex],
                       clientCode: clientCode,
+                      trainingTarget: invoiceIndex == 0,
+                      trainingPayableTarget: invoiceIndex == firstPayableIndex,
                     );
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
@@ -1078,7 +1160,16 @@ class _InvoiceSheetSurface extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SheetHandle(),
+              Center(
+                child: SizedBox(
+                  width: 42,
+                  child: TrainingTarget(
+                    id: 'invoice.sheet.dismiss',
+                    onActivate: () => Navigator.of(context).pop(),
+                    child: const SheetHandle(),
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                 child: _InvoiceSheetHeader(
@@ -1536,17 +1627,20 @@ class _InvoiceDetailSummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            amountUsd,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'Gilroy',
-              fontSize: 31,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.65,
+          TrainingTarget(
+            id: 'invoice.amount',
+            child: Text(
+              amountUsd,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontFamily: 'Gilroy',
+                fontSize: 31,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.65,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1630,11 +1724,15 @@ class _InvoiceSmallAmount extends StatelessWidget {
 class ClientInvoiceTile extends ConsumerStatefulWidget {
   final InvoiceItem item;
   final String clientCode;
+  final bool trainingTarget;
+  final bool trainingPayableTarget;
 
   const ClientInvoiceTile({
     super.key,
     required this.item,
     required this.clientCode,
+    this.trainingTarget = false,
+    this.trainingPayableTarget = false,
   });
 
   @override
@@ -1846,12 +1944,14 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
     final updatedText = _formatListDate(updatedAt);
 
     final amountUsdText = _formatUsdAmount(item.totalCostUsd);
+    final earlyPaymentBenefit = item.earlyPaymentBenefit;
+    void openDetail() => _openDetail(context, bonusBalance, maxBonusPct);
 
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
-        onTap: () => _openDetail(context, bonusBalance, maxBonusPct),
+        onTap: openDetail,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(14),
@@ -1903,17 +2003,29 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        Text(
-                          item.invoiceNumber,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy',
-                            fontSize: 19,
-                            height: 1.04,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.textPrimary,
-                            letterSpacing: -0.25,
+                        TrainingTarget(
+                          id: widget.trainingTarget
+                              ? 'invoice.open'
+                              : 'invoice.open.${item.id}',
+                          onActivate: openDetail,
+                          child: TrainingTarget(
+                            id: widget.trainingPayableTarget
+                                ? 'invoice.open-payable'
+                                : 'invoice.open-payable.${item.id}',
+                            onActivate: openDetail,
+                            child: Text(
+                              item.invoiceNumber,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy',
+                                fontSize: 19,
+                                height: 1.04,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.textPrimary,
+                                letterSpacing: -0.25,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -1994,6 +2106,8 @@ class ClientInvoiceTileState extends ConsumerState<ClientInvoiceTile> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  if (earlyPaymentBenefit != null)
+                    EarlyPaymentBenefitPill(benefit: earlyPaymentBenefit),
                   _InvoiceDateMeta(
                     icon: CupertinoIcons.plus_circle,
                     label: createdText,
@@ -2047,6 +2161,434 @@ class _InvoiceDateMeta extends StatelessWidget {
       ],
     );
   }
+}
+
+class EarlyPaymentBenefitPill extends StatefulWidget {
+  final EarlyPaymentBenefit benefit;
+
+  const EarlyPaymentBenefitPill({super.key, required this.benefit});
+
+  @override
+  State<EarlyPaymentBenefitPill> createState() =>
+      _EarlyPaymentBenefitPillState();
+}
+
+class _EarlyPaymentBenefitPillState extends State<EarlyPaymentBenefitPill> {
+  Timer? _expiryTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleExpiry();
+  }
+
+  @override
+  void didUpdateWidget(covariant EarlyPaymentBenefitPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.benefit.expiresAt != widget.benefit.expiresAt ||
+        oldWidget.benefit.selectedType != widget.benefit.selectedType) {
+      _scheduleExpiry();
+    }
+  }
+
+  void _scheduleExpiry() {
+    _expiryTimer?.cancel();
+    if (widget.benefit.selectedType != null ||
+        !widget.benefit.isSelectionWindowOpen) {
+      return;
+    }
+    _expiryTimer = Timer(
+      widget.benefit.timeUntilSelectionCloses +
+          const Duration(milliseconds: 25),
+      () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final benefit = widget.benefit;
+    final selectedType = benefit.selectedType;
+    final label = selectedType == null
+        ? !benefit.isSelectionWindowOpen ||
+                  benefit.state == EarlyPaymentBenefitState.expired
+              ? tr(context, ru: 'Бонус истёк', zh: '优惠已过期')
+              : benefit.state == EarlyPaymentBenefitState.cancelled
+              ? tr(context, ru: 'Предложение отменено', zh: '优惠已取消')
+              : benefit.state == EarlyPaymentBenefitState.reversed
+              ? tr(context, ru: 'Бонус отменён', zh: '优惠已撤销')
+              : tr(context, ru: 'Выберите бонус', zh: '选择优惠')
+        : _earlyPaymentBenefitTitle(context, selectedType);
+    final accent =
+        !benefit.isSelectionWindowOpen ||
+            benefit.state == EarlyPaymentBenefitState.expired ||
+            benefit.state == EarlyPaymentBenefitState.cancelled ||
+            benefit.state == EarlyPaymentBenefitState.reversed
+        ? AppColors.textSecondary
+        : context.brandPrimary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: accent.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.card_giftcard_rounded, size: 14, color: accent),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontFamily: 'Gilroy',
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EarlyPaymentBenefitCard extends StatelessWidget {
+  final EarlyPaymentBenefit benefit;
+  final bool selecting;
+  final VoidCallback? onChoose;
+
+  const EarlyPaymentBenefitCard({
+    super.key,
+    required this.benefit,
+    required this.selecting,
+    required this.onChoose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedOption = benefit.selectedOption;
+    final options = selectedOption != null
+        ? <EarlyPaymentBenefitOption>[selectedOption]
+        : benefit.isSelectionWindowOpen
+        ? benefit.options.where((option) => option.enabled).toList()
+        : const <EarlyPaymentBenefitOption>[];
+    final deadline = benefit.expiresAt;
+
+    return _InvoiceSectionCard(
+      icon: Icons.card_giftcard_rounded,
+      title: tr(context, ru: 'Бонус за быструю оплату', zh: '快速付款优惠'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _earlyPaymentBenefitStateText(context, benefit),
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontFamily: 'Gilroy',
+              fontSize: 13.5,
+              height: 1.35,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (deadline != null &&
+              benefit.isSelectionWindowOpen &&
+              (benefit.state == EarlyPaymentBenefitState.available ||
+                  benefit.state ==
+                      EarlyPaymentBenefitState.selectionRequired)) ...[
+            const SizedBox(height: 6),
+            Text(
+              benefit.hasTimelyEvidence
+                  ? tr(
+                      context,
+                      ru: 'Чек загружен вовремя. Выберите бонус до ${DateFormat('dd.MM.yyyy HH:mm').format(deadline.toLocal())}',
+                      zh: '付款凭证已按时上传，请在 ${DateFormat('dd.MM.yyyy HH:mm').format(deadline.toLocal())} 前选择优惠',
+                    )
+                  : tr(
+                      context,
+                      ru: 'Выбор доступен до ${DateFormat('dd.MM.yyyy HH:mm').format(deadline.toLocal())}',
+                      zh: '可选择至 ${DateFormat('dd.MM.yyyy HH:mm').format(deadline.toLocal())}',
+                    ),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontFamily: 'Gilroy',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (options.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...options.map(
+              (option) => Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _EarlyPaymentBenefitOptionSummary(option: option),
+              ),
+            ),
+          ],
+          if (onChoose != null) ...[
+            const SizedBox(height: 4),
+            _InvoicePrimaryButton(
+              label: selecting
+                  ? tr(context, ru: 'Сохраняем…', zh: '正在保存…')
+                  : tr(context, ru: 'Выбрать бонус', zh: '选择优惠'),
+              icon: Icons.touch_app_rounded,
+              onTap: selecting ? null : onChoose,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EarlyPaymentBenefitOptionSummary extends StatelessWidget {
+  final EarlyPaymentBenefitOption option;
+
+  const _EarlyPaymentBenefitOptionSummary({required this.option});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = option.available;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+      decoration: BoxDecoration(
+        color: enabled
+            ? context.brandPrimary.withValues(alpha: 0.055)
+            : const Color(0xFFF1F3F5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _earlyPaymentBenefitIcon(option.type),
+            size: 19,
+            color: enabled ? context.brandPrimary : AppColors.textSecondary,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _earlyPaymentBenefitTitle(context, option.type),
+                  style: TextStyle(
+                    color: enabled
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  enabled
+                      ? _earlyPaymentBenefitValue(context, option)
+                      : _earlyPaymentUnavailableText(
+                          context,
+                          option.unavailableReason,
+                        ),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EarlyPaymentBenefitChoiceTile extends StatelessWidget {
+  final EarlyPaymentBenefitOption option;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _EarlyPaymentBenefitChoiceTile({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: selected
+                ? context.brandPrimary.withValues(alpha: 0.09)
+                : option.available
+                ? const Color(0xFFF8FAFC)
+                : const Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? context.brandPrimary.withValues(alpha: 0.42)
+                  : Colors.black.withValues(alpha: 0.04),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: context.brandPrimary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  _earlyPaymentBenefitIcon(option.type),
+                  color: option.available
+                      ? context.brandPrimary
+                      : AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _earlyPaymentBenefitTitle(context, option.type),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      option.available
+                          ? _earlyPaymentBenefitValue(context, option)
+                          : _earlyPaymentUnavailableText(
+                              context,
+                              option.unavailableReason,
+                            ),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'Gilroy',
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                color: option.available
+                    ? context.brandPrimary
+                    : AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _earlyPaymentBenefitStateText(
+  BuildContext context,
+  EarlyPaymentBenefit benefit,
+) {
+  final selected = benefit.selectedType;
+  if (selected == null &&
+      !benefit.isSelectionWindowOpen &&
+      (benefit.state == EarlyPaymentBenefitState.available ||
+          benefit.state == EarlyPaymentBenefitState.selectionRequired)) {
+    return tr(context, ru: 'Срок выбора бонуса истёк.', zh: '优惠选择期限已过。');
+  }
+  return switch (benefit.state) {
+    EarlyPaymentBenefitState.available => tr(
+      context,
+      ru: 'Выберите один бонус до начала оплаты. После выбора изменить его нельзя.',
+      zh: '付款前请选择一项优惠，确认后不可更改。',
+    ),
+    EarlyPaymentBenefitState.selectionRequired =>
+      benefit.hasTimelyEvidence
+          ? tr(
+              context,
+              ru: 'Чек загружен вовремя. Выберите бонус — после этого мы продолжим проверку оплаты.',
+              zh: '付款凭证已按时上传。请选择优惠，以便继续审核付款。',
+            )
+          : tr(
+              context,
+              ru: 'Оплата ожидает распределения. Сначала выберите бонус.',
+              zh: '付款正在等待匹配，请先选择优惠。',
+            ),
+    EarlyPaymentBenefitState.selected => tr(
+      context,
+      ru: 'Выбран бонус «${selected == null ? '—' : _earlyPaymentBenefitTitle(context, selected)}». Он зафиксирован в счёте.',
+      zh: '已选择“${selected == null ? '—' : _earlyPaymentBenefitTitle(context, selected)}”，并已记录到账单。',
+    ),
+    EarlyPaymentBenefitState.applied => tr(
+      context,
+      ru: 'Бонус применён и зафиксирован в оплаченной накладной.',
+      zh: '优惠已生效并记录在已付款账单中。',
+    ),
+    EarlyPaymentBenefitState.expired => tr(
+      context,
+      ru: 'Срок выбора бонуса истёк.',
+      zh: '优惠选择期限已过。',
+    ),
+    EarlyPaymentBenefitState.cancelled => tr(
+      context,
+      ru: 'Предложение бонуса отменено.',
+      zh: '优惠已取消。',
+    ),
+    EarlyPaymentBenefitState.reversed => tr(
+      context,
+      ru: 'Бонус отменён после возврата оплаты. История сохранена.',
+      zh: '付款撤销后优惠已撤销，历史记录已保留。',
+    ),
+    EarlyPaymentBenefitState.unknown => tr(
+      context,
+      ru: 'Статус бонуса обновляется.',
+      zh: '优惠状态正在更新。',
+    ),
+  };
+}
+
+String _earlyPaymentUnavailableText(BuildContext context, String? reason) {
+  return switch (reason) {
+    'insurance_value_missing' => tr(
+      context,
+      ru: 'В счёте не указана страховая стоимость',
+      zh: '账单中未填写保险价值',
+    ),
+    'insurance_limit_exceeded' => tr(
+      context,
+      ru: 'Страховая стоимость выше лимита предложения',
+      zh: '保险价值超过优惠限额',
+    ),
+    _ => tr(context, ru: 'Недоступно для этого счёта', zh: '此账单不可用'),
+  };
 }
 
 class _InvoiceCardStatusPill extends StatelessWidget {
@@ -2259,28 +2801,244 @@ enum _BankQrAudienceChoice { qr, manager }
 
 class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   final _bonusKgCtrl = TextEditingController();
+  final Map<EarlyPaymentBenefitType, String> _selectionKeys = {};
   bool _isApplyingBonus = false;
+  bool _isSelectingEarlyPaymentBenefit = false;
+  EarlyPaymentBenefit? _selectedBenefitOverride;
+  Timer? _earlyPaymentExpiryTimer;
+  NavigatorState? _benefitChoiceNavigator;
+  DateTime? _scheduledBenefitExpiry;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleBenefitExpiry(widget.item.earlyPaymentBenefit);
+  }
 
   @override
   void dispose() {
+    _earlyPaymentExpiryTimer?.cancel();
     _bonusKgCtrl.dispose();
     super.dispose();
+  }
+
+  void _scheduleBenefitExpiry(EarlyPaymentBenefit? benefit) {
+    final expiry = benefit?.expiresAt;
+    if (benefit == null ||
+        benefit.selectedType != null ||
+        !benefit.isSelectionWindowOpen) {
+      _earlyPaymentExpiryTimer?.cancel();
+      _scheduledBenefitExpiry = expiry;
+      return;
+    }
+    if (_scheduledBenefitExpiry == expiry &&
+        _earlyPaymentExpiryTimer?.isActive == true) {
+      return;
+    }
+    _earlyPaymentExpiryTimer?.cancel();
+    _scheduledBenefitExpiry = expiry;
+    _earlyPaymentExpiryTimer = Timer(
+      benefit.timeUntilSelectionCloses + const Duration(milliseconds: 25),
+      () {
+        if (!mounted) return;
+        final navigator = _benefitChoiceNavigator;
+        _benefitChoiceNavigator = null;
+        if (navigator?.canPop() == true) navigator!.pop(false);
+        setState(() {});
+        _invalidateInvoiceData();
+      },
+    );
   }
 
   InvoiceItem get _currentItem =>
       ref.read(invoiceByIdProvider(widget.item.id)).asData?.value ??
       widget.item;
 
+  EarlyPaymentBenefit? _benefitFor(InvoiceItem item) {
+    final current = item.earlyPaymentBenefit;
+    if (current?.selectedType != null || _selectedBenefitOverride == null) {
+      return current;
+    }
+    return _selectedBenefitOverride;
+  }
+
+  void _invalidateInvoiceData() {
+    final activeCode = ref.read(activeClientCodeProvider);
+    if (activeCode != null) {
+      ref.invalidate(invoicesListProvider(activeCode));
+      ref.invalidate(invoicesDigestProvider(activeCode));
+      ref.invalidate(invoicesCountProvider(activeCode));
+    }
+    ref.invalidate(invoiceByIdProvider(widget.item.id));
+  }
+
+  Future<bool> _selectBenefit(EarlyPaymentBenefitType type) async {
+    if (_isSelectingEarlyPaymentBenefit) return false;
+    final currentBenefit = _benefitFor(_currentItem);
+    if (currentBenefit == null || !currentBenefit.canSelect) {
+      AppToast.show(
+        context,
+        tr(context, ru: 'Срок выбора бонуса истёк', zh: '优惠选择期限已结束'),
+        isError: true,
+      );
+      return false;
+    }
+    setState(() => _isSelectingEarlyPaymentBenefit = true);
+    try {
+      final benefit = await selectEarlyPaymentBenefit(
+        ref.read(apiClientProvider),
+        invoiceId: widget.item.id,
+        benefitType: type,
+        idempotencyKey: _selectionKeys.putIfAbsent(
+          type,
+          () => _earlyPaymentIdempotencyKey(widget.item.id, type),
+        ),
+      );
+      if (!mounted) return false;
+      setState(() => _selectedBenefitOverride = benefit);
+      _scheduleBenefitExpiry(benefit);
+      _invalidateInvoiceData();
+      AppToast.show(
+        context,
+        tr(context, ru: 'Бонус выбран и сохранён в счёте', zh: '优惠已选择并保存到账单'),
+      );
+      return !benefit.requiresSelectionBeforePayment;
+    } on DioException catch (error) {
+      if (!mounted) return false;
+      final responseData = error.response?.data;
+      final message = responseData is Map
+          ? responseData['error']?.toString()
+          : null;
+      AppToast.show(
+        context,
+        message?.isNotEmpty == true
+            ? message!
+            : tr(
+                context,
+                ru: 'Не удалось сохранить бонус. Попробуйте ещё раз.',
+                zh: '无法保存优惠，请重试。',
+              ),
+        isError: true,
+      );
+      return false;
+    } on FormatException {
+      if (!mounted) return false;
+      AppToast.show(
+        context,
+        tr(
+          context,
+          ru: 'Сервер вернул неполные данные. Обновите счёт и повторите.',
+          zh: '服务器返回的数据不完整，请刷新账单后重试。',
+        ),
+        isError: true,
+      );
+      return false;
+    } finally {
+      if (mounted) setState(() => _isSelectingEarlyPaymentBenefit = false);
+    }
+  }
+
+  Future<bool> _ensureEarlyPaymentBenefitSelected(InvoiceItem item) async {
+    final benefit = _benefitFor(item);
+    if (benefit?.requiresSelectionBeforePayment != true) return true;
+    if (benefit == null || !benefit.canSelect) {
+      AppToast.show(
+        context,
+        tr(
+          context,
+          ru: 'Сначала обновите счёт, чтобы выбрать бонус перед оплатой.',
+          zh: '请先刷新账单，然后在付款前选择优惠。',
+        ),
+        isError: true,
+      );
+      return false;
+    }
+    await _showEarlyPaymentBenefitChoice(benefit);
+    // Choosing a benefit is a separate, visible step. Keep the invoice open
+    // so the client can review the saved choice before starting payment.
+    return false;
+  }
+
+  Future<bool?> _showEarlyPaymentBenefitChoice(EarlyPaymentBenefit benefit) {
+    if (!benefit.canSelect) return Future<bool?>.value(false);
+    EarlyPaymentBenefitType? selectedType;
+    _scheduleBenefitExpiry(benefit);
+    final result = showBlurredModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.22),
+      builder: (sheetContext) {
+        _benefitChoiceNavigator = Navigator.of(sheetContext);
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) => _InvoiceSheetSurface(
+            icon: Icons.card_giftcard_rounded,
+            title: tr(sheetContext, ru: 'Выберите бонус', zh: '选择优惠'),
+            subtitle: tr(
+              sheetContext,
+              ru: 'Один бонус за быструю оплату',
+              zh: '快速付款可选一项优惠',
+            ),
+            footer: _InvoicePrimaryButton(
+              label: _isSelectingEarlyPaymentBenefit
+                  ? tr(sheetContext, ru: 'Сохраняем…', zh: '正在保存…')
+                  : tr(sheetContext, ru: 'Выбрать бонус', zh: '确认选择'),
+              icon: Icons.check_rounded,
+              onTap: selectedType == null || _isSelectingEarlyPaymentBenefit
+                  ? null
+                  : () async {
+                      final saved = await _selectBenefit(selectedType!);
+                      if (!sheetContext.mounted) return;
+                      if (saved) Navigator.of(sheetContext).pop(true);
+                    },
+            ),
+            child: Column(
+              children: benefit.options
+                  .where((option) => option.enabled)
+                  .map(
+                    (option) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _EarlyPaymentBenefitChoiceTile(
+                        option: option,
+                        selected: selectedType == option.type,
+                        onTap: option.available
+                            ? () => setSheetState(() {
+                                selectedType = option.type;
+                              })
+                            : null,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        );
+      },
+    );
+    return result.whenComplete(() => _benefitChoiceNavigator = null);
+  }
+
+  Future<void> _payThroughManager() async {
+    final item = _currentItem;
+    if (!await _ensureEarlyPaymentBenefitSelected(item)) return;
+    if (!mounted) return;
+    widget.onPay();
+  }
+
   // Bank QR: открываем оплату в рублях как вложенную модалку в стиле счёта.
   Future<void> _openBankQr() async {
     final item = _currentItem;
+    if (!await _ensureEarlyPaymentBenefitSelected(item)) return;
+    if (!mounted) return;
     if (!await _ensurePaymentOperatorsWorking()) return;
     if (!mounted) return;
     if (_isInvoiceUnpaid(item)) {
       final choice = await _showBankQrAudienceWarning(context);
       if (!mounted || choice == null) return;
       if (choice == _BankQrAudienceChoice.manager) {
-        widget.onPay();
+        await _payThroughManager();
         return;
       }
     }
@@ -2535,6 +3293,8 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final paymentSummary = item.paymentSummary;
     final isUnpaid = _isInvoiceUnpaid(item);
     final canOpenBankQr = canOpenInvoiceBankQr(item);
+    final earlyPaymentBenefit = _benefitFor(item);
+    _scheduleBenefitExpiry(earlyPaymentBenefit);
     final showBonusSection =
         isUnpaid && widget.bonusBalance > 0 && pricePerKg > 0;
     final showBankQrRateBanner =
@@ -2557,7 +3317,10 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (operatorsSleeping) ...[
-                    const PaymentOperatorSleepingNotice(compact: true),
+                    const TrainingTarget(
+                      id: 'invoice.pay.unavailable',
+                      child: PaymentOperatorSleepingNotice(compact: true),
+                    ),
                     const SizedBox(height: 8),
                     _InvoiceSecondaryButton(
                       label: tr(context, ru: 'Закрыть', zh: '关闭'),
@@ -2565,33 +3328,41 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                     ),
                   ] else ...[
                     if (canOpenBankQr) ...[
-                      _InvoicePrimaryButton(
-                        label: tr(
-                          context,
-                          ru: paymentSummary?.isPartial == true
-                              ? 'Доплатить ${paymentSummary!.remainingRub.display} по QR'
-                              : isUnpaid
-                              ? 'Оплатить в рублях'
-                              : 'Открыть QR оплаты',
-                          zh: paymentSummary?.isPartial == true
-                              ? '扫码补付 ${paymentSummary!.remainingRub.display}'
-                              : isUnpaid
-                              ? '用卢布支付'
-                              : '打开付款二维码',
+                      TrainingTarget(
+                        id: 'invoice.pay',
+                        child: _InvoicePrimaryButton(
+                          label: tr(
+                            context,
+                            ru: paymentSummary?.isPartial == true
+                                ? 'Доплатить ${paymentSummary!.remainingRub.display} по QR'
+                                : isUnpaid
+                                ? 'Оплатить в рублях'
+                                : 'Открыть QR оплаты',
+                            zh: paymentSummary?.isPartial == true
+                                ? '扫码补付 ${paymentSummary!.remainingRub.display}'
+                                : isUnpaid
+                                ? '用卢布支付'
+                                : '打开付款二维码',
+                          ),
+                          icon: Icons.qr_code_2_rounded,
+                          onTap: _openBankQr,
                         ),
-                        icon: Icons.qr_code_2_rounded,
-                        onTap: _openBankQr,
                       ),
                       const SizedBox(height: 8),
                     ],
                     if (isUnpaid)
-                      _InvoiceSecondaryButton(
-                        label: tr(
-                          context,
-                          ru: 'Оплатить через менеджера',
-                          zh: '通过经理付款',
+                      TrainingTarget(
+                        id: canOpenBankQr
+                            ? 'invoice.pay-manager'
+                            : 'invoice.pay',
+                        child: _InvoiceSecondaryButton(
+                          label: tr(
+                            context,
+                            ru: 'Оплатить через менеджера',
+                            zh: '通过经理付款',
+                          ),
+                          onTap: _payThroughManager,
                         ),
-                        onTap: widget.onPay,
                       )
                     else
                       _InvoiceSecondaryButton(
@@ -2608,6 +3379,16 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (earlyPaymentBenefit != null) ...[
+              EarlyPaymentBenefitCard(
+                benefit: earlyPaymentBenefit,
+                selecting: _isSelectingEarlyPaymentBenefit,
+                onChoose: earlyPaymentBenefit.canSelect
+                    ? () => _showEarlyPaymentBenefitChoice(earlyPaymentBenefit)
+                    : null,
+              ),
+              const SizedBox(height: 12),
+            ],
             if (isPaymentReview) ...[
               const _InvoicePaymentReviewBanner(),
               const SizedBox(height: 12),

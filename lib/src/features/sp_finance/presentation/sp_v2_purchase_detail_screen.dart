@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_cached_media_image.dart';
@@ -1853,11 +1854,15 @@ class _TabsBar extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(right: i == tabs.length - 1 ? 0 : 6),
-                child: _TabButton(
-                  icon: tabs[i].$1,
-                  label: tabs[i].$2,
-                  selected: selectedTab == tabs[i].$3,
-                  onTap: () => onChanged(tabs[i].$3),
+                child: TrainingTarget(
+                  id: 'organizer.tab.${tabs[i].$3.name}',
+                  onActivate: () => onChanged(tabs[i].$3),
+                  child: _TabButton(
+                    icon: tabs[i].$1,
+                    label: tabs[i].$2,
+                    selected: selectedTab == tabs[i].$3,
+                    onTap: () => onChanged(tabs[i].$3),
+                  ),
                 ),
               ),
             ),

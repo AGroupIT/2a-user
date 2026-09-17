@@ -3,9 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/models/packaging_removal.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
 const trackWarehouseArrivalCooldownCode = 'TRACK_WAREHOUSE_ARRIVAL_COOLDOWN';
+const packagingRemovalTargetsUnsupportedCode =
+    'PACKAGING_REMOVAL_TARGETS_UNSUPPORTED';
 
 class AssemblyCreateResult {
   const AssemblyCreateResult._({this.assembly, this.errorCode, this.message});
@@ -67,6 +70,8 @@ class Assembly {
   final bool hasFragileGoods;
   final String placePreference;
   final String packagingRemoval;
+  final String? packagingRemovalTarget;
+  final bool supportsPackagingRemovalTargets;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -98,6 +103,8 @@ class Assembly {
     this.hasFragileGoods = false,
     this.placePreference = 'unspecified',
     this.packagingRemoval = 'none',
+    this.packagingRemovalTarget,
+    this.supportsPackagingRemovalTargets = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -152,6 +159,9 @@ class Assembly {
           json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
       placePreference: json['placePreference']?.toString() ?? 'unspecified',
       packagingRemoval: json['packagingRemoval']?.toString() ?? 'none',
+      packagingRemovalTarget: json['packagingRemovalTarget']?.toString(),
+      supportsPackagingRemovalTargets:
+          json['supportsPackagingRemovalTargets'] == true,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -294,11 +304,22 @@ class AssembliesApiService {
     bool hasFragileGoods = false,
     String placePreference = 'unspecified',
     String packagingRemoval = 'none',
+    String? packagingRemovalTarget,
+    bool supportsPackagingRemovalTargets = false,
     bool hasInsurance = false,
     double? insuranceAmount,
     String? goodsDescription,
     List<int>? trackIds,
   }) async {
+    final removalOption = PackagingRemovalOption.fromApi(
+      packagingRemoval,
+      packagingRemovalTarget,
+    );
+    if (!removalOption.isSupported(supportsPackagingRemovalTargets)) {
+      return AssemblyCreateResult.failure(
+        errorCode: packagingRemovalTargetsUnsupportedCode,
+      );
+    }
     try {
       final response = await _apiClient.post(
         '/assemblies',
@@ -314,7 +335,9 @@ class AssembliesApiService {
             'packagingTypeIds': packagingTypeIds,
           'hasFragileGoods': hasFragileGoods,
           'placePreference': placePreference,
-          'packagingRemoval': packagingRemoval,
+          ...removalOption.toApi(
+            supportsTargets: supportsPackagingRemovalTargets,
+          ),
           'hasInsurance': hasInsurance,
           if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
           if (goodsDescription != null && goodsDescription.trim().isNotEmpty)
@@ -571,6 +594,7 @@ class Tariff {
   final double baseCost;
   final double? packagingRemovalTransportPrice;
   final double? packagingRemovalAllPrice;
+  final bool supportsPackagingRemovalTargets;
   final bool isActive;
   final bool isCurrentlyActive;
   final DateTime? validFrom;
@@ -583,6 +607,7 @@ class Tariff {
     required this.baseCost,
     this.packagingRemovalTransportPrice,
     this.packagingRemovalAllPrice,
+    this.supportsPackagingRemovalTargets = false,
     this.isActive = true,
     this.isCurrentlyActive = true,
     this.validFrom,
@@ -604,6 +629,8 @@ class Tariff {
       packagingRemovalAllPrice: json['packagingRemovalAllPrice'] != null
           ? double.tryParse(json['packagingRemovalAllPrice'].toString())
           : null,
+      supportsPackagingRemovalTargets:
+          json['supportsPackagingRemovalTargets'] == true,
       isActive: json['isActive'] as bool? ?? true,
       isCurrentlyActive:
           json['isCurrentlyActive'] as bool? ??

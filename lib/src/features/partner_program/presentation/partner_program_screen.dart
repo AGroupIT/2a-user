@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
@@ -416,11 +417,14 @@ class _PartnerInviteCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => onCopy(inviteUrl),
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: Text(
-                      tr(context, ru: 'Копировать ссылку', zh: '复制链接'),
+                  child: TrainingTarget(
+                    id: 'partner.invite',
+                    child: FilledButton.icon(
+                      onPressed: () => onCopy(inviteUrl),
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      label: Text(
+                        tr(context, ru: 'Копировать ссылку', zh: '复制链接'),
+                      ),
                     ),
                   ),
                 ),

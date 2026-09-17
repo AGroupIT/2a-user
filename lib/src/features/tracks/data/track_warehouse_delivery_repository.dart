@@ -147,7 +147,12 @@ class TrackWarehouseDeliveryRepository
     implements TrackWarehouseDeliveryGateway {
   final ApiClient _api;
 
-  const TrackWarehouseDeliveryRepository(this._api);
+  final _translations = <String, String>{};
+  final _pendingTranslations = <String, Future<String>>{};
+  Future<void> _translationTail = Future<void>.value();
+  DateTime? _translationRetryAt;
+
+  TrackWarehouseDeliveryRepository(this._api);
 
   @override
   Future<TrackWarehouseDelivery> get(int trackId) async {
@@ -178,15 +183,57 @@ class TrackWarehouseDeliveryRepository
   }
 
   @override
-  Future<String> translate(String text) async {
-    if (text.trim().isEmpty) return text;
+  Future<String> translate(String text) {
+    if (text.trim().isEmpty) return Future.value(text);
+    final cached = _translations[text];
+    if (cached != null) return Future.value(cached);
+    final pending = _pendingTranslations[text];
+    if (pending != null) return pending;
+    if (_pendingTranslations.length >= 64 || _translationCoolingDown) {
+      return Future.value(text);
+    }
+
+    // History rows mount together. Serialize their requests instead of
+    // sending one simultaneous LLM request for every event and location.
+    final result = _translationTail.then((_) => _translateQueued(text));
+    _pendingTranslations[text] = result;
+    _translationTail = result.then<void>(
+      (_) => _pendingTranslations.remove(text),
+      onError: (Object error, StackTrace stackTrace) {
+        _pendingTranslations.remove(text);
+      },
+    );
+    return result;
+  }
+
+  bool get _translationCoolingDown {
+    final retryAt = _translationRetryAt;
+    return retryAt != null && DateTime.now().isBefore(retryAt);
+  }
+
+  Future<String> _translateQueued(String text) async {
+    // A preceding request may have opened the cooldown while this waited.
+    if (_translationCoolingDown) return text;
     try {
       final response = await _api.post<Map<String, dynamic>>(
         '/translate',
         data: {'text': text, 'direction': 'zh-ru'},
       );
-      return _nullableString(response.data?['translation']) ?? text;
-    } on DioException {
+      final translated = _nullableString(response.data?['translation']);
+      if (translated == null) return text;
+      if (_translations.length >= 128) {
+        _translations.remove(_translations.keys.first);
+      }
+      _translations[text] = translated;
+      return translated;
+    } on DioException catch (error) {
+      final raw = error.response?.data;
+      final retryAfterMs = raw is Map ? raw['retryAfterMs'] : null;
+      final delayMs = retryAfterMs is num && retryAfterMs.isFinite
+          ? retryAfterMs.toInt().clamp(30000, 300000)
+          : 30000;
+      _translationRetryAt = DateTime.now().add(Duration(milliseconds: delayMs));
+      // Do not cache a failed translation as a successful one.
       return text;
     }
   }

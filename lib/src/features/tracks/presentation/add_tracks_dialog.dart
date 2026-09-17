@@ -12,6 +12,7 @@ import '../../add_tracks/data/add_tracks_repository.dart';
 import '../../add_tracks/data/track_tracking_check_repository.dart';
 import '../../add_tracks/domain/add_tracks_result.dart';
 import '../data/tracks_provider.dart';
+import '../../training/presentation/training_target.dart';
 
 /// Модальное окно для добавления треков
 Future<void> showAddTracksDialog(BuildContext context, WidgetRef ref) async {
@@ -352,7 +353,12 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 8),
-          const SheetHandle(),
+          const Center(
+            child: TrainingTarget(
+              id: 'track.sheet.dismiss-handle',
+              child: SizedBox(width: 42, child: SheetHandle()),
+            ),
+          ),
           Flexible(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 18 + bottomPadding),
@@ -366,17 +372,20 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                     if (_reviewDrafts.isEmpty) const _AddTracksHintCard(),
                     const SizedBox(height: 12),
                     if (_reviewDrafts.isEmpty)
-                      _AddTracksInputCard(
-                        controller: _ctrl,
-                        enabled: !_submitting,
-                        onChanged: () {
-                          if (_error != null || _result != null) {
-                            setState(() {
-                              _error = null;
-                              _result = null;
-                            });
-                          }
-                        },
+                      TrainingTarget(
+                        id: 'tracks.add.form',
+                        child: _AddTracksInputCard(
+                          controller: _ctrl,
+                          enabled: !_submitting,
+                          onChanged: () {
+                            if (_error != null || _result != null) {
+                              setState(() {
+                                _error = null;
+                                _result = null;
+                              });
+                            }
+                          },
+                        ),
                       )
                     else
                       _UnconfirmedTracksCard(

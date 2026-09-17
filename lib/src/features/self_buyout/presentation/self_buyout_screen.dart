@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -159,7 +160,13 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
           if (showVerification)
             _verificationPanel(context, ref, verification)
           else if (operatorsSleeping)
-            const PaymentOperatorSleepingNotice(onGradient: true, compact: true)
+            const TrainingTarget(
+              id: 'selfbuyout.operators.unavailable',
+              child: PaymentOperatorSleepingNotice(
+                onGradient: true,
+                compact: true,
+              ),
+            )
           else
             _heroButton(context, ref, canCreate, availability),
           if (!showVerification &&
@@ -374,35 +381,42 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     bool canCreate,
     SelfBuyoutAvailability? availability,
   ) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: canCreate
-            ? () => _openCreate(context, ref, availability!)
-            : null,
+    final VoidCallback? openCreate = canCreate
+        ? () => _openCreate(context, ref, availability!)
+        : null;
+    return TrainingTarget(
+      id: canCreate ? 'selfbuyout.create' : 'selfbuyout.create.unavailable',
+      onActivate: openCreate,
+      child: Material(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_rounded, color: context.brandPrimary, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                canCreate
-                    ? tr(context, ru: 'Создать заявку', zh: '创建申请')
-                    : tr(context, ru: 'Временно недоступно', zh: '暂不可用'),
-                style: TextStyle(
-                  color: context.brandPrimary,
-                  fontFamily: 'Gilroy',
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
+        child: InkWell(
+          onTap: openCreate,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            height: 48,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_rounded, color: context.brandPrimary, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    canCreate
+                        ? tr(context, ru: 'Создать заявку', zh: '创建申请')
+                        : tr(context, ru: 'Временно недоступно', zh: '暂不可用'),
+                    style: TextStyle(
+                      color: context.brandPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -437,7 +451,11 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
     return Column(
       children: [
         for (final r in rows) ...[
-          _RequestCard(request: r, onTap: () => _onCardTap(context, ref, r)),
+          _RequestCard(
+            request: r,
+            trainingTarget: identical(r, rows.first),
+            onTap: () => _onCardTap(context, ref, r),
+          ),
           const SizedBox(height: 10),
         ],
       ],
@@ -688,12 +706,28 @@ class _SelfBuyoutScreenState extends ConsumerState<SelfBuyoutScreen> {
 class _RequestCard extends StatelessWidget {
   final SelfBuyoutRequest request;
   final VoidCallback onTap;
+  final bool trainingTarget;
 
-  const _RequestCard({required this.request, required this.onTap});
+  const _RequestCard({
+    required this.request,
+    required this.onTap,
+    required this.trainingTarget,
+  });
 
   @override
   Widget build(BuildContext context) {
     final color = selfBuyoutStatusColor(request.status);
+    final requestNumber = Text(
+      request.requestNumber,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontFamily: 'Gilroy',
+        fontSize: 15,
+        fontWeight: FontWeight.w900,
+      ),
+    );
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -708,17 +742,13 @@ class _RequestCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      request.requestNumber,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+                    child: trainingTarget
+                        ? TrainingTarget(
+                            id: 'selfbuyout.request.open',
+                            onActivate: onTap,
+                            child: requestNumber,
+                          )
+                        : requestNumber,
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(

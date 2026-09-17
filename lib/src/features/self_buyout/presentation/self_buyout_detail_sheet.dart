@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -146,12 +147,19 @@ class _SelfBuyoutDetailSheetState extends ConsumerState<SelfBuyoutDetailSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SheetHandle(),
+            Center(
+              child: TrainingTarget(
+                id: 'selfbuyout.sheet.dismiss',
+                onActivate: () => Navigator.of(context).pop(),
+                child: const SizedBox(width: 42, child: SheetHandle()),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SelfBuyoutGradientHeader(
                 icon: Icons.savings_rounded,
                 title: currentRequest.requestNumber,
+                subtitleTrainingTargetId: 'selfbuyout.request.status',
                 subtitle: tr(
                   context,
                   ru: 'Самовыкуп · ${selfBuyoutStatusLabel(context, currentRequest.status)}',

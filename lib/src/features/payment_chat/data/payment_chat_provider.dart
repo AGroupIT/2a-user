@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 
 import '../../../core/logging/client_log_service.dart';
+import '../../../core/models/chat_history_page.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
@@ -44,6 +45,17 @@ class PaymentChatRepository {
   final ApiClient _apiClient;
 
   PaymentChatRepository(this._apiClient);
+
+  Future<ChatHistoryPage> getHistoryPage({int? beforeMessageId}) async {
+    final response = await _apiClient.get(
+      '/client/payment-chat',
+      queryParameters: {
+        'limit': 50,
+        if (beforeMessageId != null) 'beforeMessageId': beforeMessageId,
+      },
+    );
+    return ChatHistoryPage.fromJson(response.data as Map<String, dynamic>);
+  }
 
   /// Получить или создать диалог по оплате
   /// Возвращает диалог с сообщениями
@@ -304,6 +316,9 @@ class PaymentChatState {
   final String? error;
   final int? lastMessageId;
   final List<Map<String, dynamic>> pendingAttachments;
+  final bool hasMoreHistory;
+  final bool isLoadingHistory;
+  final bool historyError;
 
   const PaymentChatState({
     this.conversation,
@@ -314,6 +329,9 @@ class PaymentChatState {
     this.error,
     this.lastMessageId,
     this.pendingAttachments = const [],
+    this.hasMoreHistory = false,
+    this.isLoadingHistory = false,
+    this.historyError = false,
   });
 
   PaymentChatState copyWith({
@@ -326,6 +344,9 @@ class PaymentChatState {
     int? lastMessageId,
     List<Map<String, dynamic>>? pendingAttachments,
     bool clearError = false,
+    bool? hasMoreHistory,
+    bool? isLoadingHistory,
+    bool? historyError,
   }) {
     return PaymentChatState(
       conversation: conversation ?? this.conversation,
@@ -336,6 +357,9 @@ class PaymentChatState {
       error: clearError ? null : (error ?? this.error),
       lastMessageId: lastMessageId ?? this.lastMessageId,
       pendingAttachments: pendingAttachments ?? this.pendingAttachments,
+      hasMoreHistory: hasMoreHistory ?? this.hasMoreHistory,
+      isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
+      historyError: historyError ?? this.historyError,
     );
   }
 }
@@ -354,23 +378,32 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   bool _isDisposed = false;
   bool _isRealtimeActive = false;
+  bool _pollInFlight = false;
+  int _generation = 0;
+  int _loadGeneration = 0;
+  int? _conversationIdForCleanup;
 
   @override
   PaymentChatState build() {
+    _generation++;
+    _loadGeneration++;
     _isDisposed = false;
     _wsService = ref.watch(webSocketServiceProvider);
     _listenToWebSocket();
 
     // Cleanup при dispose
     ref.onDispose(() {
+      _generation++;
+      _loadGeneration++;
       _isDisposed = true;
       _messageSubscription?.cancel();
       _messageEditedSubscription?.cancel();
       _messageDeletedSubscription?.cancel();
       _fallbackPollingTimer?.cancel();
-      if (state.conversation != null) {
-        _wsService.leaveConversation(state.conversation!.id);
-        _wsService.sendPresence(state.conversation!.id, false);
+      final conversationId = _conversationIdForCleanup;
+      if (conversationId != null) {
+        _wsService.leaveConversation(conversationId);
+        _wsService.sendPresence(conversationId, false);
       }
     });
 
@@ -495,6 +528,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
   void setRealtimeActive(bool active) {
     if (_isDisposed || _isRealtimeActive == active) return;
     _isRealtimeActive = active;
+    _generation++;
 
     if (!active) {
       _fallbackPollingTimer?.cancel();
@@ -517,19 +551,29 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   /// Загрузить диалог
   Future<void> loadConversation() async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    _generation++;
+    final generation = ++_loadGeneration;
+    state = state.copyWith(
+      isLoading: true,
+      isLoadingHistory: false,
+      clearError: true,
+    );
     ClientLogService.instance.action('Загрузка чата по оплате');
 
     try {
-      final conversation = await _repository.getConversation();
+      final page = await _repository.getHistoryPage();
+      if (!ref.mounted || generation != _loadGeneration) return;
+      final conversation = page.conversation;
+      _conversationIdForCleanup = conversation.id;
       final messages = conversation.messages;
-      final lastId = messages.isNotEmpty ? messages.last.id : null;
+      final lastId = messages.isNotEmpty ? messages.last.id : 0;
 
       state = state.copyWith(
         conversation: conversation,
         messages: messages,
         isLoading: false,
         lastMessageId: lastId,
+        hasMoreHistory: page.hasMore,
       );
 
       // Присоединяемся к WebSocket комнате только пока экран активен.
@@ -548,6 +592,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         },
       );
     } catch (e) {
+      if (!ref.mounted || generation != _loadGeneration) return;
       ClientLogService.instance.add(
         type: 'payment_chat_load_error',
         level: 'warning',
@@ -570,6 +615,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
     Map<String, dynamic>? metadata,
     List<int>? attachmentIds,
   }) async {
+    if (!ref.mounted || state.isSending) return false;
     if (content.trim().isEmpty &&
         (attachmentIds == null || attachmentIds.isEmpty)) {
       return false;
@@ -591,13 +637,17 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         metadata: metadata,
         attachmentIds: attachmentIds,
       );
-
-      final newMessages = [...state.messages, message];
+      if (!ref.mounted) return false;
+      final newMessages = state.messages.any((m) => m.id == message.id)
+          ? state.messages
+          : [...state.messages, message];
 
       state = state.copyWith(
         messages: newMessages,
         isSending: false,
-        lastMessageId: message.id,
+        lastMessageId: (state.lastMessageId ?? 0) > message.id
+            ? state.lastMessageId
+            : message.id,
       );
       ClientLogService.instance.add(
         type: 'payment_chat_message_sent',
@@ -610,6 +660,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       return true;
     } catch (e) {
+      if (!ref.mounted) return false;
       ClientLogService.instance.add(
         type: 'payment_chat_message_send_error',
         level: 'warning',
@@ -640,6 +691,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
     try {
       final result = await _repository.uploadAttachment(file, conversationId);
+      if (!ref.mounted) return null;
 
       if (result != null) {
         // Добавляем в pending attachments
@@ -668,6 +720,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       return null;
     } catch (e) {
+      if (!ref.mounted) return null;
       ClientLogService.instance.add(
         type: 'payment_chat_attachment_upload_error',
         level: 'warning',
@@ -710,6 +763,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         fileName,
         conversationId,
       );
+      if (!ref.mounted) return null;
 
       if (result != null) {
         // Добавляем в pending attachments
@@ -738,6 +792,7 @@ class PaymentChatController extends Notifier<PaymentChatState> {
       );
       return null;
     } catch (e) {
+      if (!ref.mounted) return null;
       ClientLogService.instance.add(
         type: 'payment_chat_attachment_upload_error',
         level: 'warning',
@@ -774,15 +829,25 @@ class PaymentChatController extends Notifier<PaymentChatState> {
 
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
+    if (!ref.mounted || _pollInFlight) return;
     if (_isDisposed || !_isRealtimeActive || state.conversation == null) return;
 
     final lastMessageId = state.lastMessageId ?? 0;
+    final conversationId = state.conversation!.id;
+    final generation = _generation;
+    _pollInFlight = true;
 
     try {
       final newMessages = await _repository.getNewMessages(
-        state.conversation!.id,
+        conversationId,
         lastMessageId,
       );
+      if (!ref.mounted ||
+          generation != _generation ||
+          !_isRealtimeActive ||
+          state.conversation?.id != conversationId) {
+        return;
+      }
 
       if (newMessages.isNotEmpty) {
         final existingIds = state.messages.map((m) => m.id).toSet();
@@ -830,6 +895,49 @@ class PaymentChatController extends Notifier<PaymentChatState> {
         data: {'error': e.toString()},
       );
       debugPrint('Error polling payment messages: $e');
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  Future<void> loadOlderMessages() async {
+    if (!ref.mounted ||
+        state.isLoadingHistory ||
+        !state.hasMoreHistory ||
+        state.messages.isEmpty) {
+      return;
+    }
+    final generation = _loadGeneration;
+    final conversationId = state.conversation!.id;
+    final before = state.messages
+        .map((m) => m.id)
+        .reduce((a, b) => a < b ? a : b);
+    state = state.copyWith(isLoadingHistory: true, historyError: false);
+    try {
+      final page = await _repository.getHistoryPage(beforeMessageId: before);
+      if (!ref.mounted ||
+          generation != _loadGeneration ||
+          state.conversation?.id != conversationId) {
+        return;
+      }
+      final ids = state.messages.map((m) => m.id).toSet();
+      final older = page.conversation.messages
+          .where((m) => !ids.contains(m.id))
+          .toList();
+      state = state.copyWith(
+        messages: [...older, ...state.messages],
+        hasMoreHistory: page.hasMore && older.isNotEmpty,
+      );
+    } catch (_) {
+      if (ref.mounted && generation == _loadGeneration) {
+        state = state.copyWith(historyError: true);
+      }
+    } finally {
+      if (ref.mounted &&
+          generation == _loadGeneration &&
+          state.conversation?.id == conversationId) {
+        state = state.copyWith(isLoadingHistory: false);
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
@@ -192,7 +193,7 @@ class _RuleCardsGrid extends StatelessWidget {
                 child: i == 0
                     ? KeyedSubtree(
                         key: firstItemKey,
-                        child: _RuleCard(item: items[i]),
+                        child: _RuleCard(item: items[i], trainingTarget: true),
                       )
                     : _RuleCard(item: items[i]),
               ),
@@ -205,7 +206,8 @@ class _RuleCardsGrid extends StatelessWidget {
 
 class _RuleCard extends StatelessWidget {
   final RuleItem item;
-  const _RuleCard({required this.item});
+  const _RuleCard({required this.item, this.trainingTarget = false});
+  final bool trainingTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -263,15 +265,20 @@ class _RuleCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17,
-                        height: 21 / 17,
-                        letterSpacing: -0.1,
+                    TrainingTarget(
+                      id: trainingTarget
+                          ? 'rules.open'
+                          : 'rules.open.${item.slug}',
+                      child: Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontFamily: 'Gilroy',
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                          height: 21 / 17,
+                          letterSpacing: -0.1,
+                        ),
                       ),
                     ),
                     if (item.excerpt.trim().isNotEmpty) ...[

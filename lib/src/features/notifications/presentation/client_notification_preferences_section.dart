@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/services/push_notification_service.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../auth/data/auth_provider.dart';
 import '../application/client_notification_preferences_controller.dart';
 import '../domain/client_notification_preference.dart';
 
@@ -25,31 +27,100 @@ class ClientNotificationPreferencesSection extends ConsumerWidget {
               .refresh(),
         ),
       ),
-      data: (state) => ClientNotificationPreferencesCard(
-        state: state,
-        onChanged: (key, enabled) async {
-          try {
-            await ref
-                .read(clientNotificationPreferencesControllerProvider.notifier)
-                .setEnabled(key, enabled);
-          } catch (_) {
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  tr(
-                    context,
-                    ru: 'Не удалось сохранить настройку',
-                    zh: '无法保存设置',
+      data: (state) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _PushPermissionButton(),
+          const SizedBox(height: 8),
+          ClientNotificationPreferencesCard(
+            state: state,
+            onChanged: (key, enabled) async {
+              try {
+                await ref
+                    .read(
+                      clientNotificationPreferencesControllerProvider.notifier,
+                    )
+                    .setEnabled(key, enabled);
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      tr(
+                        context,
+                        ru: 'Не удалось сохранить настройку',
+                        zh: '无法保存设置',
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
-          }
-        },
+                );
+              }
+            },
+          ),
+        ],
       ),
     );
   }
+}
+
+class _PushPermissionButton extends ConsumerStatefulWidget {
+  const _PushPermissionButton();
+
+  @override
+  ConsumerState<_PushPermissionButton> createState() =>
+      _PushPermissionButtonState();
+}
+
+class _PushPermissionButtonState extends ConsumerState<_PushPermissionButton> {
+  bool _busy = false;
+  String? _message;
+
+  Future<void> _enable() async {
+    // Start the browser permission request in the original button gesture.
+    final permission =
+        PushNotificationService.requestPermissionFromUserGesture();
+    setState(() => _busy = true);
+    var allowed = false;
+    try {
+      allowed = await permission;
+      if (!mounted) return;
+      if (allowed) {
+        await ref.read(authProvider.notifier).refreshPushRegistration();
+      }
+    } catch (_) {
+      allowed = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _message = allowed
+          ? tr(context, ru: 'Разрешение на уведомления включено.', zh: '已允许通知。')
+          : tr(
+              context,
+              ru: 'Проверьте разрешение на уведомления в настройках устройства или браузера. На iPhone веб-приложение нужно добавить на экран «Домой». Если приложение ещё загружается, повторите попытку.',
+              zh: '请在设备或浏览器设置中检查通知权限。在 iPhone 上，请先将网页应用添加到主屏幕。若应用仍在加载，请稍后重试。',
+            );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      OutlinedButton.icon(
+        onPressed: _busy ? null : _enable,
+        icon: const Icon(Icons.notifications_outlined),
+        label: Text(
+          tr(
+            context,
+            ru: 'Разрешить уведомления на устройстве',
+            zh: '允许此设备接收通知',
+          ),
+        ),
+      ),
+      if (_message != null) Text(_message!),
+    ],
+  );
 }
 
 class ClientNotificationPreferencesCard extends StatelessWidget {

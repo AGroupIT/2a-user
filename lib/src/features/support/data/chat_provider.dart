@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:twoalogistic_shared/twoalogistic_shared.dart';
 
 import '../../../core/logging/client_log_service.dart';
+import '../../../core/models/chat_history_page.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/websocket_provider.dart';
@@ -30,6 +31,17 @@ class ChatRepository {
   final ApiClient _apiClient;
 
   ChatRepository(this._apiClient);
+
+  Future<ChatHistoryPage> getHistoryPage({int? beforeMessageId}) async {
+    final response = await _apiClient.get(
+      '/client/chat',
+      queryParameters: {
+        'limit': 50,
+        if (beforeMessageId != null) 'beforeMessageId': beforeMessageId,
+      },
+    );
+    return ChatHistoryPage.fromJson(response.data as Map<String, dynamic>);
+  }
 
   /// Получить или создать диалог с поддержкой
   /// Возвращает диалог с сообщениями
@@ -254,6 +266,9 @@ class ChatState {
   final String? error;
   final int? lastMessageId;
   final List<ChatAttachment> pendingAttachments;
+  final bool hasMoreHistory;
+  final bool isLoadingHistory;
+  final bool historyError;
 
   const ChatState({
     this.conversation,
@@ -264,6 +279,9 @@ class ChatState {
     this.error,
     this.lastMessageId,
     this.pendingAttachments = const [],
+    this.hasMoreHistory = false,
+    this.isLoadingHistory = false,
+    this.historyError = false,
   });
 
   ChatState copyWith({
@@ -276,6 +294,9 @@ class ChatState {
     int? lastMessageId,
     List<ChatAttachment>? pendingAttachments,
     bool clearError = false,
+    bool? hasMoreHistory,
+    bool? isLoadingHistory,
+    bool? historyError,
   }) {
     return ChatState(
       conversation: conversation ?? this.conversation,
@@ -286,6 +307,9 @@ class ChatState {
       error: clearError ? null : (error ?? this.error),
       lastMessageId: lastMessageId ?? this.lastMessageId,
       pendingAttachments: pendingAttachments ?? this.pendingAttachments,
+      hasMoreHistory: hasMoreHistory ?? this.hasMoreHistory,
+      isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
+      historyError: historyError ?? this.historyError,
     );
   }
 }
@@ -301,21 +325,30 @@ class ChatController extends Notifier<ChatState> {
   StreamSubscription<Map<String, dynamic>>? _messageDeletedSubscription;
   Timer? _fallbackPollingTimer;
   bool _isRealtimeActive = false;
+  bool _pollInFlight = false;
+  int _generation = 0;
+  int _loadGeneration = 0;
+  int? _conversationIdForCleanup;
 
   @override
   ChatState build() {
+    _generation++;
+    _loadGeneration++;
     _wsService = ref.watch(webSocketServiceProvider);
     _listenToWebSocket();
 
     // Cleanup при dispose
     ref.onDispose(() {
+      _generation++;
+      _loadGeneration++;
       _messageSubscription?.cancel();
       _messageEditedSubscription?.cancel();
       _messageDeletedSubscription?.cancel();
       _fallbackPollingTimer?.cancel();
-      if (state.conversation != null) {
-        _wsService.leaveConversation(state.conversation!.id);
-        _wsService.sendPresence(state.conversation!.id, false);
+      final conversationId = _conversationIdForCleanup;
+      if (conversationId != null) {
+        _wsService.leaveConversation(conversationId);
+        _wsService.sendPresence(conversationId, false);
       }
     });
 
@@ -448,6 +481,7 @@ class ChatController extends Notifier<ChatState> {
   void setRealtimeActive(bool active) {
     if (_isRealtimeActive == active) return;
     _isRealtimeActive = active;
+    _generation++;
 
     if (!active) {
       _fallbackPollingTimer?.cancel();
@@ -470,19 +504,29 @@ class ChatController extends Notifier<ChatState> {
 
   /// Загрузить диалог
   Future<void> loadConversation() async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    _generation++;
+    final generation = ++_loadGeneration;
+    state = state.copyWith(
+      isLoading: true,
+      isLoadingHistory: false,
+      clearError: true,
+    );
     ClientLogService.instance.action('Загрузка чата поддержки');
 
     try {
-      final conversation = await _repository.getConversation();
+      final page = await _repository.getHistoryPage();
+      if (!ref.mounted || generation != _loadGeneration) return;
+      final conversation = page.conversation;
+      _conversationIdForCleanup = conversation.id;
       final messages = conversation.messages;
-      final lastId = messages.isNotEmpty ? messages.last.id : null;
+      final lastId = messages.isNotEmpty ? messages.last.id : 0;
 
       state = state.copyWith(
         conversation: conversation,
         messages: messages,
         isLoading: false,
         lastMessageId: lastId,
+        hasMoreHistory: page.hasMore,
       );
 
       // Присоединяемся к WebSocket комнате только пока вкладка активна.
@@ -501,6 +545,7 @@ class ChatController extends Notifier<ChatState> {
         },
       );
     } catch (e) {
+      if (!ref.mounted || generation != _loadGeneration) return;
       ClientLogService.instance.add(
         type: 'support_chat_load_error',
         level: 'warning',
@@ -539,6 +584,7 @@ class ChatController extends Notifier<ChatState> {
         content.trim(),
         attachmentIds: attachmentIds,
       );
+      if (!ref.mounted) return false;
 
       // WebSocket может добавить это же сообщение раньше ответа POST.
       final messageExists = state.messages.any((m) => m.id == message.id);
@@ -565,6 +611,7 @@ class ChatController extends Notifier<ChatState> {
       );
       return true;
     } catch (e) {
+      if (!ref.mounted) return false;
       ClientLogService.instance.add(
         type: 'support_chat_message_send_error',
         level: 'warning',
@@ -597,6 +644,7 @@ class ChatController extends Notifier<ChatState> {
         file,
         state.conversation!.id,
       );
+      if (!ref.mounted) return null;
 
       // Добавляем к pending attachments
       state = state.copyWith(
@@ -612,6 +660,7 @@ class ChatController extends Notifier<ChatState> {
 
       return attachment;
     } catch (e) {
+      if (!ref.mounted) return null;
       ClientLogService.instance.add(
         type: 'support_chat_attachment_upload_error',
         level: 'warning',
@@ -655,6 +704,7 @@ class ChatController extends Notifier<ChatState> {
         fileName,
         state.conversation!.id,
       );
+      if (!ref.mounted) return null;
 
       // Добавляем к pending attachments
       state = state.copyWith(
@@ -670,6 +720,7 @@ class ChatController extends Notifier<ChatState> {
 
       return attachment;
     } catch (e) {
+      if (!ref.mounted) return null;
       ClientLogService.instance.add(
         type: 'support_chat_attachment_upload_error',
         level: 'warning',
@@ -703,17 +754,27 @@ class ChatController extends Notifier<ChatState> {
 
   /// Проверить новые сообщения (polling)
   Future<void> pollNewMessages() async {
+    if (!ref.mounted || _pollInFlight) return;
     if (!_isRealtimeActive) return;
     if (state.conversation == null) return;
 
     // Если нет сообщений, загружаем с нуля
     final lastMessageId = state.lastMessageId ?? 0;
+    final conversationId = state.conversation!.id;
+    final generation = _generation;
+    _pollInFlight = true;
 
     try {
       final newMessages = await _repository.getNewMessages(
-        state.conversation!.id,
+        conversationId,
         lastMessageId,
       );
+      if (!ref.mounted ||
+          generation != _generation ||
+          !_isRealtimeActive ||
+          state.conversation?.id != conversationId) {
+        return;
+      }
 
       if (newMessages.isNotEmpty) {
         // Фильтруем дубликаты по id
@@ -741,6 +802,7 @@ class ChatController extends Notifier<ChatState> {
           final isChatOpen = ref.read(isChatScreenOpenProvider);
           if (!isChatOpen) {
             for (final msg in uniqueNewMessages) {
+              if (!ref.mounted || generation != _generation) return;
               if (msg.isFromSupport) {
                 final notificationService = ref.read(
                   pushNotificationServiceProvider,
@@ -763,6 +825,49 @@ class ChatController extends Notifier<ChatState> {
         data: {'error': e.toString()},
       );
       debugPrint('Error polling messages: $e');
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  Future<void> loadOlderMessages() async {
+    if (!ref.mounted ||
+        state.isLoadingHistory ||
+        !state.hasMoreHistory ||
+        state.messages.isEmpty) {
+      return;
+    }
+    final generation = _loadGeneration;
+    final conversationId = state.conversation!.id;
+    final before = state.messages
+        .map((m) => m.id)
+        .reduce((a, b) => a < b ? a : b);
+    state = state.copyWith(isLoadingHistory: true, historyError: false);
+    try {
+      final page = await _repository.getHistoryPage(beforeMessageId: before);
+      if (!ref.mounted ||
+          generation != _loadGeneration ||
+          state.conversation?.id != conversationId) {
+        return;
+      }
+      final ids = state.messages.map((m) => m.id).toSet();
+      final older = page.conversation.messages
+          .where((m) => !ids.contains(m.id))
+          .toList();
+      state = state.copyWith(
+        messages: [...older, ...state.messages],
+        hasMoreHistory: page.hasMore && older.isNotEmpty,
+      );
+    } catch (_) {
+      if (ref.mounted && generation == _loadGeneration) {
+        state = state.copyWith(historyError: true);
+      }
+    } finally {
+      if (ref.mounted &&
+          generation == _loadGeneration &&
+          state.conversation?.id == conversationId) {
+        state = state.copyWith(isLoadingHistory: false);
+      }
     }
   }
 

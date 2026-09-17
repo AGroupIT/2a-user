@@ -16,6 +16,9 @@ class AssemblyItem {
   final String? packagingName;
   final bool hasFragileGoods;
   final String placePreference;
+  final String packagingRemoval;
+  final String? packagingRemovalTarget;
+  final bool supportsPackagingRemovalTargets;
   final List<Box> boxes;
   final List<StatusTimelineEntry> statusHistory;
 
@@ -33,6 +36,9 @@ class AssemblyItem {
     this.packagingName,
     this.hasFragileGoods = false,
     this.placePreference = 'unspecified',
+    this.packagingRemoval = 'none',
+    this.packagingRemovalTarget,
+    this.supportsPackagingRemovalTargets = false,
     this.boxes = const [],
     this.statusHistory = const [],
   });
@@ -95,6 +101,10 @@ class AssemblyItem {
       hasFragileGoods:
           json['hasFragileGoods'] == true || json['hasFragileGoods'] == 'true',
       placePreference: json['placePreference']?.toString() ?? 'unspecified',
+      packagingRemoval: json['packagingRemoval']?.toString() ?? 'none',
+      packagingRemovalTarget: json['packagingRemovalTarget']?.toString(),
+      supportsPackagingRemovalTargets:
+          json['supportsPackagingRemovalTargets'] == true,
       boxes: boxes,
       statusHistory: statusHistory,
     );

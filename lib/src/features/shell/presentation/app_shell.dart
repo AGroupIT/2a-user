@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -353,7 +354,7 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
                               final item = _items[index];
                               final isSelected = index == selectedIndex;
 
-                              return _BottomNavButton(
+                              final button = _BottomNavButton(
                                 icon: isSelected
                                     ? item.selectedIcon
                                     : item.icon,
@@ -390,6 +391,20 @@ class _PixsoBottomNavState extends State<_PixsoBottomNav> {
                                   }
                                 },
                               );
+                              final targetId = index == 0
+                                  ? 'nav.home'
+                                  : index == _items.length - 1
+                                  ? 'nav.more'
+                                  : null;
+                              return targetId == null
+                                  ? button
+                                  : TrainingTarget(
+                                      id: targetId,
+                                      onActivate: targetId == 'nav.more'
+                                          ? button.onTap
+                                          : null,
+                                      child: button,
+                                    );
                             },
                           ),
                       ],

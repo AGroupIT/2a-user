@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/paged_list_loader.dart';
 import 'purchase_blank_model.dart';
 
 // ─── State ───────────────────────────────────────────────
@@ -46,16 +47,14 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
   Future<void> loadBlanks() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final response = await _api.get('/client/purchase-blanks');
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final list = (data['data'] as List<dynamic>? ?? [])
-            .map((e) => PurchaseBlank.fromJson(e as Map<String, dynamic>))
-            .toList();
-        state = state.copyWith(blanks: list, isLoading: false);
-      } else {
-        state = state.copyWith(isLoading: false);
-      }
+      final rows = await loadPagedList(
+        fetchPage: (query) async => (await _api.get(
+          '/client/purchase-blanks',
+          queryParameters: query,
+        )).data,
+      );
+      final list = rows.map(PurchaseBlank.fromJson).toList();
+      state = state.copyWith(blanks: list, isLoading: false);
     } catch (e) {
       debugPrint('[PurchaseBlanks] Error loading: $e');
       state = state.copyWith(
@@ -70,13 +69,15 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
     List<Map<String, dynamic>> items = const [],
   }) async {
     try {
-      final response = await _api.post('/client/purchase-blanks', data: {
-        'items': items,
-      });
+      final response = await _api.post(
+        '/client/purchase-blanks',
+        data: {'items': items},
+      );
 
       if (response.statusCode == 201 && response.data?['data'] != null) {
         final blank = PurchaseBlank.fromJson(
-            response.data['data'] as Map<String, dynamic>);
+          response.data['data'] as Map<String, dynamic>,
+        );
         state = state.copyWith(blanks: [blank, ...state.blanks]);
         return blank;
       }
@@ -92,7 +93,8 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
       final response = await _api.get('/client/purchase-blanks/$blankId');
       if (response.statusCode == 200 && response.data?['data'] != null) {
         return PurchaseBlank.fromJson(
-            response.data['data'] as Map<String, dynamic>);
+          response.data['data'] as Map<String, dynamic>,
+        );
       }
     } catch (e) {
       debugPrint('[PurchaseBlanks] Error loading blank $blankId: $e');
@@ -123,7 +125,8 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
 
       if (response.statusCode == 201 && response.data?['data'] != null) {
         return PurchaseBlankItem.fromJson(
-            response.data['data'] as Map<String, dynamic>);
+          response.data['data'] as Map<String, dynamic>,
+        );
       }
     } catch (e) {
       debugPrint('[PurchaseBlanks] Error adding item: $e');
@@ -155,7 +158,8 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
 
       if (response.statusCode == 200 && response.data?['data'] != null) {
         return PurchaseBlankItem.fromJson(
-            response.data['data'] as Map<String, dynamic>);
+          response.data['data'] as Map<String, dynamic>,
+        );
       }
     } catch (e) {
       debugPrint('[PurchaseBlanks] Error updating item: $e');
@@ -185,10 +189,7 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
   ) async {
     try {
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          fileBytes,
-          filename: fileName,
-        ),
+        'file': MultipartFile.fromBytes(fileBytes, filename: fileName),
       });
 
       final response = await _api.post(
@@ -208,8 +209,9 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
   /// Отправить бланк на обработку
   Future<bool> submitBlank(int blankId) async {
     try {
-      final response =
-          await _api.post('/client/purchase-blanks/$blankId/submit');
+      final response = await _api.post(
+        '/client/purchase-blanks/$blankId/submit',
+      );
 
       if (response.statusCode == 200) {
         // Обновляем статус в списке
@@ -236,8 +238,9 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
   /// Отменить бланк
   Future<bool> cancelBlank(int blankId) async {
     try {
-      final response =
-          await _api.post('/client/purchase-blanks/$blankId/cancel');
+      final response = await _api.post(
+        '/client/purchase-blanks/$blankId/cancel',
+      );
 
       if (response.statusCode == 200) {
         final updated = state.blanks.map((b) {
@@ -270,18 +273,21 @@ class PurchaseBlanksNotifier extends Notifier<PurchaseBlanksState> {
 
 final purchaseBlanksProvider =
     NotifierProvider<PurchaseBlanksNotifier, PurchaseBlanksState>(
-  PurchaseBlanksNotifier.new,
-);
+      PurchaseBlanksNotifier.new,
+    );
 
 /// Детали конкретного бланка (с товарами)
-final purchaseBlankDetailProvider =
-    FutureProvider.family<PurchaseBlank?, int>((ref, blankId) async {
+final purchaseBlankDetailProvider = FutureProvider.family<PurchaseBlank?, int>((
+  ref,
+  blankId,
+) async {
   final api = ref.read(apiClientProvider);
   try {
     final response = await api.get('/client/purchase-blanks/$blankId');
     if (response.statusCode == 200 && response.data?['data'] != null) {
       return PurchaseBlank.fromJson(
-          response.data['data'] as Map<String, dynamic>);
+        response.data['data'] as Map<String, dynamic>,
+      );
     }
   } catch (e) {
     debugPrint('[PurchaseBlanks] Error loading detail: $e');

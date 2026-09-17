@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../training/presentation/training_target.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_colors.dart';
@@ -679,35 +680,38 @@ class _CodeCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 if (referralCode != null)
-                  Material(
-                    color: context.brandPrimary,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      onTap: () async {
-                        final copied = await AppClipboard.copyText(
-                          referralCode,
-                        );
-                        if (!context.mounted) return;
-                        if (copied) {
-                          onCopied();
-                        } else {
-                          AppToast.showFromSnackBar(
-                            context,
-                            SnackBar(
-                              content: const Text('Не удалось скопировать'),
-                              backgroundColor: Colors.red.shade700,
-                            ),
-                          );
-                        }
-                      },
+                  TrainingTarget(
+                    id: 'referral.copy',
+                    child: Material(
+                      color: context.brandPrimary,
                       borderRadius: BorderRadius.circular(16),
-                      child: const SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Icon(
-                          Icons.copy_rounded,
-                          color: Colors.white,
-                          size: 20,
+                      child: InkWell(
+                        onTap: () async {
+                          final copied = await AppClipboard.copyText(
+                            referralCode,
+                          );
+                          if (!context.mounted) return;
+                          if (copied) {
+                            onCopied();
+                          } else {
+                            AppToast.showFromSnackBar(
+                              context,
+                              SnackBar(
+                                content: const Text('Не удалось скопировать'),
+                                backgroundColor: Colors.red.shade700,
+                              ),
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: const SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Icon(
+                            Icons.copy_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ),
                     ),
@@ -803,17 +807,22 @@ class _ReferralMetric extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontFamily: 'Gilroy',
-                    fontSize: 18,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.2,
+                TrainingTarget(
+                  id: label == 'Баланс'
+                      ? 'referral.balance'
+                      : 'referral.metric.$label',
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontFamily: 'Gilroy',
+                      fontSize: 18,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
               ],

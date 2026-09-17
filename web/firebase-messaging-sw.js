@@ -1,10 +1,27 @@
-// Firebase Messaging Service Worker for Web Push Notifications
-// This file handles background push notifications when the browser is closed or in background
+// Register before Firebase so the SDK cannot intercept custom clicks.
+self.addEventListener('notificationclick', (event) => {
+  event.stopImmediatePropagation();
+  event.notification.close();
+  const data = event.notification.data || {};
+  const pushData = data.FCM_MSG?.data || data;
+  const route = typeof pushData.route === 'string' &&
+    pushData.route.startsWith('/') && !pushData.route.startsWith('//')
+      ? pushData.route : '/';
+  // Flutter uses its default hash URL strategy.
+  const target = new URL('/#' + route, self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const app = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (app) {
+      const navigated = await app.navigate(target);
+      return (navigated || app).focus();
+    }
+    return clients.openWindow(target);
+  })());
+});
 
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js');
-
-// Initialize Firebase with your project config
 firebase.initializeApp({
   apiKey: 'AIzaSyDpIETRJbo2aMr0qELkpxZ0dacTiZrrG_0',
   appId: '1:949693718080:web:83f29ac197174e289a49a5',
@@ -15,71 +32,21 @@ firebase.initializeApp({
 });
 
 try {
-  const messagingSupported =
-    typeof firebase.messaging.isSupported !== 'function' ||
+  const supported = typeof firebase.messaging.isSupported !== 'function' ||
     firebase.messaging.isSupported();
-
-  if (messagingSupported) {
-    const messaging = firebase.messaging();
-
-    // Handle background messages
-    messaging.onBackgroundMessage((payload) => {
-      console.log('[firebase-messaging-sw.js] Received background message:', payload);
-
-      const notificationTitle = payload.notification?.title || 'Новое уведомление';
-      const notificationOptions = {
-        body: payload.notification?.body || '',
+  if (supported) {
+    firebase.messaging().onBackgroundMessage((payload) => {
+      // FCM already displays notification payloads. Do not display them twice.
+      if (payload.notification) return;
+      return self.registration.showNotification(payload.data?.title || 'Новое уведомление', {
+        body: payload.data?.body || '',
         icon: '/icons/Icon-192.png',
         badge: '/icons/Icon-192.png',
         tag: payload.messageId || 'default',
         data: payload.data || {},
-        // Vibration pattern for mobile
-        vibrate: [100, 50, 100],
-        // Actions (optional)
-        actions: [
-          {
-            action: 'open',
-            title: 'Открыть',
-          },
-        ],
-      };
-
-      return self.registration.showNotification(notificationTitle, notificationOptions);
+      });
     });
-  } else {
-    console.warn('[firebase-messaging-sw.js] Firebase Messaging is not supported');
   }
 } catch (error) {
-  console.warn('[firebase-messaging-sw.js] Firebase Messaging init skipped:', error);
+  console.warn('[push] Service worker initialization unavailable:', error);
 }
-
-// Handle notification click
-self.addEventListener('notificationclick', (event) => {
-  console.log('[firebase-messaging-sw.js] Notification click:', event);
-  
-  event.notification.close();
-
-  // Get the route from notification data
-  const route = event.notification.data?.route || '/';
-
-  // Open the app or focus existing window
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open, focus it
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.focus();
-          // Navigate to route if needed
-          if (route && route !== '/') {
-            client.postMessage({ type: 'NOTIFICATION_CLICK', route: route });
-          }
-          return;
-        }
-      }
-      // Otherwise open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(route);
-      }
-    })
-  );
-});

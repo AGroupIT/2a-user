@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/paged_list_loader.dart';
 import 'self_buyout_models.dart';
 
 class SelfBuyoutService {
@@ -26,8 +27,13 @@ class SelfBuyoutService {
   }
 
   Future<List<SelfBuyoutRequest>> getRequests() async {
-    final res = await _apiClient.get('/client/self-buyout/requests');
-    final list = (res.data?['requests'] as List?) ?? const [];
+    final list = await loadPagedList(
+      listKey: 'requests',
+      fetchPage: (query) async => (await _apiClient.get(
+        '/client/self-buyout/requests',
+        queryParameters: query,
+      )).data,
+    );
     return list
         .whereType<Map<String, dynamic>>()
         .map(SelfBuyoutRequest.fromJson)

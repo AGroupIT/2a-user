@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -29,11 +30,14 @@ String localNotificationChannelId(
   required bool soundEnabled,
 }) => '${baseId}_${soundEnabled ? 'sound' : 'silent'}';
 
+Future<bool> checkWebPushSupport(FirebaseMessaging messaging) =>
+    messaging.isSupported().timeout(const Duration(seconds: 3));
+
 /// Background message handler (must be top-level)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PushNotificationService._recordPushReceived();
+  await PushNotificationService._recordPushReceived(message);
   if (kDebugMode) {
     debugPrint('🔔 Background FCM message: ${message.messageId}');
   }
@@ -89,6 +93,11 @@ class PushNotificationService {
   static bool _fcmTokenObtained = false; // FCM токен получен
   static bool _messagingSupported = true; // FCM доступен в текущем браузере/ОС
   static Future<void>? _firebaseInitializationFuture;
+  static bool _initializationRetryRunning = false;
+  static bool _tokenRetryRunning = false;
+  static bool _pushSessionActive = true;
+  static bool? _tokenWebOverride;
+  static bool? _tokenIOSOverride;
   static final List<RemoteMessage> _pendingOpenedMessages = [];
   static const _notificationsEnabledKey = 'push_notifications_enabled';
   static const _soundEnabledKey = 'push_sound_enabled';
@@ -140,15 +149,41 @@ class PushNotificationService {
 
   // Callback для обработки обновления FCM токена
   static Function(String)? onTokenRefreshed;
+  static void Function()? onReceiptQueued;
 
   static int? _activeClientId;
 
   static void setActiveClient(int? clientId) {
     _activeClientId = clientId;
+    _pushSessionActive = clientId != null;
   }
 
   static void clearActiveClient() {
     _activeClientId = null;
+    _pushSessionActive = false;
+  }
+
+  /// Call directly from a button handler: Web permission needs user activation.
+  static Future<bool> requestPermissionFromUserGesture() async {
+    final messaging = _messaging;
+    if (messaging == null) return false;
+    final settings = await messaging
+        .requestPermission(alert: true, badge: true, sound: true)
+        .timeout(const Duration(seconds: 30));
+    _authorizationStatus = settings.authorizationStatus.name;
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  static Future<void> revokeTokenForLogout() async {
+    final messaging = _messaging;
+    _fcmTokenObtained = false;
+    if (messaging == null) return;
+    try {
+      await messaging.deleteToken().timeout(const Duration(seconds: 3));
+    } catch (error) {
+      debugPrint('🔔 Token revocation unavailable: $error');
+    }
   }
 
   static void recordDeviceRegistrationAttempt() {
@@ -236,13 +271,59 @@ class PushNotificationService {
     };
   }
 
-  static Future<void> _recordPushReceived() async {
+  static Future<void> _recordPushReceived(
+    RemoteMessage message, {
+    bool opened = false,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
       await prefs.setString(
         _lastPushReceivedAtKey,
         DateTime.now().toUtc().toIso8601String(),
       );
+      final notificationId = int.tryParse(
+        message.data['notificationId']?.toString() ?? '',
+      );
+      final recipientId = int.tryParse(
+        message.data['recipientId']?.toString() ??
+            message.data['clientId']?.toString() ??
+            '',
+      );
+      if (notificationId != null && recipientId != null) {
+        final event = opened ? 'opened' : 'received';
+        await prefs.setString(
+          'push_receipt_${recipientId}_${notificationId}_$event',
+          jsonEncode({
+            'notificationId': notificationId,
+            'recipientId': recipientId,
+            'event': event,
+            'queuedAt': DateTime.now().toUtc().toIso8601String(),
+          }),
+        );
+        final receipts = prefs
+            .getKeys()
+            .where((key) => key.startsWith('push_receipt_'))
+            .toList();
+        if (receipts.length > 200) {
+          String queuedAt(String key) {
+            try {
+              return (jsonDecode(prefs.getString(key) ?? '{}')
+                          as Map)['queuedAt']
+                      ?.toString() ??
+                  '';
+            } catch (_) {
+              return '';
+            }
+          }
+
+          receipts.sort((a, b) => queuedAt(a).compareTo(queuedAt(b)));
+          for (final key in receipts.take(receipts.length - 200)) {
+            await prefs.remove(key);
+          }
+        }
+        onReceiptQueued?.call();
+      }
     } catch (_) {}
   }
 
@@ -327,10 +408,7 @@ class PushNotificationService {
         final messaging = FirebaseMessaging.instance;
 
         if (kIsWeb) {
-          final isSupported = await messaging.isSupported().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () => false,
-          );
+          final isSupported = await checkWebPushSupport(messaging);
           if (!isSupported) {
             _messagingSupported = false;
             _messaging = null;
@@ -349,14 +427,22 @@ class PushNotificationService {
         // Каналы должны существовать до первого background push. Особенно это
         // важно на OEM-прошивках, которые не всегда корректно создают fallback.
         if (_isAndroid) {
-          await PushNotificationService().initialize();
+          await PushNotificationService().initialize().timeout(
+            const Duration(seconds: 5),
+          );
         }
 
         // Запрос разрешений
         try {
-          final settings = await _messaging!
-              .requestPermission(alert: true, badge: true, sound: true)
-              .timeout(const Duration(seconds: 5));
+          final settings =
+              await (kIsWeb
+                      ? _messaging!.getNotificationSettings()
+                      : _messaging!.requestPermission(
+                          alert: true,
+                          badge: true,
+                          sound: true,
+                        ))
+                  .timeout(const Duration(seconds: 5));
           _authorizationStatus = settings.authorizationStatus.name;
           debugPrint('🔔 FCM Permission: ${settings.authorizationStatus}');
         } catch (e) {
@@ -380,6 +466,12 @@ class PushNotificationService {
             '🔔 Error getting initial FCM token (may retry later): $e',
           );
         }
+
+        // Resolve the only fallible async operation before attaching listeners,
+        // so a retry cannot attach the same listeners a second time.
+        final initialMessage = await _messaging!.getInitialMessage().timeout(
+          const Duration(seconds: 5),
+        );
 
         // Background handler
         FirebaseMessaging.onBackgroundMessage(
@@ -406,7 +498,7 @@ class PushNotificationService {
 
         // Foreground handler
         FirebaseMessaging.onMessage.listen((message) {
-          unawaited(_recordPushReceived());
+          unawaited(_recordPushReceived(message));
           debugPrint('🔔 Foreground FCM: ${message.notification?.title}');
           if (!_isMessageForActiveClient(message)) {
             debugPrint('🔔 Foreground FCM skipped: recipient mismatch');
@@ -418,7 +510,7 @@ class PushNotificationService {
 
         // Message opened app
         FirebaseMessaging.onMessageOpenedApp.listen((message) {
-          unawaited(_recordPushReceived());
+          unawaited(_recordPushReceived(message, opened: true));
           debugPrint('🔔 FCM opened app: ${message.notification?.title}');
           if (!_isMessageForActiveClient(message)) {
             debugPrint('🔔 FCM opened app skipped: recipient mismatch');
@@ -427,9 +519,8 @@ class PushNotificationService {
           _dispatchOpenedMessage(message);
         });
 
-        final initialMessage = await _messaging!.getInitialMessage();
         if (initialMessage != null) {
-          unawaited(_recordPushReceived());
+          unawaited(_recordPushReceived(initialMessage, opened: true));
           Future.microtask(() {
             debugPrint(
               '🔔 FCM initial message: ${initialMessage.notification?.title}',
@@ -476,43 +567,71 @@ class PushNotificationService {
   }
 
   /// Повторные попытки инициализации Firebase (30с → 60с → ... → макс 600с)
-  static Future<void> _retryInitializeFirebase() async {
-    var delaySec = 30;
-    while (!_firebaseReady) {
-      debugPrint('🔔 Retrying Firebase init in ${delaySec}s...');
-      await Future.delayed(Duration(seconds: delaySec));
-      if (_firebaseReady) return;
-      try {
-        await initializeFirebase();
-      } catch (_) {}
-      delaySec = (delaySec * 2).clamp(30, 600); // макс 10 минут
+  @visibleForTesting
+  static Future<void> runInitializationRetryForTesting(
+    Future<void> Function() retry,
+  ) => _retryInitializeFirebase(retry: retry);
+
+  static Future<void> _retryInitializeFirebase({
+    Future<void> Function()? retry,
+  }) async {
+    if (_initializationRetryRunning) return;
+    _initializationRetryRunning = true;
+    try {
+      var delaySec = 30;
+      while (!_firebaseReady && _pushSessionActive) {
+        debugPrint('🔔 Retrying Firebase init in ${delaySec}s...');
+        await Future.delayed(Duration(seconds: delaySec));
+        if (_firebaseReady || !_pushSessionActive) return;
+        try {
+          await (retry ?? initializeFirebase)();
+        } catch (_) {}
+        delaySec = (delaySec * 2).clamp(30, 600); // макс 10 минут
+      }
+    } finally {
+      _initializationRetryRunning = false;
     }
   }
 
   /// Повторные попытки получения FCM токена (30с → 60с → макс 300с, бесконечно)
   static Future<void> _retryGetFCMToken() async {
-    var delaySec = 30;
-    while (!_fcmTokenObtained) {
-      debugPrint('🔔 Retrying FCM token in ${delaySec}s...');
-      await Future.delayed(Duration(seconds: delaySec));
-      if (_fcmTokenObtained) return;
-      try {
-        final token = await getFCMToken().timeout(const Duration(seconds: 10));
-        if (token != null) {
-          _fcmTokenObtained = true;
-          _lastTokenObtainedAt = DateTime.now().toUtc();
-          debugPrint('🔔 FCM token obtained on retry');
-          onTokenRefreshed?.call(token);
+    if (_tokenRetryRunning) return;
+    _tokenRetryRunning = true;
+    try {
+      var delaySec = 30;
+      while (!_fcmTokenObtained && _pushSessionActive && _messagingSupported) {
+        debugPrint('🔔 Retrying FCM token in ${delaySec}s...');
+        await Future.delayed(Duration(seconds: delaySec));
+        if (_fcmTokenObtained || !_pushSessionActive || !_messagingSupported) {
           return;
         }
-      } catch (e) {
-        // На симуляторе APNS никогда не будет доступен — прекращаем retry
-        if (e.toString().contains('apns-token-not-set')) {
-          debugPrint('🔔 APNS not available (simulator?) — stopping FCM retry');
-          return;
+        try {
+          final token = await getFCMToken().timeout(
+            const Duration(seconds: 10),
+          );
+          if (token != null) {
+            _fcmTokenObtained = true;
+            _lastTokenObtainedAt = DateTime.now().toUtc();
+            debugPrint('🔔 FCM token obtained on retry');
+            onTokenRefreshed?.call(token);
+            return;
+          }
+        } catch (e) {
+          // На симуляторе APNS никогда не будет доступен — прекращаем retry
+          if (e.toString().contains('apns-token-not-set')) {
+            debugPrint(
+              '🔔 APNS not available (simulator?) — stopping FCM retry',
+            );
+            return;
+          }
         }
+        delaySec = (delaySec * 2).clamp(
+          30,
+          300,
+        ); // макс 5 минут между попытками
       }
-      delaySec = (delaySec * 2).clamp(30, 300); // макс 5 минут между попытками
+    } finally {
+      _tokenRetryRunning = false;
     }
   }
 
@@ -612,7 +731,24 @@ class PushNotificationService {
   static const String _vapidKey =
       'BN84z0kGwWRFRalLMJ-HlMPVYBp5Tu7QnsGiACoT-ODg7VkwtFV_kdDhFHapsr5BguDgeBs0E6Pe2aY2_0fMshQ';
 
-  /// Получить FCM токен
+  /// Inject only the token SDK dependency; tests must clear it in teardown.
+  @visibleForTesting
+  static void setMessagingForTesting(
+    FirebaseMessaging? messaging, {
+    bool? isWeb,
+    bool? isIOS,
+  }) {
+    _messaging = messaging;
+    _firebaseReady = messaging != null;
+    _messagingSupported = true;
+    _fcmTokenObtained = false;
+    _lastTokenObtainedAt = null;
+    _tokenWebOverride = isWeb;
+    _tokenIOSOverride = isIOS;
+    if (messaging == null) _pushSessionActive = false;
+  }
+
+  /// Получить FCM токен, не удерживая регистрацию устройства бесконечно.
   static Future<String?> getFCMToken() async {
     try {
       if (!_messagingSupported) {
@@ -627,12 +763,26 @@ class PushNotificationService {
       }
 
       // Для Web нужен VAPID ключ
-      String? token;
-      if (kIsWeb) {
-        token = await messaging.getToken(vapidKey: _vapidKey);
-      } else {
-        token = await messaging.getToken();
+      final isWeb = _tokenWebOverride ?? kIsWeb;
+      final isIOS = _tokenIOSOverride ?? _isIOS;
+      if (isWeb) {
+        final settings = await messaging.getNotificationSettings().timeout(
+          const Duration(seconds: 3),
+        );
+        _authorizationStatus = settings.authorizationStatus.name;
+        if (settings.authorizationStatus != AuthorizationStatus.authorized) {
+          return null;
+        }
+      } else if (isIOS) {
+        final apnsToken = await messaging.getAPNSToken().timeout(
+          const Duration(seconds: 3),
+        );
+        if (apnsToken == null) return null;
       }
+      final tokenRequest = isWeb
+          ? messaging.getToken(vapidKey: _vapidKey)
+          : messaging.getToken();
+      final token = await tokenRequest.timeout(const Duration(seconds: 10));
 
       if (token != null) {
         _fcmTokenObtained = true;
@@ -776,6 +926,21 @@ class PushNotificationService {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
+    final clientId = _activeClientId;
+    final target = NotificationItem.tapTargetFromPayload(response.payload);
+    if (clientId != null && target.notificationId != null) {
+      unawaited(
+        _recordPushReceived(
+          RemoteMessage(
+            data: {
+              'notificationId': target.notificationId,
+              'recipientId': '$clientId',
+            },
+          ),
+          opened: true,
+        ),
+      );
+    }
     _dispatchLocalNotificationTap(response.payload);
   }
 

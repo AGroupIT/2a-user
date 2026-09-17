@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/app_colors.dart';
@@ -27,8 +28,7 @@ class MarketplaceSelector extends StatelessWidget {
         itemBuilder: (context, index) {
           final mp = marketplaces[index];
           final isSelected = mp == selected;
-
-          return ChoiceChip(
+          final chip = ChoiceChip(
             label: Text(mp.displayName),
             selected: isSelected,
             onSelected: (_) => onChanged(mp),
@@ -48,6 +48,10 @@ class MarketplaceSelector extends StatelessWidget {
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 12),
           );
+
+          return index == 0
+              ? TrainingTarget(id: 'shop.marketplace', child: chip)
+              : chip;
         },
       ),
     );

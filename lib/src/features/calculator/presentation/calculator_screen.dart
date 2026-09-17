@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../training/presentation/training_target.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
@@ -10,6 +11,8 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
+import '../../../core/ui/packaging_removal_text.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../auth/data/auth_provider.dart';
 import '../domain/assembly_cost_calculation.dart';
 
@@ -335,13 +338,16 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
                   subtitle: 'Выберите способ расчёта стоимости перевозки.',
                 ),
                 const SizedBox(height: 14),
-                _PackagingSummaryTile(
-                  title: 'Выбранный тариф',
-                  value: selectedTariff.name,
-                  detail: _tariffPricingDescription(selectedTariff),
-                  icon: Icons.local_shipping_outlined,
-                  isSelected: true,
-                  onTap: () => _showTariffSheet(tariffs),
+                TrainingTarget(
+                  id: 'calculator.tariff',
+                  child: _PackagingSummaryTile(
+                    title: 'Выбранный тариф',
+                    value: selectedTariff.name,
+                    detail: _tariffPricingDescription(selectedTariff),
+                    icon: Icons.local_shipping_outlined,
+                    isSelected: true,
+                    onTap: () => _showTariffSheet(tariffs),
+                  ),
                 ),
               ],
             ),
@@ -368,32 +374,61 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _NumField(
-                    label: 'Вес, кг',
-                    controller: _weightCtrl,
-                    hint: 'например 15.5',
-                    decimal: true,
-                    onChanged: (_) => setState(() {}),
+                  child: TrainingTarget(
+                    id: 'calculator.weight',
+                    child: TrainingTarget(
+                      id:
+                          (double.tryParse(
+                                    _weightCtrl.text.replaceAll(',', '.'),
+                                  ) ??
+                                  0) >
+                              0
+                          ? 'calculator.valid.weight'
+                          : 'calculator.missing.weight',
+                      child: _NumField(
+                        label: 'Вес, кг',
+                        controller: _weightCtrl,
+                        hint: 'например 15.5',
+                        decimal: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _NumField(
-                    label: 'Мест',
-                    controller: _placesCtrl,
-                    hint: '1',
-                    onChanged: (_) => setState(() {}),
+                  child: TrainingTarget(
+                    id: (int.tryParse(_placesCtrl.text) ?? 0) > 0
+                        ? 'calculator.valid.places'
+                        : 'calculator.missing.places',
+                    child: _NumField(
+                      label: 'Мест',
+                      controller: _placesCtrl,
+                      hint: '1',
+                      onChanged: (_) => setState(() {}),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            _NumField(
-              label: 'Объём, м³',
-              controller: _volumeCtrl,
-              hint: 'например 0.15',
-              decimal: true,
-              onChanged: (_) => setState(() {}),
+            TrainingTarget(
+              id: 'calculator.volume',
+              child: TrainingTarget(
+                id:
+                    (double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ??
+                            0) >
+                        0
+                    ? 'calculator.valid.volume'
+                    : 'calculator.missing.volume',
+                child: _NumField(
+                  label: 'Объём, м³',
+                  controller: _volumeCtrl,
+                  hint: 'например 0.15',
+                  decimal: true,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             KeyedSubtree(
@@ -401,20 +436,33 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: _NumField(
-                      label: 'Треков всего',
-                      controller: _totalCtrl,
-                      hint: '1',
-                      onChanged: (_) => setState(() {}),
+                    child: TrainingTarget(
+                      id: (int.tryParse(_totalCtrl.text) ?? 0) > 0
+                          ? 'calculator.valid.tracks'
+                          : 'calculator.missing.tracks',
+                      child: _NumField(
+                        label: 'Треков всего',
+                        controller: _totalCtrl,
+                        hint: '1',
+                        onChanged: (_) => setState(() {}),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _NumField(
-                      label: 'С фотоотчётом',
-                      controller: _photoCtrl,
-                      hint: '0',
-                      onChanged: (_) => setState(() {}),
+                    child: TrainingTarget(
+                      id:
+                          (int.tryParse(_photoCtrl.text) ?? 0) >= 0 &&
+                              (int.tryParse(_photoCtrl.text) ?? 0) <=
+                                  (int.tryParse(_totalCtrl.text) ?? 0)
+                          ? 'calculator.photos'
+                          : 'calculator.missing.photos',
+                      child: _NumField(
+                        label: 'С фотоотчётом',
+                        controller: _photoCtrl,
+                        hint: '0',
+                        onChanged: (_) => setState(() {}),
+                      ),
                     ),
                   ),
                 ],
@@ -830,15 +878,18 @@ class _ResultCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 5),
-                      Text(
-                        '\$${result.total.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontFamily: 'Gilroy',
-                          fontSize: 30,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
+                      TrainingTarget(
+                        id: 'calculator.result',
+                        child: Text(
+                          '\$${result.total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Gilroy',
+                            fontSize: 30,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                          ),
                         ),
                       ),
                     ],
@@ -863,13 +914,19 @@ class _ResultCard extends StatelessWidget {
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
           if (result.packagingRemoval != PackagingRemovalOption.none)
             _Row(
-              'Снятие упаковки',
-              result.packagingRemoval == PackagingRemovalOption.all
-                  ? 'Снять всю'
-                  : 'Только транспортировочную',
+              tr(context, ru: 'Снятие упаковки', zh: '拆除包装'),
+              packagingRemovalLabel(context, result.packagingRemoval),
               subtitle: result.removalPriceApplied
-                  ? 'применена специальная ставка тарифа'
-                  : 'специальная ставка не задана — расчёт по обычному тарифу',
+                  ? tr(
+                      context,
+                      ru: 'применена специальная ставка тарифа',
+                      zh: '已使用单独运价',
+                    )
+                  : tr(
+                      context,
+                      ru: 'специальная ставка не задана — расчёт по обычному тарифу',
+                      zh: '未设置单独运价，按标准运价计算',
+                    ),
             ),
           if (hasPhotoMarkup)
             _Row(
@@ -1400,34 +1457,44 @@ class _AssemblyOptionsCard extends StatelessWidget {
     required this.onInsuranceAmountChanged,
   });
 
-  String _removalTitle(PackagingRemovalOption option) {
-    return switch (option) {
-      PackagingRemovalOption.none => 'Не снимать',
-      PackagingRemovalOption.transportOnly => 'Снять транспортировочную',
-      PackagingRemovalOption.all => 'Снять всю упаковку',
-    };
-  }
-
-  String _removalDescription(PackagingRemovalOption option) {
+  String _removalDescription(
+    BuildContext context,
+    PackagingRemovalOption option,
+  ) {
     final price = switch (option) {
       PackagingRemovalOption.none => null,
-      PackagingRemovalOption.transportOnly =>
-        tariff.packagingRemovalTransportPrice,
+      PackagingRemovalOption.transportOnly ||
+      PackagingRemovalOption.boxOnly ||
+      PackagingRemovalOption.bagOnly => tariff.packagingRemovalTransportPrice,
       PackagingRemovalOption.all => tariff.packagingRemovalAllPrice,
     };
     if (option == PackagingRemovalOption.none) {
-      return 'Обычная ставка выбранного тарифа';
+      return tr(
+        context,
+        ru: 'Обычная ставка выбранного тарифа',
+        zh: '所选运价的标准价格',
+      );
     }
     if (price != null && price > 0) {
-      return 'Специальная ставка \$${price.toStringAsFixed(2)} за расчётную единицу';
+      return tr(
+        context,
+        ru: 'Специальная ставка \$${price.toStringAsFixed(2)} за расчётную единицу',
+        zh: '单独运价：每计费单位 \$${price.toStringAsFixed(2)}',
+      );
     }
-    return 'Специальная ставка не задана — расчёт по обычному тарифу';
+    return tr(
+      context,
+      ru: 'Специальная ставка не задана — расчёт по обычному тарифу',
+      zh: '未设置单独运价，按标准运价计算',
+    );
   }
 
   IconData _removalIcon(PackagingRemovalOption option) {
     return switch (option) {
       PackagingRemovalOption.none => Icons.inventory_2_outlined,
-      PackagingRemovalOption.transportOnly => Icons.layers_clear_outlined,
+      PackagingRemovalOption.transportOnly ||
+      PackagingRemovalOption.boxOnly ||
+      PackagingRemovalOption.bagOnly => Icons.layers_clear_outlined,
       PackagingRemovalOption.all => Icons.delete_sweep_outlined,
     };
   }
@@ -1445,28 +1512,34 @@ class _AssemblyOptionsCard extends StatelessWidget {
             subtitle: 'Настройте снятие упаковки, места и защиту груза.',
           ),
           const SizedBox(height: 14),
-          const _SubsectionLabel('Снятие упаковки'),
+          _SubsectionLabel(tr(context, ru: 'Снятие упаковки', zh: '拆除包装')),
           const SizedBox(height: 8),
           Column(
-            children: PackagingRemovalOption.values
-                .map(
-                  (option) => Padding(
-                    padding: EdgeInsets.only(
-                      bottom: option == PackagingRemovalOption.values.last
-                          ? 0
-                          : 8,
-                    ),
-                    child: _AssemblyOptionTile(
-                      title: _removalTitle(option),
-                      subtitle: _removalDescription(option),
-                      icon: _removalIcon(option),
-                      selected: packagingRemoval == option,
-                      onTap: () => onPackagingRemovalChanged(option),
-                    ),
-                  ),
-                )
-                .toList(),
+            children:
+                PackagingRemovalOption.available(
+                      supportsTargets: tariff.supportsPackagingRemovalTargets,
+                      current: packagingRemoval,
+                    )
+                    .map(
+                      (option) => Padding(
+                        padding: EdgeInsets.only(
+                          bottom: option == PackagingRemovalOption.all ? 0 : 8,
+                        ),
+                        child: _AssemblyOptionTile(
+                          title: packagingRemovalLabel(context, option),
+                          subtitle: _removalDescription(context, option),
+                          icon: _removalIcon(option),
+                          selected: packagingRemoval == option,
+                          onTap: () => onPackagingRemovalChanged(option),
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
+          if (!tariff.supportsPackagingRemovalTargets) ...[
+            const SizedBox(height: 8),
+            Text(packagingRemovalTargetsUnavailableText(context)),
+          ],
           const SizedBox(height: 14),
           const _SubsectionLabel('Пожелание по упаковке'),
           const SizedBox(height: 8),
@@ -1557,12 +1630,22 @@ class _AssemblyOptionsCard extends StatelessWidget {
           ),
           if (hasInsurance) ...[
             const SizedBox(height: 8),
-            _NumField(
-              label: 'Стоимость товаров, CNY',
-              controller: insuranceAmountController,
-              hint: 'например 1500',
-              decimal: true,
-              onChanged: onInsuranceAmountChanged,
+            TrainingTarget(
+              id:
+                  (double.tryParse(
+                            insuranceAmountController.text.replaceAll(',', '.'),
+                          ) ??
+                          0) >
+                      0
+                  ? 'calculator.insurance'
+                  : 'calculator.missing.insurance',
+              child: _NumField(
+                label: 'Стоимость товаров, CNY',
+                controller: insuranceAmountController,
+                hint: 'например 1500',
+                decimal: true,
+                onChanged: onInsuranceAmountChanged,
+              ),
             ),
           ],
         ],
@@ -1894,21 +1977,27 @@ class _PackagingPickerCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          _PackagingSummaryTile(
-            title: 'Основная упаковка',
-            value:
-                selectedPrimaryPackaging?.name ??
-                (primaryPackagings.isEmpty
-                    ? 'Нет доступных вариантов'
-                    : 'Выберите упаковку'),
-            detail: selectedPrimaryPackaging == null
-                ? 'Один обязательный вариант'
-                : _priceLabel(selectedPrimaryPackaging!),
-            icon: Icons.inventory_2_outlined,
-            isSelected: selectedPrimaryPackaging != null,
-            onTap: primaryPackagings.isEmpty
-                ? null
-                : () => _showPrimaryPackagingSheet(context, primaryPackagings),
+          TrainingTarget(
+            id: selectedPrimaryPackaging == null
+                ? 'calculator.missing.packaging'
+                : 'calculator.packaging',
+            child: _PackagingSummaryTile(
+              title: 'Основная упаковка',
+              value:
+                  selectedPrimaryPackaging?.name ??
+                  (primaryPackagings.isEmpty
+                      ? 'Нет доступных вариантов'
+                      : 'Выберите упаковку'),
+              detail: selectedPrimaryPackaging == null
+                  ? 'Один обязательный вариант'
+                  : _priceLabel(selectedPrimaryPackaging!),
+              icon: Icons.inventory_2_outlined,
+              isSelected: selectedPrimaryPackaging != null,
+              onTap: primaryPackagings.isEmpty
+                  ? null
+                  : () =>
+                        _showPrimaryPackagingSheet(context, primaryPackagings),
+            ),
           ),
           const SizedBox(height: 10),
           _PackagingSummaryTile(

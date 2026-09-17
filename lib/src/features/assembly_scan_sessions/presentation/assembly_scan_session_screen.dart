@@ -119,6 +119,23 @@ class AssemblyScanSessionContent extends ConsumerWidget {
               assemblyNumber: assemblyNumber,
               approachNumber: approachNumber,
             ),
+            if (session.stopReason == 'manual_upload') ...[
+              const SizedBox(height: 12),
+              _StateNotice(
+                icon: Icons.upload_file_outlined,
+                color: context.brandPrimary,
+                title: tr(
+                  context,
+                  ru: 'Видео добавлено вручную',
+                  zh: '手动添加的录像',
+                ),
+                message: tr(
+                  context,
+                  ru: 'Указана дата добавления, а не съёмки. Привязки к моментам сканирования треков нет.',
+                  zh: '显示的是添加日期，不是拍摄日期。录像没有关联运单扫描时刻。',
+                ),
+              ),
+            ],
             if (session.status == AssemblyScanSessionStatus.partial ||
                 session.hasKnownGap) ...[
               const SizedBox(height: 12),

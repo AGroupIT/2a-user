@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -92,7 +93,10 @@ class _PurchaseBlanksScreenState extends ConsumerState<PurchaseBlanksScreen> {
                 ...blanks.map(
                   (blank) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _BlankCard(blank: blank),
+                    child: _BlankCard(
+                      blank: blank,
+                      trainingTarget: identical(blank, blanks.first),
+                    ),
                   ),
                 ),
             ],
@@ -322,22 +326,25 @@ class _PurchaseBlanksHero extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     height: 48,
-                    child: FilledButton.icon(
-                      onPressed: onCreate,
-                      icon: const Icon(Icons.add_rounded, size: 21),
-                      label: const Text(
-                        'Создать новый бланк',
-                        style: TextStyle(
-                          fontFamily: 'Gilroy',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
+                    child: TrainingTarget(
+                      id: 'purchase.create',
+                      child: FilledButton.icon(
+                        onPressed: onCreate,
+                        icon: const Icon(Icons.add_rounded, size: 21),
+                        label: const Text(
+                          'Создать новый бланк',
+                          style: TextStyle(
+                            fontFamily: 'Gilroy',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: context.brandPrimary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: context.brandPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                         ),
                       ),
                     ),
@@ -357,11 +364,23 @@ class _PurchaseBlanksHero extends StatelessWidget {
 class _BlankCard extends StatelessWidget {
   final PurchaseBlank blank;
 
-  const _BlankCard({required this.blank});
+  final bool trainingTarget;
+
+  const _BlankCard({required this.blank, required this.trainingTarget});
 
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd.MM.yyyy HH:mm');
+    final requestNumber = Text(
+      'Бланк #${blank.id}',
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontFamily: 'Gilroy',
+        fontSize: 18,
+        height: 22 / 18,
+        fontWeight: FontWeight.w900,
+      ),
+    );
 
     return Container(
       decoration: PurchaseBlankUi.cardDecoration(),
@@ -397,16 +416,12 @@ class _BlankCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Бланк #${blank.id}',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontFamily: 'Gilroy',
-                              fontSize: 18,
-                              height: 22 / 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
+                          trainingTarget
+                              ? TrainingTarget(
+                                  id: 'purchase.request.open',
+                                  child: requestNumber,
+                                )
+                              : requestNumber,
                           const SizedBox(height: 4),
                           Row(
                             children: [

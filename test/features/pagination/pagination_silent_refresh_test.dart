@@ -17,6 +17,40 @@ void main() {
 
   group('Pagination silent refresh', () {
     test(
+      'tracks refresh in bounded pages without truncating oversized groups',
+      () async {
+        final apiClient = _GroupedTracksApiClient();
+        final ws = _FakeWebSocketService();
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(apiClient),
+            webSocketServiceProvider.overrideWithValue(ws),
+          ],
+        );
+        addTearDown(container.dispose);
+        addTearDown(ws.dispose);
+        final provider = paginatedTracksProvider('GROUP-TEST');
+        final subscription = container.listen(provider, (_, _) {});
+        addTearDown(subscription.close);
+        final notifier = container.read(provider);
+        await _waitUntil(() => notifier.state.tracks.length == 70);
+        await notifier.loadMore();
+        expect(notifier.state.tracks.length, 125);
+        final ids = notifier.state.tracks.map((track) => track.id).toSet();
+        apiClient.queries.clear();
+        await notifier.loadInitial(silent: true);
+        expect(apiClient.queries, [(0, 50), (70, 50)]);
+        expect(notifier.state.tracks.map((track) => track.id).toSet(), ids);
+        expect(notifier.state.tracks.length, 125);
+        expect(notifier.state.total, 125);
+        expect(notifier.state.hasMore, isFalse);
+        expect(notifier.state.tracks.first.id, 125);
+        expect(notifier.state.tracks.last.id, 1);
+        expect(notifier.state.tracks.first.assembly?.number, 'ASM-COMPACT');
+      },
+    );
+
+    test(
       'tracks keep loaded pages when silent refresh finishes late',
       () async {
         final apiClient = _TracksRaceApiClient();
@@ -246,6 +280,33 @@ Future<void> _waitUntil(
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   fail('Condition was not met in time');
+}
+
+class _GroupedTracksApiClient extends ApiClient {
+  final queries = <(int, int)>[];
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    final skip = queryParameters!['skip'] as int;
+    final take = queryParameters['take'] as int;
+    queries.add((skip, take));
+    expect(queryParameters['compact'], 'assemblies-v1');
+    final payload = skip == 0
+        ? _tracksPayload(1, 70, total: 125)
+        : _tracksPayload(71, 125, total: 125);
+    payload['encoding'] = 'assemblies-v1';
+    payload['assembliesById'] = {
+      '42': {'id': 42, 'number': 'ASM-COMPACT', 'status': 'new'},
+    };
+    for (final row in payload['data'] as List) {
+      (row as Map)['assemblyRef'] = 42;
+    }
+    // Mirrors the API returning whole groups beyond the requested page size.
+    return _response<T>(path, payload);
+  }
 }
 
 class _TracksRaceApiClient extends ApiClient {

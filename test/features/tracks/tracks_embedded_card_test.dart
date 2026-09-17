@@ -42,6 +42,84 @@ Future<void> _pumpEmbeddedAssembly(
 }
 
 void main() {
+  testWidgets('photo detail survives removal of its source track card', (
+    tester,
+  ) async {
+    await initializeDateFormatting('ru');
+    final now = DateTime(2026, 9, 9);
+    final tracks = ValueNotifier<List<TrackItem>>([
+      TrackItem(
+        code: 'YT-LIFECYCLE',
+        status: 'На складе',
+        statusCode: 'in_warehouse',
+        date: now,
+        createdAt: now,
+        updatedAt: now,
+        photoRequests: [PhotoRequest(id: 1, status: 'new', createdAt: now)],
+      ),
+    ]);
+    addTearDown(tracks.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeClientCodeProvider.overrideWithValue('2A-TEST'),
+          trackStatusesProvider.overrideWith((ref) async => const []),
+          assemblyStatusesProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<List<TrackItem>>(
+              valueListenable: tracks,
+              builder: (_, value, _) => value.isEmpty
+                  ? const SizedBox.shrink()
+                  : TracksScreen.embedded(tracks: value),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final sourceState = tester.state(
+      find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == '_TrackGroupCard',
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('client-track-card-YT-LIFECYCLE')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('client-track-detail-tab-2')));
+    await tester.pumpAndSettle();
+    final badgeContainer = find
+        .ancestor(of: find.text('Новый'), matching: find.byType(Container))
+        .first;
+    final originalBadgeDecoration = tester
+        .widget<Container>(badgeContainer)
+        .decoration;
+    expect(originalBadgeDecoration, isA<BoxDecoration>());
+    await tester.tap(find.byKey(const ValueKey('client-track-detail-tab-0')));
+    await tester.pumpAndSettle();
+    tracks.value = [];
+    await tester.pumpAndSettle();
+    expect(sourceState.mounted, isFalse);
+    expect(
+      find.byKey(
+        const ValueKey('client-track-card-YT-LIFECYCLE'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    expect(find.text('Карточка трек-номера'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('client-track-detail-tab-2')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Новый'), findsOneWidget);
+    expect(
+      tester.widget<Container>(badgeContainer).decoration,
+      originalBadgeDecoration,
+    );
+  });
+
   testWidgets('embedded track reuses the production card and detail sheet', (
     tester,
   ) async {

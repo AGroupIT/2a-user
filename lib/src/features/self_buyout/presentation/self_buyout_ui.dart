@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/app_colors.dart';
@@ -8,16 +9,30 @@ class SelfBuyoutGradientHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final String? subtitleTrainingTargetId;
 
   const SelfBuyoutGradientHeader({
     super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.subtitleTrainingTargetId,
   });
 
   @override
   Widget build(BuildContext context) {
+    final subtitleText = Text(
+      subtitle,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xE6FFFFFF),
+        fontFamily: 'Gilroy',
+        fontSize: 12.8,
+        height: 1.15,
+        fontWeight: FontWeight.w600,
+      ),
+    );
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -64,18 +79,12 @@ class SelfBuyoutGradientHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xE6FFFFFF),
-                    fontFamily: 'Gilroy',
-                    fontSize: 12.8,
-                    height: 1.15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                subtitleTrainingTargetId == null
+                    ? subtitleText
+                    : TrainingTarget(
+                        id: subtitleTrainingTargetId!,
+                        child: subtitleText,
+                      ),
               ],
             ),
           ),
@@ -194,8 +203,9 @@ class SelfBuyoutSecondaryButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
-              border:
-                  Border.all(color: context.brandPrimary.withValues(alpha: 0.34)),
+              border: Border.all(
+                color: context.brandPrimary.withValues(alpha: 0.34),
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

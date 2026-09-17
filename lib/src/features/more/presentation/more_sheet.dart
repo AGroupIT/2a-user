@@ -13,6 +13,7 @@ import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/clipboard_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../../garage/application/garage_providers.dart';
 import '../../partner_program/data/client_partner_program_provider.dart';
@@ -20,6 +21,7 @@ import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
+import '../../training/presentation/training_target.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
   const MoreSheet({super.key});
@@ -222,6 +224,7 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                         ),
                         if (showSelfBuyout)
                           _QuickActionData(
+                            trainingTargetId: 'menu.self-buyout',
                             icon: Icons.savings_rounded,
                             title: 'Самовыкуп',
                             subtitle: selfBuyoutWaitingForRates
@@ -246,6 +249,19 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                     _MoreSection(
                       title: 'Разделы',
                       children: [
+                        TrainingTarget(
+                          id: 'menu.training',
+                          child: _MoreMenuTile(
+                            icon: Icons.school_rounded,
+                            title: tr(context, ru: 'Обучение', zh: '学习'),
+                            subtitle: tr(
+                              context,
+                              ru: 'Все возможности и учебная сборка',
+                              zh: '功能介绍与集运练习',
+                            ),
+                            onTap: () => _go(context, '/training'),
+                          ),
+                        ),
                         _MoreMenuTile(
                           icon: Icons.person_rounded,
                           title: 'Профиль',
@@ -300,12 +316,15 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           subtitle: 'Условия работы склада и доставки',
                           onTap: () => _go(context, '/rules'),
                         ),
-                        _MoreMenuTile(
-                          icon: Icons.price_change_rounded,
-                          title: 'Тарифы',
-                          subtitle: 'Стоимость услуг и доставки',
-                          iconColor: const Color(0xFFFF9800),
-                          onTap: () => _go(context, '/tariffs'),
+                        TrainingTarget(
+                          id: 'menu.tariffs',
+                          child: _MoreMenuTile(
+                            icon: Icons.price_change_rounded,
+                            title: 'Тарифы',
+                            subtitle: 'Стоимость услуг и доставки',
+                            iconColor: const Color(0xFFFF9800),
+                            onTap: () => _go(context, '/tariffs'),
+                          ),
                         ),
                         _MoreMenuTile(
                           icon: Icons.calculate_rounded,
@@ -337,15 +356,18 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                           loading: _networkDiagnosticsRunning,
                           onTap: _runNetworkDiagnostics,
                         ),
-                        _MoreMenuTile(
-                          icon: Icons.bug_report_outlined,
-                          title: 'Сообщить о проблеме',
-                          subtitle: isProfileLoading
-                              ? 'Загружаем профиль'
-                              : 'Отправить отчёт в поддержку',
-                          iconColor: Colors.redAccent,
-                          loading: isProfileLoading,
-                          onTap: () => _openProblemReport(profile),
+                        TrainingTarget(
+                          id: 'menu.report',
+                          child: _MoreMenuTile(
+                            icon: Icons.bug_report_outlined,
+                            title: 'Сообщить о проблеме',
+                            subtitle: isProfileLoading
+                                ? 'Загружаем профиль'
+                                : 'Отправить отчёт в поддержку',
+                            iconColor: Colors.redAccent,
+                            loading: isProfileLoading,
+                            onTap: () => _openProblemReport(profile),
+                          ),
                         ),
                         if (SentryConfig.verifyButtonEnabled)
                           _MoreMenuTile(
@@ -524,6 +546,7 @@ class _QuickActionData {
   final String title;
   final String subtitle;
   final Color? color;
+  final String? trainingTargetId;
   final VoidCallback onTap;
 
   const _QuickActionData({
@@ -532,6 +555,7 @@ class _QuickActionData {
     required this.subtitle,
     required this.onTap,
     this.color,
+    this.trainingTargetId,
   });
 }
 
@@ -540,6 +564,14 @@ class _QuickActionsGrid extends StatelessWidget {
 
   const _QuickActionsGrid({required this.actions});
 
+  Widget _buildAction(_QuickActionData data) {
+    final child = _QuickActionCard(data: data);
+    final targetId = data.trainingTargetId;
+    return targetId == null
+        ? child
+        : TrainingTarget(id: targetId, child: child);
+  }
+
   @override
   Widget build(BuildContext context) {
     final rows = <Widget>[];
@@ -547,11 +579,11 @@ class _QuickActionsGrid extends StatelessWidget {
       rows.add(
         Row(
           children: [
-            Expanded(child: _QuickActionCard(data: actions[index])),
+            Expanded(child: _buildAction(actions[index])),
             const SizedBox(width: 10),
             Expanded(
               child: index + 1 < actions.length
-                  ? _QuickActionCard(data: actions[index + 1])
+                  ? _buildAction(actions[index + 1])
                   : const SizedBox.shrink(),
             ),
           ],

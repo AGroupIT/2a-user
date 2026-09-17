@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../training/presentation/training_target.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_layout.dart';
@@ -234,17 +235,23 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final item = group.photos[index];
-                return _PhotoThumbnail(
-                  item: item,
-                  onOpen: () => Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute<void>(
-                      fullscreenDialog: true,
-                      builder: (_) => PhotoViewerScreen(
-                        item: item,
-                        allPhotos: items,
-                        initialIndex: startIndex + index,
-                      ),
-                    ),
+                return TrainingTarget(
+                  id: startIndex + index == 0
+                      ? 'photos.open'
+                      : 'photos.open.${startIndex + index}',
+                  child: _PhotoThumbnail(
+                    item: item,
+                    onOpen: () =>
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute<void>(
+                            fullscreenDialog: true,
+                            builder: (_) => PhotoViewerScreen(
+                              item: item,
+                              allPhotos: items,
+                              initialIndex: startIndex + index,
+                            ),
+                          ),
+                        ),
                   ),
                 );
               },

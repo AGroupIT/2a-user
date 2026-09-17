@@ -64,7 +64,7 @@ final assembliesDigestProvider =
         return assemblies;
       } catch (e) {
         debugPrint('Error loading assemblies digest: $e');
-        return [];
+        rethrow;
       }
     });
 
@@ -94,7 +94,7 @@ final assembliesCountProvider = FutureProvider.family<int, String>((
     return pagination?['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading assemblies count: $e');
-    return 0;
+    rethrow;
   }
 });
 
@@ -127,6 +127,6 @@ final assembliesWeeklyCountProvider = FutureProvider.family<int, String>((
     return pagination?['total'] as int? ?? 0;
   } catch (e) {
     debugPrint('Error loading weekly assemblies count: $e');
-    return 0;
+    rethrow;
   }
 });

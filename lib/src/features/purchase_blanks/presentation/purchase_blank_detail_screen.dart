@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -542,19 +543,26 @@ class _PurchaseBlankDetailScreenState
             ),
           ),
           if (isEditable && !_showAddForm)
-            Material(
-              color: context.brandPrimary,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                onTap: () => setState(() {
-                  _showAddForm = true;
-                  _editingItemId = null;
-                }),
+            TrainingTarget(
+              id: 'purchase.item.add',
+              child: Material(
+                color: context.brandPrimary,
                 borderRadius: BorderRadius.circular(16),
-                child: const SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(Icons.add_rounded, size: 24, color: Colors.white),
+                child: InkWell(
+                  onTap: () => setState(() {
+                    _showAddForm = true;
+                    _editingItemId = null;
+                  }),
+                  borderRadius: BorderRadius.circular(16),
+                  child: const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(
+                      Icons.add_rounded,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -613,13 +621,16 @@ class _PurchaseBlankDetailScreenState
           ),
           if (isEditable) ...[
             const SizedBox(width: 10),
-            IconButton.filled(
-              onPressed: () => setState(() => _showAddForm = true),
-              style: IconButton.styleFrom(
-                backgroundColor: context.brandPrimary,
-                foregroundColor: Colors.white,
+            TrainingTarget(
+              id: 'purchase.item.add.empty',
+              child: IconButton.filled(
+                onPressed: () => setState(() => _showAddForm = true),
+                style: IconButton.styleFrom(
+                  backgroundColor: context.brandPrimary,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.add_rounded),
               ),
-              icon: const Icon(Icons.add_rounded),
             ),
           ],
         ],
@@ -656,23 +667,26 @@ class _PurchaseBlankDetailScreenState
                     ),
                   ],
                 ),
-                child: FilledButton.icon(
-                  onPressed: () => _submitBlank(blank.id),
-                  icon: const Icon(Icons.send_rounded, size: 20),
-                  label: const Text(
-                    'Отправить бланк на проверку',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy',
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
+                child: TrainingTarget(
+                  id: 'purchase.submit',
+                  child: FilledButton.icon(
+                    onPressed: () => _submitBlank(blank.id),
+                    icon: const Icon(Icons.send_rounded, size: 20),
+                    label: const Text(
+                      'Отправить бланк на проверку',
+                      style: TextStyle(
+                        fontFamily: 'Gilroy',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                      ),
                     ),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
                     ),
                   ),
                 ),

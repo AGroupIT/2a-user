@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/training/presentation/training_target.dart';
 import '../services/demo_mode_provider.dart';
 import '../services/showcase_service.dart';
 
@@ -40,13 +41,21 @@ class TutorialScreenWrapper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDemoMode = ref.watch(demoModeProvider);
-    if (!isDemoMode || steps.isEmpty) return child;
+    final registeredChild = TrainingTargetBindings(
+      targets: {
+        for (var index = 0; index < steps.length; index++)
+          if (steps[index].targetKey != null)
+            'legacy.$screenKey.$index': steps[index].targetKey!,
+      },
+      child: child,
+    );
+    if (!isDemoMode || steps.isEmpty) return registeredChild;
 
     // _TutorialOverlay рендерится через корневой Overlay (SizedBox.shrink),
     // поэтому Stack здесь нужен только чтобы смонтировать виджет.
     return Stack(
       children: [
-        child,
+        registeredChild,
         _TutorialOverlay(screenKey: screenKey, steps: steps),
       ],
     );
@@ -255,7 +264,8 @@ class _TutorialOverlayState extends ConsumerState<_TutorialOverlay>
     final brandColor = Theme.of(ctx).colorScheme.primary;
 
     // Карточка сверху, если прожектор в нижней половине экрана
-    final spotlightLow = _spotlightRect != null &&
+    final spotlightLow =
+        _spotlightRect != null &&
         _spotlightRect!.center.dy > screenHeight * 0.55;
 
     final animValue = _ctrl.value;
@@ -398,11 +408,7 @@ class _TutorialOverlayState extends ConsumerState<_TutorialOverlay>
                           color: brandColor.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(
-                          step.icon,
-                          color: brandColor,
-                          size: 20,
-                        ),
+                        child: Icon(step.icon, color: brandColor, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
