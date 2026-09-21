@@ -41,6 +41,33 @@ class _Adapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+class _SequenceAdapter implements HttpClientAdapter {
+  _SequenceAdapter(this.statuses);
+
+  final List<int> statuses;
+  final List<String> methods = [];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? body,
+    Future<void>? cancelFuture,
+  ) async {
+    methods.add(options.method);
+    final status = statuses.removeAt(0);
+    return ResponseBody.fromString(
+      '{}',
+      status,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -110,4 +137,65 @@ void main() {
       expect(adapter.paths, ['/mutation']);
     });
   }
+
+  for (final status in [502, 503]) {
+    test('GET retries one transient HTTP $status response', () async {
+      final adapter = _SequenceAdapter([status, 200]);
+      final client = ApiClient(
+        adapterFactory: () => adapter,
+        runtimeHeaders: () async => {},
+      );
+
+      expect((await client.get('/gateway-retry')).statusCode, 200);
+      expect(adapter.methods, ['GET', 'GET']);
+    });
+
+    test('POST never replays an HTTP $status response', () async {
+      final adapter = _SequenceAdapter([status, 200]);
+      final client = ApiClient(
+        adapterFactory: () => adapter,
+        runtimeHeaders: () async => {},
+      );
+
+      await expectLater(
+        client.post('/mutation', data: {'amount': 1}),
+        throwsA(isA<DioException>()),
+      );
+      expect(adapter.methods, ['POST']);
+    });
+  }
+
+  test('GET stops after the retry budget is exhausted', () async {
+    final adapter = _SequenceAdapter([502, 503]);
+    final client = ApiClient(
+      adapterFactory: () => adapter,
+      runtimeHeaders: () async => {},
+    );
+
+    await expectLater(
+      client.get('/gateway-still-down'),
+      throwsA(
+        isA<DioException>().having(
+          (error) => error.response?.statusCode,
+          'statusCode',
+          503,
+        ),
+      ),
+    );
+    expect(adapter.methods, ['GET', 'GET']);
+  });
+
+  test('GET does not retry an ordinary HTTP 500 response', () async {
+    final adapter = _SequenceAdapter([500, 200]);
+    final client = ApiClient(
+      adapterFactory: () => adapter,
+      runtimeHeaders: () async => {},
+    );
+
+    await expectLater(
+      client.get('/server-error'),
+      throwsA(isA<DioException>()),
+    );
+    expect(adapter.methods, ['GET']);
+  });
 }

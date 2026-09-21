@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,8 @@ class GarageTranslationService {
   final ApiClient _apiClient;
   final Map<String, String> _cache = <String, String>{};
   final Map<String, Future<String?>> _inFlight = <String, Future<String?>>{};
+  Future<void> _translationTail = Future<void>.value();
+  DateTime? _translationRetryAt;
 
   GarageTranslationService(this._apiClient);
 
@@ -25,10 +28,32 @@ class GarageTranslationService {
     }
     final cached = _cache[source];
     if (cached != null) return Future<String?>.value(cached);
-    return _inFlight.putIfAbsent(source, () => _translate(source));
+    final pending = _inFlight[source];
+    if (pending != null) return pending;
+    if (_translationCoolingDown || _inFlight.length >= 64) {
+      return Future<String?>.value(null);
+    }
+
+    // Карточки гаража монтируются пачкой. Последовательная очередь не даёт
+    // одному экрану одновременно отправить множество запросов в Yandex.
+    final result = _translationTail.then((_) => _translate(source));
+    _inFlight[source] = result;
+    _translationTail = result.then<void>(
+      (_) => _inFlight.remove(source),
+      onError: (Object error, StackTrace stackTrace) {
+        _inFlight.remove(source);
+      },
+    );
+    return result;
+  }
+
+  bool get _translationCoolingDown {
+    final retryAt = _translationRetryAt;
+    return retryAt != null && DateTime.now().isBefore(retryAt);
   }
 
   Future<String?> _translate(String source) async {
+    if (_translationCoolingDown) return null;
     try {
       final response = await _apiClient.post<Map<String, dynamic>>(
         '/translate',
@@ -36,12 +61,21 @@ class GarageTranslationService {
       );
       final translated = response.data?['translation']?.toString().trim();
       if (translated == null || translated.isEmpty) return null;
+      if (_cache.length >= 128) {
+        _cache.remove(_cache.keys.first);
+      }
       _cache[source] = translated;
       return translated;
+    } on DioException catch (error) {
+      final raw = error.response?.data;
+      final retryAfterMs = raw is Map ? raw['retryAfterMs'] : null;
+      final delayMs = retryAfterMs is num && retryAfterMs.isFinite
+          ? retryAfterMs.toInt().clamp(30000, 300000)
+          : 30000;
+      _translationRetryAt = DateTime.now().add(Duration(milliseconds: delayMs));
+      return null;
     } catch (_) {
       return null;
-    } finally {
-      _inFlight.remove(source);
     }
   }
 }

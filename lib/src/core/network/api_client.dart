@@ -271,6 +271,11 @@ class ApiClient {
     return e.type == DioExceptionType.connectionTimeout;
   }
 
+  static bool _isRetryableGatewayError(DioException e) {
+    final statusCode = e.response?.statusCode;
+    return statusCode == 502 || statusCode == 503;
+  }
+
   Duration _effectiveOverallTimeout(Options? options) {
     final base = _requestTimeout;
     final send = options?.sendTimeout ?? Duration.zero;
@@ -292,7 +297,7 @@ class ApiClient {
         return await fn();
       } on DioException catch (e) {
         final shouldRetry = retryOnAllNetworkErrors
-            ? _isTransientNetworkError(e)
+            ? _isTransientNetworkError(e) || _isRetryableGatewayError(e)
             : _isPreSendError(e);
         if (!shouldRetry || attempt == maxAttempts) rethrow;
 
@@ -309,7 +314,7 @@ class ApiClient {
           maxAttempts: maxAttempts,
           error: e,
         );
-        if (!_switchToFallbackBaseUrl(e)) {
+        if (!_isRetryableGatewayError(e) && !_switchToFallbackBaseUrl(e)) {
           resetConnections(
             reason: 'retry_after_network_error_${e.type.name}',
             force:
@@ -346,6 +351,11 @@ class ApiClient {
     try {
       final timeout = _effectiveOverallTimeout(options);
       return await (enforceTimeout ? run().timeout(timeout) : run());
+    } on DioException catch (error) {
+      // Интерсептор оставляет breadcrumbs для каждой попытки, а отдельное
+      // событие создаём только после исчерпания retry-бюджета.
+      await _captureHttpServerError(error);
+      rethrow;
     } on TimeoutException {
       ClientLogService.instance.apiTimeout(
         method: method,
@@ -781,43 +791,45 @@ class ApiClient {
           extra: {'dio_type': error.type.name},
         );
 
-        // В Sentry отправляем только серверные ошибки. Сетевые таймауты,
-        // VPN/DPI/China routes и офлайн-сценарии остаются breadcrumbs.
-        if (statusCode != null &&
-            statusCode >= 500 &&
-            !_isLowPriorityHttpError(error.requestOptions)) {
-          // Audit M3 (2026-04-26): не отправляем response body в Sentry,
-          // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
-          final sentryContext = _sentryHttpContext(error);
-          await Sentry.captureException(
-            error,
-            stackTrace: error.stackTrace,
-            withScope: (scope) async {
-              final method = error.requestOptions.method.toUpperCase();
-              final path = safeSentryPath(
-                _safeRequestPath(error.requestOptions),
-              );
-              scope.fingerprint = ['http_5xx', method, path, '$statusCode'];
-              await scope.setTag('http.method', method);
-              await scope.setTag('http.status_code', '$statusCode');
-              final operation = _operation(error.requestOptions);
-              if (operation != null) {
-                await scope.setTag('http.operation', operation);
-              }
-              await scope.setContexts('http_failure', sentryContext);
-            },
-            hint: Hint.withMap({
-              'keep_http_error': true,
-              'type': 'http_5xx',
-              'method': error.requestOptions.method,
-              'path': safeSentryPath(_safeRequestPath(error.requestOptions)),
-              'status_code': statusCode,
-            }),
-          );
-        }
-
         return handler.next(error);
       },
+    );
+  }
+
+  Future<void> _captureHttpServerError(DioException error) async {
+    final statusCode = error.response?.statusCode;
+    if (!SentryConfig.enabled ||
+        statusCode == null ||
+        statusCode < 500 ||
+        _isLowPriorityHttpError(error.requestOptions)) {
+      return;
+    }
+
+    // Audit M3 (2026-04-26): не отправляем response body в Sentry,
+    // чтобы случайно не утекли чувствительные поля бэкенд-ошибок.
+    final sentryContext = _sentryHttpContext(error);
+    await Sentry.captureException(
+      error,
+      stackTrace: error.stackTrace,
+      withScope: (scope) async {
+        final method = error.requestOptions.method.toUpperCase();
+        final path = safeSentryPath(_safeRequestPath(error.requestOptions));
+        scope.fingerprint = ['http_5xx', method, path, '$statusCode'];
+        await scope.setTag('http.method', method);
+        await scope.setTag('http.status_code', '$statusCode');
+        final operation = _operation(error.requestOptions);
+        if (operation != null) {
+          await scope.setTag('http.operation', operation);
+        }
+        await scope.setContexts('http_failure', sentryContext);
+      },
+      hint: Hint.withMap({
+        'keep_http_error': true,
+        'type': 'http_5xx',
+        'method': error.requestOptions.method,
+        'path': safeSentryPath(_safeRequestPath(error.requestOptions)),
+        'status_code': statusCode,
+      }),
     );
   }
 
