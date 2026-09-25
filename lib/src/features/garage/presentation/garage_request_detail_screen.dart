@@ -774,7 +774,7 @@ class _GarageRequestDetailScreenState
     final editable =
         offer != null &&
         (existingOrder == null
-            ? offer.status == 'published' && !offer.isExpired
+            ? offer.status == 'published'
             : _canEditGarageOrderSelection(existingOrder));
     return GarageCard(
       child: Column(
@@ -799,18 +799,6 @@ class _GarageRequestDetailScreenState
               ),
             ],
           ),
-          if (offer?.validUntil != null) ...[
-            const SizedBox(height: 5),
-            Text(
-              'Предложение действует до ${_dateTime(offer!.validUntil!)}',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontFamily: 'Gilroy',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
           const SizedBox(height: 12),
           for (var index = 0; index < request.items.length; index++) ...[
             GaragePartPositionCard(
@@ -1017,10 +1005,4 @@ String _partsCountLabel(int count) {
     2 || 3 || 4 => 'позиции',
     _ => 'позиций',
   };
-}
-
-String _dateTime(DateTime value) {
-  final local = value.toLocal();
-  String two(int number) => number.toString().padLeft(2, '0');
-  return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
 }

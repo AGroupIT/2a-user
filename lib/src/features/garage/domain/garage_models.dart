@@ -1001,10 +1001,6 @@ class GarageOffer {
   List<GaragePartOption> optionsFor(int requestItemId) => options
       .where((option) => option.requestItemId == requestItemId)
       .toList(growable: false);
-
-  bool get isExpired =>
-      status == 'expired' ||
-      (validUntil != null && validUntil!.isBefore(DateTime.now()));
 }
 
 @immutable

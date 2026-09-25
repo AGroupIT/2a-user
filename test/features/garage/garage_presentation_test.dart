@@ -744,7 +744,7 @@ void main() {
   });
 
   testWidgets(
-    'Garage offer allows multiple variants of one item and quantity per variant',
+    'Garage offer allows multiple variants despite legacy past validUntil',
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.binding.setSurfaceSize(const Size(390, 1800));
@@ -773,7 +773,7 @@ void main() {
           'version': 1,
           'status': 'published',
           'clientCnyRubRateSnapshot': '12.5',
-          'validUntil': '2099-08-10T00:00:00.000Z',
+          'validUntil': '2020-08-10T00:00:00.000Z',
           'options': [
             {
               'id': 501,
@@ -859,6 +859,8 @@ void main() {
       expect(find.text('1 шт.'), findsOneWidget);
       expect(find.text('любой'), findsOneWidget);
       expect(find.text('Подобранные варианты'), findsOneWidget);
+      expect(find.text('Купить выбранное'), findsOneWidget);
+      expect(find.textContaining('Предложение действует до'), findsNothing);
       expect(find.text('Toyota 04465-33480'), findsOneWidget);
       final optionTitleRect = tester.getRect(find.text('Toyota 04465-33480'));
       final optionTypeRect = tester.getRect(
