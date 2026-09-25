@@ -649,6 +649,20 @@ class WebSocketService {
   Future<void> forceReconnect({String reason = 'manual'}) =>
       _forceReconnect(reason: reason);
 
+  /// Полностью пересоздаёт сокет на новом ingress.
+  ///
+  /// Обычный [connect] намеренно игнорирует повторный вызов, пока текущий
+  /// socket подключён или находится в процессе подключения. Поэтому при
+  /// автоматической смене RU/HK маршрута сначала фиксируем новый URL как цель,
+  /// затем разрушаем старый socket через штатный reconnect-путь.
+  Future<void> forceReconnectTo({
+    required String serverUrl,
+    String reason = 'server_url_changed',
+  }) {
+    _lastConnectedUrl = serverUrl;
+    return _forceReconnect(reason: reason);
+  }
+
   /// Присоединиться к комнате разговора
   void joinConversation(int conversationId) {
     _socket?.emit('join_conversation', conversationId);
