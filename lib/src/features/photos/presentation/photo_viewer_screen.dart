@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
@@ -17,6 +18,8 @@ import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import '../domain/photo_item.dart';
 
 void _showStyledSnackBar(
@@ -159,6 +162,46 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
     setState(() => _isDownloading = true);
     try {
       final currentItem = _currentItem;
+
+      if (kIsWeb) {
+        final response = await Dio().get<List<int>>(
+          ApiConfig.getMediaUrl(currentItem.url),
+          options: Options(responseType: ResponseType.bytes),
+        );
+        if (!mounted) return;
+        final bytes = response.data;
+        if (bytes == null || bytes.isEmpty) {
+          throw StateError('empty_media_response');
+        }
+        final extension = Uri.parse(currentItem.url).path.split('.').last;
+        final safeExtension =
+            const {
+              'jpg',
+              'jpeg',
+              'png',
+              'webp',
+              'mp4',
+              'mov',
+              'm4v',
+              'webm',
+            }.contains(extension.toLowerCase())
+            ? extension.toLowerCase()
+            : currentItem.isVideo
+            ? 'mp4'
+            : 'jpg';
+        final saved = await downloadFile(
+          bytes: Uint8List.fromList(bytes),
+          fileName:
+              'media_${DateTime.now().microsecondsSinceEpoch}.$safeExtension',
+        );
+        if (!mounted) return;
+        if (!saved) throw StateError('media_not_saved');
+        _showStyledSnackBar(
+          context,
+          tr(context, ru: 'Файл сохранён', zh: '文件已保存'),
+        );
+        return;
+      }
 
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);

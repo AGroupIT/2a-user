@@ -356,8 +356,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     final partnerLink = ref.read(partnerLinkProvider);
     final clientPartnerInvite = ref.read(clientPartnerInviteProvider);
-    if (clientPartnerInvite.hasPendingInvite &&
-        !clientPartnerInvite.isValidated) {
+    if (clientPartnerInvite.blocksRegistration) {
       _showError(
         tr(
           context,
@@ -819,6 +818,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
         ],
+        if (clientPartnerInviteActive &&
+            clientPartnerInvite.phase == ClientPartnerInvitePhase.error) ...[
+          const SizedBox(height: 10),
+          Text(
+            clientPartnerInvite.error ??
+                tr(
+                  context,
+                  ru: 'Не удалось проверить партнёрскую ссылку',
+                  zh: '无法验证合作伙伴邀请链接',
+                ),
+            style: const TextStyle(color: Colors.red),
+          ),
+          TextButton.icon(
+            onPressed: () =>
+                ref.read(clientPartnerInviteProvider.notifier).validate(),
+            icon: const Icon(Icons.refresh_rounded),
+            label: Text(tr(context, ru: 'Повторить проверку', zh: '重试')),
+          ),
+        ],
         if (!clientPartnerInviteActive) ...[
           const SizedBox(height: 16),
           _buildTextField(
@@ -852,9 +870,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             Expanded(
               child: FilledButton.icon(
                 onPressed:
-                    state.isLoading ||
-                        (clientPartnerInviteActive &&
-                            !clientPartnerInvite.isValidated)
+                    state.isLoading || clientPartnerInvite.blocksRegistration
                     ? null
                     : _submit,
                 style: AuthVisuals.primaryButtonStyle(context),
