@@ -3528,7 +3528,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                 _buildInfoRow(
                   context,
                   'Разгрузка',
-                  '\$${item.transshipmentCost!.ceil()}',
+                  '\$${item.transshipmentCost!.toStringAsFixed(2)}',
                 ),
               if (item.hasDetailedPackagingUsage)
                 _buildPackagingUsageBlock(context, item)

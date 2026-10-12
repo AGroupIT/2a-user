@@ -68,10 +68,15 @@ final _packagingsProvider =
     });
 
 final _unloadingQuoteProvider = FutureProvider.autoDispose
-    .family<int, ({double volumeM3, String packagingTypeIds})>((
-      ref,
-      request,
-    ) async {
+    .family<
+      double,
+      ({
+        double weightKg,
+        double volumeM3,
+        int placesCount,
+        String packagingTypeIds,
+      })
+    >((ref, request) async {
       var disposed = false;
       ref.onDispose(() => disposed = true);
       await Future<void>.delayed(const Duration(milliseconds: 350));
@@ -81,7 +86,9 @@ final _unloadingQuoteProvider = FutureProvider.autoDispose
       final response = await apiClient.post(
         '/client/unloading-quote',
         data: {
+          'weightKg': request.weightKg,
           'volumeM3': request.volumeM3,
+          'placesCount': request.placesCount,
           'packagingTypeIds': request.packagingTypeIds.isEmpty
               ? const <int>[]
               : request.packagingTypeIds.split(',').map(int.parse).toList(),
@@ -89,7 +96,7 @@ final _unloadingQuoteProvider = FutureProvider.autoDispose
       );
       final data = response.data as Map<String, dynamic>;
       final quote = data['data'] as Map<String, dynamic>;
-      return (quote['clientCostUsd'] as num).ceil();
+      return (quote['clientCostUsd'] as num).toDouble();
     });
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -208,7 +215,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     List<CalculatorTariff> tariffs,
     List<CalculatorPhotoCoefficient> coefs,
     List<CalculatorPackaging> packagings,
-    int transshipment,
+    double transshipment,
   ) {
     final tariff =
         _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
@@ -238,7 +245,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         places: places,
         tracksTotal: total,
         tracksWithPhoto: withPhoto,
-        unloadingCostUsd: transshipment.toDouble(),
+        unloadingCostUsd: transshipment,
         packagingRemoval: _packagingRemoval,
         hasInsurance: _hasInsurance,
         insuranceAmountCny: insuranceAmount,
@@ -545,7 +552,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     required AsyncValue<List<CalculatorTariff>> tariffsAsync,
     required AsyncValue<List<CalculatorPhotoCoefficient>> coefsAsync,
     required AsyncValue<List<CalculatorPackaging>> packagingsAsync,
-    required AsyncValue<int>? unloadingQuoteAsync,
+    required AsyncValue<double>? unloadingQuoteAsync,
+    required double weightKg,
+    required int placesCount,
     required double volumeM3,
     required String packagingTypeIds,
   }) {
@@ -565,10 +574,11 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
           ref.invalidate(_coefsProvider);
         },
       );
-    } else if (volumeM3 > 0 && unloadingQuoteAsync?.isLoading == true) {
+    } else if (unloadingQuoteAsync?.isLoading == true) {
       result = const _CalculationPendingCard(
         title: 'Считаем разгрузку',
-        message: 'Получаем стоимость по объёму и выбранной упаковке.',
+        message:
+            'Получаем стоимость по весу, объёму, местам и выбранной упаковке.',
         isLoading: true,
       );
     } else if (unloadingQuoteAsync?.hasError == true) {
@@ -577,7 +587,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         message: 'Проверьте соединение и повторите попытку.',
         onRetry: () => ref.invalidate(
           _unloadingQuoteProvider((
+            weightKg: weightKg,
             volumeM3: volumeM3,
+            placesCount: placesCount,
             packagingTypeIds: packagingTypeIds,
           )),
         ),
@@ -622,15 +634,20 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final packagingsAsync = ref.watch(_packagingsProvider);
     final volumeM3 =
         double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
+    final weightKg =
+        double.tryParse(_weightCtrl.text.replaceAll(',', '.')) ?? 0;
+    final placesCount = int.tryParse(_placesCtrl.text) ?? 0;
     final packagingTypeIds = <int>{
       if (_selectedPrimaryPackaging != null) _selectedPrimaryPackaging!.id,
       ..._selectedAddonPackagingIds,
     }.toList()..sort();
     final packagingTypeIdsValue = packagingTypeIds.join(',');
-    final unloadingQuoteAsync = volumeM3 > 0
+    final unloadingQuoteAsync = weightKg > 0 && placesCount > 0
         ? ref.watch(
             _unloadingQuoteProvider((
+              weightKg: weightKg,
               volumeM3: volumeM3,
+              placesCount: placesCount,
               packagingTypeIds: packagingTypeIdsValue,
             )),
           )
@@ -647,6 +664,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       coefsAsync: coefsAsync,
       packagingsAsync: packagingsAsync,
       unloadingQuoteAsync: unloadingQuoteAsync,
+      weightKg: weightKg,
+      placesCount: placesCount,
       volumeM3: volumeM3,
       packagingTypeIds: packagingTypeIdsValue,
     );
@@ -769,7 +788,7 @@ class _CalcResult {
   final int tracksTotal;
   final int tracksWithPhoto;
   final double shipping;
-  final int transshipment;
+  final double transshipment;
   final double packagingCost;
   final List<String> packagingNames;
   final double packagingBaseCost;
@@ -947,8 +966,12 @@ class _ResultCard extends StatelessWidget {
           ),
           _Row(
             'Разгрузка',
-            '\$${result.transshipment}',
-            subtitle: 'по объёму, минимум \$5',
+            '\$${result.transshipment.toStringAsFixed(2)}',
+            subtitle: tr(
+              context,
+              ru: 'по параметрам груза и выбранной упаковке',
+              zh: '按货物参数及所选包装计算',
+            ),
           ),
           if (result.packagingCost > 0)
             _Row(
