@@ -310,15 +310,12 @@ AssemblyCostResult? calculateAssemblyCost(AssemblyCostInput input) {
   final selectedPackagingIds = input.selectedPackagings
       .map((packaging) => packaging.id)
       .toSet();
-  final packagingTariffSurcharge = input.tariff.isDensity
-      ? 0.0
-      : input.tariff.packagingSurcharges
-            .where(
-              (row) =>
-                  row.isActive &&
-                  selectedPackagingIds.contains(row.packagingTypeId),
-            )
-            .fold<double>(0, (sum, row) => sum + row.amount);
+  final packagingTariffSurcharge = input.tariff.packagingSurcharges
+      .where(
+        (row) =>
+            row.isActive && selectedPackagingIds.contains(row.packagingTypeId),
+      )
+      .fold<double>(0, (sum, row) => sum + row.amount);
 
   late final double clientPrice;
   late final double shippingBasis;
@@ -349,7 +346,11 @@ AssemblyCostResult? calculateAssemblyCost(AssemblyCostInput input) {
     }
   }
 
-  final shippingCost = shippingBasis * clientPrice * photoCoefficient;
+  final densitySurcharge = input.tariff.isDensity && removalPrice == null
+      ? input.weightKg * packagingTariffSurcharge
+      : 0.0;
+  final shippingCost =
+      (shippingBasis * clientPrice + densitySurcharge) * photoCoefficient;
   final packagingBaseCost = input.selectedPackagings.fold<double>(
     0,
     (sum, packaging) => sum + packaging.baseCost,

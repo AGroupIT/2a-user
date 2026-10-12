@@ -12,6 +12,8 @@ class _Auth extends AuthNotifier {
 }
 
 class _Api implements ApiClient {
+  _Api({this.density = false});
+  final bool density;
   final requests = <Map<String, dynamic>>[];
 
   @override
@@ -23,7 +25,26 @@ class _Api implements ApiClient {
     final data = switch (path) {
       '/tariffs' => {
         'tariffs': [
-          {'id': 1, 'name': 'Весовой', 'baseCost': 4, 'paidPhotoReport': false},
+          density
+              ? {
+                  'id': 1,
+                  'name': 'Спец тариф',
+                  'baseCost': 3,
+                  'paidPhotoReport': false,
+                  'pricingType': 'density',
+                  'densityTiers': [
+                    {'minDensity': 0, 'clientPricePerM3': 300},
+                  ],
+                  'packagingSurcharges': [
+                    {'packagingTypeId': 10, 'amount': 0.1, 'isActive': true},
+                  ],
+                }
+              : {
+                  'id': 1,
+                  'name': 'Весовой',
+                  'baseCost': 4,
+                  'paidPhotoReport': false,
+                },
         ],
       },
       '/photo-report-coefficients' => {'coefficients': <dynamic>[]},
@@ -113,6 +134,34 @@ void main() {
       expect(api.requests.last['volumeM3'], 0.2);
       expect(find.text('\$9.23'), findsOneWidget);
       expect(find.text('по объёму, минимум \$5'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 10));
+    },
+  );
+  testWidgets(
+    'density surcharge shows kg addon while volume rate stays separate',
+    (tester) async {
+      final api = _Api(density: true);
+      await tester.binding.setSurfaceSize(const Size(1200, 1500));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            authProvider.overrideWith(_Auth.new),
+          ],
+          child: const MaterialApp(home: Scaffold(body: CalculatorScreen())),
+        ),
+      );
+      await _settleQuote(tester);
+      await tester.enterText(_field('Вес, кг'), '20');
+      await tester.enterText(_field('Объём, м³'), '0.2');
+      await _settleQuote(tester);
+      expect(find.text('Надбавка за упаковку к доставке'), findsOneWidget);
+      expect(find.text('\$2.00'), findsOneWidget);
+      expect(find.text('\$62.00'), findsOneWidget);
+      expect(find.text('\$300.00/м³'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 10));

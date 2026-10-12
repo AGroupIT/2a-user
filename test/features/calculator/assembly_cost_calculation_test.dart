@@ -190,7 +190,7 @@ void main() {
       expect(result.clientPrice, 6);
     });
 
-    test('uses density volume basis without packaging tariff surcharge', () {
+    test('density volume delivery adds packaging surcharge by kilograms', () {
       const tariff = CalculatorTariff(
         id: 1,
         name: 'Плотность',
@@ -228,9 +228,61 @@ void main() {
 
       expect(result.priceUnit, 'м³');
       expect(result.shippingBasis, 0.2);
-      expect(result.packagingTariffSurcharge, 0);
-      expect(result.shippingCost, 60);
+      expect(result.clientPrice, 300);
+      expect(result.packagingTariffSurcharge, 2);
+      expect(result.shippingCost, 100);
     });
+
+    test(
+      'density kg surcharge follows photo coefficient and removal rules',
+      () {
+        const tariff = CalculatorTariff(
+          id: 1,
+          name: 'Спец тариф',
+          baseCost: 3,
+          pricingType: 'density',
+          supportsPackagingRemovalTargets: true,
+          packagingRemovalAllPrice: 2.5,
+          densityTiers: [
+            CalculatorDensityTier(minDensity: 0, clientPricePerKg: 3),
+          ],
+          packagingSurcharges: [
+            CalculatorPackagingSurcharge(
+              packagingTypeId: 10,
+              amount: 0.1,
+              isActive: true,
+            ),
+            CalculatorPackagingSurcharge(
+              packagingTypeId: 20,
+              amount: 7,
+              isActive: false,
+            ),
+          ],
+        );
+        AssemblyCostResult calculate(PackagingRemovalOption removal) =>
+            calculateAssemblyCost(
+              AssemblyCostInput(
+                tariff: tariff,
+                photoCoefficients: photoCoefficients,
+                selectedPackagings: const [primaryPackaging, addonPackaging],
+                weightKg: 20,
+                volumeM3: 0.2,
+                places: 1,
+                tracksTotal: 1,
+                tracksWithPhoto: 0,
+                unloadingCostUsd: 0,
+                packagingRemoval: removal,
+              ),
+            )!;
+        final normal = calculate(PackagingRemovalOption.none);
+        expect(normal.clientPrice, 3);
+        expect(normal.packagingTariffSurcharge, 0.1);
+        expect(normal.shippingCost, closeTo(74.4, 0.001));
+        final removed = calculate(PackagingRemovalOption.all);
+        expect(removed.packagingTariffSurcharge, 0);
+        expect(removed.shippingCost, 60);
+      },
+    );
 
     test('matches backend density tier selection on an inclusive boundary', () {
       const tariff = CalculatorTariff(
