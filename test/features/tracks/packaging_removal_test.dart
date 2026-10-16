@@ -156,7 +156,7 @@ void main() {
 
   for (final option in PackagingRemovalOption.values) {
     test(
-      'create API preserves ${option.name} exactly on capable backend',
+      'new assembly retires ${option.name} even on capable backend',
       () async {
         final api = _MockApiClient();
         when(
@@ -188,64 +188,15 @@ void main() {
                       api.post('/assemblies', data: captureAny(named: 'data')),
                 ).captured.single
                 as Map;
-        expect(body['packagingRemoval'], option.apiValue);
+        expect(body['packagingRemoval'], 'none');
         expect(body.containsKey('packagingRemovalTarget'), isTrue);
-        expect(body['packagingRemovalTarget'], option.target);
-        expect(result.assembly!.packagingRemovalTarget, option.target);
+        expect(body['packagingRemovalTarget'], isNull);
+        expect(body.containsKey('assemblyBatchProtocol'), isFalse);
+        expect(body.containsKey('assemblyRequestId'), isFalse);
+        expect(result.assembly!.packagingRemovalTarget, isNull);
       },
     );
   }
-
-  for (final option in [
-    PackagingRemovalOption.boxOnly,
-    PackagingRemovalOption.bagOnly,
-  ]) {
-    test(
-      'create API blocks ${option.name} before sending to old backend',
-      () async {
-        final api = _MockApiClient();
-        final container = ProviderContainer(
-          overrides: [apiClientProvider.overrideWithValue(api)],
-        );
-        addTearDown(container.dispose);
-        final result = await container
-            .read(assembliesApiServiceProvider)
-            .createAssembly(
-              clientId: 1,
-              packagingRemoval: option.apiValue,
-              packagingRemovalTarget: option.target,
-            );
-        expect(result.errorCode, packagingRemovalTargetsUnsupportedCode);
-        verifyZeroInteractions(api);
-      },
-    );
-  }
-
-  test('create API sends unchanged legacy payload on old backend', () async {
-    final api = _MockApiClient();
-    when(() => api.post('/assemblies', data: any(named: 'data'))).thenAnswer(
-      (_) async => Response<Map<String, dynamic>>(
-        requestOptions: RequestOptions(path: '/assemblies'),
-        statusCode: 201,
-        data: {'id': 1, 'packagingRemoval': 'transport_only'},
-      ),
-    );
-    final container = ProviderContainer(
-      overrides: [apiClientProvider.overrideWithValue(api)],
-    );
-    addTearDown(container.dispose);
-    final result = await container
-        .read(assembliesApiServiceProvider)
-        .createAssembly(clientId: 1, packagingRemoval: 'transport_only');
-    final body =
-        verify(
-              () => api.post('/assemblies', data: captureAny(named: 'data')),
-            ).captured.single
-            as Map;
-    expect(body['packagingRemoval'], 'transport_only');
-    expect(body.containsKey('packagingRemovalTarget'), isFalse);
-    expect(result.assembly!.packagingRemovalTarget, isNull);
-  });
 
   test('box, bag and legacy partial use the exact same existing rate', () {
     for (final option in [

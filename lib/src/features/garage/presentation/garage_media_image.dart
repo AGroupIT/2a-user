@@ -1,7 +1,6 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_config.dart';
@@ -54,7 +53,7 @@ class GarageImageStrip extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
+                  child: AuthenticatedImage.network(
                     ApiConfig.getMediaThumbnailUrl(imagePath, size: 240),
                     width: imageSize,
                     height: imageSize,
@@ -125,18 +124,9 @@ Future<void> _downloadGarageImage({
     duration: const Duration(seconds: 10),
   );
   try {
-    final response = await Dio().get<List<int>>(
-      imageUrl,
-      options: Options(responseType: ResponseType.bytes),
-    );
-    final bytes = response.data;
-    if (bytes == null || bytes.isEmpty) {
-      throw StateError('empty_image_response');
-    }
-    final saved = await downloadFile(
-      bytes: Uint8List.fromList(bytes),
-      fileName: fileName,
-    );
+    final bytes = await loadMediaBytes(mediaApiClient(context), imageUrl);
+    if (!context.mounted) return;
+    final saved = await downloadFile(bytes: bytes, fileName: fileName);
     if (!saved) throw StateError('image_not_saved');
     if (!context.mounted) return;
     AppToast.show(

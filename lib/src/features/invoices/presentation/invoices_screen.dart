@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -3802,7 +3803,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                     : () => _openScalePhoto(item, allPhotoIndex),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: Image.network(
+                  child: AuthenticatedImage.network(
                     ApiConfig.getMediaUrl(url),
                     width: 104,
                     height: 104,
@@ -3836,7 +3837,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             onTap: () => _openWaybillPhoto(item),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.network(
+              child: AuthenticatedImage.network(
                 ApiConfig.getMediaUrl(item.tkWaybillPhotoUrl!),
                 width: 104,
                 height: 104,

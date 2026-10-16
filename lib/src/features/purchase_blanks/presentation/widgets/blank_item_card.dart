@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -158,7 +158,7 @@ class BlankItemCard extends StatelessWidget {
                 itemBuilder: (context, i) {
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: CachedNetworkImage(
+                    child: AuthenticatedCachedImage(
                       imageUrl: ApiConfig.getMediaUrl(item.photoUrls[i]),
                       width: 84,
                       height: 84,
@@ -294,7 +294,7 @@ class BlankItemCard extends StatelessWidget {
                           itemBuilder: (context, i) {
                             return ClipRRect(
                               borderRadius: BorderRadius.circular(14),
-                              child: CachedNetworkImage(
+                              child: AuthenticatedCachedImage(
                                 imageUrl: ApiConfig.getMediaUrl(
                                   item.chinaShippingProofUrls[i],
                                 ),

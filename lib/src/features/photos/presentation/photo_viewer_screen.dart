@@ -1,9 +1,14 @@
+import '../../../core/network/api_client.dart';
+import '../../../core/media/authenticated_video.dart';
+import '../../../core/media/media_file_metadata.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
@@ -12,14 +17,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
-import '../../../core/utils/file_download_helper.dart';
-import '../../../core/utils/locale_text.dart';
 import '../domain/photo_item.dart';
 
 void _showStyledSnackBar(
@@ -134,7 +136,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
       unawaited(
         precacheImage(
-          CachedNetworkImageProvider(fullUrl),
+          authenticatedImageProvider(context, fullUrl),
           context,
         ).catchError((_) {}),
       );
@@ -160,39 +162,24 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
   Future<void> _downloadMedia() async {
     setState(() => _isDownloading = true);
+    final api = ref.read(apiClientProvider);
+    final companyName = ref.read(companyNameProvider);
+    String? temporaryPath;
     try {
       final currentItem = _currentItem;
 
       if (kIsWeb) {
-        final response = await Dio().get<List<int>>(
+        final bytes = await loadMediaBytes(
+          api,
           ApiConfig.getMediaUrl(currentItem.url),
-          options: Options(responseType: ResponseType.bytes),
         );
         if (!mounted) return;
-        final bytes = response.data;
-        if (bytes == null || bytes.isEmpty) {
-          throw StateError('empty_media_response');
-        }
-        final extension = Uri.parse(currentItem.url).path.split('.').last;
-        final safeExtension =
-            const {
-              'jpg',
-              'jpeg',
-              'png',
-              'webp',
-              'mp4',
-              'mov',
-              'm4v',
-              'webm',
-            }.contains(extension.toLowerCase())
-            ? extension.toLowerCase()
-            : currentItem.isVideo
-            ? 'mp4'
-            : 'jpg';
         final saved = await downloadFile(
-          bytes: Uint8List.fromList(bytes),
-          fileName:
-              'media_${DateTime.now().microsecondsSinceEpoch}.$safeExtension',
+          bytes: bytes,
+          fileName: mediaFileName(
+            currentItem.url,
+            isVideo: currentItem.isVideo,
+          ),
         );
         if (!mounted) return;
         if (!saved) throw StateError('media_not_saved');
@@ -205,8 +192,10 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!mounted) return;
       if (!hasAccess) {
         final granted = await Gal.requestAccess(toAlbum: true);
+        if (!mounted) return;
         if (!granted) {
           if (mounted) {
             _showStyledSnackBar(
@@ -222,26 +211,17 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       String savePath;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
 
-      if (!currentItem.isVideo) {
-        // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(fullUrl);
-        savePath = file.path;
-      } else {
-        // Для видео скачиваем через Dio
-        final tempDir = await getTemporaryDirectory();
-        savePath =
-            '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(fullUrl, savePath);
-      }
+      final bytes = await loadMediaBytes(api, fullUrl);
+      final tempDir = await getTemporaryDirectory();
+      savePath =
+          '${tempDir.path}/${DateTime.now().microsecondsSinceEpoch}_${mediaFileName(currentItem.url, isVideo: currentItem.isVideo)}';
+      temporaryPath = savePath;
+      await File(savePath).writeAsBytes(bytes);
+      if (!mounted) return;
 
       // Сохраняем в галерею
-      final companyName = ref.read(companyNameProvider);
       if (currentItem.isVideo) {
         await Gal.putVideo(savePath, album: companyName);
-        // Удаляем временный файл только для видео
-        try {
-          await File(savePath).delete();
-        } catch (_) {}
       } else {
         await Gal.putImage(savePath, album: companyName);
       }
@@ -264,6 +244,11 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
         _showStyledSnackBar(context, 'Не удалось сохранить', isError: true);
       }
     } finally {
+      if (temporaryPath != null) {
+        try {
+          await File(temporaryPath).delete();
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() => _isDownloading = false);
       }
@@ -271,31 +256,29 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   }
 
   Future<void> _shareMedia(BuildContext context) async {
+    final api = ref.read(apiClientProvider);
     try {
       final currentItem = _currentItem;
-      String filePath;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
 
       // Получаем box ДО async операций
       final box = context.findRenderObject() as RenderBox?;
 
-      if (!currentItem.isVideo) {
-        // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(fullUrl);
-        filePath = file.path;
-      } else {
-        // Для видео скачиваем во временную директорию
-        final tempDir = await getTemporaryDirectory();
-        filePath =
-            '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(fullUrl, filePath);
-      }
-
+      final bytes = await loadMediaBytes(api, fullUrl);
       if (!mounted) return;
 
       // Шарим файл (sharePositionOrigin нужен для iPad)
       await Share.shareXFiles(
-        [XFile(filePath)],
+        [
+          XFile.fromData(
+            bytes,
+            mimeType: mediaMimeType(
+              currentItem.url,
+              isVideo: currentItem.isVideo,
+            ),
+            name: mediaFileName(currentItem.url, isVideo: currentItem.isVideo),
+          ),
+        ],
         text: currentItem.trackingNumber != null
             ? 'Трек: ${currentItem.trackingNumber}'
             : null,
@@ -303,15 +286,6 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
             ? box.localToGlobal(Offset.zero) & box.size
             : const Rect.fromLTWH(0, 0, 100, 100),
       );
-
-      // Удаляем временный файл для видео после небольшой задержки
-      if (currentItem.isVideo) {
-        Future.delayed(const Duration(seconds: 5), () async {
-          try {
-            await File(filePath).delete();
-          } catch (_) {}
-        });
-      }
     } on DioException catch (e) {
       if (!context.mounted) return;
       String message = 'Ошибка';
@@ -372,7 +346,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                                     : InteractiveViewer(
                                         minScale: 1,
                                         maxScale: 4,
-                                        child: CachedNetworkImage(
+                                        child: AuthenticatedCachedImage(
                                           imageUrl: ApiConfig.getMediaUrl(
                                             item.url,
                                           ),
@@ -410,7 +384,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                                 : InteractiveViewer(
                                     minScale: 1,
                                     maxScale: 4,
-                                    child: CachedNetworkImage(
+                                    child: AuthenticatedCachedImage(
                                       imageUrl: ApiConfig.getMediaUrl(
                                         widget.item.url,
                                       ),
@@ -614,33 +588,60 @@ class _VideoPlayerView extends StatefulWidget {
 }
 
 class _VideoPlayerViewState extends State<_VideoPlayerView> {
-  late final VideoPlayerController _controller;
+  VideoPlayerController? _controller;
+  bool _started = false;
+  bool _failed = false;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..setLooping(true)
-      ..initialize()
-          .then((_) {
-            if (!mounted) return;
-            setState(() {});
-            _controller.play();
-          })
-          .catchError((e) {
-            debugPrint('[VideoPlayer] Failed to initialize: $e');
-          });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    VideoPlayerController? pending;
+    try {
+      pending = await createAuthenticatedVideoController(context, widget.url);
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      await pending.initialize();
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      await pending.setLooping(true);
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      await pending.play();
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      setState(() => _controller = pending);
+    } catch (_) {
+      await pending?.dispose();
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) {
+    final controller = _controller;
+    if (_failed) return const Icon(Icons.error_outline, color: Colors.white);
+    if (controller == null || !controller.value.isInitialized) {
       return const SizedBox(
         width: 32,
         height: 32,
@@ -650,10 +651,10 @@ class _VideoPlayerViewState extends State<_VideoPlayerView> {
 
     return GestureDetector(
       onTap: () {
-        if (_controller.value.isPlaying) {
-          _controller.pause();
+        if (controller.value.isPlaying) {
+          controller.pause();
         } else {
-          _controller.play();
+          controller.play();
         }
         setState(() {});
       },
@@ -661,10 +662,10 @@ class _VideoPlayerViewState extends State<_VideoPlayerView> {
         alignment: Alignment.center,
         children: [
           AspectRatio(
-            aspectRatio: _controller.value.aspectRatio,
-            child: VideoPlayer(_controller),
+            aspectRatio: controller.value.aspectRatio,
+            child: VideoPlayer(controller),
           ),
-          if (!_controller.value.isPlaying)
+          if (!controller.value.isPlaying)
             DecoratedBox(
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.4),

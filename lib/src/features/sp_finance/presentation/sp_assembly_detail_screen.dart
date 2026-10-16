@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1679,7 +1679,7 @@ class _BoxesSection extends StatelessWidget {
                               color: Colors.black.withValues(alpha: 0.03),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: CachedNetworkImage(
+                            child: AuthenticatedCachedImage(
                               imageUrl: photoUrl,
                               fit: BoxFit.cover,
                               placeholder: (_, _) => Container(

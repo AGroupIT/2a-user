@@ -1,4 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image/cached_network_image.dart'
+    show
+        ImageWidgetBuilder,
+        PlaceholderWidgetBuilder,
+        LoadingErrorWidgetBuilder;
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 
 import '../network/api_config.dart';
@@ -65,7 +70,7 @@ class AppCachedMediaImage extends StatelessWidget {
   Widget _image(String imageUrl, {String? fallbackUrl}) {
     final fallbackErrorWidget = errorWidget ?? _defaultErrorWidget;
 
-    return CachedNetworkImage(
+    return AuthenticatedCachedImage(
       imageUrl: imageUrl,
       fit: fit,
       memCacheWidth: memCacheWidth,
@@ -74,7 +79,6 @@ class AppCachedMediaImage extends StatelessWidget {
       maxHeightDiskCache: maxHeightDiskCache,
       fadeInDuration: fadeInDuration,
       fadeOutDuration: fadeOutDuration,
-      useOldImageOnUrlChange: useOldImageOnUrlChange,
       filterQuality: filterQuality,
       imageBuilder: imageBuilder,
       placeholder: placeholder ?? _defaultPlaceholder,

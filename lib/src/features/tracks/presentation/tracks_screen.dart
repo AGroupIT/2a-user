@@ -12,8 +12,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phone_form_field/phone_form_field.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/network/api_config.dart';
-import '../../../core/models/packaging_removal.dart';
-import '../../../core/ui/packaging_removal_text.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/ui/app_colors.dart';
@@ -2122,157 +2120,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     return success;
   }
 
-  /// Подтверждение снятия упаковки: что именно снимаем + согласие с рисками.
-  Future<bool> _confirmPackagingRemoval(
-    BuildContext context, {
-    required PackagingRemovalOption removal,
-    Tariff? tariff,
-  }) async {
-    final isRemoveAll = removal == PackagingRemovalOption.all;
-    final optionLabel = packagingRemovalLabel(context, removal);
-    final specialPrice = isRemoveAll
-        ? tariff?.packagingRemovalAllPrice
-        : tariff?.packagingRemovalTransportPrice;
-    final hasSpecialPrice = specialPrice != null && specialPrice > 0;
-    final fallbackPrice = tariff?.baseCost ?? 0;
-    final priceText = hasSpecialPrice
-        ? '\$${specialPrice.toStringAsFixed(2)} / кг'
-        : fallbackPrice > 0
-        ? '\$${fallbackPrice.toStringAsFixed(2)} / кг'
-        : null;
-    final result = await showBlurredModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (sheetContext) {
-        return _TrackSheetSurface(
-          icon: Icons.inventory_2_outlined,
-          title: tr(sheetContext, ru: 'Снятие упаковки', zh: '拆除包装'),
-          subtitle: optionLabel,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                tr(sheetContext, ru: 'Что мы снимем:', zh: '拆除范围：'),
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _TrackSheetNoticeCard(
-                icon: Icons.inventory_2_outlined,
-                text: packagingRemovalDescription(sheetContext, removal),
-                color: context.brandPrimary,
-              ),
-              const SizedBox(height: 10),
-              if (priceText != null) ...[
-                _TrackSheetNoticeCard(
-                  icon: Icons.local_shipping_outlined,
-                  text: hasSpecialPrice
-                      ? tr(
-                          sheetContext,
-                          ru: 'Цена доставки по выбранному тарифу будет $priceText.',
-                          zh: '所选运价的运输费用为 $priceText。',
-                        )
-                      : tr(
-                          sheetContext,
-                          ru: 'Для этого варианта в тарифе не задана отдельная цена, поэтому останется обычная цена тарифа: $priceText.',
-                          zh: '此选项未设置单独运价，将使用标准运价：$priceText。',
-                        ),
-                  color: Colors.blueGrey.shade700,
-                ),
-                const SizedBox(height: 10),
-              ],
-              _TrackSheetNoticeCard(
-                icon: Icons.error_outline_rounded,
-                text: tr(
-                  sheetContext,
-                  ru: 'Если продавец изначально отправил неполный комплект, не тот товар или товар с несоответствием, после удаления оригинальной/транспортировочной упаковки доказать это будет невозможно.',
-                  zh: '如果卖家发货时存在缺件、发错货或商品不符，拆除原包装或运输包装后将无法证明这些问题。',
-                ),
-                color: Colors.deepOrange.shade700,
-              ),
-              const SizedBox(height: 10),
-              _TrackSheetNoticeCard(
-                icon: Icons.warning_amber_rounded,
-                text: tr(
-                  sheetContext,
-                  ru: 'Я прошу удалить выбранную упаковку. Риски повреждения товара из-за уменьшения защитных слоёв и невозможности доказать претензию продавцу беру на себя.',
-                  zh: '我要求拆除所选包装，并自行承担因保护层减少造成商品损坏及无法向卖家举证索赔的风险。',
-                ),
-                color: Colors.orange.shade800,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _TrackSheetSecondaryButton(
-                      label: tr(sheetContext, ru: 'Отмена', zh: '取消'),
-                      onTap: () => Navigator.of(sheetContext).pop(false),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _TrackSheetPrimaryButton(
-                      label: tr(sheetContext, ru: 'Подтверждаю', zh: '确认'),
-                      icon: Icons.check_circle_outline_rounded,
-                      onTap: () => Navigator.of(sheetContext).pop(true),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (!context.mounted) return false;
-    return result ?? false;
-  }
-
-  String? _packagingRemovalPriceText(
-    Tariff? tariff,
-    PackagingRemovalOption removal,
-  ) {
-    if (tariff == null || removal == PackagingRemovalOption.none) return null;
-    final specialPrice = removal == PackagingRemovalOption.all
-        ? tariff.packagingRemovalAllPrice
-        : tariff.packagingRemovalTransportPrice;
-    final price = specialPrice != null && specialPrice > 0
-        ? specialPrice
-        : tariff.baseCost;
-    if (price <= 0) return null;
-    return '\$${price.toStringAsFixed(2)} / кг';
-  }
-
-  String _packagingRemovalInlineText({
-    required PackagingRemovalOption removal,
-    required String? priceText,
-  }) {
-    final pricePart = priceText == null
-        ? tr(
-            context,
-            ru: 'Цена доставки будет рассчитана по выбранному тарифу.',
-            zh: '运费将按所选运价计算。',
-          )
-        : tr(
-            context,
-            ru: 'Цена доставки по выбранному тарифу: $priceText.',
-            zh: '所选运价的运输费用：$priceText。',
-          );
-    return '${packagingRemovalDescription(context, removal)} $pricePart';
-  }
-
   Future<void> _showCreateGroupSheet(BuildContext context) async {
     final selectedPackingIds = <int>{};
     bool hasFragileGoods = false;
     String? placePreference;
-    var packagingRemoval = PackagingRemovalOption.none;
     String selectedInsurance = 'no';
     String? insuranceAmount;
     String goodsDescription = '';
@@ -2383,11 +2234,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             final productInfoRequirementSatisfied =
                 !requiresAssemblyGoodsDescription ||
                 hasAssemblyGoodsDescription;
-            final packagingRemovalPriceText = _packagingRemovalPriceText(
-              selectedTariff,
-              packagingRemoval,
-            );
-
             final canSubmit =
                 placePreference != null &&
                 hasPrimaryPackaging &&
@@ -2466,56 +2312,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                     child: chip,
                   ),
                 ),
-              );
-            }
-
-            Widget packagingRemovalChip({
-              required PackagingRemovalOption value,
-              required String label,
-            }) {
-              final selected = packagingRemoval == value;
-              return ChoiceChip(
-                selected: selected,
-                showCheckmark: selected,
-                checkmarkColor: Colors.white,
-                selectedColor: context.brandPrimary,
-                backgroundColor: Colors.white,
-                side: BorderSide(
-                  color: selected
-                      ? context.brandPrimary
-                      : context.brandPrimary.withValues(alpha: 0.36),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                labelPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
-                label: Text(label),
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : context.brandPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-                onSelected: (_) async {
-                  if (value == PackagingRemovalOption.none) {
-                    setSheetState(
-                      () => packagingRemoval = PackagingRemovalOption.none,
-                    );
-                    return;
-                  }
-                  if (packagingRemoval == value) return;
-                  final confirmed = await _confirmPackagingRemoval(
-                    sheetContext,
-                    removal: value,
-                    tariff: selectedTariff,
-                  );
-                  if (!sheetContext.mounted) return;
-                  if (confirmed) {
-                    setSheetState(() => packagingRemoval = value);
-                  }
-                },
               );
             }
 
@@ -2643,24 +2439,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             }
 
             Widget tariffOptionTile(Tariff tariff, {required bool selected}) {
-              final transportRemovalPrice = _packagingRemovalPriceText(
-                tariff,
-                PackagingRemovalOption.transportOnly,
-              );
-              final allRemovalPrice = _packagingRemovalPriceText(
-                tariff,
-                PackagingRemovalOption.all,
-              );
               return InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => setSheetState(() {
                   selectedTariff = tariff;
-                  // Цена снятия упаковки зависит от тарифа. Если тариф поменяли
-                  // после подтверждения снятия — просим выбрать вариант заново,
-                  // чтобы клиент видел и подтверждал уже актуальную цену.
-                  if (packagingRemoval != PackagingRemovalOption.none) {
-                    packagingRemoval = PackagingRemovalOption.none;
-                  }
                 }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
@@ -2720,27 +2502,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               const SizedBox(height: 5),
                               Text(
                                 '\$${tariff.baseCost.toStringAsFixed(2)} / кг',
-                                style: const TextStyle(
-                                  color: Colors.black54,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                            if (transportRemovalPrice != null ||
-                                allRemovalPrice != null) ...[
-                              const SizedBox(height: 5),
-                              Text(
-                                [
-                                  if (transportRemovalPrice != null)
-                                    tr(
-                                      context,
-                                      ru: '${tariff.supportsPackagingRemovalTargets ? 'Коробка / сумка' : 'Транспортировочная упаковка'} — $transportRemovalPrice',
-                                      zh: '${tariff.supportsPackagingRemovalTargets ? '盒子 / 袋子包装' : '运输包装'} — $transportRemovalPrice',
-                                    ),
-                                  if (allRemovalPrice != null)
-                                    '${packagingRemovalLabel(context, PackagingRemovalOption.all)} — $allRemovalPrice',
-                                ].join('; '),
                                 style: const TextStyle(
                                   color: Colors.black54,
                                   fontSize: 12,
@@ -2967,62 +2728,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                             onChanged: (value) =>
                                 setSheetState(() => hasFragileGoods = value),
                           ),
-                          const Divider(height: 18),
-                          Text(
-                            tr(sheetContext, ru: 'Снять упаковку', zh: '拆除包装'),
-                            style: const TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final option
-                                  in PackagingRemovalOption.available(
-                                    supportsTargets:
-                                        selectedTariff
-                                            ?.supportsPackagingRemovalTargets ==
-                                        true,
-                                    current: packagingRemoval,
-                                  ))
-                                packagingRemovalChip(
-                                  value: option,
-                                  label: packagingRemovalLabel(
-                                    sheetContext,
-                                    option,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (selectedTariff?.supportsPackagingRemovalTargets !=
-                              true) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              packagingRemovalTargetsUnavailableText(
-                                sheetContext,
-                              ),
-                            ),
-                          ],
-                          if (packagingRemoval !=
-                              PackagingRemovalOption.none) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _packagingRemovalInlineText(
-                                removal: packagingRemoval,
-                                priceText: packagingRemovalPriceText,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.black45,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
                           const Divider(height: 18),
                           const Text(
                             'Количество мест',
@@ -3494,15 +3199,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                               value: hasFragileGoods ? 'Да' : 'Нет',
                             ),
                             _SummaryLine(
-                              label: tr(
-                                sheetContext,
-                                ru: 'Снятие упаковки',
-                                zh: '拆除包装',
-                              ),
-                              value:
-                                  '${packagingRemovalLabel(sheetContext, packagingRemoval)}${packagingRemovalPriceText == null ? '' : ' · $packagingRemovalPriceText'}',
-                            ),
-                            _SummaryLine(
                               label: 'Места',
                               value: switch (placePreference) {
                                 'single_if_possible' =>
@@ -3791,8 +3487,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         packagingTypeIds: selectedPackingIds.toList(),
         hasFragileGoods: hasFragileGoods,
         placePreference: placePreference!,
-        packagingRemoval: packagingRemoval.apiValue,
-        packagingRemovalTarget: packagingRemoval.target,
         supportsPackagingRemovalTargets:
             selectedTariff?.supportsPackagingRemovalTargets == true,
         hasInsurance: selectedInsurance == 'yes',
@@ -3810,7 +3504,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final assembly = createResult.assembly;
       if (assembly != null) {
         if (!context.mounted) return;
-        _showStyledSnackBar(context, 'Сборка ${assembly.number} создана');
+        _showStyledSnackBar(
+          context,
+          tr(
+            context,
+            ru: 'Сборка ${assembly.number} создана',
+            zh: '打包单 ${assembly.number} 已创建',
+          ),
+        );
         setState(() {
           _selectedTracks.clear();
           _selectedStatus = null;
@@ -3822,9 +3523,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         if (!context.mounted) return;
         final message =
             createResult.message ??
-            (createResult.errorCode == packagingRemovalTargetsUnsupportedCode
-                ? packagingRemovalTargetsUnavailableText(context)
-                : createResult.errorCode == trackWarehouseArrivalCooldownCode
+            (createResult.errorCode == trackWarehouseArrivalCooldownCode
                 ? 'Этот трек только поступил на склад. Отправить его можно завтра.'
                 : 'Ошибка создания сборки');
         _showStyledSnackBar(context, message, isError: true);

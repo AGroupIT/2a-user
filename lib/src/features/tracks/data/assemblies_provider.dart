@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/models/packaging_removal.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
 const trackWarehouseArrivalCooldownCode = 'TRACK_WAREHOUSE_ARRIVAL_COOLDOWN';
@@ -311,15 +310,6 @@ class AssembliesApiService {
     String? goodsDescription,
     List<int>? trackIds,
   }) async {
-    final removalOption = PackagingRemovalOption.fromApi(
-      packagingRemoval,
-      packagingRemovalTarget,
-    );
-    if (!removalOption.isSupported(supportsPackagingRemovalTargets)) {
-      return AssemblyCreateResult.failure(
-        errorCode: packagingRemovalTargetsUnsupportedCode,
-      );
-    }
     try {
       final response = await _apiClient.post(
         '/assemblies',
@@ -335,9 +325,8 @@ class AssembliesApiService {
             'packagingTypeIds': packagingTypeIds,
           'hasFragileGoods': hasFragileGoods,
           'placePreference': placePreference,
-          ...removalOption.toApi(
-            supportsTargets: supportsPackagingRemovalTargets,
-          ),
+          'packagingRemoval': 'none',
+          if (supportsPackagingRemovalTargets) 'packagingRemovalTarget': null,
           'hasInsurance': hasInsurance,
           if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
           if (goodsDescription != null && goodsDescription.trim().isNotEmpty)

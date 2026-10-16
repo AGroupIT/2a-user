@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -225,7 +225,7 @@ class _ArticleCoverImage extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              CachedNetworkImage(
+              AuthenticatedCachedImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 placeholder: (_, _) => Container(
@@ -435,7 +435,7 @@ class _ArticleMarkdownImage extends StatelessWidget {
           onTap: onTap,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: CachedNetworkImage(
+            child: AuthenticatedCachedImage(
               imageUrl: imageUrl,
               fit: BoxFit.cover,
               placeholder: (_, _) => Container(
@@ -490,7 +490,7 @@ class _FullscreenImageViewer extends StatelessWidget {
       body: BlurredMediaBackdrop(
         imageUrl: imageUrl,
         child: PhotoView(
-          imageProvider: CachedNetworkImageProvider(imageUrl),
+          imageProvider: authenticatedImageProvider(context, imageUrl),
           minScale: PhotoViewComputedScale.contained,
           maxScale: PhotoViewComputedScale.covered * 3,
           backgroundDecoration: const BoxDecoration(color: Colors.transparent),

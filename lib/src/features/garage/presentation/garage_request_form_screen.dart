@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -713,7 +714,7 @@ class _PartImageField extends StatelessWidget {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : hasImage
-                  ? Image.network(
+                  ? AuthenticatedImage.network(
                       ApiConfig.getMediaThumbnailUrl(imageUrl!, size: 360),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => const ColoredBox(

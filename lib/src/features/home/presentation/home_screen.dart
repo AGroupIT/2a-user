@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -1247,7 +1248,7 @@ class _PromoSlider extends StatelessWidget {
                     child: imageUrl == null
                         ? const ColoredBox(color: Color(0xCCFFFFFF))
                         : RepaintBoundary(
-                            child: Image.network(
+                            child: AuthenticatedImage.network(
                               resolvedImageUrl!,
                               fit: BoxFit.cover,
                               alignment: Alignment.centerLeft,

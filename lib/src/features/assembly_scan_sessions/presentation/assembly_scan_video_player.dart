@@ -1,3 +1,4 @@
+import '../../../core/media/authenticated_video.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -157,7 +158,14 @@ class _AssemblyScanVideoPlayerState
           );
       if (!mounted || generation != _loadGeneration) return;
 
-      final controller = VideoPlayerController.networkUrl(token.url);
+      final controller = await createAuthenticatedVideoController(
+        context,
+        token.url.toString(),
+      );
+      if (!mounted || generation != _loadGeneration) {
+        await controller.dispose();
+        return;
+      }
       pendingController = controller;
       await controller.initialize();
       if (!mounted || generation != _loadGeneration) {

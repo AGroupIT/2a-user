@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_config.dart';
@@ -27,11 +27,11 @@ void main() {
       memCacheWidth: 320,
       errorWidget: (_, _, _) => const Text('final error'),
     );
-    final thumb = widget.build(context) as CachedNetworkImage;
+    final thumb = widget.build(context) as AuthenticatedCachedImage;
     expect(thumb.imageUrl, contains('/preview/360/'));
     final original =
         thumb.errorWidget!(context, thumb.imageUrl, Exception())
-            as CachedNetworkImage;
+            as AuthenticatedCachedImage;
     expect(original.imageUrl, ApiConfig.getMediaUrl(url));
     expect(original.fit, BoxFit.contain);
     expect(original.memCacheWidth, 320);
@@ -46,7 +46,7 @@ void main() {
               url: url,
               variant: AppMediaImageVariant.full,
             ).build(context)
-            as CachedNetworkImage;
+            as AuthenticatedCachedImage;
     expect(full.imageUrl, original.imageUrl);
     expect(ApiConfig.getMediaThumbnailUrl(url), isNot(contains('fit=')));
   });

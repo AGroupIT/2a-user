@@ -1,5 +1,5 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 // ignore_for_file: deprecated_member_use
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
@@ -1129,7 +1129,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: CachedNetworkImage(
+                          child: AuthenticatedCachedImage(
                             imageUrl: fullUrl,
                             width: 120,
                             height: 120,
@@ -1240,7 +1240,7 @@ class _SpTrackEditScreenState extends ConsumerState<SpTrackEditScreen> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
+                      child: AuthenticatedCachedImage(
                         imageUrl: ApiConfig.getMediaUrl(productInfo.imageUrl!),
                         width: 120,
                         height: 120,

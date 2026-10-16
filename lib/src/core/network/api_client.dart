@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -15,6 +16,7 @@ import '../services/app_distribution.dart';
 import '../services/runtime/app_runtime_info.dart';
 import 'api_config.dart';
 import 'native_http_adapter.dart';
+import 'media_http_adapter.dart';
 
 /// Callback для обработки 401 ошибки (unauthorized)
 typedef OnUnauthorizedCallback = void Function();
@@ -30,6 +32,10 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 
 /// Клиент для работы с API
 class ApiClient {
+  static int _mediaSessionEpoch = 0;
+  Future<String> getMediaCacheIdentity() async =>
+      '$_mediaSessionEpoch:${await getToken()}';
+
   late Dio _dio;
   // На мобильных платформах используем FlutterSecureStorage с правильными настройками
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
@@ -127,6 +133,7 @@ class ApiClient {
     if (nativeAdapter != null) {
       dio.httpClientAdapter = nativeAdapter;
     }
+    dio.httpClientAdapter = wrapMediaHttpAdapter(dio.httpClientAdapter);
 
     // Добавляем интерсепторы
     dio.interceptors.add(_clientTelemetryInterceptor());
@@ -1295,6 +1302,9 @@ class ApiClient {
   }
 
   Future<void> setToken(String token) async {
+    _mediaSessionEpoch++;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     // Кешируем в памяти
     _inMemoryToken = token;
     // Сбрасываем single-flight, чтобы следующий getToken не ждал старую попытку.
@@ -1371,6 +1381,9 @@ class ApiClient {
   }
 
   Future<void> clearToken() async {
+    _mediaSessionEpoch++;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     _inMemoryToken = null;
     _tokenLoadInFlight = null;
 

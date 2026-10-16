@@ -10,7 +10,9 @@ class StartupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: Scaffold(
+    // A home/route would create a Navigator and consume the platform's initial
+    // deep link before the real GoRouter starts. Keep bootstrap navigation-free.
+    builder: (context, _) => Scaffold(
       body: Center(
         child: onRetry == null
             ? const CircularProgressIndicator()

@@ -1,11 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:twoalogisticcabineuser/src/app/router.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/core/ui/startup_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/auth/data/auth_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/auth/data/client_partner_invite_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/auth/presentation/auth_visuals.dart';
@@ -17,6 +19,69 @@ void main() {
       '123e4567-e89b-12d3-a456-426614174000.1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const secondToken =
       '223e4567-e89b-12d3-a456-426614174000.1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+
+  for (final retry in [false, true]) {
+    testWidgets('cold-start invite survives startup (retry: $retry)', (
+      tester,
+    ) async {
+      final initialRoute = '/client-partner/invite/$token';
+      tester.platformDispatcher.defaultRouteNameTestValue = initialRoute;
+      final startupNavigation = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.navigation,
+        (call) async {
+          startupNavigation.add(call.method);
+          // Flutter web consumes defaultRouteName as soon as a Navigator
+          // sends a navigation message, before the real router is created.
+          tester.platformDispatcher.defaultRouteNameTestValue = '/';
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.platformDispatcher.clearDefaultRouteNameTestValue();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.navigation,
+          null,
+        );
+      });
+
+      await tester.pumpWidget(const StartupScreen());
+      if (retry) {
+        await tester.pumpWidget(StartupScreen(onRetry: () {}));
+        await tester.pumpWidget(const StartupScreen());
+      }
+      expect(startupNavigation, isEmpty);
+      expect(tester.platformDispatcher.defaultRouteName, initialRoute);
+
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(_InviteApiClient()),
+          authProvider.overrideWith(_LoggedOutAuthNotifier.new),
+        ],
+      );
+      final router = container.read(routerProvider);
+      addTearDown(() {
+        router.dispose();
+        container.dispose();
+      });
+      // No router.go(): boot must recover the original platform URL itself.
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      for (var attempt = 0; attempt < 30; attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 30));
+        if (container.read(clientPartnerInviteProvider).isValidated) break;
+      }
+      expect(router.routeInformationProvider.value.uri.path, initialRoute);
+      expect(container.read(clientPartnerInviteProvider).isValidated, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
+    });
+  }
 
   testWidgets('публичная партнёрская ссылка ведёт в защищённую регистрацию', (
     tester,

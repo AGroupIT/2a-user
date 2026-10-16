@@ -132,6 +132,10 @@ void main() {
       await tester.enterText(_field('Треков всего'), '1');
       await _settleQuote(tester);
       expect(api.requests.last['volumeM3'], 0.2);
+      expect(find.text('Снятие упаковки'), findsNothing);
+      expect(find.text('Снять коробку'), findsNothing);
+      expect(find.text('Снять упаковку с сумки'), findsNothing);
+      expect(find.text('Снять всю упаковку'), findsNothing);
       expect(find.text('\$9.23'), findsOneWidget);
       expect(find.text('по объёму, минимум \$5'), findsNothing);
       expect(tester.takeException(), isNull);

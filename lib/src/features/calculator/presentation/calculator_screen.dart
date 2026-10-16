@@ -11,7 +11,6 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
-import '../../../core/ui/packaging_removal_text.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../auth/data/auth_provider.dart';
 import '../domain/assembly_cost_calculation.dart';
@@ -191,7 +190,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   CalculatorTariff? _selectedTariff;
   CalculatorPackaging? _selectedPrimaryPackaging;
   final Set<int> _selectedAddonPackagingIds = <int>{};
-  PackagingRemovalOption _packagingRemoval = PackagingRemovalOption.none;
   AssemblyPlacePreference _placePreference =
       AssemblyPlacePreference.singleIfPossible;
   bool _hasFragileGoods = false;
@@ -246,7 +244,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         tracksTotal: total,
         tracksWithPhoto: withPhoto,
         unloadingCostUsd: transshipment,
-        packagingRemoval: _packagingRemoval,
+        packagingRemoval: PackagingRemovalOption.none,
         hasInsurance: _hasInsurance,
         insuranceAmountCny: insuranceAmount,
         hasFragileGoods: _hasFragileGoods,
@@ -278,7 +276,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       hasInsurance: _hasInsurance,
       hasFragileGoods: _hasFragileGoods,
       placePreference: _placePreference,
-      packagingRemoval: _packagingRemoval,
+      packagingRemoval: PackagingRemovalOption.none,
       removalPriceApplied: calculation.removalPriceApplied,
       total: calculation.total,
       priceUnit: calculation.priceUnit,
@@ -300,7 +298,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final selected = tariffs.firstWhere((tariff) => tariff.id == selectedId);
     setState(() {
       _selectedTariff = selected;
-      _packagingRemoval = PackagingRemovalOption.none;
     });
   }
 
@@ -487,13 +484,10 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     if (tariff == null) return const SizedBox.shrink();
     return _AssemblyOptionsCard(
       tariff: tariff,
-      packagingRemoval: _packagingRemoval,
       placePreference: _placePreference,
       hasFragileGoods: _hasFragileGoods,
       hasInsurance: _hasInsurance,
       insuranceAmountController: _insuranceAmountCtrl,
-      onPackagingRemovalChanged: (value) =>
-          setState(() => _packagingRemoval = value),
       onPlacePreferenceChanged: (value) =>
           setState(() => _placePreference = value),
       onFragileGoodsChanged: (value) =>
@@ -938,10 +932,9 @@ class _ResultCard extends StatelessWidget {
           _Row(
             'Цена за ${result.priceUnit}',
             '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}',
-            subtitle: result.removalPriceApplied
-                ? 'применена ставка за снятие упаковки'
-                : result.packagingTariffSurcharge > 0 &&
-                      !result.hasSeparateDensitySurcharge
+            subtitle:
+                result.packagingTariffSurcharge > 0 &&
+                    !result.hasSeparateDensitySurcharge
                 ? 'включая наценку за упаковку \$${result.packagingTariffSurcharge.toStringAsFixed(2)}'
                 : null,
           ),
@@ -962,22 +955,6 @@ class _ResultCard extends StatelessWidget {
                       : ''),
             ),
 
-          if (result.packagingRemoval != PackagingRemovalOption.none)
-            _Row(
-              tr(context, ru: 'Снятие упаковки', zh: '拆除包装'),
-              packagingRemovalLabel(context, result.packagingRemoval),
-              subtitle: result.removalPriceApplied
-                  ? tr(
-                      context,
-                      ru: 'применена специальная ставка тарифа',
-                      zh: '已使用单独运价',
-                    )
-                  : tr(
-                      context,
-                      ru: 'специальная ставка не задана — расчёт по обычному тарифу',
-                      zh: '未设置单独运价，按标准运价计算',
-                    ),
-            ),
           if (hasPhotoMarkup)
             _Row(
               'Надбавка за фотоотчёт',
@@ -1484,12 +1461,10 @@ class _InfoCard extends StatelessWidget {
 
 class _AssemblyOptionsCard extends StatelessWidget {
   final CalculatorTariff tariff;
-  final PackagingRemovalOption packagingRemoval;
   final AssemblyPlacePreference placePreference;
   final bool hasFragileGoods;
   final bool hasInsurance;
   final TextEditingController insuranceAmountController;
-  final ValueChanged<PackagingRemovalOption> onPackagingRemovalChanged;
   final ValueChanged<AssemblyPlacePreference> onPlacePreferenceChanged;
   final ValueChanged<bool> onFragileGoodsChanged;
   final ValueChanged<bool> onInsuranceChanged;
@@ -1497,59 +1472,15 @@ class _AssemblyOptionsCard extends StatelessWidget {
 
   const _AssemblyOptionsCard({
     required this.tariff,
-    required this.packagingRemoval,
     required this.placePreference,
     required this.hasFragileGoods,
     required this.hasInsurance,
     required this.insuranceAmountController,
-    required this.onPackagingRemovalChanged,
     required this.onPlacePreferenceChanged,
     required this.onFragileGoodsChanged,
     required this.onInsuranceChanged,
     required this.onInsuranceAmountChanged,
   });
-
-  String _removalDescription(
-    BuildContext context,
-    PackagingRemovalOption option,
-  ) {
-    final price = switch (option) {
-      PackagingRemovalOption.none => null,
-      PackagingRemovalOption.transportOnly ||
-      PackagingRemovalOption.boxOnly ||
-      PackagingRemovalOption.bagOnly => tariff.packagingRemovalTransportPrice,
-      PackagingRemovalOption.all => tariff.packagingRemovalAllPrice,
-    };
-    if (option == PackagingRemovalOption.none) {
-      return tr(
-        context,
-        ru: 'Обычная ставка выбранного тарифа',
-        zh: '所选运价的标准价格',
-      );
-    }
-    if (price != null && price > 0) {
-      return tr(
-        context,
-        ru: 'Специальная ставка \$${price.toStringAsFixed(2)} за расчётную единицу',
-        zh: '单独运价：每计费单位 \$${price.toStringAsFixed(2)}',
-      );
-    }
-    return tr(
-      context,
-      ru: 'Специальная ставка не задана — расчёт по обычному тарифу',
-      zh: '未设置单独运价，按标准运价计算',
-    );
-  }
-
-  IconData _removalIcon(PackagingRemovalOption option) {
-    return switch (option) {
-      PackagingRemovalOption.none => Icons.inventory_2_outlined,
-      PackagingRemovalOption.transportOnly ||
-      PackagingRemovalOption.boxOnly ||
-      PackagingRemovalOption.bagOnly => Icons.layers_clear_outlined,
-      PackagingRemovalOption.all => Icons.delete_sweep_outlined,
-    };
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1561,37 +1492,8 @@ class _AssemblyOptionsCard extends StatelessWidget {
             step: 3,
             icon: Icons.tune_rounded,
             title: 'Параметры сборки',
-            subtitle: 'Настройте снятие упаковки, места и защиту груза.',
+            subtitle: 'Настройте места и защиту груза.',
           ),
-          const SizedBox(height: 14),
-          _SubsectionLabel(tr(context, ru: 'Снятие упаковки', zh: '拆除包装')),
-          const SizedBox(height: 8),
-          Column(
-            children:
-                PackagingRemovalOption.available(
-                      supportsTargets: tariff.supportsPackagingRemovalTargets,
-                      current: packagingRemoval,
-                    )
-                    .map(
-                      (option) => Padding(
-                        padding: EdgeInsets.only(
-                          bottom: option == PackagingRemovalOption.all ? 0 : 8,
-                        ),
-                        child: _AssemblyOptionTile(
-                          title: packagingRemovalLabel(context, option),
-                          subtitle: _removalDescription(context, option),
-                          icon: _removalIcon(option),
-                          selected: packagingRemoval == option,
-                          onTap: () => onPackagingRemovalChanged(option),
-                        ),
-                      ),
-                    )
-                    .toList(),
-          ),
-          if (!tariff.supportsPackagingRemovalTargets) ...[
-            const SizedBox(height: 8),
-            Text(packagingRemovalTargetsUnavailableText(context)),
-          ],
           const SizedBox(height: 14),
           const _SubsectionLabel('Пожелание по упаковке'),
           const SizedBox(height: 8),
@@ -1701,115 +1603,6 @@ class _AssemblyOptionsCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _AssemblyOptionTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _AssemblyOptionTile({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: selected
-                  ? context.brandPrimary.withValues(alpha: 0.065)
-                  : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected
-                    ? context.brandPrimary
-                    : const Color(0xFFE4E8EF),
-                width: selected ? 1.3 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? context.brandPrimary.withValues(alpha: 0.12)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 19,
-                    color: selected
-                        ? context.brandPrimary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontFamily: 'Gilroy',
-                          fontSize: 13.5,
-                          height: 1.08,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontFamily: 'Gilroy',
-                          fontSize: 11.5,
-                          height: 1.18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  color: selected
-                      ? context.brandPrimary
-                      : AppColors.textSecondary.withValues(alpha: 0.65),
-                  size: 21,
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 
 import '../utils/locale_text.dart';
+import '../media/authenticated_media.dart';
 import 'blurred_media_backdrop.dart';
 
 void showPdfPreviewOverlay({
@@ -61,25 +62,10 @@ class _PdfPreviewOverlayState extends State<_PdfPreviewOverlay> {
   Future<Uint8List> _loadPdfBytes() async {
     debugPrint('[PdfPreview] Loading PDF bytes: ${widget.url}');
 
-    final response =
-        await Dio(
-          BaseOptions(
-            connectTimeout: const Duration(seconds: 10),
-            receiveTimeout: const Duration(seconds: 25),
-          ),
-        ).get<List<int>>(
-          widget.url,
-          options: Options(
-            responseType: ResponseType.bytes,
-            followRedirects: true,
-            receiveDataWhenStatusError: true,
-            validateStatus: (status) =>
-                status != null && status >= 200 && status < 300,
-            headers: const {
-              'Accept': 'application/pdf,application/octet-stream,*/*',
-            },
-          ),
-        );
+    final response = await loadMediaResponse(
+      mediaApiClient(context),
+      widget.url,
+    );
 
     if (!mounted) {
       throw StateError('PDF preview closed before load completed');

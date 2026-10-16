@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -281,7 +281,7 @@ class _PurchaseListCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         child:
                             item.imageUrl != null && item.imageUrl!.isNotEmpty
-                            ? CachedNetworkImage(
+                            ? AuthenticatedCachedImage(
                                 imageUrl: item.imageUrl!,
                                 width: 44,
                                 height: 44,
