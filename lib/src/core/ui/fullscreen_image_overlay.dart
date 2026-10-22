@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../utils/locale_text.dart';
 import 'blurred_media_backdrop.dart';
+import 'app_cached_media_image.dart';
+import 'media_image_viewport.dart';
 
 void showFullscreenImageOverlay({
   required BuildContext context,
@@ -42,40 +44,6 @@ class _FullscreenImageOverlay extends StatefulWidget {
 }
 
 class _FullscreenImageOverlayState extends State<_FullscreenImageOverlay> {
-  static const _dismissDistance = 100.0;
-  static const _defaultScaleTolerance = 1.05;
-
-  final _transformationController = TransformationController();
-  double _swipeDy = 0;
-
-  bool get _isAtDefaultScale =>
-      _transformationController.value.getMaxScaleOnAxis() <=
-      _defaultScaleTolerance;
-
-  void _onVerticalDragUpdate(DragUpdateDetails details) {
-    if (!_isAtDefaultScale) return;
-    setState(() {
-      _swipeDy += details.delta.dy;
-    });
-  }
-
-  void _onVerticalDragEnd(DragEndDetails details) {
-    if (_swipeDy.abs() > _dismissDistance) {
-      widget.onClose();
-      return;
-    }
-
-    setState(() {
-      _swipeDy = 0;
-    });
-  }
-
-  @override
-  void dispose() {
-    _transformationController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -111,45 +79,43 @@ class _FullscreenImageOverlayState extends State<_FullscreenImageOverlay> {
                 ),
               ],
             ),
-            body: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onVerticalDragUpdate: _onVerticalDragUpdate,
-              onVerticalDragEnd: _onVerticalDragEnd,
-              child: Transform.translate(
-                offset: Offset(0, _swipeDy),
-                child: Center(
-                  child: InteractiveViewer(
-                    transformationController: _transformationController,
-                    minScale: 1,
-                    maxScale: 4,
-                    child: AuthenticatedCachedImage(
-                      imageUrl: widget.imageUrl,
-                      fit: BoxFit.contain,
-                      placeholder: (context, url) => const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+            body: MediaImageViewport(
+              imageKey: widget.imageUrl,
+              onDismiss: widget.onClose,
+              child: AuthenticatedCachedImage(
+                imageUrl: widget.imageUrl,
+                memCacheWidth: 3072,
+                memCacheHeight: 3072,
+                fit: BoxFit.contain,
+                placeholder: (context, url) => AppCachedMediaImage(
+                  url: widget.imageUrl,
+                  thumbnailSize: 720,
+                  memCacheWidth: 720,
+                  memCacheHeight: 720,
+                  fit: BoxFit.contain,
+                  placeholder: (_, _) => const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.broken_image,
+                        color: Colors.white54,
+                        size: 64,
                       ),
-                      errorWidget: (context, url, error) => Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.broken_image,
-                              color: Colors.white54,
-                              size: 64,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              tr(
-                                context,
-                                ru: 'Не удалось загрузить изображение',
-                                zh: '无法加载图片',
-                              ),
-                              style: const TextStyle(color: Colors.white54),
-                            ),
-                          ],
+                      const SizedBox(height: 16),
+                      Text(
+                        tr(
+                          context,
+                          ru: 'Не удалось загрузить изображение',
+                          zh: '无法加载图片',
                         ),
+                        style: const TextStyle(color: Colors.white54),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),

@@ -1,5 +1,4 @@
 import '../../../core/network/api_client.dart';
-import '../../../core/media/authenticated_video.dart';
 import '../../../core/media/media_file_metadata.dart';
 import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
@@ -12,7 +11,6 @@ import '../../../core/utils/locale_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,8 +19,11 @@ import 'package:gal/gal.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
+import '../../../core/ui/media_image_viewport.dart';
 import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
+import '../../../core/ui/app_cached_media_image.dart';
+import 'photo_report_video_player.dart';
 
 void _showStyledSnackBar(
   BuildContext context,
@@ -93,6 +94,7 @@ class PhotoViewerScreen extends ConsumerStatefulWidget {
 class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   bool _isDownloading = false;
   double _swipeDy = 0;
+  bool _galleryGestureBlocked = false;
   late PageController _pageController;
   late int _currentIndex;
 
@@ -131,12 +133,21 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       final item = items[index];
       if (item.isVideo) continue;
 
-      final fullUrl = ApiConfig.getMediaUrl(item.url);
+      final fullUrl = ApiConfig.getMediaThumbnailUrl(
+        item.url,
+        size: 720,
+        preserveAspectRatio: true,
+      );
       if (fullUrl.isEmpty) continue;
 
       unawaited(
         precacheImage(
-          authenticatedImageProvider(context, fullUrl),
+          ResizeImage(
+            authenticatedImageProvider(context, fullUrl),
+            width: 720,
+            height: 720,
+            policy: ResizeImagePolicy.fit,
+          ),
           context,
         ).catchError((_) {}),
       );
@@ -301,6 +312,61 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
     }
   }
 
+  Widget _mediaPage(PhotoItem item, int index) {
+    final imageUrl = ApiConfig.getMediaUrl(item.url);
+    if (item.isVideo) {
+      return GestureDetector(
+        onVerticalDragUpdate: _onVerticalDragUpdate,
+        onVerticalDragEnd: _onVerticalDragEnd,
+        child: Transform.translate(
+          offset: Offset(0, _swipeDy),
+          child: Center(
+            child: PhotoReportVideoPlayer(
+              key: ValueKey('video-$index-${item.url}'),
+              url: imageUrl,
+              active: index == _currentIndex,
+            ),
+          ),
+        ),
+      );
+    }
+    return MediaImageViewport(
+      key: ValueKey('photo-$index-${item.url}'),
+      imageKey: item.url,
+      active: index == _currentIndex,
+      onInteractionBlockedChanged: (blocked) {
+        if (mounted &&
+            index == _currentIndex &&
+            _galleryGestureBlocked != blocked) {
+          setState(() => _galleryGestureBlocked = blocked);
+        }
+      },
+      onDismiss: () => Navigator.of(context).pop(),
+      child: AuthenticatedCachedImage(
+        imageUrl: index == _currentIndex
+            ? imageUrl
+            : ApiConfig.getMediaThumbnailUrl(item.url, size: 720, preserveAspectRatio: true),
+        fit: BoxFit.contain,
+        memCacheWidth: index == _currentIndex ? 3072 : 720,
+        memCacheHeight: index == _currentIndex ? 3072 : 720,
+        placeholder: (_, _) => AppCachedMediaImage(
+          url: item.url,
+          thumbnailSize: 720,
+          fit: BoxFit.contain,
+          memCacheWidth: 720,
+          memCacheHeight: 720,
+        ),
+        errorWidget: (_, _, _) => const Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: Colors.white70,
+            size: 48,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasMultiplePhotos =
@@ -324,89 +390,24 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                 child: hasMultiplePhotos
                     ? PageView.builder(
                         controller: _pageController,
+                        physics: _galleryGestureBlocked
+                            ? const NeverScrollableScrollPhysics()
+                            : null,
                         itemCount: widget.allPhotos!.length,
                         onPageChanged: (index) {
                           setState(() {
                             _currentIndex = index;
+                            _galleryGestureBlocked = false;
+                            _swipeDy = 0;
                           });
                           _precacheAdjacentImages();
                         },
                         itemBuilder: (context, index) {
                           final item = widget.allPhotos![index];
-                          return GestureDetector(
-                            onVerticalDragUpdate: _onVerticalDragUpdate,
-                            onVerticalDragEnd: _onVerticalDragEnd,
-                            child: Transform.translate(
-                              offset: Offset(0, _swipeDy),
-                              child: Center(
-                                child: item.isVideo
-                                    ? _VideoPlayerView(
-                                        url: ApiConfig.getMediaUrl(item.url),
-                                      )
-                                    : InteractiveViewer(
-                                        minScale: 1,
-                                        maxScale: 4,
-                                        child: AuthenticatedCachedImage(
-                                          imageUrl: ApiConfig.getMediaUrl(
-                                            item.url,
-                                          ),
-                                          fit: BoxFit.contain,
-                                          placeholder: (_, _) => const SizedBox(
-                                            width: 32,
-                                            height: 32,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          errorWidget: (_, _, _) => const Icon(
-                                            Icons.broken_image_outlined,
-                                            color: Colors.white70,
-                                            size: 48,
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          );
+                          return _mediaPage(item, index);
                         },
                       )
-                    : GestureDetector(
-                        onVerticalDragUpdate: _onVerticalDragUpdate,
-                        onVerticalDragEnd: _onVerticalDragEnd,
-                        child: Transform.translate(
-                          offset: Offset(0, _swipeDy),
-                          child: Center(
-                            child: widget.item.isVideo
-                                ? _VideoPlayerView(
-                                    url: ApiConfig.getMediaUrl(widget.item.url),
-                                  )
-                                : InteractiveViewer(
-                                    minScale: 1,
-                                    maxScale: 4,
-                                    child: AuthenticatedCachedImage(
-                                      imageUrl: ApiConfig.getMediaUrl(
-                                        widget.item.url,
-                                      ),
-                                      fit: BoxFit.contain,
-                                      placeholder: (_, _) => const SizedBox(
-                                        width: 32,
-                                        height: 32,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      errorWidget: (_, _, _) => const Icon(
-                                        Icons.broken_image_outlined,
-                                        color: Colors.white70,
-                                        size: 48,
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
+                    : _mediaPage(widget.item, 0),
               ),
               // Top bar
               Positioned(
@@ -573,115 +574,6 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _VideoPlayerView extends StatefulWidget {
-  final String url;
-
-  const _VideoPlayerView({required this.url});
-
-  @override
-  State<_VideoPlayerView> createState() => _VideoPlayerViewState();
-}
-
-class _VideoPlayerViewState extends State<_VideoPlayerView> {
-  VideoPlayerController? _controller;
-  bool _started = false;
-  bool _failed = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    unawaited(_initialize());
-  }
-
-  Future<void> _initialize() async {
-    VideoPlayerController? pending;
-    try {
-      pending = await createAuthenticatedVideoController(context, widget.url);
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      await pending.initialize();
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      await pending.setLooping(true);
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      await pending.play();
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      setState(() => _controller = pending);
-    } catch (_) {
-      await pending?.dispose();
-      if (!mounted) return;
-      setState(() => _failed = true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _controller;
-    if (_failed) return const Icon(Icons.error_outline, color: Colors.white);
-    if (controller == null || !controller.value.isInitialized) {
-      return const SizedBox(
-        width: 32,
-        height: 32,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-
-    return GestureDetector(
-      onTap: () {
-        if (controller.value.isPlaying) {
-          controller.pause();
-        } else {
-          controller.play();
-        }
-        setState(() {});
-      },
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: VideoPlayer(controller),
-          ),
-          if (!controller.value.isPlaying)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 34,
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

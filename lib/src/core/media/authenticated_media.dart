@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../network/api_client.dart';
 import '../network/api_config.dart';
+import 'media_image_byte_cache.dart';
+
+final _imageByteCaches = Expando<MediaImageByteCache>();
 
 /// Return a relative API path only for an exact trusted origin and media path.
 /// External images, look-alike domains and arbitrary URLs never receive tokens.
@@ -110,6 +113,34 @@ ImageProvider authenticatedImageProvider(
   return AuthenticatedMediaImage(url, mediaApiClient(context), scale: scale);
 }
 
+class _AuthenticatedImageCompleter extends MultiFrameImageStreamCompleter {
+  _AuthenticatedImageCompleter({
+    required super.codec,
+    required super.scale,
+    required this.onDecodeError,
+  });
+  final VoidCallback onDecodeError;
+
+  @override
+  void reportError({
+    DiagnosticsNode? context,
+    required Object exception,
+    StackTrace? stack,
+    InformationCollector? informationCollector,
+    bool silent = false,
+  }) {
+    // Valid headers can instantiate a codec whose first/next frame is corrupt.
+    onDecodeError();
+    super.reportError(
+      context: context,
+      exception: exception,
+      stack: stack,
+      informationCollector: informationCollector,
+      silent: silent,
+    );
+  }
+}
+
 /// Cache identity includes the API client and authentication session epoch.
 /// Logout and login cannot reuse decoded images from an older session.
 class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
@@ -140,19 +171,51 @@ class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
   ImageStreamCompleter loadImage(
     AuthenticatedMediaImage key,
     ImageDecoderCallback decode,
-  ) => MultiFrameImageStreamCompleter(codec: key._decode(decode), scale: scale);
+  ) {
+    // The completer can outlive the byte LRU; do not retain originals here.
+    WeakReference<Uint8List>? downloaded;
+    return _AuthenticatedImageCompleter(
+      codec: key._decode(decode, (bytes) => downloaded = WeakReference(bytes)),
+      scale: scale,
+      onDecodeError: () {
+        final bytes = downloaded?.target;
+        if (bytes != null && key._sessionIdentity != null) {
+          _imageByteCaches[api]?.evict(
+            key._sessionIdentity,
+            authenticatedMediaPath(url) ?? url,
+            bytes,
+          );
+        }
+      },
+    );
+  }
 
-  Future<ui.Codec> _decode(ImageDecoderCallback decode) async {
+  Future<ui.Codec> _decode(
+    ImageDecoderCallback decode,
+    ValueChanged<Uint8List> onBytes,
+  ) async {
+    Uint8List? downloaded;
+    final cachePath = authenticatedMediaPath(url) ?? url;
     try {
       if (await api.getMediaCacheIdentity() != _sessionIdentity) {
         throw StateError('Media session changed');
       }
-      final bytes = await loadMediaBytes(api, url);
+      final cache = _imageByteCaches[api] ??= MediaImageByteCache();
+      final bytes = await cache.load(
+        _sessionIdentity!,
+        cachePath,
+        () => loadMediaBytes(api, url),
+      );
+      downloaded = bytes;
+      onBytes(bytes);
       if (await api.getMediaCacheIdentity() != _sessionIdentity) {
         throw StateError('Media session changed');
       }
-      return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+      return await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } catch (_) {
+      if (downloaded != null && _sessionIdentity != null) {
+        _imageByteCaches[api]?.evict(_sessionIdentity, cachePath, downloaded);
+      }
       PaintingBinding.instance.imageCache.evict(this);
       rethrow;
     }
@@ -169,6 +232,19 @@ class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
   int get hashCode =>
       Object.hash(url, identityHashCode(api), scale, _sessionIdentity);
 }
+
+ImageProvider _boundedImageProvider(
+  BuildContext context,
+  String url, {
+  int? width,
+  int? height,
+  double scale = 1,
+}) => ResizeImage(
+  authenticatedImageProvider(context, url, scale: scale),
+  width: width ?? (height == null ? 1600 : null),
+  height: height ?? (width == null ? 1600 : null),
+  policy: ResizeImagePolicy.fit,
+);
 
 class AuthenticatedImage extends StatelessWidget {
   const AuthenticatedImage.network(
@@ -206,10 +282,12 @@ class AuthenticatedImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Image(
-    image: ResizeImage.resizeIfNeeded(
-      cacheWidth,
-      cacheHeight,
-      authenticatedImageProvider(context, url, scale: scale),
+    image: _boundedImageProvider(
+      context,
+      url,
+      width: cacheWidth,
+      height: cacheHeight,
+      scale: scale,
     ),
     width: width,
     height: height,
@@ -261,10 +339,11 @@ class AuthenticatedCachedImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = ResizeImage.resizeIfNeeded(
-      memCacheWidth,
-      memCacheHeight,
-      authenticatedImageProvider(context, imageUrl),
+    final image = _boundedImageProvider(
+      context,
+      imageUrl,
+      width: memCacheWidth,
+      height: memCacheHeight,
     );
     return Image(
       image: image,

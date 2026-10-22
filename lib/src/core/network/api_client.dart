@@ -30,6 +30,13 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
 
+class _GetRequestLane {
+  _GetRequestLane(this.limit);
+  final int limit;
+  int active = 0;
+  final queue = Queue<Completer<void>>();
+}
+
 /// Клиент для работы с API
 class ApiClient {
   static int _mediaSessionEpoch = 0;
@@ -55,11 +62,12 @@ class ApiClient {
   static int _requestSequence = 0;
   static const Duration _minConnectionResetInterval = Duration(seconds: 8);
   static const Duration _fallbackTtl = Duration(minutes: 5);
-  static const int _maxConcurrentGetRequests = 3;
 
   int _inFlightRequests = 0;
-  int _activeGetRequests = 0;
-  final Queue<Completer<void>> _getRequestQueue = Queue<Completer<void>>();
+  // Two large binary downloads cannot starve the three JSON/metadata slots.
+  // The combined five-request bound stays below typical per-host HTTP limits.
+  final _metadataGetLane = _GetRequestLane(3);
+  final _mediaGetLane = _GetRequestLane(2);
   final HttpClientAdapter Function()? _adapterFactory;
   final Future<Map<String, String>> Function()? _runtimeHeaders;
   final Duration _requestTimeout;
@@ -381,6 +389,7 @@ class ApiClient {
     Future<T> Function() action,
     CancelToken cancelToken,
     Duration timeout,
+    _GetRequestLane lane,
   ) async {
     var deadlineExceeded = false;
     final timer = Timer(timeout, () {
@@ -388,7 +397,7 @@ class ApiClient {
       cancelToken.cancel('GET deadline exceeded');
     });
     try {
-      await _acquireGetSlot(path, cancelToken);
+      await _acquireGetSlot(path, cancelToken, lane);
       try {
         if (cancelToken.isCancelled) throw cancelToken.cancelError!;
         return await Future.any([
@@ -396,7 +405,7 @@ class ApiClient {
           cancelToken.whenCancel.then<T>((error) => throw error),
         ]);
       } finally {
-        _releaseGetSlot();
+        _releaseGetSlot(lane);
       }
     } on DioException catch (_) {
       if (deadlineExceeded) {
@@ -408,23 +417,27 @@ class ApiClient {
     }
   }
 
-  Future<void> _acquireGetSlot(String path, CancelToken cancelToken) async {
-    if (_activeGetRequests < _maxConcurrentGetRequests) {
-      _activeGetRequests++;
+  Future<void> _acquireGetSlot(
+    String path,
+    CancelToken cancelToken,
+    _GetRequestLane lane,
+  ) async {
+    if (lane.active < lane.limit) {
+      lane.active++;
       return;
     }
 
     final completer = Completer<void>();
-    _getRequestQueue.add(completer);
+    lane.queue.add(completer);
     ClientLogService.instance.add(
       type: 'api_get_queued',
       level: 'info',
       message: 'GET поставлен в очередь, чтобы не забивать mobile HTTP stack',
       data: {
         'path': path,
-        'activeGetRequests': _activeGetRequests,
-        'queuedGetRequests': _getRequestQueue.length,
-        'maxConcurrentGetRequests': _maxConcurrentGetRequests,
+        'activeGetRequests': lane.active,
+        'queuedGetRequests': lane.queue.length,
+        'maxConcurrentGetRequests': lane.limit,
       },
     );
     try {
@@ -434,17 +447,17 @@ class ApiClient {
       ]);
     } catch (_) {
       // If a slot was reserved before cancellation won, hand it on.
-      if (!_getRequestQueue.remove(completer)) _releaseGetSlot();
+      if (!lane.queue.remove(completer)) _releaseGetSlot(lane);
       rethrow;
     }
   }
 
-  void _releaseGetSlot() {
-    if (_getRequestQueue.isEmpty) {
-      if (_activeGetRequests > 0) _activeGetRequests--;
+  void _releaseGetSlot(_GetRequestLane lane) {
+    if (lane.queue.isEmpty) {
+      if (lane.active > 0) lane.active--;
       return;
     }
-    final next = _getRequestQueue.removeFirst();
+    final next = lane.queue.removeFirst();
     if (!next.isCompleted) {
       next.complete();
     }
@@ -1465,6 +1478,10 @@ class ApiClient {
       ),
       cancelToken,
       _effectiveOverallTimeout(options),
+      options?.responseType == ResponseType.bytes ||
+              options?.responseType == ResponseType.stream
+          ? _mediaGetLane
+          : _metadataGetLane,
     );
   }
 
