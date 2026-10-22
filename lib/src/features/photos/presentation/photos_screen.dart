@@ -12,6 +12,7 @@ import '../../../core/utils/error_utils.dart';
 import '../../clients/application/client_codes_controller.dart';
 import '../data/photos_provider.dart';
 import '../domain/photo_item.dart';
+import 'photo_report_video_badge.dart';
 import 'photo_viewer_screen.dart';
 
 class PhotosScreen extends ConsumerStatefulWidget {
@@ -197,6 +198,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     }
 
     final items = state.photos;
+    final gallery = photoReportGallery(items);
     final groups = _groupPhotosByDate(items);
     final availableWidth = MediaQuery.sizeOf(context).width - 32;
     final crossAxisCount = availableWidth >= 620
@@ -241,14 +243,31 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
                       : 'photos.open.${startIndex + index}',
                   child: _PhotoThumbnail(
                     item: item,
+                    onOpenVideos: () =>
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute<void>(
+                            fullscreenDialog: true,
+                            builder: (_) => PhotoViewerScreen(
+                              item: item.reportVideos.first,
+                              allPhotos: gallery,
+                              initialIndex: gallery.indexWhere(
+                                (entry) =>
+                                    item.reportVideos.first.videoId != null
+                                    ? entry.videoId ==
+                                          item.reportVideos.first.videoId
+                                    : entry.url == item.reportVideos.first.url,
+                              ),
+                            ),
+                          ),
+                        ),
                     onOpen: () =>
                         Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute<void>(
                             fullscreenDialog: true,
                             builder: (_) => PhotoViewerScreen(
                               item: item,
-                              allPhotos: items,
-                              initialIndex: startIndex + index,
+                              allPhotos: gallery,
+                              initialIndex: gallery.indexOf(item),
                             ),
                           ),
                         ),
@@ -876,8 +895,13 @@ class _PhotosEndCard extends StatelessWidget {
 class _PhotoThumbnail extends StatelessWidget {
   final PhotoItem item;
   final VoidCallback onOpen;
+  final VoidCallback onOpenVideos;
 
-  const _PhotoThumbnail({required this.item, required this.onOpen});
+  const _PhotoThumbnail({
+    required this.item,
+    required this.onOpen,
+    required this.onOpenVideos,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -997,6 +1021,15 @@ class _PhotoThumbnail extends StatelessWidget {
                           color: Colors.white,
                           size: 34,
                         ),
+                      ),
+                    ),
+                  if (item.reportVideos.isNotEmpty)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: PhotoReportVideoBadge(
+                        count: item.reportVideos.length,
+                        onPressed: onOpenVideos,
                       ),
                     ),
                   if (metaLabel != null)
