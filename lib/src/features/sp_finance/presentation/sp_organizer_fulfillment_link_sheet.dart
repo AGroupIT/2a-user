@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/sp_organizer_fulfillment_models.dart';
@@ -103,6 +104,7 @@ class _SpOrganizerFulfillmentLinkSheetState
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       constraints: BoxConstraints(
@@ -184,7 +186,7 @@ class _SpOrganizerFulfillmentLinkSheetState
                   onSubmitted: (_) => _load(),
                   decoration: SpFinanceUi.inputDecoration(
                     context,
-                    hintText: _searchHint(context, _kind),
+                    hintText: _searchHint(context, _kind, companyName),
                     prefixIcon: Icons.search_rounded,
                   ),
                 ),
@@ -199,8 +201,8 @@ class _SpOrganizerFulfillmentLinkSheetState
                     icon: Icons.error_outline_rounded,
                     message: tr(
                       context,
-                      ru: 'Не удалось загрузить доступные операции 2A.',
-                      zh: '无法加载可用的2A操作。',
+                      ru: 'Не удалось загрузить доступные операции $companyName.',
+                      zh: '无法加载可用的$companyName操作。',
                     ),
                     actionLabel: tr(context, ru: 'Повторить', zh: '重试'),
                     onAction: _load,
@@ -250,8 +252,8 @@ class _SpOrganizerFulfillmentLinkSheetState
                   icon: Icons.shield_outlined,
                   message: tr(
                     context,
-                    ru: 'Создаётся только связь с существующей операцией. Статусы, суммы и данные 2A не изменяются; отвязка здесь не предусмотрена.',
-                    zh: '仅创建与现有操作的关联。2A状态、金额和数据不会更改；此处不支持取消关联。',
+                    ru: 'Создаётся только связь с существующей операцией. Статусы, суммы и данные $companyName не изменяются; отвязка здесь не предусмотрена.',
+                    zh: '仅创建与现有操作的关联。$companyName状态、金额和数据不会更改；此处不支持取消关联。',
                   ),
                 ),
               ],
@@ -294,6 +296,7 @@ class _SpOrganizerFulfillmentLinkSheetState
   }
 
   Widget _buildHeader(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 10, 10),
       child: Column(
@@ -324,7 +327,11 @@ class _SpOrganizerFulfillmentLinkSheetState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tr(context, ru: 'Связать с операцией 2A', zh: '关联2A操作'),
+                      tr(
+                        context,
+                        ru: 'Связать с операцией $companyName',
+                        zh: '关联$companyName操作',
+                      ),
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontFamily: 'Gilroy',
@@ -683,7 +690,11 @@ String _kindLabel(BuildContext context, SpOrganizerFulfillmentLinkKind kind) {
   };
 }
 
-String _searchHint(BuildContext context, SpOrganizerFulfillmentLinkKind kind) {
+String _searchHint(
+  BuildContext context,
+  SpOrganizerFulfillmentLinkKind kind,
+  String companyName,
+) {
   return switch (kind) {
     SpOrganizerFulfillmentLinkKind.selfBuyout => tr(
       context,
@@ -707,8 +718,8 @@ String _searchHint(BuildContext context, SpOrganizerFulfillmentLinkKind kind) {
     ),
     SpOrganizerFulfillmentLinkKind.invoice => tr(
       context,
-      ru: 'Номер счёта 2A',
-      zh: '2A账单编号',
+      ru: 'Номер счёта $companyName',
+      zh: '$companyName账单编号',
     ),
   };
 }

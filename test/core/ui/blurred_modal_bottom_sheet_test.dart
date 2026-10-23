@@ -3,6 +3,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 void main() {
+  for (final size in [const Size(320, 640), const Size(393, 852)]) {
+    testWidgets('tall mobile sheet leaves extra top space at $size', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewPadding = const FakeViewPadding(top: 59, bottom: 34);
+      tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewPadding);
+      addTearDown(tester.view.resetPadding);
+      const surfaceKey = ValueKey('tall-content');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showBlurredModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => const SizedBox(key: surfaceKey, height: 2000),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      final content = find.byKey(surfaceKey);
+      expect(tester.getTopLeft(content).dy, greaterThanOrEqualTo(59 + 24));
+      expect(
+        tester.getTopLeft(content).dy,
+        greaterThanOrEqualTo(size.height * .08 + 24 - .001),
+      );
+      expect(
+        tester.getBottomRight(content).dy,
+        lessThanOrEqualTo(size.height - 34),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('keeps bottom-sheet actions above Android system navigation', (
     tester,
   ) async {

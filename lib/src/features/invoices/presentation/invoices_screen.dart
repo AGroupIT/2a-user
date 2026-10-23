@@ -26,6 +26,8 @@ import '../../../core/network/api_config.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../payments/data/payment_operator_status.dart';
 import '../../payments/presentation/bank_qr_payment_screen.dart';
+import '../../payments/data/invoice_payment_options.dart';
+import '../../payments/presentation/invoice_payment_method_sheet.dart';
 import '../../payments/presentation/client_payment_summary_panel.dart';
 import '../../payments/presentation/payment_operator_sleeping_notice.dart';
 import '../../../core/utils/error_utils.dart';
@@ -162,6 +164,15 @@ String _earlyPaymentIdempotencyKey(
     (_) => random.nextInt(256),
   ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
   return 'early-payment:$invoiceId:${type.serverValue}:$nonce';
+}
+
+@visibleForTesting
+bool canOpenInvoicePayment(InvoiceItem item) {
+  final status = item.status.toLowerCase();
+  return (status == 'unpaid' ||
+          status == 'pending' ||
+          status == 'processing') &&
+      item.paymentSummary?.isFullyCovered != true;
 }
 
 @visibleForTesting
@@ -588,9 +599,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
       data: (items) {
         _maybeOpenInitialInvoice(items, clientCode);
         final filtered = _applyFilters(items);
-        final firstPayableIndex = filtered.indexWhere(
-          (item) => _isInvoiceUnpaid(item) || canOpenInvoiceBankQr(item),
-        );
+        final firstPayableIndex = filtered.indexWhere(canOpenInvoicePayment);
 
         return TutorialScreenWrapper(
           screenKey: 'invoices',
@@ -620,7 +629,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
               icon: Icons.payment_rounded,
               title: 'Оплатить счёт',
               description:
-                  'Нажмите на счёт → откроется карточка с деталями. Кнопка «Оплатить» переводит на экран оплаты картой или USDT.',
+                  'Нажмите на счёт → откроется карточка с деталями. Кнопка «Оплатить» открывает выбор способа оплаты.',
               targetKey: _firstInvoiceKey,
             ),
             TutorialStep(
@@ -2798,8 +2807,6 @@ class _InvoiceDetailSheet extends ConsumerStatefulWidget {
       _InvoiceDetailSheetState();
 }
 
-enum _BankQrAudienceChoice { qr, manager }
-
 class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
   final _bonusKgCtrl = TextEditingController();
   final Map<EarlyPaymentBenefitType, String> _selectionKeys = {};
@@ -3021,47 +3028,57 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     return result.whenComplete(() => _benefitChoiceNavigator = null);
   }
 
-  Future<void> _payThroughManager() async {
-    final item = _currentItem;
-    if (!await _ensureEarlyPaymentBenefitSelected(item)) return;
-    if (!mounted) return;
-    widget.onPay();
-  }
-
-  // Bank QR: открываем оплату в рублях как вложенную модалку в стиле счёта.
-  Future<void> _openBankQr() async {
+  Future<void> _openInvoicePayment() async {
     final item = _currentItem;
     if (!await _ensureEarlyPaymentBenefitSelected(item)) return;
     if (!mounted) return;
     if (!await _ensurePaymentOperatorsWorking()) return;
     if (!mounted) return;
-    if (_isInvoiceUnpaid(item)) {
-      final choice = await _showBankQrAudienceWarning(context);
-      if (!mounted || choice == null) return;
-      if (choice == _BankQrAudienceChoice.manager) {
-        await _payThroughManager();
+    final invoiceNavigator = Navigator.of(context);
+    while (mounted) {
+      final selection =
+          await showBlurredModalBottomSheet<InvoicePaymentSelection>(
+            context: context,
+            useRootNavigator: true,
+            isScrollControlled: true,
+            useSafeArea: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => InvoicePaymentMethodSheet(invoiceId: item.id),
+          );
+      if (!mounted || selection == null) return;
+      _invalidateInvoiceData();
+      if (selection.method == 'manager') {
+        widget.onPay();
         return;
       }
-    }
-    if (!await _ensurePaymentOperatorsWorking()) return;
-    if (!mounted) return;
-
-    final invoiceSheetNavigator = Navigator.of(context);
-    final changed = await showBlurredModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (_) => BankQrPaymentSheet(
-        invoiceId: item.id,
-        invoiceNumber: item.invoiceNumber,
-      ),
-    );
-    if (changed == true && mounted) {
-      widget.onBonusApplied();
-      invoiceSheetNavigator.pop();
+      var changeRequested = false;
+      final changed = await showBlurredModalBottomSheet<bool>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.22),
+        builder: (paymentContext) => BankQrPaymentSheet(
+          invoiceId: item.id,
+          invoiceNumber: item.invoiceNumber,
+          selection: selection,
+          onChangeMethod: selection.canChange
+              ? () {
+                  changeRequested = true;
+                  Navigator.of(paymentContext).pop(false);
+                }
+              : null,
+        ),
+      );
+      if (!mounted) return;
+      _invalidateInvoiceData();
+      if (changed == true) {
+        widget.onBonusApplied();
+        invoiceNavigator.pop();
+        return;
+      }
+      if (!changeRequested) return;
     }
   }
 
@@ -3084,74 +3101,6 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
       );
     }
     return false;
-  }
-
-  Future<_BankQrAudienceChoice?> _showBankQrAudienceWarning(
-    BuildContext context,
-  ) {
-    return showBlurredModalBottomSheet<_BankQrAudienceChoice>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (sheetContext) => _InvoiceSheetSurface(
-        icon: Icons.info_outline_rounded,
-        title: tr(sheetContext, ru: 'Оплата по QR', zh: '二维码付款'),
-        subtitle: widget.item.invoiceNumber,
-        footer: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _InvoicePrimaryButton(
-              label: tr(
-                sheetContext,
-                ru: 'Перейти к оплате по QR',
-                zh: '继续二维码付款',
-              ),
-              icon: Icons.qr_code_2_rounded,
-              onTap: () =>
-                  Navigator.of(sheetContext).pop(_BankQrAudienceChoice.qr),
-            ),
-            const SizedBox(height: 8),
-            _InvoiceSecondaryButton(
-              label: tr(
-                sheetContext,
-                ru: 'Оплатить через менеджера',
-                zh: '通过经理付款',
-              ),
-              onTap: () =>
-                  Navigator.of(sheetContext).pop(_BankQrAudienceChoice.manager),
-            ),
-          ],
-        ),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF4EF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: sheetContext.brandPrimary.withValues(alpha: 0.18),
-            ),
-          ),
-          child: Text(
-            tr(
-              sheetContext,
-              ru: 'Данный способ оплаты только для оплаты с карт физических лиц граждан РФ. Если вы хотите оплатить как ИП или юридическое лицо или картой банка другой страны, выберите оплату через менеджера.',
-              zh: '此付款方式仅适用于俄罗斯联邦公民个人银行卡付款。如需以个体工商户、法人名义付款，或使用其他国家银行卡，请选择通过经理付款。',
-            ),
-            style: const TextStyle(
-              fontFamily: 'Gilroy',
-              fontSize: 14,
-              height: 1.42,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   List<PhotoItem> _scalePhotoItems(InvoiceItem item) {
@@ -3293,7 +3242,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
     final isPaymentReview = item.status.toLowerCase() == 'payment_review';
     final paymentSummary = item.paymentSummary;
     final isUnpaid = _isInvoiceUnpaid(item);
-    final canOpenBankQr = canOpenInvoiceBankQr(item);
+    final canOpenPayment = canOpenInvoicePayment(item);
     final earlyPaymentBenefit = _benefitFor(item);
     _scheduleBenefitExpiry(earlyPaymentBenefit);
     final showBonusSection =
@@ -3313,7 +3262,7 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
         subtitle: 'Разбивка суммы и данные для оплаты',
         keyboardAware: true,
         pinnedChild: _InvoiceDetailSummaryCard(item: item),
-        footer: (isUnpaid || canOpenBankQr)
+        footer: canOpenPayment
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -3328,48 +3277,20 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                       onTap: () => Navigator.of(context).pop(),
                     ),
                   ] else ...[
-                    if (canOpenBankQr) ...[
-                      TrainingTarget(
-                        id: 'invoice.pay',
-                        child: _InvoicePrimaryButton(
-                          label: tr(
-                            context,
-                            ru: paymentSummary?.isPartial == true
-                                ? 'Доплатить ${paymentSummary!.remainingRub.display} по QR'
-                                : isUnpaid
-                                ? 'Оплатить в рублях'
-                                : 'Открыть QR оплаты',
-                            zh: paymentSummary?.isPartial == true
-                                ? '扫码补付 ${paymentSummary!.remainingRub.display}'
-                                : isUnpaid
-                                ? '用卢布支付'
-                                : '打开付款二维码',
-                          ),
-                          icon: Icons.qr_code_2_rounded,
-                          onTap: _openBankQr,
+                    TrainingTarget(
+                      id: 'invoice.pay',
+                      child: _InvoicePrimaryButton(
+                        label: tr(
+                          context,
+                          ru: paymentSummary?.isPartial == true
+                              ? 'Доплатить'
+                              : 'Оплатить',
+                          zh: paymentSummary?.isPartial == true ? '补付款项' : '付款',
                         ),
+                        icon: Icons.payments_rounded,
+                        onTap: _openInvoicePayment,
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    if (isUnpaid)
-                      TrainingTarget(
-                        id: canOpenBankQr
-                            ? 'invoice.pay-manager'
-                            : 'invoice.pay',
-                        child: _InvoiceSecondaryButton(
-                          label: tr(
-                            context,
-                            ru: 'Оплатить через менеджера',
-                            zh: '通过经理付款',
-                          ),
-                          onTap: _payThroughManager,
-                        ),
-                      )
-                    else
-                      _InvoiceSecondaryButton(
-                        label: tr(context, ru: 'Закрыть', zh: '关闭'),
-                        onTap: () => Navigator.of(context).pop(),
-                      ),
+                    ),
                   ],
                 ],
               )
@@ -3396,6 +3317,25 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
             ],
             if (showBankQrRateBanner) ...[
               const _InvoiceBankQrRateBanner(),
+              const SizedBox(height: 12),
+            ],
+            if (const {
+              'bank_qr',
+              'usdt_trc20',
+              'alipay',
+              'manager',
+            }.contains(item.paymentMethod)) ...[
+              _InvoiceSectionCard(
+                icon: Icons.payments_rounded,
+                title: tr(context, ru: 'Способ оплаты', zh: '付款方式'),
+                child: Text(
+                  invoicePaymentMethodLabel(
+                    context,
+                    item.paymentMethod!,
+                    action: false,
+                  ),
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             if (paymentSummary != null) ...[
@@ -3524,6 +3464,22 @@ class _InvoiceDetailSheetState extends ConsumerState<_InvoiceDetailSheet> {
                   context,
                   'Доставка по тарифу',
                   '\$${item.shippingCost!.toStringAsFixed(2)}',
+                ),
+              if (item.photoReportCostUsd > 0)
+                _buildInfoRow(
+                  context,
+                  tr(context, ru: 'Фотоотчёты, итог', zh: '拍照报告合计'),
+                  '\$${item.photoReportCostUsd.toStringAsFixed(2)}',
+                ),
+              for (final charge in item.photoReportCharges)
+                _buildInfoRow(
+                  context,
+                  tr(
+                    context,
+                    ru: 'Фотоотчёт · ${charge.trackNumber}',
+                    zh: '拍照报告 · ${charge.trackNumber}',
+                  ),
+                  '\$${charge.amountUsd.toStringAsFixed(2)}',
                 ),
               if (item.transshipmentCost != null && item.transshipmentCost! > 0)
                 _buildInfoRow(

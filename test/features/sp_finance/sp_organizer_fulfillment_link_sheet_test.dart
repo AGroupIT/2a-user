@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,6 +100,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          companyNameProvider.overrideWithValue('Partner Cargo'),
           spOrganizerRepositoryProvider.overrideWithValue(repository),
         ],
         child: MaterialApp(
@@ -125,10 +127,24 @@ void main() {
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Связать с операцией 2A'), findsOneWidget);
+    expect(find.text('Связать с операцией Partner Cargo'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('TRACK-041'),
+      180,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('TRACK-041'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await tester.ensureVisible(find.text('TRACK-041'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('TRACK-041'));
     await tester.pump();
     await tester.tap(find.text('Добавить связь'));
@@ -138,7 +154,7 @@ void main() {
     expect(repository.linkedItemId, 5);
     expect(repository.linkedTargetId, 41);
     expect(repository.linkedKind, SpOrganizerFulfillmentLinkKind.track);
-    expect(find.text('Связать с операцией 2A'), findsNothing);
+    expect(find.text('Связать с операцией Partner Cargo'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -37,6 +37,8 @@ class InvoiceItem {
   final double? clientCnyRubRate; // курс RMB/₽ для новых счетов
   final double? clientYuanRate; // курс $/¥
   final double? photoReportCoefficient;
+  final double photoReportCostUsd;
+  final List<InvoicePhotoReportCharge> photoReportCharges;
   final int totalTracks;
   final int tracksWithPhoto;
   final List<String> scalePhotoUrls;
@@ -99,6 +101,8 @@ class InvoiceItem {
     this.clientCnyRubRate,
     this.clientYuanRate,
     this.photoReportCoefficient,
+    this.photoReportCostUsd = 0,
+    this.photoReportCharges = const [],
     this.totalTracks = 0,
     this.tracksWithPhoto = 0,
     this.scalePhotoUrls = const [],
@@ -418,6 +422,15 @@ class InvoiceItem {
       clientYuanRate: json['clientYuanRate'] != null
           ? _parseDouble(json['clientYuanRate']).let((v) => v > 0 ? v : null)
           : null,
+      photoReportCostUsd: _parseDouble(json['photoReportCostUsd']),
+      photoReportCharges: ((json['photoReportCharges'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => InvoicePhotoReportCharge.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList(),
       photoReportCoefficient: _parseDouble(
         json['photoReportCoefficient'],
       ).let((v) => v > 0 ? v : null),
@@ -607,4 +620,24 @@ class InvoicePackagingUsage {
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
   }
+}
+
+class InvoicePhotoReportCharge {
+  final int id;
+  final int photoRequestId;
+  final String trackNumber;
+  final double amountUsd;
+  const InvoicePhotoReportCharge({
+    required this.id,
+    required this.photoRequestId,
+    required this.trackNumber,
+    required this.amountUsd,
+  });
+  factory InvoicePhotoReportCharge.fromJson(Map<String, dynamic> json) =>
+      InvoicePhotoReportCharge(
+        id: int.tryParse('${json['id']}') ?? 0,
+        photoRequestId: int.tryParse('${json['photoRequestId']}') ?? 0,
+        trackNumber: json['trackNumber']?.toString() ?? '',
+        amountUsd: double.tryParse('${json['amountUsd']}') ?? 0,
+      );
 }

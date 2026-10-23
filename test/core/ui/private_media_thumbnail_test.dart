@@ -8,6 +8,13 @@ import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_cached_media_image.dart';
 
 class ThumbnailApi extends ApiClient {
+  @override
+  Future<Response<T>> getWithProgress<T>(
+    String path, {
+    Options? options,
+    required ProgressCallback onReceiveProgress,
+  }) => get<T>(path, options: options);
+
   final requests = <String>[];
   @override
   Future<String?> getToken() async => 'test-session';

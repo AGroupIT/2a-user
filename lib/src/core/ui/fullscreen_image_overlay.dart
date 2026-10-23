@@ -1,3 +1,4 @@
+import 'media_loading_indicator.dart';
 import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -87,6 +88,19 @@ class _FullscreenImageOverlayState extends State<_FullscreenImageOverlay> {
                 memCacheWidth: 3072,
                 memCacheHeight: 3072,
                 fit: BoxFit.contain,
+                progressIndicatorBuilder: (context, url, progress) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    AppCachedMediaImage(
+                      url: widget.imageUrl,
+                      thumbnailSize: 720,
+                      memCacheWidth: 720,
+                      memCacheHeight: 720,
+                      fit: BoxFit.contain,
+                    ),
+                    Center(child: MediaLoadingIndicator(progress: progress)),
+                  ],
+                ),
                 placeholder: (context, url) => AppCachedMediaImage(
                   url: widget.imageUrl,
                   thumbnailSize: 720,

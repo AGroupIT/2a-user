@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
@@ -65,10 +66,19 @@ String? authenticatedMediaPath(String value) {
 ApiClient mediaApiClient(BuildContext context) =>
     ProviderScope.containerOf(context, listen: false).read(apiClientProvider);
 
-Future<Response<List<int>>> loadMediaResponse(ApiClient api, String url) async {
+Future<Response<List<int>>> loadMediaResponse(
+  ApiClient api,
+  String url, {
+  ProgressCallback? onReceiveProgress,
+}) async {
   final path = authenticatedMediaPath(url);
   final options = Options(
     responseType: ResponseType.bytes,
+    headers: {
+      if (!kIsWeb) 'Accept-Encoding': 'identity',
+      if (kIsWeb && path != null && path.startsWith('/uploads/'))
+        'Range': 'bytes=0-',
+    },
     receiveTimeout: const Duration(minutes: 5),
     followRedirects: false,
     maxRedirects: 0,
@@ -77,14 +87,24 @@ Future<Response<List<int>>> loadMediaResponse(ApiClient api, String url) async {
   final Response<List<int>> response;
   if (path != null) {
     final identity = await api.getMediaCacheIdentity();
-    response = await api.get<List<int>>(path, options: options);
+    response = onReceiveProgress == null
+        ? await api.get<List<int>>(path, options: options)
+        : await api.getWithProgress<List<int>>(
+            path,
+            options: options,
+            onReceiveProgress: onReceiveProgress,
+          );
     if (await api.getMediaCacheIdentity() != identity) {
       throw StateError('Media session changed');
     }
   } else {
     final dio = Dio();
     try {
-      response = await dio.get<List<int>>(url, options: options);
+      response = await dio.get<List<int>>(
+        url,
+        options: options,
+        onReceiveProgress: onReceiveProgress,
+      );
     } finally {
       dio.close();
     }
@@ -95,8 +115,16 @@ Future<Response<List<int>>> loadMediaResponse(ApiClient api, String url) async {
   return response;
 }
 
-Future<Uint8List> loadMediaBytes(ApiClient api, String url) async {
-  final response = await loadMediaResponse(api, url);
+Future<Uint8List> loadMediaBytes(
+  ApiClient api,
+  String url, {
+  ProgressCallback? onReceiveProgress,
+}) async {
+  final response = await loadMediaResponse(
+    api,
+    url,
+    onReceiveProgress: onReceiveProgress,
+  );
   final bytes = response.data;
   if (bytes == null || bytes.isEmpty) throw StateError('Empty media response');
   return Uint8List.fromList(bytes);
@@ -117,6 +145,7 @@ class _AuthenticatedImageCompleter extends MultiFrameImageStreamCompleter {
   _AuthenticatedImageCompleter({
     required super.codec,
     required super.scale,
+    super.chunkEvents,
     required this.onDecodeError,
   });
   final VoidCallback onDecodeError;
@@ -174,8 +203,21 @@ class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
   ) {
     // The completer can outlive the byte LRU; do not retain originals here.
     WeakReference<Uint8List>? downloaded;
+    final chunks = StreamController<ImageChunkEvent>();
     return _AuthenticatedImageCompleter(
-      codec: key._decode(decode, (bytes) => downloaded = WeakReference(bytes)),
+      codec: key
+          ._decode(
+            decode,
+            (bytes) => downloaded = WeakReference(bytes),
+            (received, total) => chunks.add(
+              ImageChunkEvent(
+                cumulativeBytesLoaded: received,
+                expectedTotalBytes: total > 0 ? total : null,
+              ),
+            ),
+          )
+          .whenComplete(() => unawaited(chunks.close())),
+      chunkEvents: chunks.stream,
       scale: scale,
       onDecodeError: () {
         final bytes = downloaded?.target;
@@ -193,6 +235,7 @@ class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
   Future<ui.Codec> _decode(
     ImageDecoderCallback decode,
     ValueChanged<Uint8List> onBytes,
+    ProgressCallback onReceiveProgress,
   ) async {
     Uint8List? downloaded;
     final cachePath = authenticatedMediaPath(url) ?? url;
@@ -204,7 +247,7 @@ class AuthenticatedMediaImage extends ImageProvider<AuthenticatedMediaImage> {
       final bytes = await cache.load(
         _sessionIdentity!,
         cachePath,
-        () => loadMediaBytes(api, url),
+        () => loadMediaBytes(api, url, onReceiveProgress: onReceiveProgress),
       );
       downloaded = bytes;
       onBytes(bytes);
@@ -314,6 +357,7 @@ class AuthenticatedCachedImage extends StatelessWidget {
     this.height,
     this.fit,
     this.placeholder,
+    this.progressIndicatorBuilder,
     this.errorWidget,
     this.imageBuilder,
     this.memCacheWidth,
@@ -330,6 +374,8 @@ class AuthenticatedCachedImage extends StatelessWidget {
   final double? width, height;
   final BoxFit? fit;
   final Widget Function(BuildContext, String)? placeholder;
+  final Widget Function(BuildContext, String, ImageChunkEvent?)?
+  progressIndicatorBuilder;
   final Widget Function(BuildContext, String, Object)? errorWidget;
   final Widget Function(BuildContext, ImageProvider)? imageBuilder;
   final int? memCacheWidth,
@@ -354,9 +400,16 @@ class AuthenticatedCachedImage extends StatelessWidget {
       errorBuilder: (context, error, stack) =>
           errorWidget?.call(context, imageUrl, error) ??
           const Icon(Icons.broken_image_outlined),
+      loadingBuilder: progressIndicatorBuilder == null
+          ? null
+          : (context, child, progress) {
+              if (progress == null) return child;
+              return progressIndicatorBuilder!(context, imageUrl, progress);
+            },
       frameBuilder: (context, child, frame, synchronous) {
         if (frame == null && !synchronous) {
-          return placeholder?.call(context, imageUrl) ??
+          return progressIndicatorBuilder?.call(context, imageUrl, null) ??
+              placeholder?.call(context, imageUrl) ??
               SizedBox(width: width, height: height);
         }
         return imageBuilder?.call(context, image) ?? child;

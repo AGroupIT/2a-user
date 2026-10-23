@@ -5,9 +5,17 @@ import 'package:video_player/video_player.dart';
 
 import '../../../core/media/authenticated_video.dart';
 import '../../../core/utils/locale_text.dart';
+import '../../../core/ui/media_loading_indicator.dart';
+import 'report_video_controls.dart';
 
 typedef ReportVideoControllerFactory =
     Future<VideoPlayerController> Function(BuildContext context, String url);
+
+Future<VideoPlayerController> _createReportVideoController(
+  BuildContext context,
+  String url,
+) =>
+    createAuthenticatedVideoController(context, url, progressivePlayback: true);
 
 /// Only the visible gallery page may open a stream or own a playing decoder.
 class PhotoReportVideoPlayer extends StatefulWidget {
@@ -15,7 +23,7 @@ class PhotoReportVideoPlayer extends StatefulWidget {
     super.key,
     required this.url,
     required this.active,
-    this.controllerFactory = createAuthenticatedVideoController,
+    this.controllerFactory = _createReportVideoController,
   });
 
   final String url;
@@ -125,11 +133,7 @@ class _PhotoReportVideoPlayerState extends State<PhotoReportVideoPlayer> {
       );
     }
     if (controller == null) {
-      return const SizedBox(
-        width: 32,
-        height: 32,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
+      return const MediaLoadingIndicator();
     }
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: controller,
@@ -149,8 +153,7 @@ class _PhotoReportVideoPlayerState extends State<PhotoReportVideoPlayer> {
                         : 16 / 9,
                     child: VideoPlayer(controller),
                   ),
-                  if (value.isBuffering)
-                    const CircularProgressIndicator(strokeWidth: 2),
+                  if (value.isBuffering) const MediaLoadingIndicator(),
                   if (!value.isPlaying && !value.isBuffering)
                     const Icon(
                       Icons.play_arrow_rounded,
@@ -161,7 +164,7 @@ class _PhotoReportVideoPlayerState extends State<PhotoReportVideoPlayer> {
               ),
             ),
           ),
-          VideoProgressIndicator(controller, allowScrubbing: widget.active),
+          ReportVideoControls(controller: controller, active: widget.active),
         ],
       ),
     );

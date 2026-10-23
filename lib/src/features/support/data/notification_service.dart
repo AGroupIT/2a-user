@@ -4,12 +4,15 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/branding/company_branding_provider.dart';
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
-  return NotificationService();
+  return NotificationService(companyName: ref.watch(companyNameProvider));
 });
 
 class NotificationService {
+  final String companyName;
+  NotificationService({required this.companyName});
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
@@ -82,7 +85,7 @@ class NotificationService {
       styleInformation: BigTextStyleInformation(
         truncatedMessage,
         contentTitle: senderName,
-        summaryText: 'Чат поддержки 2A',
+        summaryText: 'Чат поддержки $companyName',
       ),
     );
 

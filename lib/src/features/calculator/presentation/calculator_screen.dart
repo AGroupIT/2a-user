@@ -39,21 +39,6 @@ final _tariffsProvider = FutureProvider.autoDispose<List<CalculatorTariff>>((
       .toList();
 });
 
-final _coefsProvider =
-    FutureProvider.autoDispose<List<CalculatorPhotoCoefficient>>((ref) async {
-      final apiClient = ref.read(apiClientProvider);
-      final response = await apiClient.get('/photo-report-coefficients');
-      final data = response.data as Map<String, dynamic>;
-      final list = data['coefficients'] as List? ?? [];
-      return list
-          .map(
-            (e) =>
-                CalculatorPhotoCoefficient.fromJson(e as Map<String, dynamic>),
-          )
-          .where((c) => c.isActive)
-          .toList();
-    });
-
 final _packagingsProvider =
     FutureProvider.autoDispose<List<CalculatorPackaging>>((ref) async {
       final apiClient = ref.read(apiClientProvider);
@@ -177,14 +162,12 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   final GlobalKey _tariffKey = GlobalKey();
   final GlobalKey _packagingKey = GlobalKey();
   final GlobalKey _calcButtonKey = GlobalKey();
-  final GlobalKey _photoSurchargeKey = GlobalKey();
 
   final _scrollController = ScrollController();
   final _weightCtrl = TextEditingController();
   final _volumeCtrl = TextEditingController();
   final _placesCtrl = TextEditingController(text: '1');
   final _totalCtrl = TextEditingController(text: '1');
-  final _photoCtrl = TextEditingController(text: '0');
   final _insuranceAmountCtrl = TextEditingController();
 
   CalculatorTariff? _selectedTariff;
@@ -202,7 +185,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     _volumeCtrl.dispose();
     _placesCtrl.dispose();
     _totalCtrl.dispose();
-    _photoCtrl.dispose();
     _insuranceAmountCtrl.dispose();
     super.dispose();
   }
@@ -211,7 +193,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   _CalcResult? _calculate(
     List<CalculatorTariff> tariffs,
-    List<CalculatorPhotoCoefficient> coefs,
     List<CalculatorPackaging> packagings,
     double transshipment,
   ) {
@@ -223,7 +204,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final volume = double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
     final places = int.tryParse(_placesCtrl.text) ?? 0;
     final total = int.tryParse(_totalCtrl.text) ?? 0;
-    final withPhoto = int.tryParse(_photoCtrl.text) ?? 0;
     final insuranceAmount =
         double.tryParse(_insuranceAmountCtrl.text.replaceAll(',', '.')) ?? 0;
     final selectedAddonPackagings = packagings
@@ -236,13 +216,13 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final calculation = calculateAssemblyCost(
       AssemblyCostInput(
         tariff: tariff,
-        photoCoefficients: coefs,
+        photoCoefficients: const [],
         selectedPackagings: selectedPackagings,
         weightKg: weight,
         volumeM3: volume,
         places: places,
         tracksTotal: total,
-        tracksWithPhoto: withPhoto,
+        tracksWithPhoto: 0,
         unloadingCostUsd: transshipment,
         packagingRemoval: PackagingRemovalOption.none,
         hasInsurance: _hasInsurance,
@@ -259,10 +239,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       weight: weight,
       volume: volume,
       places: places,
-      photoCoef: calculation.photoCoefficient,
-      photoPercent: calculation.photoPercent,
       tracksTotal: total,
-      tracksWithPhoto: withPhoto,
       shipping: calculation.shippingCost,
       transshipment: transshipment,
       packagingCost: calculation.packagingCost,
@@ -436,41 +413,18 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            KeyedSubtree(
-              key: _photoSurchargeKey,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TrainingTarget(
-                      id: (int.tryParse(_totalCtrl.text) ?? 0) > 0
-                          ? 'calculator.valid.tracks'
-                          : 'calculator.missing.tracks',
-                      child: _NumField(
-                        label: 'Треков всего',
-                        controller: _totalCtrl,
-                        hint: '1',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TrainingTarget(
-                      id:
-                          (int.tryParse(_photoCtrl.text) ?? 0) >= 0 &&
-                              (int.tryParse(_photoCtrl.text) ?? 0) <=
-                                  (int.tryParse(_totalCtrl.text) ?? 0)
-                          ? 'calculator.photos'
-                          : 'calculator.missing.photos',
-                      child: _NumField(
-                        label: 'С фотоотчётом',
-                        controller: _photoCtrl,
-                        hint: '0',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ),
-                ],
+            _NumField(
+              label: 'Треков всего',
+              controller: _totalCtrl,
+              hint: '1',
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tr(
+                context,
+                ru: 'Фотоотчёты оплачиваются отдельно по цене, подтверждённой при запросе. Выполненные отчёты включат в ближайший счёт на доставку.',
+                zh: '拍照报告按申请时确认的价格单独计费，完成后计入下一张运输账单。',
               ),
             ),
           ],
@@ -545,7 +499,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   Widget _buildResultSection({
     required AsyncValue<List<CalculatorTariff>> tariffsAsync,
-    required AsyncValue<List<CalculatorPhotoCoefficient>> coefsAsync,
     required AsyncValue<List<CalculatorPackaging>> packagingsAsync,
     required AsyncValue<double>? unloadingQuoteAsync,
     required double weightKg,
@@ -554,19 +507,18 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     required String packagingTypeIds,
   }) {
     Widget result;
-    if (tariffsAsync.isLoading || coefsAsync.isLoading) {
+    if (tariffsAsync.isLoading) {
       result = const _CalculationPendingCard(
         title: 'Подготавливаем расчёт',
-        message: 'Получаем тарифы и коэффициенты.',
+        message: 'Получаем тарифы.',
         isLoading: true,
       );
-    } else if (tariffsAsync.hasError || coefsAsync.hasError) {
+    } else if (tariffsAsync.hasError) {
       result = _CalculationPendingCard(
         title: 'Расчёт пока недоступен',
         message: 'Не удалось получить данные для расчёта.',
         onRetry: () {
           ref.invalidate(_tariffsProvider);
-          ref.invalidate(_coefsProvider);
         },
       );
     } else if (unloadingQuoteAsync?.isLoading == true) {
@@ -591,12 +543,9 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       );
     } else {
       final tariffs = tariffsAsync.value ?? const <CalculatorTariff>[];
-      final coefficients =
-          coefsAsync.value ?? const <CalculatorPhotoCoefficient>[];
       final packagings = packagingsAsync.value ?? const <CalculatorPackaging>[];
       final calculation = _calculate(
         tariffs,
-        coefficients,
         packagings,
         unloadingQuoteAsync?.value ?? 0,
       );
@@ -604,7 +553,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
           ? const _CalculationPendingCard(
               title: 'Заполните параметры',
               message:
-                  'Нужны тариф, основная упаковка, вес, объём и количество треков. Фотоотчётов не может быть больше, чем треков.',
+                  'Нужны тариф, основная упаковка, вес, объём и количество треков.',
             )
           : _ResultCard(result: calculation);
     }
@@ -625,7 +574,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     final tariffsAsync = ref.watch(_tariffsProvider);
-    final coefsAsync = ref.watch(_coefsProvider);
     final packagingsAsync = ref.watch(_packagingsProvider);
     final volumeM3 =
         double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
@@ -656,7 +604,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final packagingSection = _buildPackagingSection(packagingsAsync);
     final resultSection = _buildResultSection(
       tariffsAsync: tariffsAsync,
-      coefsAsync: coefsAsync,
       packagingsAsync: packagingsAsync,
       unloadingQuoteAsync: unloadingQuoteAsync,
       weightKg: weightKg,
@@ -697,13 +644,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
           description:
               'Тариф определяет цену за кг. Уточните у менеджера, какой тариф применяется к вашим товарам.',
           targetKey: _tariffKey,
-        ),
-        TutorialStep(
-          icon: Icons.photo_camera_rounded,
-          title: 'Надбавка за фотоотчёты',
-          description:
-              'Если фотоотчёт платный по выбранному тарифу, его коэффициент будет учтён автоматически.',
-          targetKey: _photoSurchargeKey,
         ),
         TutorialStep(
           icon: Icons.inventory_rounded,
@@ -778,10 +718,7 @@ class _CalcResult {
   final double weight;
   final double volume;
   final int places;
-  final double photoCoef;
-  final double photoPercent;
   final int tracksTotal;
-  final int tracksWithPhoto;
   final double shipping;
   final double transshipment;
   final double packagingCost;
@@ -806,10 +743,7 @@ class _CalcResult {
     required this.weight,
     required this.volume,
     required this.places,
-    required this.photoCoef,
-    required this.photoPercent,
     required this.tracksTotal,
-    required this.tracksWithPhoto,
     required this.shipping,
     required this.transshipment,
     required this.packagingCost,
@@ -836,18 +770,15 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhotoMarkup = (result.photoCoef - 1).abs() > 0.001;
     final baseFormula = result.priceUnit == 'м³'
         ? '${result.volume.toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}'
         : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}';
     final hasDensitySurcharge =
         result.hasSeparateDensitySurcharge &&
         result.packagingTariffSurcharge > 0;
-    final deliveryFormula =
-        (hasDensitySurcharge
-            ? '($baseFormula + ${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг)'
-            : baseFormula) +
-        (hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : '');
+    final deliveryFormula = (hasDensitySurcharge
+        ? '($baseFormula + ${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг)'
+        : baseFormula);
     return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -943,25 +874,14 @@ class _ResultCard extends StatelessWidget {
               result.packagingTariffSurcharge > 0)
             _Row(
               tr(context, ru: 'Надбавка за упаковку к доставке', zh: '包装运费附加费'),
-              '\$${(result.weight * result.packagingTariffSurcharge * result.photoCoef).toStringAsFixed(2)}',
-              subtitle:
-                  tr(
-                    context,
-                    ru: '${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг',
-                    zh: '${result.weight.toStringAsFixed(2)} 公斤 × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/公斤',
-                  ) +
-                  (result.photoCoef != 1
-                      ? ' × ${result.photoCoef.toStringAsFixed(2)}'
-                      : ''),
+              '\$${(result.weight * result.packagingTariffSurcharge).toStringAsFixed(2)}',
+              subtitle: tr(
+                context,
+                ru: '${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг',
+                zh: '${result.weight.toStringAsFixed(2)} 公斤 × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/公斤',
+              ),
             ),
 
-          if (hasPhotoMarkup)
-            _Row(
-              'Надбавка за фотоотчёт',
-              '×${result.photoCoef.toStringAsFixed(2)}',
-              subtitle:
-                  '${result.tracksWithPhoto} из ${result.tracksTotal} треков (${result.photoPercent.toStringAsFixed(0)}%)',
-            ),
           const SizedBox(height: 4),
           const _Label('Статьи расходов'),
           const SizedBox(height: 10),

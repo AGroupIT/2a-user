@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/features/photos/presentation/photo_report_video_player.dart';
 import 'package:video_player/video_player.dart';
+import 'package:twoalogisticcabineuser/src/features/photos/presentation/report_video_controls.dart';
 
 class FakeVideoController extends VideoPlayerController {
   FakeVideoController({this.initialization})
@@ -131,11 +132,11 @@ void main() {
       expect(created.last.value.position, const Duration(seconds: 17));
       await created.last.pause();
       await tester.pump();
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
       await created.last.play();
       await tester.pump();
       expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
-      expect(find.byType(VideoProgressIndicator), findsOneWidget);
+      expect(find.byType(ReportVideoControls), findsOneWidget);
     },
   );
 

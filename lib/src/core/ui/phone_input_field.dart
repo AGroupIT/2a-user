@@ -45,6 +45,10 @@ class PhoneInputField extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = context.brandPrimary;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final topInset = MediaQuery.viewPaddingOf(context).top;
+    final maxCountrySheetSize = ((screenHeight - topInset - 24) / screenHeight)
+        .clamp(0.78, 0.94 - 24 / screenHeight);
 
     return Theme(
       data: theme.copyWith(
@@ -58,7 +62,7 @@ class PhoneInputField extends StatelessWidget {
         countrySelectorNavigator: CountrySelectorNavigator.draggableBottomSheet(
           initialChildSize: 0.78,
           minChildSize: 0.45,
-          maxChildSize: 0.94,
+          maxChildSize: maxCountrySheetSize,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
           backgroundColor: Colors.white,
           favorites: const [

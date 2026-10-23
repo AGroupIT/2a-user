@@ -123,12 +123,7 @@ void main() {
           final paymentAnchor = _anchor('invoice.pay');
           expect(paymentAnchor, findsOneWidget);
           expect(
-            find.descendant(
-              of: paymentAnchor,
-              matching: find.text(
-                bankQr ? 'Оплатить в рублях' : 'Оплатить через менеджера',
-              ),
-            ),
+            find.descendant(of: paymentAnchor, matching: find.text('Оплатить')),
             findsOneWidget,
           );
           expect(tester.getSize(paymentAnchor).height, lessThanOrEqualTo(60));

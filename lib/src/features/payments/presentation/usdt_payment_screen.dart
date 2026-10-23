@@ -11,6 +11,8 @@ import '../../../core/utils/clipboard_helper.dart';
 import '../data/payments_provider.dart';
 import '../domain/payment_model.dart';
 import 'payment_screen.dart';
+import '../../invoices/presentation/invoices_screen.dart';
+import '../../../core/utils/locale_text.dart';
 
 /// Экран оплаты USDT TRC20
 class UsdtPaymentScreen extends ConsumerStatefulWidget {
@@ -52,6 +54,10 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
   }
 
   Future<void> _createPayment() async {
+    if (widget.invoiceId != null) {
+      setState(() => _isLoading = false);
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -208,6 +214,42 @@ class _UsdtPaymentScreenState extends ConsumerState<UsdtPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.invoiceId != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(tr(context, ru: 'Оплата счёта', zh: '账单付款')),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  tr(
+                    context,
+                    ru: 'Выберите способ оплаты в карточке счёта',
+                    zh: '请在账单详情中选择付款方式',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute<void>(
+                      builder: (_) => InvoicesScreen(
+                        initialInvoiceId: widget.invoiceId.toString(),
+                      ),
+                    ),
+                  ),
+                  child: Text(tr(context, ru: 'Открыть счёт', zh: '打开账单')),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Оплата USDT'), centerTitle: true),
       body: TutorialScreenWrapper(
@@ -681,6 +723,14 @@ Future<void> navigateToPaymentWithChoice(
   int? invoiceId,
   String? description,
 }) async {
+  if (invoiceId != null) {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => InvoicesScreen(initialInvoiceId: invoiceId.toString()),
+      ),
+    );
+    return;
+  }
   final method = await showPaymentMethodDialog(context, amount: amount);
 
   if (method == null || !context.mounted) return;

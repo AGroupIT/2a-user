@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -1183,17 +1184,18 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _IntegrationsSection extends StatelessWidget {
+class _IntegrationsSection extends ConsumerWidget {
   final SpOrganizerAnalyticsIntegrations integrations;
 
   const _IntegrationsSection({required this.integrations});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final items = [
       _IntegrationData(
         Icons.currency_yuan_rounded,
-        tr(context, ru: 'Выкуп через 2A', zh: '通过2A采购'),
+        tr(context, ru: 'Выкуп через $companyName', zh: '通过$companyName采购'),
         integrations.buyoutLinkedItemsCount,
         integrations.buyoutLinkedItemsShare,
         tr(context, ru: 'товаров', zh: '件商品'),
@@ -1207,14 +1209,14 @@ class _IntegrationsSection extends StatelessWidget {
       ),
       _IntegrationData(
         Icons.local_shipping_outlined,
-        tr(context, ru: 'Логистика 2A', zh: '2A物流'),
+        tr(context, ru: 'Логистика $companyName', zh: '$companyName物流'),
         integrations.fulfillmentPurchasesCount,
         integrations.fulfillmentPurchasesShare,
         tr(context, ru: 'закупок', zh: '个采购'),
       ),
       _IntegrationData(
         Icons.receipt_long_outlined,
-        tr(context, ru: 'Со счётом 2A', zh: '已关联2A账单'),
+        tr(context, ru: 'Со счётом $companyName', zh: '已关联$companyName账单'),
         integrations.invoiceLinkedPurchasesCount,
         integrations.invoiceLinkedPurchasesShare,
         tr(context, ru: 'закупок', zh: '个采购'),
@@ -1227,7 +1229,11 @@ class _IntegrationsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            tr(context, ru: 'Использование 2A', zh: '2A使用情况'),
+            tr(
+              context,
+              ru: 'Использование $companyName',
+              zh: '$companyName使用情况',
+            ),
             style: SpFinanceUi.sectionTitleStyle,
           ),
           const SizedBox(height: 10),

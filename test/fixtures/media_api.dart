@@ -20,5 +20,17 @@ ApiClient mediaFixtureApi() {
       type: DioExceptionType.badResponse,
     ),
   );
+  when(
+    () => api.getWithProgress<List<int>>(
+      any(),
+      options: any(named: 'options'),
+      onReceiveProgress: any(named: 'onReceiveProgress'),
+    ),
+  ).thenThrow(
+    DioException(
+      requestOptions: RequestOptions(path: '/uploads/widget-fixture'),
+      type: DioExceptionType.badResponse,
+    ),
+  );
   return api;
 }

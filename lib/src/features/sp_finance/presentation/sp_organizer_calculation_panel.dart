@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/utils/locale_text.dart';
@@ -212,6 +213,7 @@ class _SpOrganizerCalculationPanelState
   Future<void> _actualizeCalculation(
     SpOrganizerCalculationPreview preview,
   ) async {
+    final companyName = ref.read(companyNameProvider);
     final appliedSnapshot = preview.currentAppliedSnapshot;
     if (appliedSnapshot == null) return;
     if (_confirmationPending || _applying || _posting || _actualizing) return;
@@ -221,13 +223,13 @@ class _SpOrganizerCalculationPanelState
       confirmed = await _confirm(
         title: tr(
           context,
-          ru: 'Актуализировать обязательства 2A?',
-          zh: '更新2A关联应付？',
+          ru: 'Актуализировать обязательства $companyName?',
+          zh: '更新$companyName关联应付？',
         ),
         message: tr(
           context,
-          ru: 'Снимок соберёт суммы явно связанных самовыкупов, строк Garage и счетов 2A. Возможные пересечения будут отмечены. Долги участников и legacy-прибыль не изменятся.',
-          zh: '快照将汇总明确关联的代购、Garage明细和2A账单，并标记可能重复的金额。参与者欠款和旧版利润不会改变。',
+          ru: 'Снимок соберёт суммы явно связанных самовыкупов, строк Garage и счетов $companyName. Возможные пересечения будут отмечены. Долги участников и legacy-прибыль не изменятся.',
+          zh: '快照将汇总明确关联的代购、Garage明细和$companyName账单，并标记可能重复的金额。参与者欠款和旧版利润不会改变。',
         ),
         confirmLabel: tr(context, ru: 'Актуализировать', zh: '更新'),
       );
@@ -249,13 +251,13 @@ class _SpOrganizerCalculationPanelState
         result.created
             ? tr(
                 context,
-                ru: 'Обязательства 2A актуализированы · версия ${result.snapshot.version}',
-                zh: '2A关联应付已更新 · 版本 ${result.snapshot.version}',
+                ru: 'Обязательства $companyName актуализированы · версия ${result.snapshot.version}',
+                zh: '$companyName关联应付已更新 · 版本 ${result.snapshot.version}',
               )
             : tr(
                 context,
-                ru: 'Связанные суммы 2A уже актуальны',
-                zh: '2A关联金额已是最新',
+                ru: 'Связанные суммы $companyName уже актуальны',
+                zh: '$companyName关联金额已是最新',
               ),
       );
     } catch (error) {
@@ -1171,13 +1173,14 @@ class _ProfileScopeLine extends StatelessWidget {
   }
 }
 
-class _TwoAObligationCard extends StatelessWidget {
+class _TwoAObligationCard extends ConsumerWidget {
   final SpOrganizerTo2AObligation obligation;
 
   const _TwoAObligationCard({required this.obligation});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     const accent = Color(0xFFD97706);
     final breakdown = obligation.breakdown;
     return Container(
@@ -1206,8 +1209,8 @@ class _TwoAObligationCard extends StatelessWidget {
                     Text(
                       tr(
                         context,
-                        ru: 'Явно связанные обязательства перед 2A',
-                        zh: '明确关联的2A应付',
+                        ru: 'Явно связанные обязательства перед $companyName',
+                        zh: '明确关联的$companyName应付',
                       ),
                       style: SpFinanceUi.bodyStyle,
                     ),
@@ -1257,7 +1260,7 @@ class _TwoAObligationCard extends StatelessWidget {
   }
 }
 
-class _CalculationSnapshotActions extends StatelessWidget {
+class _CalculationSnapshotActions extends ConsumerWidget {
   final SpOrganizerCalculationPreview preview;
   final bool applying;
   final bool posting;
@@ -1277,7 +1280,8 @@ class _CalculationSnapshotActions extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final applied = preview.currentAppliedSnapshot;
     final posted = preview.postedAllocation;
     final actualized = preview.organizerTo2A.actualizedSnapshot;
@@ -1321,8 +1325,8 @@ class _CalculationSnapshotActions extends StatelessWidget {
             Text(
               tr(
                 context,
-                ru: 'Связанные суммы 2A · снимок ${actualized.version}',
-                zh: '2A关联金额 · 快照 ${actualized.version}',
+                ru: 'Связанные суммы $companyName · снимок ${actualized.version}',
+                zh: '$companyName关联金额 · 快照 ${actualized.version}',
               ),
               style: SpFinanceUi.labelStyle,
             ),
@@ -1430,8 +1434,8 @@ class _CalculationSnapshotActions extends StatelessWidget {
               label: Text(
                 tr(
                   context,
-                  ru: 'Актуализировать связанные суммы 2A',
-                  zh: '更新2A关联金额',
+                  ru: 'Актуализировать связанные суммы $companyName',
+                  zh: '更新$companyName关联金额',
                 ),
               ),
             ),

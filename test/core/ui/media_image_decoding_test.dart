@@ -11,6 +11,13 @@ import 'package:twoalogisticcabineuser/src/core/ui/blurred_media_backdrop.dart';
 import '../../fixtures/media_api.dart';
 
 class _ImageApi extends ApiClient {
+  @override
+  Future<Response<T>> getWithProgress<T>(
+    String path, {
+    Options? options,
+    required ProgressCallback onReceiveProgress,
+  }) => get<T>(path, options: options);
+
   List<int> payload = [1, 2, 3];
   int requests = 0;
   @override

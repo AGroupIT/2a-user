@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../tracks/domain/photo_report_options.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
 // ============================================================
@@ -100,47 +101,15 @@ class UserPackagingType {
   }
 }
 
-class UserPhotoCoefficient {
-  final double minPercent;
-  final double? maxPercent;
-  final double coefficient;
-
-  const UserPhotoCoefficient({
-    required this.minPercent,
-    this.maxPercent,
-    required this.coefficient,
-  });
-
-  String get rangeLabel {
-    if (minPercent == 0 && (maxPercent == null || maxPercent == 0)) {
-      return 'Без фотоотчёта';
-    }
-    if (maxPercent == null) {
-      return 'от ${minPercent.toStringAsFixed(0)}%';
-    }
-    return '${minPercent.toStringAsFixed(0)}–${maxPercent!.toStringAsFixed(0)}%';
-  }
-
-  factory UserPhotoCoefficient.fromJson(Map<String, dynamic> json) {
-    return UserPhotoCoefficient(
-      minPercent: _parse(json['minPercent']),
-      maxPercent: json['maxPercent'] != null
-          ? _parse(json['maxPercent'])
-          : null,
-      coefficient: _parse(json['coefficient']),
-    );
-  }
-}
-
 class UserTariffsData {
   final List<UserDeliveryTariff> deliveryTariffs;
   final List<UserPackagingType> packagingTypes;
-  final List<UserPhotoCoefficient> photoCoefficients;
+  final PhotoReportOptions? photoReportOptions;
 
   const UserTariffsData({
     this.deliveryTariffs = const [],
     this.packagingTypes = const [],
-    this.photoCoefficients = const [],
+    this.photoReportOptions,
   });
 }
 
@@ -158,7 +127,7 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
     final results = await Future.wait([
       api.get('/tariffs'),
       api.get('/packagings'),
-      api.get('/photo-report-coefficients'),
+      api.get('/client/photo-report-options'),
     ]);
 
     List<dynamic> extract(dynamic data, List<String> keys) {
@@ -173,7 +142,9 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
 
     final tariffsJson = extract(results[0].data, ['tariffs', 'data']);
     final packagingsJson = extract(results[1].data, ['packagings', 'data']);
-    final coefficientsJson = extract(results[2].data, ['coefficients', 'data']);
+    final optionsJson = Map<String, dynamic>.from(
+      results[2].data['data'] as Map,
+    );
 
     return UserTariffsData(
       deliveryTariffs: tariffsJson
@@ -183,9 +154,7 @@ final userTariffsProvider = FutureProvider<UserTariffsData>((ref) async {
       packagingTypes: packagingsJson
           .map((e) => UserPackagingType.fromJson(e as Map<String, dynamic>))
           .toList(),
-      photoCoefficients: coefficientsJson
-          .map((e) => UserPhotoCoefficient.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      photoReportOptions: PhotoReportOptions.fromJson(optionsJson),
     );
   } on DioException catch (e) {
     debugPrint('Error loading tariffs: $e');

@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/branding/company_branding_provider.dart';
 
 import '../../../core/ui/app_colors.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -48,6 +51,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       body: Center(
@@ -67,8 +71,16 @@ class _SplashScreenState extends State<SplashScreen>
             children: [
               // Logo
               Container(
-                width: 100,
-                height: 100,
+                constraints: BoxConstraints(
+                  minHeight: 100,
+                  maxWidth: (MediaQuery.sizeOf(context).width - 48)
+                      .clamp(0, 360)
+                      .toDouble(),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
                 decoration: BoxDecoration(
                   gradient: context.brandGradient,
                   borderRadius: BorderRadius.circular(24),
@@ -80,15 +92,14 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                   ],
                 ),
-                child: const Center(
-                  child: Text(
-                    '2A',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1,
-                    ),
+                child: Text(
+                  companyName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
                   ),
                 ),
               ),

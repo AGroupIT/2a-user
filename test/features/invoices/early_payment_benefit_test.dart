@@ -414,7 +414,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('INV-42'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Оплатить через менеджера'));
+    await tester.tap(find.text('Оплатить'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Бонусные килограммы').last);
     await tester.pump();

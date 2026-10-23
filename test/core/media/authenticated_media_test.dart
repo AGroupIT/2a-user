@@ -7,6 +7,13 @@ import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 
 class TestMediaApi extends ApiClient {
+  @override
+  Future<Response<T>> getWithProgress<T>(
+    String path, {
+    Options? options,
+    required ProgressCallback onReceiveProgress,
+  }) => get<T>(path, options: options);
+
   String? token = 'first-session';
   String? requestedPath;
   Options? requestedOptions;

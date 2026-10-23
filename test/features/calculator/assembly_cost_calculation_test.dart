@@ -91,12 +91,12 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.clientPrice, 4.5);
-      expect(result.photoCoefficient, 1.1);
-      expect(result.shippingCost, closeTo(99, 0.0001));
+      expect(result.photoCoefficient, 1);
+      expect(result.shippingCost, closeTo(90, 0.0001));
       expect(result.packagingCost, 10);
       expect(result.insuranceBaseUsd, 100);
       expect(result.insuranceCost, 2.5);
-      expect(result.total, closeTo(118.5, 0.0001));
+      expect(result.total, closeTo(109.5, 0.0001));
     });
 
     test('packaging removal price overrides tier and surcharge', () {
@@ -234,7 +234,7 @@ void main() {
     });
 
     test(
-      'density kg surcharge follows photo coefficient and removal rules',
+      'density kg surcharge preserves removal rules without legacy photo markup',
       () {
         const tariff = CalculatorTariff(
           id: 1,
@@ -277,10 +277,12 @@ void main() {
         final normal = calculate(PackagingRemovalOption.none);
         expect(normal.clientPrice, 3);
         expect(normal.packagingTariffSurcharge, 0.1);
-        expect(normal.shippingCost, closeTo(74.4, 0.001));
+        expect(normal.photoCoefficient, 1);
+        expect(normal.shippingCost, closeTo(62, 0.001));
         final removed = calculate(PackagingRemovalOption.all);
         expect(removed.packagingTariffSurcharge, 0);
-        expect(removed.shippingCost, 60);
+        expect(removed.clientPrice, 2.5);
+        expect(removed.shippingCost, 50);
       },
     );
 
@@ -324,7 +326,7 @@ void main() {
       expect(result.shippingCost, 250);
     });
 
-    test('applies photo coefficient to the volumetric density amount', () {
+    test('ignores legacy photo coefficient for new volumetric quotes', () {
       const tariff = CalculatorTariff(
         id: 1,
         name: 'Объёмный с фото',
@@ -354,8 +356,8 @@ void main() {
       )!;
 
       expect(result.priceUnit, 'м³');
-      expect(result.photoCoefficient, 1.1);
-      expect(result.shippingCost, closeTo(66, 0.0001));
+      expect(result.photoCoefficient, 1);
+      expect(result.shippingCost, closeTo(60, 0.0001));
     });
 
     test('keeps volume basis when removal overrides a volumetric tariff', () {

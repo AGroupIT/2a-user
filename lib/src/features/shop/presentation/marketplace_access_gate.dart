@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/branding/company_branding_provider.dart';
 import '../data/shop_availability_provider.dart';
 
 class MarketplaceAccessGate extends ConsumerWidget {
@@ -52,7 +53,7 @@ class MarketplaceAccessGate extends ConsumerWidget {
   }
 }
 
-class _UnavailableMarketplace extends StatelessWidget {
+class _UnavailableMarketplace extends ConsumerWidget {
   const _UnavailableMarketplace({
     required this.reason,
     required this.onRetry,
@@ -66,7 +67,8 @@ class _UnavailableMarketplace extends StatelessWidget {
   final String? platformName;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final marketplace = platformName?.trim().isNotEmpty == true
         ? platformName!
         : platformCode?.toUpperCase() ?? 'маркетплейсы';
@@ -83,7 +85,7 @@ class _UnavailableMarketplace extends StatelessWidget {
     };
     final isJd = platformCode == 'jd';
     final badge = platformCode == null
-        ? '2A'
+        ? companyName
         : isJd
         ? 'JD'
         : platformCode!;
@@ -112,8 +114,14 @@ class _UnavailableMarketplace extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 60,
-                  height: 60,
+                  constraints: const BoxConstraints(
+                    minWidth: 60,
+                    minHeight: 60,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.12),
@@ -121,6 +129,7 @@ class _UnavailableMarketplace extends StatelessWidget {
                   ),
                   child: Text(
                     badge,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: accent,
                       fontSize: 18,

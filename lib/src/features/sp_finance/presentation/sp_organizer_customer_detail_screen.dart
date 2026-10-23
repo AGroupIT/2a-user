@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_toast.dart';
@@ -184,6 +185,7 @@ class _SpOrganizerCustomerDetailScreenState
     BuildContext context,
     SpOrganizerCapabilities capabilities,
   ) {
+    final companyName = ref.watch(companyNameProvider);
     final detail = _detail;
     if (_isLoading && detail == null) return const _DetailLoadingCard();
     if (_error != null && detail == null) {
@@ -226,8 +228,8 @@ class _SpOrganizerCustomerDetailScreenState
           title: tr(context, ru: 'Баланс внутри СП', zh: '拼团内部余额'),
           message: tr(
             context,
-            ru: 'Начисления и оплаты ниже относятся только к этому покупателю организатора и не являются счетами 2A.',
-            zh: '以下应收和付款只属于该团长客户，不是2A账单。',
+            ru: 'Начисления и оплаты ниже относятся только к этому покупателю организатора и не являются счетами $companyName.',
+            zh: '以下应收和付款只属于该团长客户，不是$companyName账单。',
           ),
         ),
         const SizedBox(height: 12),

@@ -21,10 +21,12 @@ void main() {
     final rate = CurrentCnyRate.fromJson({
       'date': '2026-08-15',
       'clientCnyRubRate': '12.50',
+      'clientUsdRubRate': '95.75',
     });
 
     expect(rate.date, DateTime(2026, 8, 15));
     expect(rate.rubPerCny, 12.5);
+    expect(rate.rubPerUsd, 95.75);
   });
 
   test('CurrentCnyRate rejects invalid values', () {
@@ -41,19 +43,24 @@ void main() {
     await _pumpCard(
       tester,
       AsyncValue.data(
-        CurrentCnyRate(date: DateTime(2026, 8, 15), rubPerCny: 12.5),
+        CurrentCnyRate(
+          date: DateTime(2026, 8, 15),
+          rubPerCny: 12.5,
+          rubPerUsd: 95.75,
+        ),
       ),
     );
 
-    expect(find.text('Актуальный курс юаня'), findsOneWidget);
+    expect(find.text('Курс юаня'), findsOneWidget);
     expect(find.text('1 ¥ = 12,50 ₽'), findsOneWidget);
-    expect(find.text('Курс на 15.08.2026'), findsOneWidget);
+    expect(find.text('Курс на 15.08.2026'), findsNWidgets(2));
+    expect(find.text('1 \$ = 95,75 ₽'), findsOneWidget);
   });
 
   testWidgets('shows loading and retry states', (tester) async {
     await _pumpCard(tester, const AsyncValue.loading());
-    expect(find.text('Обновляем курс'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Обновляем курс'), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
 
     var retried = false;
     await _pumpCard(
@@ -61,9 +68,9 @@ void main() {
       AsyncValue.error(Exception('offline'), StackTrace.empty),
       onRetry: () => retried = true,
     );
-    expect(find.text('Курс временно недоступен'), findsOneWidget);
+    expect(find.text('Курс временно недоступен'), findsNWidgets(2));
 
-    await tester.tap(find.byIcon(Icons.refresh_rounded));
+    await tester.tap(find.byIcon(Icons.refresh_rounded).first);
     expect(retried, isTrue);
   });
 
@@ -78,13 +85,17 @@ void main() {
     await _pumpCard(
       tester,
       AsyncValue.data(
-        CurrentCnyRate(date: DateTime(2026, 8, 15), rubPerCny: 12.5),
+        CurrentCnyRate(
+          date: DateTime(2026, 8, 15),
+          rubPerCny: 12.5,
+          rubPerUsd: 95.75,
+        ),
       ),
       locale: const Locale('zh'),
       width: 288,
     );
 
-    expect(find.text('当前人民币汇率'), findsOneWidget);
+    expect(find.text('人民币汇率'), findsOneWidget);
     expect(find.text('1 ¥ = 12.50 ₽'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

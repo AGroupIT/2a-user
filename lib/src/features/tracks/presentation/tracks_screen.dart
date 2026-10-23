@@ -35,6 +35,10 @@ import '../data/tracks_provider.dart';
 import '../../training/presentation/training_target.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
+import '../domain/photo_report_options.dart';
+import 'widgets/photo_report_selection_sheet.dart';
+import 'widgets/track_sheet_surface.dart';
+import 'widgets/photo_report_summary.dart';
 import '../../assemblies/domain/box.dart';
 import '../../photos/presentation/photo_viewer_screen.dart';
 import '../../photos/domain/photo_item.dart';
@@ -60,6 +64,7 @@ bool _canSelectTrackForAssembly(
     track.statusCode != 'return_requested';
 
 String? _assemblySelectionHint(
+  BuildContext context,
   TrackItem track,
   Set<String> locallyRequestedReturns,
 ) {
@@ -67,7 +72,19 @@ String? _assemblySelectionHint(
       track.statusCode == 'return_requested') {
     return 'По треку запрошен возврат';
   }
-  return track.assemblySelectionHint;
+  return switch (track.assemblyBlockReason) {
+    'photo_request_pending' => tr(
+      context,
+      ru: 'По треку есть незавершённый фотоотчёт. Дождитесь выполнения или отмените запрос.',
+      zh: '此运单有未完成的拍照申请，请等待完成或取消申请。',
+    ),
+    'photo_request_cooldown' => tr(
+      context,
+      ru: 'Фотоотчёт выполнен или отменён сегодня. Добавить в сборку можно завтра по времени склада (Китай).',
+      zh: '拍照申请今天已完成或取消，按中国仓库时间明天起可加入打包。',
+    ),
+    _ => track.assemblySelectionHint,
+  };
 }
 
 @visibleForTesting
@@ -610,133 +627,29 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     BuildContext context,
     TrackItem track,
   ) async {
-    final controller = TextEditingController();
-    final result = await showBlurredModalBottomSheet<bool>(
+    await _requestPhotoInline(context, track, '');
+  }
+
+  Future<PhotoReportSelection?> _selectPhotoReport(
+    BuildContext context,
+    TrackItem track, {
+    PhotoRequest? existing,
+  }) {
+    return showBlurredModalBottomSheet<PhotoReportSelection>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (sheetContext) {
-        return _TrackSheetSurface(
-          icon: Icons.add_photo_alternate_rounded,
-          title: 'Фотоотчёт',
-          subtitle: 'Склад сделает снимки по треку ${track.code}',
-          keyboardAware: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _TrackSheetNoticeCard(
-                icon: Icons.info_outline_rounded,
-                text:
-                    'Фотоотчёт может быть платным. Ознакомьтесь с тарифами перед запросом.',
-                color: Colors.amber.shade800,
-              ),
-              const SizedBox(height: 12),
-              _TrackFilterSectionCard(
-                icon: Icons.edit_note_rounded,
-                title: 'Пожелание для склада',
-                child: AppGradientInputFrame(
-                  child: TextField(
-                    controller: controller,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: 'Например: сфотографировать бирку и размер…',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF999999),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              _TrackSheetPrimaryButton(
-                label: 'Запросить фотоотчёт',
-                icon: Icons.check_rounded,
-                onTap: () => Navigator.of(sheetContext).pop(true),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (result == true) {
-      final now = DateTime.now();
-      final wish = controller.text.trim();
-
-      // Получаем данные для API
-      final auth = ref.read(authStateProvider);
-      final clientId = auth.clientId;
-      // Берём clientCodeId из самого трека (правильный код), fallback на первый код клиента
-      int? clientCodeId = track.clientCodeId;
-      if (clientCodeId == null) {
-        final codes = auth.clientData?['codes'] as List<dynamic>?;
-        if (codes != null && codes.isNotEmpty) {
-          final firstCode = codes.first;
-          if (firstCode is Map<String, dynamic>) {
-            clientCodeId = firstCode['id'] as int?;
-          }
-        }
-      }
-
-      if (track.id == null || clientId == null) {
-        if (!context.mounted) return;
-        _showStyledSnackBar(
-          context,
-          'Ошибка: нет данных для запроса',
-          isError: true,
-        );
-        return;
-      }
-
-      // Оптимистичное обновление UI
-      setState(() {
-        _requestedPhotoReports.add(track.code);
-        _photoRequestNotes[track.code] = wish;
-        _photoRequestCreatedAt[track.code] = now;
-        _photoRequestUpdatedAt[track.code] = now;
-      });
-
-      // Отправляем запрос в API
-      final apiService = ref.read(tracksApiServiceProvider);
-      if (track.id == null) return;
-      final success = await apiService.createPhotoRequest(
-        clientId: clientId,
-        clientCodeId: clientCodeId,
-        trackId: track.id!,
+      builder: (_) => PhotoReportSelectionSheet(
         trackNumber: track.code,
-        wish: wish.isNotEmpty ? wish : null,
-      );
-
-      if (success) {
-        if (!context.mounted) return;
-        _showStyledSnackBar(context, 'Запрос фотоотчёта отправлен');
-        // Обновляем список треков
-        _refreshTracks();
-      } else {
-        // Откатываем изменения
-        if (!context.mounted) return;
-        setState(() {
-          _requestedPhotoReports.remove(track.code);
-          _photoRequestNotes.remove(track.code);
-          _photoRequestCreatedAt.remove(track.code);
-          _photoRequestUpdatedAt.remove(track.code);
-        });
-        _showStyledSnackBar(context, 'Ошибка отправки запроса', isError: true);
-      }
-    }
+        loadOptions: ref.read(tracksApiServiceProvider).photoReportOptions,
+        initialType: existing?.reportType,
+        initialWish: existing?.wishes,
+        savedPriceUsd: existing?.priceUsd,
+        allowTypeChange: track.isPending,
+      ),
+    );
   }
 
   Future<void> _showAskQuestionSheet(
@@ -980,10 +893,16 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
   }
 
   Future<void> _cancelPhotoRequest(TrackItem track) async {
+    if (track.activePhotoRequest?.canChange == false) return;
+
     final confirmed = await _confirmAction(
       context,
-      title: 'Отменить запрос фотоотчёта?',
-      message: 'Запрос фотоотчёта будет отменён.',
+      title: tr(context, ru: 'Отменить запрос фотоотчёта?', zh: '取消拍照申请？'),
+      message: tr(
+        context,
+        ru: 'Запрос фотоотчёта будет отменён. Добавить трек в сборку можно будет завтра по времени склада (Китай).',
+        zh: '拍照申请将被取消，按中国仓库时间明天起可将运单加入打包。',
+      ),
     );
 
     if (!confirmed) return;
@@ -1003,7 +922,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           _photoRequestCreatedAt.remove(track.code);
           _photoRequestUpdatedAt.remove(track.code);
         });
-        _showStyledSnackBar(context, 'Запрос фотоотчёта отменён');
+        _refreshTracks();
+        _showStyledSnackBar(
+          context,
+          tr(
+            context,
+            ru: 'Запрос отменён. Добавить трек в сборку можно завтра по времени склада (Китай).',
+            zh: '申请已取消，按中国仓库时间明天起可加入打包。',
+          ),
+        );
       } else {
         if (!mounted) return;
         _showStyledSnackBar(context, 'Ошибка отмены запроса', isError: true);
@@ -1024,87 +951,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     BuildContext context,
     TrackItem track,
   ) async {
-    final activeRequest = track.activePhotoRequest;
-    if (activeRequest == null) return;
-
-    final currentWish = activeRequest.wishes ?? '';
-    final controller = TextEditingController(text: currentWish);
-    final result = await showBlurredModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      builder: (sheetContext) {
-        return _TrackSheetSurface(
-          icon: Icons.photo_camera_rounded,
-          title: 'Пожелание',
-          subtitle: 'Уточните задачу по фотоотчёту ${track.code}',
-          keyboardAware: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _TrackFilterSectionCard(
-                icon: Icons.edit_note_rounded,
-                title: 'Комментарий для склада',
-                child: AppGradientInputFrame(
-                  child: TextField(
-                    controller: controller,
-                    maxLines: 4,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      hintText: 'Пожелание для сборщиков…',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF999999),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              _TrackSheetPrimaryButton(
-                label: 'Сохранить',
-                icon: Icons.check_rounded,
-                onTap: () => Navigator.of(sheetContext).pop(true),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (result == true) {
-      final wish = controller.text.trim();
-      final apiService = ref.read(tracksApiServiceProvider);
-      final success = await apiService.updatePhotoWish(activeRequest.id, wish);
-
-      if (!context.mounted) return;
-      if (success) {
-        setState(() {
-          _photoRequestNotes[track.code] = wish;
-        });
-        _refreshTracks();
-        _showStyledSnackBar(context, 'Пожелание обновлено');
-      } else {
-        _showStyledSnackBar(
-          context,
-          'Ошибка обновления пожелания',
-          isError: true,
-        );
-      }
-    }
+    await _updatePhotoWishInline(context, track, '');
   }
 
   Future<bool> _updatePhotoWishInline(
@@ -1112,25 +959,52 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     TrackItem track,
     String wish,
   ) async {
-    final activeRequest = track.activePhotoRequest;
-    if (activeRequest == null) return false;
-    final success = await ref
-        .read(tracksApiServiceProvider)
-        .updatePhotoWish(activeRequest.id, wish);
-    if (!context.mounted) return success;
-    if (success) {
-      setState(() => _photoRequestNotes[track.code] = wish);
-      _refreshTracks();
-      _showStyledSnackBar(context, 'Пожелание обновлено');
-    } else {
-      _showStyledSnackBar(
-        context,
-        'Ошибка обновления пожелания',
-        isError: true,
-      );
+    final request = track.activePhotoRequest;
+    if (request == null ||
+        !request.canChange ||
+        (!track.isPending && request.reportType != 'custom')) {
+      return false;
     }
+    final selection = await _selectPhotoReport(
+      context,
+      track,
+      existing: request,
+    );
+    if (!mounted || !context.mounted || selection == null) return false;
+    final api = ref.read(tracksApiServiceProvider);
+    final success = await api.updatePhotoWish(
+      request.id,
+      selection.wish ?? '',
+      reportType: selection.reportType,
+      expectedPriceUsd: selection.expectedPriceUsd,
+    );
+    if (!mounted || !context.mounted) return success;
+    if (success) {
+      setState(() => _photoRequestNotes[track.code] = selection.wish ?? '');
+      _refreshTracks();
+    }
+    _showStyledSnackBar(
+      context,
+      success
+          ? tr(context, ru: 'Фотоотчёт обновлён', zh: '拍照申请已更新')
+          : _photoRequestError(context, api.lastPhotoRequestErrorCode),
+      isError: !success,
+    );
     return success;
   }
+
+  String _photoRequestError(BuildContext context, String? code) =>
+      code == 'photo_report_price_changed'
+      ? tr(
+          context,
+          ru: 'Стоимость изменилась. Откройте выбор фотоотчёта заново и подтвердите новую цену.',
+          zh: '价格已变更，请重新选择拍照报告并确认新价格。',
+        )
+      : tr(
+          context,
+          ru: 'Не удалось сохранить фотоотчёт. Обновите список и повторите.',
+          zh: '无法保存拍照申请，请刷新列表后重试。',
+        );
 
   Future<void> _cancelQuestion(TrackItem track) async {
     final confirmed = await _confirmAction(
@@ -1407,6 +1281,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     TrackItem track,
     String wish,
   ) async {
+    if (!track.isPending) return false;
+    final selection = await _selectPhotoReport(context, track);
+    if (!mounted || !context.mounted || selection == null) return false;
+    wish = selection.wish ?? '';
     final auth = ref.read(authStateProvider);
     final clientId = auth.clientId;
     final clientCodeId = _clientCodeIdForTrack(track, auth);
@@ -1435,6 +1313,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           trackId: track.id!,
           trackNumber: track.code,
           wish: wish.isEmpty ? null : wish,
+          reportType: selection.reportType,
+          expectedPriceUsd: selection.expectedPriceUsd,
         );
     if (!context.mounted) return success;
     if (success) {
@@ -1447,7 +1327,14 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         _photoRequestCreatedAt.remove(track.code);
         _photoRequestUpdatedAt.remove(track.code);
       });
-      _showStyledSnackBar(context, 'Ошибка отправки запроса', isError: true);
+      _showStyledSnackBar(
+        context,
+        _photoRequestError(
+          context,
+          ref.read(tracksApiServiceProvider).lastPhotoRequestErrorCode,
+        ),
+        isError: true,
+      );
     }
     return success;
   }
@@ -3311,6 +3198,7 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
           if (_selectedTracks.isEmpty) _selectedStatus = null;
         });
         final hint = _assemblySelectionHint(
+          context,
           blockedSelectedTracks.first,
           _returnRequestedTracks,
         );
@@ -3324,12 +3212,10 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
 
       final selectedTrackIds = selectedTracks.map((t) => t.id!).toList();
 
-      // Проверяем наличие незавершённых задач (вопросы/фотоотчёты)
-      final tracksWithActiveTasks = selectedTracks.where((t) {
-        final hasActivePhoto = t.activePhotoRequest?.isActive == true;
-        final hasActiveQ = t.activeQuestion?.isActive == true;
-        return hasActivePhoto || hasActiveQ;
-      }).toList();
+      // Фотоотчёты блокируются серверной проверкой выше. Вопросы можно отменить.
+      final tracksWithActiveTasks = selectedTracks
+          .where((t) => t.activeQuestion?.isActive == true)
+          .toList();
 
       if (tracksWithActiveTasks.isNotEmpty) {
         if (!context.mounted) return;
@@ -3348,8 +3234,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 children: [
                   _TrackSheetNoticeCard(
                     icon: Icons.info_outline_rounded,
-                    text:
-                        'Есть треки (${tracksWithActiveTasks.length} шт.) с невыполненными задачами: вопросы или фотоотчёты. Если создать сборку, эти задачи будут отменены.',
+                    text: tr(
+                      context,
+                      ru: 'Есть треки (${tracksWithActiveTasks.length} шт.) с неотвеченными вопросами. Если создать сборку, эти вопросы будут отменены.',
+                      zh: '有 ${tracksWithActiveTasks.length} 个运单存在未回答的问题。创建打包单将取消这些问题。',
+                    ),
                     color: Colors.orange.shade800,
                   ),
                   const SizedBox(height: 14),
@@ -3383,9 +3272,6 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
         // Отменяем незавершённые задачи
         final tracksApi = ref.read(tracksApiServiceProvider);
         for (final t in tracksWithActiveTasks) {
-          if (t.activePhotoRequest?.isActive == true) {
-            await tracksApi.cancelPhotoRequest(t.activePhotoRequest!.id);
-          }
           if (t.activeQuestion?.isActive == true) {
             await tracksApi.cancelTrackQuestion(t.activeQuestion!.id);
           }
@@ -4990,7 +4876,11 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
     if (!_selectableStatuses.contains(status) ||
         (status == 'На складе' &&
             !_canSelectTrackForAssembly(track, _returnRequestedTracks))) {
-      final hint = _assemblySelectionHint(track, _returnRequestedTracks);
+      final hint = _assemblySelectionHint(
+        context,
+        track,
+        _returnRequestedTracks,
+      );
       if (hint != null) _showStyledSnackBar(context, hint, isError: true);
       return;
     }
@@ -5926,192 +5816,19 @@ class _TracksSearchFieldState extends State<_TracksSearchField> {
   }
 }
 
-class _TrackSheetSurface extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Widget child;
-  final Widget? pinnedChild;
-  final Widget? footer;
-  final EdgeInsetsGeometry contentPadding;
-  final bool keyboardAware;
-  final ScrollController? scrollController;
-  final bool useMaxHeight;
-
+class _TrackSheetSurface extends TrackSheetSurface {
   const _TrackSheetSurface({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-    this.pinnedChild,
-    this.footer,
-    this.contentPadding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
-    this.keyboardAware = false,
-    this.scrollController,
-    this.useMaxHeight = false,
+    required super.icon,
+    required super.title,
+    required super.subtitle,
+    required super.child,
+    super.pinnedChild,
+    super.footer,
+    super.contentPadding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    super.keyboardAware = false,
+    super.scrollController,
+    super.useMaxHeight = false,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.paddingOf(context).bottom;
-    final keyboardInset = keyboardAware
-        ? MediaQuery.viewInsetsOf(context).bottom
-        : 0.0;
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.9;
-
-    return Stack(
-      children: [
-        if (keyboardInset > 0)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: keyboardInset,
-            child: const ColoredBox(color: Colors.white),
-          ),
-        AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(bottom: keyboardInset),
-          child: SafeArea(
-            top: false,
-            bottom: false,
-            child: Container(
-              height: useMaxHeight ? maxSheetHeight : null,
-              constraints: BoxConstraints(maxHeight: maxSheetHeight),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: TrainingTarget(
-                      id: 'track.sheet.dismiss-handle',
-                      onActivate: () => Navigator.of(context).pop(),
-                      child: const SizedBox(width: 42, child: SheetHandle()),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                    child: _TrackSheetHeader(
-                      icon: icon,
-                      title: title,
-                      subtitle: subtitle,
-                    ),
-                  ),
-                  if (pinnedChild != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                      child: pinnedChild,
-                    ),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      controller: scrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      child: Padding(padding: contentPadding, child: child),
-                    ),
-                  ),
-                  if (footer != null)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        0,
-                        16,
-                        12 + bottomPadding,
-                      ),
-                      child: footer,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TrackSheetHeader extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _TrackSheetHeader({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: context.brandGradient,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: context.brandPrimary.withValues(alpha: 0.18),
-            blurRadius: 22,
-            spreadRadius: -12,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            ),
-            child: Icon(icon, color: Colors.white, size: 23),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Gilroy',
-                    fontSize: 21,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.25,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xE6FFFFFF),
-                    fontFamily: 'Gilroy',
-                    fontSize: 12.8,
-                    height: 1.15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _TrackSortSheet extends StatelessWidget {
@@ -6797,193 +6514,22 @@ class _FilterChipButton extends StatelessWidget {
   }
 }
 
-class _SheetOptionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
+class _SheetOptionTile extends TrackSheetOptionTile {
   const _SheetOptionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
+    required super.icon,
+    required super.title,
+    required super.subtitle,
+    required super.selected,
+    required super.onTap,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = context.brandPrimary;
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.10)
-                : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: selected
-                  ? accent.withValues(alpha: 0.22)
-                  : Colors.black.withValues(alpha: 0.035),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? accent.withValues(alpha: 0.13)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  icon,
-                  color: selected ? accent : AppColors.textSecondary,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: selected ? accent : AppColors.textPrimary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 15,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'Gilroy',
-                        fontSize: 12.5,
-                        height: 1.15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: selected ? accent : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: selected
-                        ? accent
-                        : Colors.black.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: selected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      )
-                    : null,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-class _TrackSheetPrimaryButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-
+class _TrackSheetPrimaryButton extends TrackSheetPrimaryButton {
   const _TrackSheetPrimaryButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
+    required super.label,
+    required super.icon,
+    required super.onTap,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: onTap == null ? null : context.brandGradient,
-            color: onTap == null ? const Color(0xFFE8EAEE) : null,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: onTap == null
-                ? null
-                : [
-                    BoxShadow(
-                      color: context.brandPrimary.withValues(alpha: 0.18),
-                      blurRadius: 14,
-                      spreadRadius: -8,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: onTap == null ? AppColors.textSecondary : Colors.white,
-                size: 19,
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: onTap == null
-                        ? AppColors.textSecondary
-                        : Colors.white,
-                    fontFamily: 'Gilroy',
-                    fontSize: 14,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _TrackSheetSecondaryButton extends StatelessWidget {
@@ -8651,8 +8197,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                   activePhoto != null ||
                   widget.requestedPhotoReports.contains(track.code);
               // Запросить можно только если трек в статусе «В ожидании» и ещё не запрошен
-              final canRequestPhoto =
-                  track.status == 'В ожидании' && !isPhotoRequested;
+              final canRequestPhoto = track.isPending && !isPhotoRequested;
               final commentText =
                   widget.overrideComments[track.code] ?? track.comment;
               final pendingLocalQuestion =
@@ -8952,7 +8497,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     final isPhotoRequested =
         activePhoto != null ||
         widget.requestedPhotoReports.contains(track.code);
-    final canRequestPhoto = track.status == 'В ожидании' && !isPhotoRequested;
+    final canRequestPhoto = track.isPending && !isPhotoRequested;
     final commentText = widget.overrideComments[track.code] ?? track.comment;
     final commentValue = (commentText ?? '').trim();
     final pendingLocalQuestion = (widget.askedQuestions[track.code] ?? '')
@@ -9661,25 +9206,24 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
 
     final activePhoto = track.activePhotoRequest;
     final photoMediaUrls = _collectPhotoMediaUrls(track, activePhoto);
-    var photoCreated =
+    final photoCreated =
         activePhoto?.createdAt ?? widget.photoRequestCreatedAt[track.code];
     final photoUpdated =
         activePhoto?.completedAt ?? widget.photoRequestUpdatedAt[track.code];
-    var photoStatus = activePhoto == null && photoMediaUrls.isNotEmpty
+    final photoStatus = activePhoto == null && photoMediaUrls.isNotEmpty
         ? 'Выполнен'
         : activePhoto?.statusLabel ?? 'Не запрошен';
-    var photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
+    final photoNote = activePhoto?.wishes?.trim().isNotEmpty == true
         ? activePhoto!.wishes!.trim()
         : widget.photoRequestNotes[track.code]?.trim() ?? '';
-    final photoWishController = TextEditingController(text: photoNote);
-    var isEditingPhotoRequest = false;
-    var isSavingPhotoRequest = false;
-    var isPhotoRequested =
+    final isPhotoRequested =
         activePhoto != null ||
         widget.requestedPhotoReports.contains(track.code) ||
         photoMediaUrls.isNotEmpty;
-    final canRequestPhoto = track.status == 'В ожидании' && !isPhotoRequested;
-    final canEditPhoto = activePhoto?.status == 'new';
+    final canRequestPhoto = track.isPending && !isPhotoRequested;
+    final canEditPhoto =
+        activePhoto?.canChange == true &&
+        (track.isPending || activePhoto?.reportType == 'custom');
 
     final apiProductInfo = track.productInfo;
     final localProductInfo = widget.productInfos[track.code];
@@ -10058,13 +9602,18 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _TaskDetailBlock(
-                      title: 'Пожелание',
-                      text: photoNote.isEmpty
-                          ? 'Пожелание не указано'
-                          : photoNote,
-                      muted: photoNote.isEmpty,
-                    ),
+                    if (activePhoto != null)
+                      PhotoReportSummary(request: activePhoto)
+                    else if (track.photoRequests.isNotEmpty)
+                      PhotoReportSummary(request: track.photoRequests.last),
+                    if (photoNote.isNotEmpty)
+                      _TaskDetailBlock(
+                        title: 'Пожелание',
+                        text: photoNote.isEmpty
+                            ? 'Пожелание не указано'
+                            : photoNote,
+                        muted: photoNote.isEmpty,
+                      ),
                     if (activePhoto?.warehouseComment?.trim().isNotEmpty ==
                         true) ...[
                       const SizedBox(height: 10),
@@ -10099,7 +9648,7 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                           if (photoCreated != null)
                             _TaskDateLabel(
                               label: 'Создан',
-                              value: dateFormat.format(photoCreated!),
+                              value: dateFormat.format(photoCreated),
                             ),
                           if (photoUpdated != null)
                             _TaskDateLabel(
@@ -10109,191 +9658,48 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                         ],
                       ),
                     ],
-                    if (canEditPhoto) ...[
+                    if (activePhoto?.canChange == true) ...[
                       const SizedBox(height: 14),
-                      if (isEditingPhotoRequest) ...[
-                        AppGradientInputFrame(
-                          child: TextField(
-                            controller: photoWishController,
-                            maxLines: 4,
-                            scrollPadding: const EdgeInsets.only(bottom: 180),
-                            onTapOutside: (_) =>
-                                FocusManager.instance.primaryFocus?.unfocus(),
-                            decoration: const InputDecoration(
-                              hintText: 'Пожелание для склада…',
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                            ),
+                      if (canEditPhoto)
+                        _TrackSheetSecondaryButton(
+                          label: tr(
+                            sheetContext,
+                            ru: track.isPending
+                                ? 'Изменить фотоотчёт'
+                                : 'Изменить пожелания',
+                            zh: track.isPending ? '修改拍照申请' : '修改检查要求',
                           ),
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            widget.onEditPhotoWish(track);
+                          },
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TrackSheetSecondaryButton(
-                                label: 'Отмена',
-                                onTap: isSavingPhotoRequest
-                                    ? () {}
-                                    : () => setSheetState(() {
-                                        photoWishController.text = photoNote;
-                                        isEditingPhotoRequest = false;
-                                      }),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _TrackSheetPrimaryButton(
-                                label: isSavingPhotoRequest
-                                    ? 'Сохраняем…'
-                                    : 'Сохранить',
-                                icon: Icons.check_rounded,
-                                onTap: isSavingPhotoRequest
-                                    ? null
-                                    : () async {
-                                        final wish = photoWishController.text
-                                            .trim();
-                                        setSheetState(
-                                          () => isSavingPhotoRequest = true,
-                                        );
-                                        final saved = await widget
-                                            .onUpdatePhotoWishInline(
-                                              track,
-                                              wish,
-                                            );
-                                        if (!sheetContext.mounted) return;
-                                        setSheetState(() {
-                                          isSavingPhotoRequest = false;
-                                          if (saved) {
-                                            photoNote = wish;
-                                            isEditingPhotoRequest = false;
-                                          }
-                                        });
-                                      },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TrackSheetSecondaryButton(
-                                label: 'Изменить пожелание',
-                                onTap: () => setSheetState(
-                                  () => isEditingPhotoRequest = true,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    widget.onCancelPhotoRequest(track),
-                                icon: const Icon(Icons.close_rounded, size: 18),
-                                label: const Text('Отменить'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.redAccent,
-                                  minimumSize: const Size.fromHeight(48),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          widget.onCancelPhotoRequest(track);
+                        },
+                        child: Text(tr(sheetContext, ru: 'Отменить', zh: '取消')),
+                      ),
                     ],
                   ] else ...[
-                    if (isEditingPhotoRequest) ...[
-                      _TrackSheetNoticeCard(
-                        icon: Icons.info_outline_rounded,
-                        text:
-                            'Фотоотчёт может быть платным. Ознакомьтесь с тарифами перед запросом.',
-                        color: Colors.amber.shade800,
+                    const _TrackDetailEmptyState(
+                      icon: Icons.photo_camera_outlined,
+                      text: 'Фотоотчёт ещё не запрошен',
+                    ),
+                    const SizedBox(height: 12),
+                    _TrackSheetPrimaryButton(
+                      label: tr(
+                        sheetContext,
+                        ru: 'Выбрать фотоотчёт',
+                        zh: '选择拍照报告',
                       ),
-                      const SizedBox(height: 12),
-                      AppGradientInputFrame(
-                        child: TextField(
-                          controller: photoWishController,
-                          maxLines: 4,
-                          scrollPadding: const EdgeInsets.only(bottom: 180),
-                          onTapOutside: (_) =>
-                              FocusManager.instance.primaryFocus?.unfocus(),
-                          decoration: const InputDecoration(
-                            hintText: 'Пожелание для склада…',
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _TrackSheetSecondaryButton(
-                              label: 'Отмена',
-                              onTap: isSavingPhotoRequest
-                                  ? () {}
-                                  : () => setSheetState(
-                                      () => isEditingPhotoRequest = false,
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _TrackSheetPrimaryButton(
-                              label: isSavingPhotoRequest
-                                  ? 'Отправляем…'
-                                  : 'Запросить',
-                              icon: Icons.photo_camera_outlined,
-                              onTap: isSavingPhotoRequest
-                                  ? null
-                                  : () async {
-                                      setSheetState(
-                                        () => isSavingPhotoRequest = true,
-                                      );
-                                      final saved = await widget
-                                          .onRequestPhotoInline(
-                                            track,
-                                            photoWishController.text.trim(),
-                                          );
-                                      if (!sheetContext.mounted) return;
-                                      setSheetState(() {
-                                        isSavingPhotoRequest = false;
-                                        if (saved) {
-                                          isPhotoRequested = true;
-                                          photoStatus = 'Новый';
-                                          photoNote = photoWishController.text
-                                              .trim();
-                                          photoCreated = DateTime.now();
-                                          isEditingPhotoRequest = false;
-                                        }
-                                      });
-                                    },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      const _TrackDetailEmptyState(
-                        icon: Icons.photo_camera_outlined,
-                        text: 'Фотоотчёт ещё не запрошен',
-                      ),
-                      const SizedBox(height: 12),
-                      _TrackSheetPrimaryButton(
-                        label: 'Запросить фотоотчёт',
-                        icon: Icons.photo_camera_outlined,
-                        onTap: () =>
-                            setSheetState(() => isEditingPhotoRequest = true),
-                      ),
-                    ],
+                      icon: Icons.photo_camera_outlined,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        widget.onRequestPhotoInline(track, '');
+                      },
+                    ),
                   ],
                 ],
               );
@@ -10553,7 +9959,9 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
                     );
                   }
                   final canEditCode =
-                      info.status == 'pending' || info.status == 'in_progress';
+                      info.status == 'pending' ||
+                      info.status == 'in_progress' ||
+                      info.status == 'completed';
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -10723,7 +10131,6 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
     );
     _disposeControllersAfterSheetClose([
       commentController,
-      photoWishController,
       productNameController,
       productQuantityController,
       returnCodeController,
@@ -10823,8 +10230,11 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
         createdAt: createdAt,
         updatedAt: updatedAt,
         mediaUrls: mediaUrls,
-        canEdit: canCancelPhoto && activePhoto != null,
-        canCancel: canCancelPhoto,
+        canEdit:
+            canCancelPhoto &&
+            activePhoto?.canChange == true &&
+            (track.isPending || activePhoto?.reportType == 'custom'),
+        canCancel: canCancelPhoto && activePhoto?.canChange == true,
       );
       return;
     }
@@ -10924,11 +10334,14 @@ class _TrackGroupCardState extends State<_TrackGroupCard> {
               child: _TaskStatusBadge(text: statusLabel, color: statusColor),
             ),
             const SizedBox(height: 12),
-            _TaskDetailBlock(
-              title: 'Пожелание',
-              text: note.isNotEmpty ? note : 'Пожелание не указано',
-              muted: note.isEmpty,
-            ),
+            if (track.activePhotoRequest != null)
+              PhotoReportSummary(request: track.activePhotoRequest!),
+            if (note.isNotEmpty)
+              _TaskDetailBlock(
+                title: 'Пожелание',
+                text: note.isNotEmpty ? note : 'Пожелание не указано',
+                muted: note.isEmpty,
+              ),
             if (warehouseComment?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 10),
               _TaskDetailBlock(

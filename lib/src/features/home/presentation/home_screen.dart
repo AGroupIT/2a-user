@@ -41,6 +41,8 @@ import '../../tracks/presentation/tracks_screen.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/current_cny_rate_provider.dart';
 import 'home_cny_rate_card.dart';
+import 'home_stats_grid.dart';
+import '../data/home_counts_provider.dart';
 import 'home_agent_contacts_card.dart';
 import 'warehouse_address_checker.dart';
 import 'warehouse_address_copy_banner.dart';
@@ -142,22 +144,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : const AsyncValue.loading();
 
     final AsyncValue<int> tracksCountAsync = shouldLoadDashboardData
-        ? ref.watch(tracksCountProvider(clientCode))
+        ? ref.watch(homeTracksCountProvider(clientCode))
         : const AsyncValue.loading();
     final AsyncValue<int> assembliesCountAsync = shouldLoadDashboardData
-        ? ref.watch(assembliesCountProvider(clientCode))
+        ? ref.watch(homeAssembliesCountProvider(clientCode))
         : const AsyncValue.loading();
     final AsyncValue<int> invoicesCountAsync = shouldLoadDashboardData
         ? ref.watch(invoicesCountProvider(clientCode))
-        : const AsyncValue.loading();
-    final AsyncValue<int> tracksWeeklyCountAsync = shouldLoadDashboardData
-        ? ref.watch(tracksWeeklyCountProvider(clientCode))
-        : const AsyncValue.loading();
-    final AsyncValue<int> assembliesWeeklyCountAsync = shouldLoadDashboardData
-        ? ref.watch(assembliesWeeklyCountProvider(clientCode))
-        : const AsyncValue.loading();
-    final AsyncValue<int> invoicesWeeklyCountAsync = shouldLoadDashboardData
-        ? ref.watch(invoicesWeeklyCountProvider(clientCode))
         : const AsyncValue.loading();
     final AsyncValue<ReferralData> referralAsync = shouldLoadDashboardData
         ? ref.watch(referralProvider)
@@ -175,30 +168,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (invoicesDigestAsync.hasError)
         () => ref.invalidate(invoicesDigestProvider(clientCode)),
       if (tracksCountAsync.hasError)
-        () => ref.invalidate(tracksCountProvider(clientCode)),
+        () => ref.invalidate(homeTracksCountProvider(clientCode)),
       if (assembliesCountAsync.hasError)
-        () => ref.invalidate(assembliesCountProvider(clientCode)),
+        () => ref.invalidate(homeAssembliesCountProvider(clientCode)),
       if (invoicesCountAsync.hasError)
         () => ref.invalidate(invoicesCountProvider(clientCode)),
-      if (tracksWeeklyCountAsync.hasError)
-        () => ref.invalidate(tracksWeeklyCountProvider(clientCode)),
-      if (assembliesWeeklyCountAsync.hasError)
-        () => ref.invalidate(assembliesWeeklyCountProvider(clientCode)),
-      if (invoicesWeeklyCountAsync.hasError)
-        () => ref.invalidate(invoicesWeeklyCountProvider(clientCode)),
     ];
 
     final tracksCount = tracksCountAsync.asData?.value;
     final assembliesCount = assembliesCountAsync.asData?.value;
     final invoicesCount = invoicesCountAsync.asData?.value;
-    final tracksWeeklyCount = tracksWeeklyCountAsync.asData?.value;
-    final assembliesWeeklyCount = assembliesWeeklyCountAsync.asData?.value;
-    final invoicesWeeklyCount = invoicesWeeklyCountAsync.asData?.value;
     final referralData = referralAsync.asData?.value;
     final bonusKgBalance = referralData?.referralKgBalance;
-    final bonusKgWeekly = referralData == null
-        ? null
-        : _weeklyBonusKg(referralData);
     final agent = clientProfile.asData?.value?.agent;
 
     final topPad = AppLayout.topBarTotalHeight(context);
@@ -227,12 +208,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.invalidate(assembliesDigestProvider(clientCode));
       ref.invalidate(invoicesDigestProvider(clientCode));
       ref.invalidate(photosRecentProvider((clientCode: clientCode, limit: 12)));
-      ref.invalidate(tracksCountProvider(clientCode));
-      ref.invalidate(assembliesCountProvider(clientCode));
+      ref.invalidate(homeTracksCountProvider(clientCode));
+      ref.invalidate(homeAssembliesCountProvider(clientCode));
       ref.invalidate(invoicesCountProvider(clientCode));
-      ref.invalidate(tracksWeeklyCountProvider(clientCode));
-      ref.invalidate(assembliesWeeklyCountProvider(clientCode));
-      ref.invalidate(invoicesWeeklyCountProvider(clientCode));
       ref.invalidate(referralProvider);
       ref.invalidate(currentCnyRateProvider);
       try {
@@ -243,12 +221,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ref.read(
             photosRecentProvider((clientCode: clientCode, limit: 12)).future,
           ),
-          ref.read(tracksCountProvider(clientCode).future),
-          ref.read(assembliesCountProvider(clientCode).future),
+          ref.read(homeTracksCountProvider(clientCode).future),
+          ref.read(homeAssembliesCountProvider(clientCode).future),
           ref.read(invoicesCountProvider(clientCode).future),
-          ref.read(tracksWeeklyCountProvider(clientCode).future),
-          ref.read(assembliesWeeklyCountProvider(clientCode).future),
-          ref.read(invoicesWeeklyCountProvider(clientCode).future),
           ref.read(referralProvider.future),
           ref.read(currentCnyRateProvider.future),
         ]);
@@ -310,8 +285,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? _WideHeroActionRow(
                       greeting: _GreetingBlock(
                         fullName: clientName,
-                        clientCode: clientCode,
-                        agentName: agent?.name,
                         onTap: () => context.push('/profile'),
                       ),
                       action: _AddTracksStatCard(
@@ -320,8 +293,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     )
                   : _GreetingBlock(
                       fullName: clientName,
-                      clientCode: clientCode,
-                      agentName: agent?.name,
                       onTap: () => context.push('/profile'),
                     ),
             ),
@@ -383,13 +354,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ? null
                       : currentCnyRateAsync,
                   bonusKgValue: _formatKg(bonusKgBalance),
-                  bonusKgWeekly: _formatDeltaKg(bonusKgWeekly),
                   tracksValue: _formatCount(tracksCount),
-                  tracksWeekly: _formatDeltaCount(tracksWeeklyCount),
                   assembliesValue: _formatCount(assembliesCount),
-                  assembliesWeekly: _formatDeltaCount(assembliesWeeklyCount),
                   invoicesValue: _formatCount(invoicesCount),
-                  invoicesWeekly: _formatDeltaCount(invoicesWeeklyCount),
                   onTracksTap: () => context.go('/tracks'),
                   onAssembliesTap: () => context.go('/tracks'),
                   onBonusKgTap: () => context.push('/referral'),
@@ -412,8 +379,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         warehouse: TrainingTarget(
                           id: 'warehouse.address',
                           child: _WarehouseDataBlock(
-                            clientCode: clientCode,
                             agent: agent!,
+                            clientCode: clientCode,
                           ),
                         ),
                         search: _NoCodeSearchCard(onOpen: _openNoCodeSearch),
@@ -421,8 +388,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     : TrainingTarget(
                         id: 'warehouse.address',
                         child: _WarehouseDataBlock(
-                          clientCode: clientCode,
                           agent: agent!,
+                          clientCode: clientCode,
                         ),
                       ),
               ),
@@ -471,38 +438,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-double _weeklyBonusKg(ReferralData data) {
-  final weekStart = DateTime.now().subtract(const Duration(days: 7));
-  return data.transactions
-      .where(
-        (transaction) =>
-            !transaction.createdAt.isBefore(weekStart) &&
-            transaction.kgAmount > 0 &&
-            (transaction.type == 'earned' ||
-                transaction.type == 'referee_bonus'),
-      )
-      .fold<double>(0, (sum, transaction) => sum + transaction.kgAmount);
-}
-
 String _formatCount(int? value) {
   if (value == null) return '–';
   return NumberFormat.decimalPattern('ru_RU').format(value);
-}
-
-String _formatDeltaCount(int? value) {
-  if (value == null) return '–';
-  return '+${_formatCount(value)}';
 }
 
 String _formatKg(double? value) {
   if (value == null) return '–';
   final fixed = value.toStringAsFixed(2);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
-}
-
-String _formatDeltaKg(double? value) {
-  if (value == null) return '–';
-  return '+${_formatKg(value)}';
 }
 
 // На старых Android/Android Go постоянные декоративные анимации слишком дорогие:
@@ -680,21 +624,13 @@ class _StaleDataBanner extends StatelessWidget {
 
 class _GreetingBlock extends StatelessWidget {
   final String fullName;
-  final String clientCode;
-  final String? agentName;
   final VoidCallback onTap;
 
-  const _GreetingBlock({
-    required this.fullName,
-    required this.clientCode,
-    required this.agentName,
-    required this.onTap,
-  });
+  const _GreetingBlock({required this.fullName, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final greeting = _greetingFor(DateTime.now());
-    final agentLabel = agentName?.trim();
     final scale = _compactHomeScale(context);
     final textScale = _compactHomeFontScale(context);
     final radius = BorderRadius.circular(24 * scale);
@@ -794,22 +730,6 @@ class _GreetingBlock extends StatelessWidget {
                               _PulsingHeaderIcon(size: headerIconSize),
                             ],
                           ),
-                          SizedBox(height: 14 * scale),
-                          Wrap(
-                            spacing: 8 * scale,
-                            runSpacing: 8 * scale,
-                            children: [
-                              _HeaderInfoPill(
-                                icon: Icons.badge_rounded,
-                                label: 'Код $clientCode',
-                              ),
-                              if (agentLabel != null && agentLabel.isNotEmpty)
-                                _HeaderInfoPill(
-                                  icon: Icons.apartment_rounded,
-                                  label: agentLabel,
-                                ),
-                            ],
-                          ),
                         ],
                       ),
                     ),
@@ -829,52 +749,6 @@ class _GreetingBlock extends StatelessWidget {
     if (h >= 12 && h < 17) return 'Добрый день';
     if (h >= 17 && h < 23) return 'Добрый вечер';
     return 'Доброй ночи';
-  }
-}
-
-class _HeaderInfoPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _HeaderInfoPill({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: 10 * scale,
-        vertical: 7 * scale,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15 * scale, color: Colors.white),
-          SizedBox(width: 6 * scale),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 190),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontFamily: 'Gilroy',
-                fontSize: 13 * textScale,
-                fontWeight: FontWeight.w700,
-                height: 1.1,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1372,13 +1246,9 @@ class _StatsBlock extends StatelessWidget {
   final bool showAddTracks;
   final AsyncValue<CurrentCnyRate?>? currentCnyRate;
   final String bonusKgValue;
-  final String bonusKgWeekly;
   final String tracksValue;
-  final String tracksWeekly;
   final String assembliesValue;
-  final String assembliesWeekly;
   final String invoicesValue;
-  final String invoicesWeekly;
   final VoidCallback onTracksTap;
   final VoidCallback onAssembliesTap;
   final VoidCallback onBonusKgTap;
@@ -1390,13 +1260,9 @@ class _StatsBlock extends StatelessWidget {
     this.showAddTracks = true,
     this.currentCnyRate,
     required this.bonusKgValue,
-    required this.bonusKgWeekly,
     required this.tracksValue,
-    required this.tracksWeekly,
     required this.assembliesValue,
-    required this.assembliesWeekly,
     required this.invoicesValue,
-    required this.invoicesWeekly,
     required this.onTracksTap,
     required this.onAssembliesTap,
     required this.onBonusKgTap,
@@ -1406,282 +1272,29 @@ class _StatsBlock extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final useSingleRow = MediaQuery.sizeOf(context).width >= 900;
-    final cards = [
-      _StatCard(
-        title: 'Треки',
-        value: tracksValue,
-        weeklyValue: tracksWeekly,
-        icon: Icons.local_shipping_rounded,
-        onTap: onTracksTap,
-      ),
-      _StatCard(
-        title: 'Сборки',
-        value: assembliesValue,
-        weeklyValue: assembliesWeekly,
-        icon: Icons.inventory_2_rounded,
-        onTap: onAssembliesTap,
-      ),
-      _StatCard(
-        title: 'Бонусные кг',
-        value: bonusKgValue,
-        weeklyValue: bonusKgWeekly,
-        icon: Icons.scale_rounded,
-        onTap: onBonusKgTap,
-      ),
-      _StatCard(
-        title: 'Счета',
-        value: invoicesValue,
-        weeklyValue: invoicesWeekly,
-        icon: Icons.receipt_long_rounded,
-        onTap: onInvoicesTap,
-      ),
-    ];
-
-    if (useSingleRow) {
-      return SizedBox(
-        height: 96,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < cards.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(child: cards[i]),
-            ],
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (showAddTracks) ...[
-          _AddTracksStatCard(onTap: onAddTracksTap),
-          const SizedBox(height: 8),
-        ],
-        if (currentCnyRate != null) ...[
-          HomeCnyRateCard(rate: currentCnyRate!, onRetry: onCnyRateRetry),
-          const SizedBox(height: 8),
-        ],
-        Row(
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 8),
-            Expanded(child: cards[1]),
-          ],
-        ),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (showAddTracks) ...[
+        _AddTracksStatCard(onTap: onAddTracksTap),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: cards[2]),
-            const SizedBox(width: 8),
-            Expanded(child: cards[3]),
-          ],
-        ),
       ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String weeklyValue;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  const _StatCard({
-    required this.title,
-    required this.value,
-    required this.weeklyValue,
-    required this.icon,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    final showInlinePeriod =
-        MediaQuery.sizeOf(context).width >= AppLayout.mobileBreakpoint;
-    final card = Container(
-      constraints: BoxConstraints(minHeight: 96 * scale),
-      padding: EdgeInsets.all(10 * scale),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            offset: const Offset(0, 8),
-            blurRadius: 20,
-          ),
-        ],
+      if (currentCnyRate != null) ...[
+        HomeCnyRateCard(rate: currentCnyRate!, onRetry: onCnyRateRetry),
+        const SizedBox(height: 8),
+      ],
+      HomeStatsGrid(
+        tracksValue: tracksValue,
+        assembliesValue: assembliesValue,
+        invoicesValue: invoicesValue,
+        bonusKgValue: bonusKgValue,
+        onTracksTap: onTracksTap,
+        onAssembliesTap: onAssembliesTap,
+        onInvoicesTap: onInvoicesTap,
+        onBonusKgTap: onBonusKgTap,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 30 * scale,
-                height: 30 * scale,
-                decoration: BoxDecoration(
-                  color: context.brandPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(11 * scale),
-                ),
-                child: Icon(
-                  icon,
-                  color: context.brandPrimary,
-                  size: 18 * scale,
-                ),
-              ),
-              SizedBox(width: 7 * scale),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Gilroy',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.3 * textScale,
-                    height: 1.15,
-                  ),
-                ),
-              ),
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary.withValues(alpha: 0.8),
-                  size: 19 * scale,
-                ),
-            ],
-          ),
-          SizedBox(height: 9 * scale),
-          if (showInlinePeriod)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _WeeklyBadge(value: weeklyValue),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: _StatValueText(value: value),
-                  ),
-                ),
-              ],
-            )
-          else ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: _StatValueText(value: value),
-              ),
-            ),
-            SizedBox(height: 8 * scale),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _WeeklyBadge(value: weeklyValue),
-            ),
-          ],
-        ],
-      ),
-    );
-
-    if (onTap == null) return card;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: card,
-      ),
-    );
-  }
-}
-
-class _StatValueText extends StatelessWidget {
-  final String value;
-
-  const _StatValueText({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final textScale = _compactHomeFontScale(context);
-    return Text(
-      value,
-      maxLines: 1,
-      style: TextStyle(
-        color: AppColors.textPrimary,
-        fontFamily: 'Gilroy',
-        fontWeight: FontWeight.w900,
-        fontSize: 25 * textScale,
-        height: 0.95,
-        letterSpacing: -0.5 * textScale,
-      ),
-    );
-  }
-}
-
-class _WeeklyBadge extends StatelessWidget {
-  final String value;
-
-  const _WeeklyBadge({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = _compactHomeScale(context);
-    final textScale = _compactHomeFontScale(context);
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 7 * scale, vertical: 4 * scale),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.trending_up_rounded,
-            size: 13 * scale,
-            color: context.brandPrimary,
-          ),
-          SizedBox(width: 3 * scale),
-          Flexible(
-            child: Text(
-              '$value за неделю',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontFamily: 'Gilroy',
-                fontWeight: FontWeight.w700,
-                fontSize: 10.5 * textScale,
-                height: 1.1,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    ],
+  );
 }
 
 class _AddTracksStatCard extends StatelessWidget {

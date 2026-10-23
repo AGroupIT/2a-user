@@ -20,6 +20,7 @@ import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
 import '../../../core/ui/media_image_viewport.dart';
+import '../../../core/ui/media_loading_indicator.dart';
 import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
 import '../../../core/ui/app_cached_media_image.dart';
@@ -345,10 +346,27 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       child: AuthenticatedCachedImage(
         imageUrl: index == _currentIndex
             ? imageUrl
-            : ApiConfig.getMediaThumbnailUrl(item.url, size: 720, preserveAspectRatio: true),
+            : ApiConfig.getMediaThumbnailUrl(
+                item.url,
+                size: 720,
+                preserveAspectRatio: true,
+              ),
         fit: BoxFit.contain,
         memCacheWidth: index == _currentIndex ? 3072 : 720,
         memCacheHeight: index == _currentIndex ? 3072 : 720,
+        progressIndicatorBuilder: (context, _, progress) => Stack(
+          fit: StackFit.expand,
+          children: [
+            AppCachedMediaImage(
+              url: item.url,
+              thumbnailSize: 720,
+              fit: BoxFit.contain,
+              memCacheWidth: 720,
+              memCacheHeight: 720,
+            ),
+            Center(child: MediaLoadingIndicator(progress: progress)),
+          ],
+        ),
         placeholder: (_, _) => AppCachedMediaImage(
           url: item.url,
           thumbnailSize: 720,

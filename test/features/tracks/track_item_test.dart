@@ -55,6 +55,28 @@ void main() {
       expect(value.assemblySelectionHint, 'По треку запрошен возврат');
     });
 
+    test('blocks pending photo requests with a clear explanation', () {
+      final value = parse(canAdd: false, reason: 'photo_request_pending');
+
+      expect(value.isAvailableForAssemblySelection, isFalse);
+      expect(value.assemblySelectionHint, contains('Дождитесь выполнения'));
+    });
+
+    test('blocks completion and cancellation sorting cooldown', () {
+      final value = parse(canAdd: false, reason: 'photo_request_cooldown');
+
+      expect(value.isAvailableForAssemblySelection, isFalse);
+      expect(value.assemblySelectionHint, contains('можно завтра'));
+      expect(value.assemblySelectionHint, contains('Китай'));
+    });
+
+    test('server allows assembly after photo report cooldown expires', () {
+      final value = parse(canAdd: true);
+
+      expect(value.isAvailableForAssemblySelection, isTrue);
+      expect(value.assemblySelectionHint, isNull);
+    });
+
     test('keeps backward compatibility with an older backend', () {
       expect(parse().isAvailableForAssemblySelection, isTrue);
     });

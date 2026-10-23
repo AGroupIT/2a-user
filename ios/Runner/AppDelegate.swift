@@ -3,6 +3,7 @@ import UIKit
 import FirebaseCore
 import FirebaseMessaging
 import Vision
+import AVFoundation
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -19,6 +20,38 @@ import Vision
     }
 
     GeneratedPluginRegistrant.register(with: self)
+    if let registrar = self.registrar(forPlugin: "com.twoalogistic.user.video_playback") {
+      let channel = FlutterMethodChannel(
+        name: "com.twoalogistic.user/video_playback",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler { [weak self] call, result in
+        guard call.method == "playAvailable" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        guard
+          let arguments = call.arguments as? [String: Any],
+          let identifier = arguments["playerId"] as? NSNumber,
+          let plugin = self?.valuePublished(byPlugin: "FVPVideoPlayerPlugin") as? NSObject,
+          plugin.responds(to: NSSelectorFromString("playersByIdentifier")),
+          let players = plugin.value(forKey: "playersByIdentifier") as? NSDictionary,
+          let wrapper = players[identifier] as? NSObject,
+          wrapper.responds(to: NSSelectorFromString("player")),
+          let player = wrapper.value(forKey: "player") as? AVPlayer
+        else {
+          result(FlutterError(code: "PLAYER_UNAVAILABLE", message: "Video player is unavailable", details: nil))
+          return
+        }
+        // Scope this to the requested report player. Keep plugin-owned players
+        // and their authentication/Range requests; do not change global policy.
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.currentItem?.preferredForwardBufferDuration = 3
+        let rate = (arguments["rate"] as? NSNumber)?.floatValue ?? 1
+        player.playImmediately(atRate: rate)
+        result(nil)
+      }
+    }
     if let registrar = self.registrar(forPlugin: "com.twoa.visual_effect_view") {
       registrar.register(VisualEffectViewFactory(messenger: registrar.messenger()), withId: "com.twoa.visual_effect_view")
     }

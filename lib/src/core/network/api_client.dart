@@ -1459,6 +1459,20 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? queryParameters,
     Options? options,
+  }) => _get<T>(path, queryParameters: queryParameters, options: options);
+
+  /// Media downloads share the authenticated request guards and media lane.
+  Future<Response<T>> getWithProgress<T>(
+    String path, {
+    Options? options,
+    required ProgressCallback onReceiveProgress,
+  }) => _get<T>(path, options: options, onReceiveProgress: onReceiveProgress);
+
+  Future<Response<T>> _get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    ProgressCallback? onReceiveProgress,
   }) async {
     final cancelToken = CancelToken();
     return _runWithGetSlot(
@@ -1469,6 +1483,7 @@ class ApiClient {
           queryParameters: queryParameters,
           options: options,
           cancelToken: cancelToken,
+          onReceiveProgress: onReceiveProgress,
         ),
         method: 'GET',
         path: path,

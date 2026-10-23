@@ -10,6 +10,7 @@ import '../core/logging/client_log_service.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
 import '../core/services/app_language_service.dart';
+import '../core/services/push_notification_service.dart';
 import '../core/services/app_performance_monitor.dart';
 import '../core/services/update_gate_provider.dart';
 import '../core/services/chat_presence_service.dart';
@@ -248,6 +249,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ref.watch(webSocketAutoConnectProvider);
     ref.watch(deltaSyncProvider);
     ref.watch(sentryContextProvider);
+    ref.watch(pushNotificationBrandingProvider);
 
     final router = ref.watch(routerProvider);
     final brandColors = ref.watch(brandColorsProvider);
