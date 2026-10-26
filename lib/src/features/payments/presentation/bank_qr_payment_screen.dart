@@ -1,17 +1,22 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/media/authenticated_media.dart';
+import '../../../core/network/api_config.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../core/ui/sheet_handle.dart';
 import '../../../core/utils/gallery_image_save_helper.dart';
 import '../../../core/utils/locale_text.dart';
 import '../data/bank_qr_payment.dart';
+import '../data/invoice_payment_options.dart';
+import 'invoice_payment_method_sheet.dart';
 import '../data/payment_operator_status.dart';
 import 'payment_operator_sleeping_notice.dart';
 import 'payment_qr_timing_warning.dart';
@@ -24,11 +29,15 @@ import 'payment_receipt_picker.dart';
 class BankQrPaymentSheet extends ConsumerStatefulWidget {
   final String invoiceId;
   final String invoiceNumber;
+  final InvoicePaymentSelection? selection;
+  final VoidCallback? onChangeMethod;
 
   const BankQrPaymentSheet({
     super.key,
     required this.invoiceId,
     required this.invoiceNumber,
+    this.selection,
+    this.onChangeMethod,
   });
 
   @override
@@ -73,9 +82,21 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
       _error = null;
     });
     try {
-      final res = await ref
-          .read(bankQrPaymentServiceProvider)
-          .startBankQrPayment(widget.invoiceId);
+      final selection = widget.selection;
+      final res = selection != null && selection.method != 'bank_qr'
+          ? BankQrPaymentResult(
+              paymentId: selection.paymentId!,
+              invoiceId: int.parse(widget.invoiceId),
+              invoiceNumber: widget.invoiceNumber,
+              amountRub: 0,
+              sumKopecks: 0,
+              purpose: '',
+              qrPayload: '',
+              status: 'pending',
+            )
+          : await ref
+                .read(bankQrPaymentServiceProvider)
+                .startBankQrPayment(widget.invoiceId);
       if (!mounted) return;
       if (res == null) {
         setState(() {
@@ -88,7 +109,9 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
         _result = res;
         _loading = false;
       });
-      if (!_timingWarningShown) {
+      if (!_timingWarningShown &&
+          widget.selection?.method != 'usdt_trc20' &&
+          widget.selection?.method != 'alipay') {
         _timingWarningShown = true;
         await showPaymentQrTimingWarning(context);
       }
@@ -119,6 +142,27 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
     if (res == null || _downloadingQr) return;
     setState(() => _downloadingQr = true);
     try {
+      final foreignQr = widget.selection?.qrImageUrl;
+      if (foreignQr != null) {
+        final bytes = await loadMediaBytes(
+          ref.read(apiClientProvider),
+          ApiConfig.getMediaUrl(foreignQr),
+        );
+        if (!mounted) return;
+        final result = await saveImageToGallery(
+          bytes: bytes,
+          fileName: _qrFileName,
+        );
+        if (!mounted) return;
+        AppToast.show(
+          context,
+          result.success
+              ? tr(context, ru: 'QR-код сохранён', zh: '二维码已保存')
+              : tr(context, ru: 'Не удалось сохранить QR', zh: '无法保存二维码'),
+          isError: !result.success,
+        );
+        return;
+      }
       final painter = QrPainter(
         data: res.qrPayload,
         version: QrVersions.auto,
@@ -255,7 +299,10 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             const SheetHandle(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: _BankQrHeader(invoiceNumber: widget.invoiceNumber),
+              child: _BankQrHeader(
+                invoiceNumber: widget.invoiceNumber,
+                method: widget.selection?.method ?? 'bank_qr',
+              ),
             ),
             Flexible(
               child: SingleChildScrollView(
@@ -325,7 +372,10 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
           icon: Icons.payments_rounded,
           title: tr(context, ru: 'Сумма к оплате', zh: '应付金额'),
           child: Text(
-            _formatRubKopecks(res.sumKopecks),
+            widget.selection?.method == 'usdt_trc20' ||
+                    widget.selection?.method == 'alipay'
+                ? '${widget.selection!.amount.toStringAsFixed(widget.selection!.method == 'usdt_trc20' ? 6 : 2)} ${widget.selection!.currency}'
+                : _formatRubKopecks(res.sumKopecks),
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textPrimary,
@@ -359,18 +409,74 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
                       ),
                     ],
                   ),
-                  child: QrImageView(
-                    data: res.qrPayload,
-                    version: QrVersions.auto,
-                    size: 220,
-                    backgroundColor: Colors.white,
-                    errorStateBuilder: (context, error) => SizedBox(
-                      width: 220,
-                      height: 220,
-                      child: Center(
-                        child: Text(tr(context, ru: 'Ошибка QR', zh: 'QR 错误')),
-                      ),
-                    ),
+                  child: SizedBox(
+                    width: 220,
+                    child: widget.selection?.qrImageUrl != null
+                        ? Image(
+                            image: authenticatedImageProvider(
+                              context,
+                              ApiConfig.getMediaUrl(
+                                widget.selection!.qrImageUrl!,
+                              ),
+                            ),
+                            width: 220,
+                            height: 220,
+                            fit: BoxFit.contain,
+                            frameBuilder: (context, child, frame, synchronous) {
+                              if (synchronous || frame != null) return child;
+                              return SizedBox(
+                                width: 220,
+                                height: 220,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const CircularProgressIndicator(),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      tr(
+                                        context,
+                                        ru: 'Загрузка QR-кода…',
+                                        zh: '正在加载二维码…',
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, error, stack) => SizedBox(
+                              width: 220,
+                              height: 220,
+                              child: Center(
+                                child: Text(
+                                  tr(
+                                    context,
+                                    ru: 'Не удалось загрузить QR',
+                                    zh: '无法加载二维码',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : QrImageView(
+                            data: res.qrPayload,
+                            version: QrVersions.auto,
+                            size: 220,
+                            backgroundColor: Colors.white,
+                            errorStateBuilder: (context, error) => SizedBox(
+                              width: 220,
+                              height: 220,
+                              child: Center(
+                                child: Text(
+                                  tr(context, ru: 'Ошибка QR', zh: 'QR 错误'),
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -378,8 +484,16 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
               Text(
                 tr(
                   context,
-                  ru: 'Отсканируйте QR в приложении банка',
-                  zh: '在银行应用中扫描二维码',
+                  ru: widget.selection?.method == 'alipay'
+                      ? 'Отсканируйте QR в Alipay'
+                      : widget.selection?.method == 'usdt_trc20'
+                      ? 'Отправляйте только USDT по сети TRC20'
+                      : 'Отсканируйте QR в приложении банка',
+                  zh: widget.selection?.method == 'alipay'
+                      ? '请使用支付宝扫描二维码'
+                      : widget.selection?.method == 'usdt_trc20'
+                      ? '仅通过 TRC20 网络发送 USDT'
+                      : '在银行应用中扫描二维码',
                 ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -401,6 +515,42 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
             ],
           ),
         ),
+        if (widget.selection?.walletAddress != null) ...[
+          const SizedBox(height: 12),
+          _BankQrSectionCard(
+            icon: Icons.account_balance_wallet_outlined,
+            title:
+                '${tr(context, ru: 'Адрес кошелька', zh: '钱包地址')} · ${widget.selection!.network ?? 'TRC20'}',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SelectableText(widget.selection!.walletAddress!),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: widget.selection!.walletAddress!),
+                    );
+                    if (!mounted) return;
+                    AppToast.show(
+                      context,
+                      tr(context, ru: 'Адрес скопирован', zh: '地址已复制'),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded),
+                  label: Text(tr(context, ru: 'Копировать адрес', zh: '复制地址')),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (widget.onChangeMethod != null) ...[
+          const SizedBox(height: 12),
+          _BankQrSecondaryButton(
+            label: tr(context, ru: 'Изменить способ оплаты', zh: '更改付款方式'),
+            icon: Icons.swap_horiz_rounded,
+            onTap: _uploading ? null : widget.onChangeMethod,
+          ),
+        ],
         const SizedBox(height: 12),
         _BankQrSectionCard(
           icon: Icons.upload_file_rounded,
@@ -537,8 +687,9 @@ class _BankQrPaymentSheetState extends ConsumerState<BankQrPaymentSheet> {
 
 class _BankQrHeader extends StatelessWidget {
   final String invoiceNumber;
+  final String method;
 
-  const _BankQrHeader({required this.invoiceNumber});
+  const _BankQrHeader({required this.invoiceNumber, required this.method});
 
   @override
   Widget build(BuildContext context) {
@@ -579,7 +730,9 @@ class _BankQrHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  tr(context, ru: 'Оплата в рублях', zh: '卢布支付'),
+                  method == 'bank_qr'
+                      ? tr(context, ru: 'Оплата в рублях', zh: '卢布支付')
+                      : invoicePaymentMethodLabel(context, method),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

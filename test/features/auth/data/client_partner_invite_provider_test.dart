@@ -122,6 +122,8 @@ void main() {
     expect(state.phase, ClientPartnerInvitePhase.error);
     expect(state.token, token);
     expect(state.registrationIdempotencyKey, key);
+    expect(state.hasPendingInvite, isTrue);
+    expect(state.blocksRegistration, isTrue);
     expect(
       state.error,
       'Ссылка больше не активна. Попросите партнёра отправить новую.',
@@ -145,9 +147,21 @@ void main() {
       container.read(clientPartnerInviteProvider).phase,
       ClientPartnerInvitePhase.error,
     );
+    expect(
+      container.read(clientPartnerInviteProvider).hasPendingInvite,
+      isTrue,
+    );
+    expect(
+      container.read(clientPartnerInviteProvider).blocksRegistration,
+      isTrue,
+    );
 
     expect(await notifier.validate(), isTrue);
     expect(container.read(clientPartnerInviteProvider).isValidated, isTrue);
+    expect(
+      container.read(clientPartnerInviteProvider).blocksRegistration,
+      isFalse,
+    );
     expect(
       container.read(clientPartnerInviteProvider).registrationIdempotencyKey,
       key,
@@ -182,6 +196,118 @@ void main() {
     expect(state.prefix, 'PB');
     expect(state.isValidated, isTrue);
   });
+
+  for (final status in [429, 500, 410]) {
+    test(
+      'ошибка $status после restore не разрешает обычную регистрацию',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'pending_client_partner_invite_v1': token,
+          'pending_client_partner_registration_key_v1': 'restored-attempt-key',
+        });
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(_FailedInviteApiClient(status)),
+          ],
+        );
+        addTearDown(container.dispose);
+        expect(
+          container.read(clientPartnerInviteProvider).blocksRegistration,
+          isTrue,
+        );
+        await _waitFor(
+          () =>
+              container.read(clientPartnerInviteProvider).phase ==
+              ClientPartnerInvitePhase.error,
+        );
+        final state = container.read(clientPartnerInviteProvider);
+        expect(state.token, token);
+        expect(state.registrationIdempotencyKey, 'restored-attempt-key');
+        expect(state.hasPendingInvite, isTrue);
+        expect(state.blocksRegistration, isTrue);
+
+        await container.read(clientPartnerInviteProvider.notifier).clear();
+        expect(
+          container.read(clientPartnerInviteProvider).hasPendingInvite,
+          isFalse,
+        );
+        expect(
+          container.read(clientPartnerInviteProvider).blocksRegistration,
+          isFalse,
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('pending_client_partner_invite_v1'), isNull);
+        expect(
+          prefs.getString('pending_client_partner_registration_key_v1'),
+          isNull,
+        );
+      },
+    );
+  }
+
+  test('без приглашения restore разрешает обычную регистрацию', () async {
+    final container = ProviderContainer(
+      overrides: [apiClientProvider.overrideWithValue(_InviteApiClient())],
+    );
+    addTearDown(container.dispose);
+    expect(
+      container.read(clientPartnerInviteProvider).blocksRegistration,
+      isTrue,
+    );
+    await _waitFor(
+      () =>
+          container.read(clientPartnerInviteProvider).phase ==
+          ClientPartnerInvitePhase.idle,
+    );
+    expect(
+      container.read(clientPartnerInviteProvider).blocksRegistration,
+      isFalse,
+    );
+  });
+
+  test(
+    'явная очистка во время restore не восстанавливает старую ссылку',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'pending_client_partner_invite_v1': token,
+        'pending_client_partner_registration_key_v1': 'old-attempt-key',
+      });
+      final api = _InviteApiClient();
+      final container = ProviderContainer(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+      );
+      addTearDown(container.dispose);
+      await container.read(clientPartnerInviteProvider.notifier).clear();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(
+        container.read(clientPartnerInviteProvider).hasPendingInvite,
+        isFalse,
+      );
+      expect(
+        container.read(clientPartnerInviteProvider).blocksRegistration,
+        isFalse,
+      );
+      expect(api.requestedPaths, isEmpty);
+    },
+  );
+}
+
+class _FailedInviteApiClient extends ApiClient {
+  _FailedInviteApiClient(this.status);
+  final int status;
+
+  @override
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) => throw DioException(
+    requestOptions: RequestOptions(path: path),
+    response: Response<dynamic>(
+      requestOptions: RequestOptions(path: path),
+      statusCode: status,
+    ),
+  );
 }
 
 Future<void> _waitFor(bool Function() predicate) async {

@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../training/presentation/training_target.dart';
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_cached_media_image.dart';
@@ -7090,6 +7091,7 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     final customers = ref.watch(spV2CustomersProvider);
     final capabilities = ref
         .watch(spOrganizerCapabilitiesProvider)
@@ -7116,8 +7118,11 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
         key: const ValueKey('add-item-modal'),
         icon: Icons.add_shopping_cart_rounded,
         title: 'Добавить товар',
-        subtitle:
-            'Заполните вручную или перенесите готовые данные из сервисов 2A.',
+        subtitle: tr(
+          context,
+          ru: 'Заполните вручную или перенесите готовые данные из сервисов $companyName.',
+          zh: '手动填写或从$companyName服务导入现有数据。',
+        ),
         maxHeightFactor: 0.94,
         keyboardAware: true,
         body: ListView(

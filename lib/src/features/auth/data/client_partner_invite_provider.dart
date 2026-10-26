@@ -51,12 +51,15 @@ class ClientPartnerInviteState {
   final String? error;
 
   bool get hasPendingInvite =>
-      token != null &&
-      registrationIdempotencyKey != null &&
-      phase != ClientPartnerInvitePhase.idle &&
-      phase != ClientPartnerInvitePhase.error;
+      token != null && registrationIdempotencyKey != null;
 
   bool get isValidated => phase == ClientPartnerInvitePhase.valid;
+
+  // A failed check does not cancel the invitation. Also wait for restoration
+  // before deciding whether registration is ordinary or partner-attributed.
+  bool get blocksRegistration =>
+      phase == ClientPartnerInvitePhase.loading ||
+      (hasPendingInvite && !isValidated);
 
   ClientPartnerInviteState copyWith({
     ClientPartnerInvitePhase? phase,

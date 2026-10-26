@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/utils/locale_text.dart';
@@ -62,6 +63,7 @@ class _SpOrganizerPreviousPurchaseImportSheetState
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     final customers = ref.watch(spV2CustomersProvider);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
@@ -80,10 +82,13 @@ class _SpOrganizerPreviousPurchaseImportSheetState
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(18, 4, 18, 18 + bottomInset),
               children: [
-                const _ImportNotice(
+                _ImportNotice(
                   icon: Icons.shield_outlined,
-                  message:
-                      'Копируются карточка, unit-цены, заявленный вес и фото. Статус, оплаты, расходы, доставка, треки и связи 2A остаются только в исходной закупке.',
+                  message: tr(
+                    context,
+                    ru: 'Копируются карточка, unit-цены, заявленный вес и фото. Статус, оплаты, расходы, доставка, треки и связи $companyName остаются только в исходной закупке.',
+                    zh: '仅复制商品卡片、单价、申报重量和照片。状态、付款、费用、配送、运单及$companyName关联仅保留在原采购中。',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 customers.when(

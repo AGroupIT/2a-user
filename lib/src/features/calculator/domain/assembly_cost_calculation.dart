@@ -299,9 +299,8 @@ AssemblyCostResult? calculateAssemblyCost(AssemblyCostInput input) {
   if (!input.isValid) return null;
 
   final photoPercent = input.tracksWithPhoto / input.tracksTotal * 100;
-  final photoCoefficient = input.tariff.paidPhotoReport
-      ? _resolvePhotoCoefficient(photoPercent, input.photoCoefficients)
-      : 1.0;
+  // Photo reports are fixed-price services, billed separately from shipping.
+  const photoCoefficient = 1.0;
   final removalPrice = _resolveRemovalPrice(
     input.tariff,
     input.packagingRemoval,
@@ -382,27 +381,6 @@ AssemblyCostResult? calculateAssemblyCost(AssemblyCostInput input) {
     total: total,
     removalPriceApplied: removalPrice != null,
   );
-}
-
-double _resolvePhotoCoefficient(
-  double photoPercent,
-  List<CalculatorPhotoCoefficient> coefficients,
-) {
-  final active = coefficients.where((item) => item.isActive).toList()
-    ..sort((a, b) {
-      final bySortOrder = a.sortOrder.compareTo(b.sortOrder);
-      return bySortOrder != 0
-          ? bySortOrder
-          : a.minPercent.compareTo(b.minPercent);
-    });
-  for (final item in active) {
-    final matchesMax =
-        item.maxPercent == null || photoPercent <= item.maxPercent!;
-    if (photoPercent >= item.minPercent && matchesMax) {
-      return item.coefficient > 0 ? item.coefficient : 1;
-    }
-  }
-  return 1;
 }
 
 double _resolveWeightPrice(CalculatorTariff tariff, double weightKg) {

@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import '../../training/presentation/training_target.dart';
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
@@ -11,8 +12,6 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
 import '../../../core/ui/tutorial_card.dart';
 
 import '../../../core/ui/app_background.dart';
@@ -1323,7 +1322,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     fit: StackFit.expand,
                     children: [
                       ColoredBox(color: previewBg),
-                      CachedNetworkImage(
+                      AuthenticatedCachedImage(
                         imageUrl: fullUrl,
                         width: previewSize,
                         height: previewSize,
@@ -1334,7 +1333,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                         maxHeightDiskCache: 900,
                         fadeInDuration: Duration.zero,
                         fadeOutDuration: Duration.zero,
-                        useOldImageOnUrlChange: false,
                         filterQuality: FilterQuality.medium,
                         placeholder: (context, url) => ColoredBox(
                           color: previewBg,
@@ -1583,18 +1581,9 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
       );
 
       final savedText = tr(context, ru: 'Файл сохранён', zh: '文件已保存');
-      final response = await Dio().get<List<int>>(
-        url,
-        options: Options(responseType: ResponseType.bytes),
-      );
-      final bytes = response.data;
-      if (bytes == null || bytes.isEmpty) {
-        throw Exception('Empty file response');
-      }
-      final saved = await downloadFile(
-        bytes: Uint8List.fromList(bytes),
-        fileName: fileName,
-      );
+      final bytes = await loadMediaBytes(mediaApiClient(context), url);
+      if (!mounted) return;
+      final saved = await downloadFile(bytes: bytes, fileName: fileName);
       if (!saved) {
         throw Exception('Could not save file');
       }
@@ -1898,7 +1887,7 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: isImage
-                          ? CachedNetworkImage(
+                          ? AuthenticatedCachedImage(
                               imageUrl: ApiConfig.getMediaUrl(url),
                               width: 72,
                               height: 72,
@@ -1909,7 +1898,6 @@ class _PaymentChatScreenState extends ConsumerState<PaymentChatScreen>
                               maxHeightDiskCache: 320,
                               fadeInDuration: Duration.zero,
                               fadeOutDuration: Duration.zero,
-                              useOldImageOnUrlChange: false,
                               filterQuality: FilterQuality.low,
                               placeholder: (context, url) => Container(
                                 color: const Color(0xFFF0F0F0),

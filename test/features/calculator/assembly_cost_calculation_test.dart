@@ -91,12 +91,12 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.clientPrice, 4.5);
-      expect(result.photoCoefficient, 1.1);
-      expect(result.shippingCost, closeTo(99, 0.0001));
+      expect(result.photoCoefficient, 1);
+      expect(result.shippingCost, closeTo(90, 0.0001));
       expect(result.packagingCost, 10);
       expect(result.insuranceBaseUsd, 100);
       expect(result.insuranceCost, 2.5);
-      expect(result.total, closeTo(118.5, 0.0001));
+      expect(result.total, closeTo(109.5, 0.0001));
     });
 
     test('packaging removal price overrides tier and surcharge', () {
@@ -272,7 +272,7 @@ void main() {
       expect(result.shippingCost, 250);
     });
 
-    test('applies photo coefficient to the volumetric density amount', () {
+    test('ignores legacy photo coefficient for new volumetric quotes', () {
       const tariff = CalculatorTariff(
         id: 1,
         name: 'Объёмный с фото',
@@ -302,8 +302,8 @@ void main() {
       )!;
 
       expect(result.priceUnit, 'м³');
-      expect(result.photoCoefficient, 1.1);
-      expect(result.shippingCost, closeTo(66, 0.0001));
+      expect(result.photoCoefficient, 1);
+      expect(result.shippingCost, closeTo(60, 0.0001));
     });
 
     test('keeps volume basis when removal overrides a volumetric tariff', () {

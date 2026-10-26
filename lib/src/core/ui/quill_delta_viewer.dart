@@ -1,7 +1,7 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:convert';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../utils/safe_url_launcher.dart';
 
@@ -349,7 +349,7 @@ class QuillDeltaViewer extends StatelessWidget {
         onTap: onImageTap != null ? () => onImageTap!(url) : null,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: CachedNetworkImage(
+          child: AuthenticatedCachedImage(
             imageUrl: url,
             fit: BoxFit.cover,
             placeholder: (_, _) => Container(

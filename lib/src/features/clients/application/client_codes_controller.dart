@@ -9,8 +9,8 @@ import '../domain/client_codes_state.dart';
 
 final clientCodesControllerProvider =
     AsyncNotifierProvider<ClientCodesController, ClientCodesState>(
-  ClientCodesController.new,
-);
+      ClientCodesController.new,
+    );
 
 final activeClientCodeProvider = Provider<String?>((ref) {
   final asyncState = ref.watch(clientCodesControllerProvider);
@@ -39,31 +39,50 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
   static const _activeKey = 'active_client_code';
   static const _codesKey = 'client_codes_list';
 
+  ({String active, String codes})? _keysFor(AuthState auth) {
+    final id = auth.clientId;
+    if (!auth.isLoggedIn || auth.isLoading || id == null || id <= 0) {
+      return null;
+    }
+    final account = '${auth.userDomain ?? ''}:$id';
+    return (active: '$_activeKey:$account', codes: '$_codesKey:$account');
+  }
+
   @override
   Future<ClientCodesState> build() async {
     final prefs = ref.watch(sharedPreferencesProvider);
     final authState = ref.watch(authProvider);
-    
+
     // Если авторизация ещё грузится - ждём
-    if (authState.isLoading) {
+    final keys = _keysFor(authState);
+    if (keys == null) {
       return const ClientCodesState(codes: [], activeCode: null);
     }
-    
+
     // Получаем коды из данных авторизации
     final List<String> authCodes = [];
 
     if (authState.clientData != null) {
       final clientCodes = authState.clientData!['codes'];
       if (clientCodes is List) {
-        authCodes.addAll(clientCodes.map((e) {
-          if (e is Map) return (e['code'] ?? e.toString()).toString();
-          return e.toString();
-        }));
+        authCodes.addAll(
+          clientCodes.map((e) {
+            if (e is Map) return (e['code'] ?? e.toString()).toString();
+            return e.toString();
+          }),
+        );
       }
     }
 
     // Коды из локального хранилища (могут содержать коды, добавленные через PIN)
-    final savedCodes = prefs.getStringList(_codesKey) ?? [];
+    // Legacy keys were shared by all clients on a device. Only server-confirmed
+    // codes may migrate; a previous account's cached codes must never fan out
+    // into this client's switcher and background count requests.
+    final savedCodes =
+        prefs.getStringList(keys.codes) ??
+        (prefs.getStringList(_codesKey) ?? [])
+            .where(authCodes.contains)
+            .toList();
 
     // Объединяем: auth + локально добавленные (чтобы PIN-коды не терялись после перезапуска)
     final merged = <String>{...authCodes, ...savedCodes}.toList()..sort();
@@ -71,42 +90,47 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
 
     // Сохраняем актуальный объединённый список
     if (codes.isNotEmpty) {
-      await prefs.setStringList(_codesKey, codes);
+      await prefs.setStringList(keys.codes, codes);
     }
-    
+
     // Если кодов всё ещё нет - возвращаем пустой state
     if (codes.isEmpty) {
       return const ClientCodesState(codes: [], activeCode: null);
     }
-    
+
     // Восстанавливаем сохранённый активный код
-    final storedActive = prefs.getString(_activeKey);
+    final storedActive =
+        prefs.getString(keys.active) ?? prefs.getString(_activeKey);
     final active = (storedActive != null && codes.contains(storedActive))
         ? storedActive
         : codes.first;
 
-    await prefs.setString(_activeKey, active);
+    await prefs.setString(keys.active, active);
 
-    return ClientCodesState(codes: List.unmodifiable(codes), activeCode: active);
+    return ClientCodesState(
+      codes: List.unmodifiable(codes),
+      activeCode: active,
+    );
   }
 
   Future<void> selectClient(String code) async {
+    final keys = _keysFor(ref.read(authProvider));
+    if (keys == null) return;
     final current = state.asData?.value;
     if (current == null) return;
     if (!current.codes.contains(code)) return;
 
     state = AsyncValue.data(current.copyWith(activeCode: code));
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(_activeKey, code);
+    await prefs.setString(keys.active, code);
   }
 
-  Future<void> addClient({
-    required String code,
-    required String pin,
-  }) async {
+  Future<void> addClient({required String code, required String pin}) async {
+    final keys = _keysFor(ref.read(authProvider));
+    if (keys == null) return;
     final trimmedCode = code.trim().toUpperCase();
     final trimmedPin = pin.trim();
-    
+
     if (trimmedCode.isEmpty) {
       throw Exception('Введите код клиента');
     }
@@ -115,29 +139,31 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
     }
 
     // Проверяем, не привязан ли уже этот код
-    final current = state.asData?.value ?? const ClientCodesState(codes: [], activeCode: null);
+    final current =
+        state.asData?.value ??
+        const ClientCodesState(codes: [], activeCode: null);
     if (current.codes.contains(trimmedCode)) {
       throw Exception('Этот код уже привязан к вашему аккаунту');
     }
 
     // Вызываем API для привязки кода к клиенту
     final apiClient = ref.read(apiClientProvider);
-    
+
     try {
       final response = await apiClient.post(
         '/client-codes/link-by-pin',
-        data: {
-          'code': trimmedCode,
-          'pin': trimmedPin,
-        },
+        data: {'code': trimmedCode, 'pin': trimmedPin},
       );
-      
+
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Не удалось привязать код');
       }
-      
+
+      if (!ref.mounted || _keysFor(ref.read(authProvider)) != keys) return;
+
       // Успешно привязали - добавляем код в список
-      final nextCodes = <String>{...current.codes, trimmedCode}.toList()..sort();
+      final nextCodes = <String>{...current.codes, trimmedCode}.toList()
+        ..sort();
       final nextState = ClientCodesState(
         codes: List.unmodifiable(nextCodes),
         activeCode: trimmedCode,
@@ -146,15 +172,15 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
       state = AsyncValue.data(nextState);
 
       final prefs = ref.read(sharedPreferencesProvider);
-      await prefs.setString(_activeKey, trimmedCode);
-      await prefs.setStringList(_codesKey, nextCodes);
-      
+      await prefs.setString(keys.active, trimmedCode);
+      await prefs.setStringList(keys.codes, nextCodes);
+
       debugPrint('✅ Код $trimmedCode успешно привязан');
     } on DioException catch (e) {
       debugPrint('❌ Ошибка привязки кода: $e');
-      
+
       String errorMessage = 'Не удалось привязать код';
-      
+
       if (e.response?.statusCode == 404) {
         errorMessage = 'Код не найден';
       } else if (e.response?.statusCode == 400) {
@@ -172,15 +198,24 @@ class ClientCodesController extends AsyncNotifier<ClientCodesState> {
           errorMessage = data['error'].toString();
         }
       }
-      
+
       throw Exception(errorMessage);
     }
   }
 
   Future<void> logout() async {
     final prefs = ref.read(sharedPreferencesProvider);
+    final keys = _keysFor(ref.read(authProvider));
+    if (keys != null) {
+      await prefs.remove(keys.active);
+      await prefs.remove(keys.codes);
+    }
     await prefs.remove(_activeKey);
-    await prefs.remove(_codesKey); // Очищаем PIN-коды чтобы они не попали к следующему пользователю
-    state = const AsyncValue.data(ClientCodesState(codes: [], activeCode: null));
+    await prefs.remove(
+      _codesKey,
+    ); // Очищаем PIN-коды чтобы они не попали к следующему пользователю
+    state = const AsyncValue.data(
+      ClientCodesState(codes: [], activeCode: null),
+    );
   }
 }

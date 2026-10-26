@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -414,7 +414,7 @@ class _ItemCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                  ? CachedNetworkImage(
+                  ? AuthenticatedCachedImage(
                       imageUrl: item.imageUrl!,
                       width: 64,
                       height: 64,

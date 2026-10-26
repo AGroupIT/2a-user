@@ -1,5 +1,5 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:twoalogisticcabineuser/src/features/training/presentation/training_target.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/app_colors.dart';
@@ -55,7 +55,7 @@ class ShopItemCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   item.mainImage.isNotEmpty
-                      ? CachedNetworkImage(
+                      ? AuthenticatedCachedImage(
                           imageUrl: item.mainImage,
                           fit: BoxFit.cover,
                           placeholder: (_, _) => Container(

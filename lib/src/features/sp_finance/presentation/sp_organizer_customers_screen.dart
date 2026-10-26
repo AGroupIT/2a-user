@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/app_toast.dart';
@@ -135,6 +136,7 @@ class _SpOrganizerCustomersScreenState
     SpOrganizerCapabilities capabilities,
     SpOrganizerCustomersState state,
   ) {
+    final companyName = ref.watch(companyNameProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -230,8 +232,8 @@ class _SpOrganizerCustomersScreenState
           title: tr(context, ru: 'Отдельный внутренний учёт', zh: '独立内部账本'),
           message: tr(
             context,
-            ru: 'Долги клиентов организатора не смешиваются со счетами организатора перед 2A. Архив не удаляет историю.',
-            zh: '团长客户欠款不会与团长对2A的账单混合，归档不会删除历史。',
+            ru: 'Долги клиентов организатора не смешиваются со счетами организатора перед $companyName. Архив не удаляет историю.',
+            zh: '团长客户欠款不会与团长对$companyName的账单混合，归档不会删除历史。',
           ),
         ),
       ],

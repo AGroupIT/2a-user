@@ -1,9 +1,10 @@
+import 'dart:convert';
+import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/models/packaging_removal.dart';
 import '../../../core/services/demo_mode_provider.dart';
 
 const trackWarehouseArrivalCooldownCode = 'TRACK_WAREHOUSE_ARRIVAL_COOLDOWN';
@@ -11,7 +12,14 @@ const packagingRemovalTargetsUnsupportedCode =
     'PACKAGING_REMOVAL_TARGETS_UNSUPPORTED';
 
 class AssemblyCreateResult {
-  const AssemblyCreateResult._({this.assembly, this.errorCode, this.message});
+  const AssemblyCreateResult._({
+    this.assembly,
+    this.assemblies = const [],
+    this.errorCode,
+    this.message,
+  });
+
+  final List<Assembly> assemblies;
 
   final Assembly? assembly;
   final String? errorCode;
@@ -19,8 +27,13 @@ class AssemblyCreateResult {
 
   bool get isSuccess => assembly != null;
 
-  factory AssemblyCreateResult.success(Assembly assembly) =>
-      AssemblyCreateResult._(assembly: assembly);
+  factory AssemblyCreateResult.success(
+    Assembly assembly, {
+    List<Assembly>? assemblies,
+  }) => AssemblyCreateResult._(
+    assembly: assembly,
+    assemblies: List.unmodifiable(assemblies ?? [assembly]),
+  );
 
   factory AssemblyCreateResult.failure({String? errorCode, String? message}) =>
       AssemblyCreateResult._(errorCode: errorCode, message: message);
@@ -291,6 +304,8 @@ class AssembliesApiService {
 
   AssembliesApiService(this._ref);
 
+  final Map<String, String> _pendingAssemblyRequests = {};
+
   ApiClient get _apiClient => _ref.read(apiClientProvider);
 
   /// Создать сборку (статус = new)
@@ -311,44 +326,66 @@ class AssembliesApiService {
     String? goodsDescription,
     List<int>? trackIds,
   }) async {
-    final removalOption = PackagingRemovalOption.fromApi(
-      packagingRemoval,
-      packagingRemovalTarget,
-    );
-    if (!removalOption.isSupported(supportsPackagingRemovalTargets)) {
-      return AssemblyCreateResult.failure(
-        errorCode: packagingRemovalTargetsUnsupportedCode,
-      );
-    }
     try {
+      final payload = <String, dynamic>{
+        'clientId': clientId,
+        if (clientCodeId != null)
+          'clientCodeId': clientCodeId
+        else if (clientCode != null)
+          'clientCode': clientCode,
+        if (name != null) 'name': name,
+        if (tariffId != null) 'tariffId': tariffId,
+        if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)
+          'packagingTypeIds': packagingTypeIds,
+        'hasFragileGoods': hasFragileGoods,
+        'placePreference': placePreference,
+        'packagingRemoval': 'none',
+        if (supportsPackagingRemovalTargets) 'packagingRemovalTarget': null,
+        'hasInsurance': hasInsurance,
+        if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
+        if (goodsDescription != null && goodsDescription.trim().isNotEmpty)
+          'goodsDescription': goodsDescription.trim(),
+        if (trackIds != null && trackIds.isNotEmpty) 'trackIds': trackIds,
+      };
+      // Selection order can change after refreshing the list; it does not
+      // change the batch and must retain the same retry key.
+      final fingerprint = jsonEncode({
+        ...payload,
+        if (trackIds != null && trackIds.isNotEmpty)
+          'trackIds': [...trackIds]..sort(),
+        if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)
+          'packagingTypeIds': [...packagingTypeIds]..sort(),
+      });
+      final requestKey = _pendingAssemblyRequests.putIfAbsent(
+        fingerprint,
+        () => const Uuid().v4(),
+      );
       final response = await _apiClient.post(
         '/assemblies',
         data: {
-          'clientId': clientId,
-          if (clientCodeId != null)
-            'clientCodeId': clientCodeId
-          else if (clientCode != null)
-            'clientCode': clientCode,
-          if (name != null) 'name': name,
-          if (tariffId != null) 'tariffId': tariffId,
-          if (packagingTypeIds != null && packagingTypeIds.isNotEmpty)
-            'packagingTypeIds': packagingTypeIds,
-          'hasFragileGoods': hasFragileGoods,
-          'placePreference': placePreference,
-          ...removalOption.toApi(
-            supportsTargets: supportsPackagingRemovalTargets,
-          ),
-          'hasInsurance': hasInsurance,
-          if (insuranceAmount != null) 'insuranceAmount': insuranceAmount,
-          if (goodsDescription != null && goodsDescription.trim().isNotEmpty)
-            'goodsDescription': goodsDescription.trim(),
-          if (trackIds != null && trackIds.isNotEmpty) 'trackIds': trackIds,
+          ...payload,
+          'assemblyBatchProtocol': 1,
+          'assemblyRequestId': requestKey,
         },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
-        return AssemblyCreateResult.success(Assembly.fromJson(data));
+        final children = data['assemblies'] is List
+            ? (data['assemblies'] as List)
+                  .map(
+                    (item) => Assembly.fromJson(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                  )
+                  .toList()
+            : [Assembly.fromJson(data)];
+        if (children.isEmpty) return AssemblyCreateResult.failure();
+        _pendingAssemblyRequests.remove(fingerprint);
+        return AssemblyCreateResult.success(
+          children.first,
+          assemblies: children,
+        );
       }
       return AssemblyCreateResult.failure();
     } on DioException catch (e) {

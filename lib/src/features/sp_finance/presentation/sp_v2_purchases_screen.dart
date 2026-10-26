@@ -1,3 +1,4 @@
+import '../../../core/utils/locale_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../training/presentation/training_target.dart';
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/empty_state.dart';
@@ -1332,13 +1334,14 @@ class _PurchaseOutstanding extends StatelessWidget {
   }
 }
 
-class _PurchaseIntegrations extends StatelessWidget {
+class _PurchaseIntegrations extends ConsumerWidget {
   final SpV2PurchaseDirectoryIntegrations integrations;
 
   const _PurchaseIntegrations({required this.integrations});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final badges = <Widget>[
       if (integrations.selfBuyoutRequestsCount > 0)
         _IntegrationBadge(
@@ -1391,7 +1394,17 @@ class _PurchaseIntegrations extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              integrations.hasAny ? 'Сервисы 2A' : 'Сервисы 2A не связаны',
+              integrations.hasAny
+                  ? tr(
+                      context,
+                      ru: 'Сервисы $companyName',
+                      zh: '$companyName服务',
+                    )
+                  : tr(
+                      context,
+                      ru: 'Сервисы $companyName не связаны',
+                      zh: '未关联$companyName服务',
+                    ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(

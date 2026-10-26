@@ -140,10 +140,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
             ),
             ScrollToTopButton(
               controller: _scrollController,
-              bottomOffset:
-                  AppLayout.bottomBarHeightFor(context) +
-                  AppLayout.bottomBarBottomMarginFor(context) +
-                  37,
+              bottomOffset: AppLayout.bottomBarObstruction(context) + 24,
             ),
           ],
         ),

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/blurred_modal_bottom_sheet.dart';
 
 import '../../../core/ui/app_colors.dart';
+import '../../../core/branding/company_branding_provider.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../../shell/presentation/app_shell.dart';
@@ -230,6 +232,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final companyName = ref.watch(companyNameProvider);
     final availability = ref.watch(shopAvailabilityProvider).asData?.value;
     final availableMarketplaces = Marketplace.values
         .where(
@@ -457,10 +460,13 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         ),
                       )
                     : marketplace == Marketplace.jd
-                    ? const _MarketplaceSearchHint(
+                    ? _MarketplaceSearchHint(
                         title: 'Каталог JD',
-                        description:
-                            'Введите название товара. Каталог JD загружается из товарного канала, выданного компании 2A.',
+                        description: tr(
+                          context,
+                          ru: 'Введите название товара. Каталог JD загружается из товарного канала, выданного компании $companyName.',
+                          zh: '请输入商品名称。JD 目录来自为 $companyName 提供的商品渠道。',
+                        ),
                       )
                     : _CategoriesView(
                         marketplace: marketplace,

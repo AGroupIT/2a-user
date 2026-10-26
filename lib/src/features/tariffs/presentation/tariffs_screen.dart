@@ -7,6 +7,8 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
 import '../data/tariffs_provider.dart';
+import '../../tracks/domain/photo_report_options.dart';
+import '../../../core/utils/locale_text.dart';
 import 'tariffs_ui.dart';
 
 class TariffsScreen extends ConsumerStatefulWidget {
@@ -100,7 +102,7 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
         final isEmpty =
             data.deliveryTariffs.isEmpty &&
             data.packagingTypes.isEmpty &&
-            data.photoCoefficients.isEmpty;
+            data.photoReportOptions == null;
 
         if (isEmpty) {
           return buildFrame(
@@ -174,14 +176,18 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
                 _PackagingCard(types: data.packagingTypes),
                 const SizedBox(height: 16),
               ],
-              if (data.photoCoefficients.isNotEmpty) ...[
-                const _SectionTitle(
+              if (data.photoReportOptions != null) ...[
+                _SectionTitle(
                   icon: Icons.photo_camera_rounded,
-                  title: 'Фотоотчёт',
-                  subtitle: 'Коэффициент зависит от количества фотографий.',
+                  title: tr(context, ru: 'Фотоотчёт', zh: '拍照报告'),
+                  subtitle: tr(
+                    context,
+                    ru: 'Фиксированная цена за выполненный отчёт. Оплата в ближайшем счёте на доставку.',
+                    zh: '按完成的报告固定收费，计入下一张运输账单。',
+                  ),
                 ),
                 const SizedBox(height: 10),
-                _PhotoReportCard(coefficients: data.photoCoefficients),
+                _PhotoReportCard(options: data.photoReportOptions!),
               ],
               const SizedBox(height: 12),
               const _TariffInfoNote(),
@@ -585,43 +591,47 @@ class _PackagingCard extends StatelessWidget {
 }
 
 class _PhotoReportCard extends StatelessWidget {
-  final List<UserPhotoCoefficient> coefficients;
-
-  const _PhotoReportCard({required this.coefficients});
+  final PhotoReportOptions options;
+  const _PhotoReportCard({required this.options});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: TariffsUi.cardDecoration(),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          for (var i = 0; i < coefficients.length; i++) ...[
-            _ServicePriceRow(
-              icon: Icons.photo_camera_rounded,
-              title: coefficients[i].rangeLabel,
-              price: '×${coefficients[i].coefficient.toStringAsFixed(2)}',
-              priceLabel: 'коэф.',
+  Widget build(BuildContext context) => Container(
+    decoration: TariffsUi.cardDecoration(),
+    padding: const EdgeInsets.all(12),
+    child: Column(
+      children: [
+        if (!options.standard.enabled && !options.custom.enabled)
+          Text(
+            tr(context, ru: 'Фотоотчёты сейчас недоступны', zh: '目前无法申请拍照报告'),
+          ),
+        for (final type in ['standard', 'custom'])
+          if (options.option(type).enabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _ServicePriceRow(
+                icon: Icons.photo_camera_rounded,
+                title: type == 'standard'
+                    ? tr(context, ru: 'Стандартный фотоотчёт', zh: '标准拍照报告')
+                    : tr(context, ru: 'Проверка по заданию', zh: '按要求检查'),
+                price: options.option(type).price == 0
+                    ? tr(context, ru: 'Бесплатно', zh: '免费')
+                    : '\$${options.option(type).price.toStringAsFixed(2)}',
+              ),
             ),
-            if (i < coefficients.length - 1) const SizedBox(height: 8),
-          ],
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
 class _ServicePriceRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String price;
-  final String? priceLabel;
 
   const _ServicePriceRow({
     required this.icon,
     required this.title,
     required this.price,
-    this.priceLabel,
   });
 
   @override
@@ -667,19 +677,6 @@ class _ServicePriceRow extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              if (priceLabel != null) ...[
-                const SizedBox(height: 3),
-                Text(
-                  priceLabel!,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Gilroy',
-                    fontSize: 11,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
             ],
           ),
         ],

@@ -1,3 +1,4 @@
+import '../../features/home/data/home_counts_provider.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -131,6 +132,7 @@ void _handleDeltaType(Ref ref, String type) {
       // для FutureProvider'ов — invalidate
       ref.invalidate(tracksDigestProvider);
       ref.invalidate(tracksCountProvider);
+      ref.invalidate(homeTracksCountProvider);
       ref.invalidate(tracksWithoutAssemblyCountProvider);
       return;
 
@@ -139,6 +141,7 @@ void _handleDeltaType(Ref ref, String type) {
       ref.invalidate(assembliesListProvider);
       ref.invalidate(assembliesDigestProvider);
       ref.invalidate(assembliesCountProvider);
+      ref.invalidate(homeAssembliesCountProvider);
       ref.invalidate(user_assemblies.assembliesListProvider);
       ref.invalidate(user_assemblies.assembliesCountProvider);
       // SP finance assemblies (NotifierProvider — throttle WS refreshes)
@@ -264,10 +267,12 @@ void _invalidateAllFor(dynamic ref) {
   ref.invalidate(clientPartnerProgramProvider);
   ref.invalidate(tracksDigestProvider);
   ref.invalidate(tracksCountProvider);
+  ref.invalidate(homeTracksCountProvider);
   ref.invalidate(tracksWithoutAssemblyCountProvider);
   ref.invalidate(assembliesListProvider);
   ref.invalidate(assembliesDigestProvider);
   ref.invalidate(assembliesCountProvider);
+  ref.invalidate(homeAssembliesCountProvider);
   ref.invalidate(user_assemblies.assembliesListProvider);
   ref.invalidate(user_assemblies.assembliesCountProvider);
   ref.read(spAssembliesControllerProvider.notifier).refreshFromDelta();

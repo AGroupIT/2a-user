@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -156,6 +157,7 @@ Future<_TestPurchasesController> _pumpDirectory(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
         spV2PurchasesControllerProvider.overrideWith(() {
           controller = _TestPurchasesController();
           return controller;
@@ -203,7 +205,7 @@ void main() {
 
       expect(find.textContaining('по дате создания'), findsNothing);
       expect(find.text('Себестоимость'), findsWidgets);
-      expect(find.text('Сервисы 2A'), findsOneWidget);
+      expect(find.text('Сервисы Partner Cargo'), findsOneWidget);
       expect(find.byTooltip('Самовыкуп: 1'), findsOneWidget);
       expect(find.byTooltip('Фото и запросы фото: 5'), findsOneWidget);
       expect(
@@ -268,7 +270,7 @@ void main() {
     expect(card, findsOneWidget);
     expect(tester.getSize(card).height, lessThanOrEqualTo(310));
     expect(find.text('Себестоимость'), findsWidgets);
-    expect(find.text('Сервисы 2A'), findsOneWidget);
+    expect(find.text('Сервисы Partner Cargo'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_cached_media_image.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/utils/locale_text.dart';
@@ -19,6 +20,7 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final overviewAsync = ref.watch(
       spOrganizerFulfillmentOverviewProvider(purchaseId),
     );
@@ -53,7 +55,11 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tr(context, ru: 'Логистика 2A', zh: '2A 履约'),
+                      tr(
+                        context,
+                        ru: 'Логистика $companyName',
+                        zh: '$companyName 履约',
+                      ),
                       style: SpFinanceUi.sectionTitleStyle,
                     ),
                     const SizedBox(height: 2),
@@ -72,8 +78,8 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
                 SpFinanceHeaderActionButton(
                   tooltip: tr(
                     context,
-                    ru: 'Связать с операцией 2A',
-                    zh: '关联2A操作',
+                    ru: 'Связать с операцией $companyName',
+                    zh: '关联$companyName操作',
                   ),
                   onTap: overviewAsync.asData?.value == null
                       ? null
@@ -110,7 +116,7 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
             ),
             error: (error, _) => _FulfillmentError(
               message:
-                  '${tr(context, ru: 'Не удалось получить логистику 2A', zh: '无法获取2A履约信息')}: $error',
+                  '${tr(context, ru: 'Не удалось получить логистику $companyName', zh: '无法获取$companyName履约信息')}: $error',
               onRetry: () => ref.invalidate(
                 spOrganizerFulfillmentOverviewProvider(purchaseId),
               ),
@@ -128,6 +134,7 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
     WidgetRef ref,
     SpOrganizerFulfillmentOverview overview,
   ) async {
+    final companyName = ref.read(companyNameProvider);
     final capabilities = ref
         .read(spOrganizerCapabilitiesProvider)
         .asData
@@ -146,8 +153,8 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
         content: Text(
           tr(
             context,
-            ru: 'Связь добавлена. Данные 2A не изменены.',
-            zh: '关联已添加。2A数据未更改。',
+            ru: 'Связь добавлена. Данные $companyName не изменены.',
+            zh: '关联已添加。$companyName数据未更改。',
           ),
         ),
       ),
@@ -155,14 +162,15 @@ class SpOrganizerFulfillmentPanel extends ConsumerWidget {
   }
 }
 
-class _FulfillmentContent extends StatelessWidget {
+class _FulfillmentContent extends ConsumerWidget {
   final SpOrganizerFulfillmentOverview overview;
   final bool canLink;
 
   const _FulfillmentContent({required this.overview, required this.canLink});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final summary = overview.summary;
     final hasHighlights =
         overview.selfBuyoutRequests.isNotEmpty ||
@@ -214,7 +222,11 @@ class _FulfillmentContent extends StatelessWidget {
                 _FulfillmentMetric(
                   width: tileWidth,
                   icon: Icons.receipt_long_outlined,
-                  label: tr(context, ru: 'Счета 2A', zh: '2A 账单'),
+                  label: tr(
+                    context,
+                    ru: 'Счета $companyName',
+                    zh: '$companyName 账单',
+                  ),
                   value: summary.invoicesCount,
                 ),
               ],
@@ -255,10 +267,10 @@ class _FulfillmentContent extends StatelessWidget {
                     context,
                     ru: canLink
                         ? 'Можно только добавить связь с существующей операцией. Статусы, суммы, треки, сборки и счета не изменяются; удаление связей недоступно.'
-                        : 'Только просмотр: статусы и суммы читаются из 2A. Карточка не меняет СП, треки, сборки и счета.',
+                        : 'Только просмотр: статусы и суммы читаются из $companyName. Карточка не меняет СП, треки, сборки и счета.',
                     zh: canLink
                         ? '仅可添加与现有操作的关联。状态、金额、运单、集货和账单不会更改；无法删除关联。'
-                        : '仅查看：状态和金额来自2A。本卡片不会修改拼团、运单、集货或账单。',
+                        : '仅查看：状态和金额来自$companyName。本卡片不会修改拼团、运单、集货或账单。',
                   ),
                   style: SpFinanceUi.labelStyle,
                 ),
@@ -754,14 +766,15 @@ class _FulfillmentLine extends StatelessWidget {
   }
 }
 
-class _FulfillmentEmpty extends StatelessWidget {
+class _FulfillmentEmpty extends ConsumerWidget {
   final int itemsCount;
   final bool canLink;
 
   const _FulfillmentEmpty({required this.itemsCount, required this.canLink});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(13),
@@ -775,19 +788,19 @@ class _FulfillmentEmpty extends StatelessWidget {
               itemsCount == 0
                   ? tr(
                       context,
-                      ru: 'Добавьте товары, чтобы связать их с операциями 2A.',
-                      zh: '添加商品后即可关联2A操作。',
+                      ru: 'Добавьте товары, чтобы связать их с операциями $companyName.',
+                      zh: '添加商品后即可关联$companyName操作。',
                     )
                   : canLink
                   ? tr(
                       context,
-                      ru: 'Нажмите «Связать», чтобы добавить существующий самовыкуп, Garage, трек, сборку или счёт 2A.',
-                      zh: '点击“关联”以添加现有自主采购、Garage、运单、集货或2A账单。',
+                      ru: 'Нажмите «Связать», чтобы добавить существующий самовыкуп, Garage, трек, сборку или счёт $companyName.',
+                      zh: '点击“关联”以添加现有自主采购、Garage、运单、集货或$companyName账单。',
                     )
                   : tr(
                       context,
-                      ru: 'Связей с операциями 2A пока нет. Существующие товары и суммы не изменены.',
-                      zh: '暂未关联2A操作。现有商品和金额均未改变。',
+                      ru: 'Связей с операциями $companyName пока нет. Существующие товары и суммы не изменены.',
+                      zh: '暂未关联$companyName操作。现有商品和金额均未改变。',
                     ),
               style: SpFinanceUi.labelStyle,
             ),

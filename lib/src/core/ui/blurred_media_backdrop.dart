@@ -1,6 +1,6 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class BlurredMediaBackdrop extends StatelessWidget {
@@ -32,7 +32,7 @@ class BlurredMediaBackdrop extends StatelessWidget {
               ),
               child: Transform.scale(
                 scale: 1.08,
-                child: CachedNetworkImage(
+                child: AuthenticatedCachedImage(
                   imageUrl: imageUrl!,
                   fit: BoxFit.cover,
                   fadeInDuration: Duration.zero,

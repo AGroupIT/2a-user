@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -174,7 +175,10 @@ Future<_FakeRepository> _pumpScreen(
   final repository = _FakeRepository();
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [spOrganizerRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
+        spOrganizerRepositoryProvider.overrideWithValue(repository),
+      ],
       child: MaterialApp(
         locale: locale,
         localizationsDelegates: const [
@@ -204,7 +208,7 @@ void main() {
     );
 
     expect(find.text('Рабочая картина закупок'), findsNothing);
-    expect(find.text('Использование 2A'), findsOneWidget);
+    expect(find.text('Использование Partner Cargo'), findsOneWidget);
   });
 
   testWidgets('read-only analytics fits 320 px and changes server period', (
@@ -217,8 +221,8 @@ void main() {
     );
 
     expect(find.text('Рабочая картина закупок'), findsOneWidget);
-    expect(find.text('Использование 2A'), findsOneWidget);
-    expect(find.text('Выкуп через 2A'), findsOneWidget);
+    expect(find.text('Использование Partner Cargo'), findsOneWidget);
+    expect(find.text('Выкуп через Partner Cargo'), findsOneWidget);
     expect(find.text('Крупнейшие закупки'), findsOneWidget);
     expect(find.text('Сравнение с прошлым периодом'), findsOneWidget);
     expect(find.text('Средняя доставка'), findsWidgets);
@@ -300,8 +304,8 @@ void main() {
     );
 
     expect(find.text('采购经营概览'), findsOneWidget);
-    expect(find.text('2A使用情况'), findsOneWidget);
-    expect(find.text('通过2A采购'), findsOneWidget);
+    expect(find.text('Partner Cargo使用情况'), findsOneWidget);
+    expect(find.text('通过Partner Cargo采购'), findsOneWidget);
     expect(find.text('最大采购'), findsOneWidget);
     expect(find.text('与上一周期对比'), findsOneWidget);
     expect(find.text('重点客户'), findsOneWidget);

@@ -5,8 +5,13 @@ import '../../../core/network/api_client.dart';
 class CurrentCnyRate {
   final DateTime date;
   final double rubPerCny;
+  final double? rubPerUsd;
 
-  const CurrentCnyRate({required this.date, required this.rubPerCny});
+  const CurrentCnyRate({
+    required this.date,
+    required this.rubPerCny,
+    this.rubPerUsd,
+  });
 
   factory CurrentCnyRate.fromJson(Map<String, dynamic> json) {
     final date = DateTime.tryParse(json['date']?.toString() ?? '');
@@ -19,7 +24,12 @@ class CurrentCnyRate {
       throw const FormatException('Invalid current CNY rate payload');
     }
 
-    return CurrentCnyRate(date: date, rubPerCny: rate);
+    final usd = double.tryParse(json['clientUsdRubRate']?.toString() ?? '');
+    return CurrentCnyRate(
+      date: date,
+      rubPerCny: rate,
+      rubPerUsd: usd != null && usd.isFinite && usd > 0 ? usd : null,
+    );
   }
 }
 

@@ -1,3 +1,6 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
+import '../../fixtures/media_api.dart';
+import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -165,6 +168,8 @@ Future<void> _pumpPanel(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
+        apiClientProvider.overrideWithValue(mediaFixtureApi()),
         spOrganizerCapabilitiesProvider.overrideWith(
           (ref) async => canLink ? _linkCapabilities : _readOnlyCapabilities,
         ),
@@ -203,7 +208,7 @@ void main() {
       locale: const Locale('ru'),
     );
 
-    expect(find.text('Логистика 2A'), findsOneWidget);
+    expect(find.text('Логистика Partner Cargo'), findsOneWidget);
     expect(find.textContaining('Самовыкуп SB-001'), findsOneWidget);
     expect(find.text('Треки и фото по товарам'), findsOneWidget);
     expect(find.text('Из Garage автоматически'), findsOneWidget);
@@ -228,7 +233,7 @@ void main() {
       locale: const Locale('zh'),
     );
 
-    expect(find.text('2A 履约'), findsOneWidget);
+    expect(find.text('Partner Cargo 履约'), findsOneWidget);
     expect(find.text('已入库'), findsOneWidget);
     expect(find.textContaining('仅查看'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -11,6 +11,7 @@ import '../../../core/services/demo_mode_provider.dart';
 import '../../../core/services/websocket_provider.dart';
 import '../../shell/application/shell_branch_provider.dart';
 import '../domain/track_item.dart';
+import '../domain/photo_report_options.dart';
 
 /// Загружает полный список треков клиента для экспорта, независимо от того,
 /// сколько страниц пользователь успел открыть на экране.
@@ -1096,6 +1097,14 @@ class TracksApiService {
     }
   }
 
+  String? lastPhotoRequestErrorCode;
+
+  Future<PhotoReportOptions> photoReportOptions() async {
+    final response = await _apiClient.get('/client/photo-report-options');
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+    return PhotoReportOptions.fromJson(data);
+  }
+
   /// Создать запрос фотоотчета
   Future<bool> createPhotoRequest({
     required int clientId,
@@ -1103,7 +1112,10 @@ class TracksApiService {
     required int trackId,
     required String trackNumber,
     String? wish,
+    String? reportType,
+    String? expectedPriceUsd,
   }) async {
+    lastPhotoRequestErrorCode = null;
     try {
       debugPrint(
         'Creating photo request: clientId=$clientId, clientCodeId=$clientCodeId, trackId=$trackId, trackNumber=$trackNumber',
@@ -1116,11 +1128,15 @@ class TracksApiService {
           'trackId': trackId,
           'trackNumber': trackNumber,
           'wish': wish,
+          if (reportType != null) 'reportType': reportType,
+          if (expectedPriceUsd != null) 'expectedPriceUsd': expectedPriceUsd,
         },
       );
       debugPrint('Photo request response: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 201;
     } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map) lastPhotoRequestErrorCode = body['code']?.toString();
       debugPrint('Error creating photo request: $e');
       debugPrint('Response data: ${e.response?.data}');
       return false;
@@ -1145,16 +1161,28 @@ class TracksApiService {
   }
 
   /// Обновить пожелание к фотоотчету
-  Future<bool> updatePhotoWish(int photoRequestId, String wish) async {
+  Future<bool> updatePhotoWish(
+    int photoRequestId,
+    String wish, {
+    String? reportType,
+    String? expectedPriceUsd,
+  }) async {
+    lastPhotoRequestErrorCode = null;
     try {
       debugPrint('Updating photo wish: id=$photoRequestId, wish=$wish');
       final response = await _apiClient.patch(
         '/photo-requests/$photoRequestId',
-        data: {'wish': wish},
+        data: {
+          'wish': wish,
+          if (reportType != null) 'reportType': reportType,
+          if (expectedPriceUsd != null) 'expectedPriceUsd': expectedPriceUsd,
+        },
       );
       debugPrint('Update photo wish response: ${response.statusCode}');
       return response.statusCode == 200;
     } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map) lastPhotoRequestErrorCode = body['code']?.toString();
       debugPrint('Error updating photo wish: $e');
       debugPrint('Response data: ${e.response?.data}');
       return false;

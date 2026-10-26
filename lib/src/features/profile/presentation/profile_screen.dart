@@ -19,6 +19,7 @@ import '../../../core/utils/file_download_helper.dart';
 
 import '../../../core/ui/animated_hero_glow_backdrop.dart';
 import '../../../core/ui/app_colors.dart';
+import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/app_input_decoration.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
@@ -90,7 +91,7 @@ String _profileInitials(String fullName) {
       .split(RegExp(r'\s+'))
       .where((part) => part.isNotEmpty)
       .toList();
-  if (parts.isEmpty) return '2A';
+  if (parts.isEmpty) return '';
   final first = parts.first.characters.first.toUpperCase();
   final second = parts.length > 1
       ? parts[1].characters.first.toUpperCase()
@@ -163,13 +164,14 @@ class _ProfilePageHeader extends StatelessWidget {
   }
 }
 
-class _ProfileHeroCard extends StatelessWidget {
+class _ProfileHeroCard extends ConsumerWidget {
   final ClientProfile profile;
 
   const _ProfileHeroCard({required this.profile});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyName = ref.watch(companyNameProvider);
     final agentName = profile.agent?.name.trim();
     final codeLabel = profile.codes.isEmpty
         ? 'Код не выбран'
@@ -213,7 +215,11 @@ class _ProfileHeroCard extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      _profileInitials(profile.fullName),
+                      _profileInitials(
+                        profile.fullName.trim().isEmpty
+                            ? companyName
+                            : profile.fullName,
+                      ),
                       style: const TextStyle(
                         color: Colors.white,
                         fontFamily: 'Gilroy',

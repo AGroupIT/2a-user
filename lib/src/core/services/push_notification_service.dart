@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../firebase_options.dart';
 import '../../features/notifications/domain/notification_item.dart';
 import '../ui/app_colors.dart';
+import '../branding/company_branding_provider.dart';
 import 'platform_helper.dart';
 
 /// Проверка платформы (безопасно для Web)
@@ -50,6 +51,33 @@ final pushNotificationServiceProvider = Provider<PushNotificationService>((
   return PushNotificationService();
 });
 
+/// Bound from the app root, after auth is available. Keep the service provider
+/// independent of companyNameProvider: auth itself initializes push services.
+final pushNotificationBrandingProvider = Provider<void>((ref) {
+  final companyName = ref.watch(companyNameProvider);
+  final service = ref.read(pushNotificationServiceProvider);
+  unawaited(service.updateCompanyName(companyName));
+});
+
+List<AndroidNotificationChannel> companyNotificationChannels(
+  String companyName,
+) => [
+  AndroidNotificationChannel(
+    'fcm_channel',
+    'Основные уведомления',
+    description: 'Важные уведомления $companyName',
+    importance: Importance.high,
+    playSound: true,
+  ),
+  AndroidNotificationChannel(
+    'fcm_channel_silent',
+    'Основные уведомления без звука',
+    description: 'Уведомления $companyName без звука',
+    importance: Importance.high,
+    playSound: false,
+  ),
+];
+
 /// Простой Notifier для bool состояния
 class IsChatScreenOpenNotifier extends Notifier<bool> {
   @override
@@ -84,6 +112,33 @@ class PushNotificationService {
       PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
+
+  String _companyName = fallbackCompanyName;
+
+  Future<void> updateCompanyName(String companyName) async {
+    final name = companyName.trim().isEmpty
+        ? fallbackCompanyName
+        : companyName.trim();
+    if (_companyName == name) return;
+    _companyName = name;
+    if (_isInitialized && !kIsWeb && _isAndroid) {
+      try {
+        await _updateNotificationChannels();
+      } catch (error) {
+        debugPrint('🔔 Notification channel branding update failed: $error');
+      }
+    }
+  }
+
+  Future<void> _updateNotificationChannels() async {
+    final android = _notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    for (final channel in companyNotificationChannels(_companyName)) {
+      await android?.createNotificationChannel(channel);
+    }
+  }
 
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
@@ -877,28 +932,7 @@ class PushNotificationService {
       );
 
       if (_isAndroid) {
-        final android = _notifications
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >();
-        await android?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'fcm_channel',
-            'Основные уведомления',
-            description: 'Важные уведомления 2A Logistic',
-            importance: Importance.high,
-            playSound: true,
-          ),
-        );
-        await android?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'fcm_channel_silent',
-            'Основные уведомления без звука',
-            description: 'Уведомления 2A Logistic без звука',
-            importance: Importance.high,
-            playSound: false,
-          ),
-        );
+        await _updateNotificationChannels();
       }
 
       final launchDetails = await _notifications

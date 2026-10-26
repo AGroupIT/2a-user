@@ -154,14 +154,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         name: 'splash',
         path: '/splash',
-        builder: (context, state) => const SplashScreen(),
+        pageBuilder: (context, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const SplashScreen(),
+        ),
       ),
 
       // Auth routes
       GoRoute(
         name: 'login',
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         name: 'register',
@@ -189,8 +195,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) =>
-            AppShell(navigationShell: navigationShell),
+        // Auth can round-trip through splash before an outgoing transition
+        // finishes. Never keep two pages with the same navigation shell key.
+        pageBuilder: (context, state, navigationShell) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: AppShell(navigationShell: navigationShell),
+        ),
         branches: [
           StatefulShellBranch(
             observers: [ClientLogNavigatorObserver()],

@@ -1,3 +1,4 @@
+import '../../home/data/home_counts_provider.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -1060,6 +1061,7 @@ class AuthNotifier extends Notifier<AuthState> {
     inv(tracksDigestProvider);
     inv(tracksSimpleListProvider);
     inv(tracksCountProvider);
+    inv(homeTracksCountProvider);
     inv(tracksWithoutAssemblyCountProvider);
     inv(trackStatusesProvider);
 
@@ -1071,6 +1073,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
     // Assemblies (assemblies module)
     inv(assembliesCountProvider);
+    inv(homeAssembliesCountProvider);
 
     // Invoices
     inv(invoicesListProvider);

@@ -86,6 +86,10 @@ class TrackItem {
   String? get assemblySelectionHint => switch (assemblyBlockReason) {
     'warehouse_arrival_cooldown' =>
       'Трек только поступил на склад. Добавить в сборку можно завтра.',
+    'photo_request_pending' =>
+      'По треку есть незавершённый фотоотчёт. Дождитесь выполнения или отмените запрос.',
+    'photo_request_cooldown' =>
+      'Фотоотчёт выполнен или отменён сегодня. Добавить в сборку можно завтра по времени склада (Китай).',
     'return_requested' => 'По треку запрошен возврат',
     _ => null,
   };
@@ -521,6 +525,10 @@ class ProductInfo {
 // Запрос фотоотчета
 class PhotoRequest {
   final int id;
+  final String reportType;
+  final String priceUsd;
+  final DateTime? startedAt;
+  final Map<String, dynamic>? charge;
   final String? wishes;
   final String? warehouseComment;
   final String status; // new, in_progress, assigned, completed, cancelled
@@ -531,6 +539,10 @@ class PhotoRequest {
 
   const PhotoRequest({
     required this.id,
+    this.reportType = 'legacy',
+    this.priceUsd = '0',
+    this.startedAt,
+    this.charge,
     this.wishes,
     this.warehouseComment,
     required this.status,
@@ -561,6 +573,13 @@ class PhotoRequest {
     }
   }
 
+  bool get canChange =>
+      isActive &&
+      startedAt == null &&
+      charge == null &&
+      status != 'in_progress';
+  bool get canEditWish => canChange && reportType == 'custom';
+
   bool get isActive => status != 'cancelled' && status != 'completed';
 
   factory PhotoRequest.fromJson(Map<String, dynamic> json) {
@@ -573,7 +592,13 @@ class PhotoRequest {
 
     return PhotoRequest(
       id: json['id'] as int,
-      wishes: json['wish'] as String?,
+      reportType: json['reportType'] as String? ?? 'legacy',
+      priceUsd: '${json['priceUsd'] ?? '0'}',
+      startedAt: DateTime.tryParse('${json['startedAt'] ?? ''}'),
+      charge: json['charge'] is Map
+          ? Map<String, dynamic>.from(json['charge'] as Map)
+          : null,
+      wishes: (json['wish'] ?? json['wishes']) as String?,
       warehouseComment: json['warehouseComment'] as String?,
       status: json['status'] as String? ?? 'new',
       mediaUrls: mediaUrls,

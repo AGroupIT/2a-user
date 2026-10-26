@@ -218,11 +218,24 @@ class _BlurredModalBottomSheetPageState<T>
         ? mediaSize.width * 0.6
         : AppLayout.modalMaxWidth(context);
     final maxWidth = modalMaxWidth.clamp(0.0, mediaSize.width).toDouble();
+    // Tall mobile sheets keep breathing room below the status bar. The bottom
+    // SafeArea is added outside routeConstraints, so reserve its space here.
+    final safeInsets = MediaQuery.viewPaddingOf(context);
+    final bottomInset = widget.useSafeArea ? safeInsets.bottom : 0.0;
+    final mobileMaxHeight =
+        (mediaSize.height -
+                (mediaSize.height * 0.08).clamp(
+                  safeInsets.top,
+                  mediaSize.height,
+                ) -
+                24 -
+                bottomInset)
+            .clamp(0.0, mediaSize.height);
     final maxHeight = useSideSheet
         ? mediaSize.height
         : widget.isScrollControlled
-        ? mediaSize.height
-        : mediaSize.height * 9 / 16;
+        ? mobileMaxHeight
+        : (mediaSize.height * 9 / 16).clamp(0.0, mobileMaxHeight);
     final routeConstraints = widget.constraints == null
         ? BoxConstraints(maxHeight: maxHeight)
         : widget.constraints!.copyWith(

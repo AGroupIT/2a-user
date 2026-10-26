@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -180,7 +181,10 @@ Future<_FakeRepository> _pump(
   final repository = _FakeRepository();
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [spOrganizerRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
+        spOrganizerRepositoryProvider.overrideWithValue(repository),
+      ],
       child: MaterialApp(
         locale: locale,
         localizationsDelegates: const [

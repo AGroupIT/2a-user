@@ -11,7 +11,6 @@ import '../../../core/ui/app_layout.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
 import '../../../core/ui/scroll_to_top_button.dart';
 import '../../../core/ui/tutorial_card.dart';
-import '../../../core/ui/packaging_removal_text.dart';
 import '../../../core/utils/locale_text.dart';
 import '../../auth/data/auth_provider.dart';
 import '../domain/assembly_cost_calculation.dart';
@@ -40,21 +39,6 @@ final _tariffsProvider = FutureProvider.autoDispose<List<CalculatorTariff>>((
       .toList();
 });
 
-final _coefsProvider =
-    FutureProvider.autoDispose<List<CalculatorPhotoCoefficient>>((ref) async {
-      final apiClient = ref.read(apiClientProvider);
-      final response = await apiClient.get('/photo-report-coefficients');
-      final data = response.data as Map<String, dynamic>;
-      final list = data['coefficients'] as List? ?? [];
-      return list
-          .map(
-            (e) =>
-                CalculatorPhotoCoefficient.fromJson(e as Map<String, dynamic>),
-          )
-          .where((c) => c.isActive)
-          .toList();
-    });
-
 final _packagingsProvider =
     FutureProvider.autoDispose<List<CalculatorPackaging>>((ref) async {
       final apiClient = ref.read(apiClientProvider);
@@ -68,10 +52,15 @@ final _packagingsProvider =
     });
 
 final _unloadingQuoteProvider = FutureProvider.autoDispose
-    .family<int, ({double volumeM3, String packagingTypeIds})>((
-      ref,
-      request,
-    ) async {
+    .family<
+      double,
+      ({
+        double weightKg,
+        double volumeM3,
+        int placesCount,
+        String packagingTypeIds,
+      })
+    >((ref, request) async {
       var disposed = false;
       ref.onDispose(() => disposed = true);
       await Future<void>.delayed(const Duration(milliseconds: 350));
@@ -81,7 +70,9 @@ final _unloadingQuoteProvider = FutureProvider.autoDispose
       final response = await apiClient.post(
         '/client/unloading-quote',
         data: {
+          'weightKg': request.weightKg,
           'volumeM3': request.volumeM3,
+          'placesCount': request.placesCount,
           'packagingTypeIds': request.packagingTypeIds.isEmpty
               ? const <int>[]
               : request.packagingTypeIds.split(',').map(int.parse).toList(),
@@ -89,7 +80,7 @@ final _unloadingQuoteProvider = FutureProvider.autoDispose
       );
       final data = response.data as Map<String, dynamic>;
       final quote = data['data'] as Map<String, dynamic>;
-      return (quote['clientCostUsd'] as num).ceil();
+      return (quote['clientCostUsd'] as num).toDouble();
     });
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -171,20 +162,17 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   final GlobalKey _tariffKey = GlobalKey();
   final GlobalKey _packagingKey = GlobalKey();
   final GlobalKey _calcButtonKey = GlobalKey();
-  final GlobalKey _photoSurchargeKey = GlobalKey();
 
   final _scrollController = ScrollController();
   final _weightCtrl = TextEditingController();
   final _volumeCtrl = TextEditingController();
   final _placesCtrl = TextEditingController(text: '1');
   final _totalCtrl = TextEditingController(text: '1');
-  final _photoCtrl = TextEditingController(text: '0');
   final _insuranceAmountCtrl = TextEditingController();
 
   CalculatorTariff? _selectedTariff;
   CalculatorPackaging? _selectedPrimaryPackaging;
   final Set<int> _selectedAddonPackagingIds = <int>{};
-  PackagingRemovalOption _packagingRemoval = PackagingRemovalOption.none;
   AssemblyPlacePreference _placePreference =
       AssemblyPlacePreference.singleIfPossible;
   bool _hasFragileGoods = false;
@@ -197,7 +185,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     _volumeCtrl.dispose();
     _placesCtrl.dispose();
     _totalCtrl.dispose();
-    _photoCtrl.dispose();
     _insuranceAmountCtrl.dispose();
     super.dispose();
   }
@@ -206,9 +193,8 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   _CalcResult? _calculate(
     List<CalculatorTariff> tariffs,
-    List<CalculatorPhotoCoefficient> coefs,
     List<CalculatorPackaging> packagings,
-    int transshipment,
+    double transshipment,
   ) {
     final tariff =
         _selectedTariff ?? (tariffs.isNotEmpty ? tariffs.first : null);
@@ -218,7 +204,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final volume = double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
     final places = int.tryParse(_placesCtrl.text) ?? 0;
     final total = int.tryParse(_totalCtrl.text) ?? 0;
-    final withPhoto = int.tryParse(_photoCtrl.text) ?? 0;
     final insuranceAmount =
         double.tryParse(_insuranceAmountCtrl.text.replaceAll(',', '.')) ?? 0;
     final selectedAddonPackagings = packagings
@@ -231,15 +216,15 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final calculation = calculateAssemblyCost(
       AssemblyCostInput(
         tariff: tariff,
-        photoCoefficients: coefs,
+        photoCoefficients: const [],
         selectedPackagings: selectedPackagings,
         weightKg: weight,
         volumeM3: volume,
         places: places,
         tracksTotal: total,
-        tracksWithPhoto: withPhoto,
-        unloadingCostUsd: transshipment.toDouble(),
-        packagingRemoval: _packagingRemoval,
+        tracksWithPhoto: 0,
+        unloadingCostUsd: transshipment,
+        packagingRemoval: PackagingRemovalOption.none,
         hasInsurance: _hasInsurance,
         insuranceAmountCny: insuranceAmount,
         hasFragileGoods: _hasFragileGoods,
@@ -254,10 +239,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       weight: weight,
       volume: volume,
       places: places,
-      photoCoef: calculation.photoCoefficient,
-      photoPercent: calculation.photoPercent,
       tracksTotal: total,
-      tracksWithPhoto: withPhoto,
       shipping: calculation.shippingCost,
       transshipment: transshipment,
       packagingCost: calculation.packagingCost,
@@ -270,7 +252,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       hasInsurance: _hasInsurance,
       hasFragileGoods: _hasFragileGoods,
       placePreference: _placePreference,
-      packagingRemoval: _packagingRemoval,
+      packagingRemoval: PackagingRemovalOption.none,
       removalPriceApplied: calculation.removalPriceApplied,
       total: calculation.total,
       priceUnit: calculation.priceUnit,
@@ -292,7 +274,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final selected = tariffs.firstWhere((tariff) => tariff.id == selectedId);
     setState(() {
       _selectedTariff = selected;
-      _packagingRemoval = PackagingRemovalOption.none;
     });
   }
 
@@ -431,41 +412,18 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            KeyedSubtree(
-              key: _photoSurchargeKey,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TrainingTarget(
-                      id: (int.tryParse(_totalCtrl.text) ?? 0) > 0
-                          ? 'calculator.valid.tracks'
-                          : 'calculator.missing.tracks',
-                      child: _NumField(
-                        label: 'Треков всего',
-                        controller: _totalCtrl,
-                        hint: '1',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TrainingTarget(
-                      id:
-                          (int.tryParse(_photoCtrl.text) ?? 0) >= 0 &&
-                              (int.tryParse(_photoCtrl.text) ?? 0) <=
-                                  (int.tryParse(_totalCtrl.text) ?? 0)
-                          ? 'calculator.photos'
-                          : 'calculator.missing.photos',
-                      child: _NumField(
-                        label: 'С фотоотчётом',
-                        controller: _photoCtrl,
-                        hint: '0',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ),
-                ],
+            _NumField(
+              label: 'Треков всего',
+              controller: _totalCtrl,
+              hint: '1',
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tr(
+                context,
+                ru: 'Фотоотчёты оплачиваются отдельно по цене, подтверждённой при запросе. Выполненные отчёты включат в ближайший счёт на доставку.',
+                zh: '拍照报告按申请时确认的价格单独计费，完成后计入下一张运输账单。',
               ),
             ),
           ],
@@ -479,13 +437,10 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     if (tariff == null) return const SizedBox.shrink();
     return _AssemblyOptionsCard(
       tariff: tariff,
-      packagingRemoval: _packagingRemoval,
       placePreference: _placePreference,
       hasFragileGoods: _hasFragileGoods,
       hasInsurance: _hasInsurance,
       insuranceAmountController: _insuranceAmountCtrl,
-      onPackagingRemovalChanged: (value) =>
-          setState(() => _packagingRemoval = value),
       onPlacePreferenceChanged: (value) =>
           setState(() => _placePreference = value),
       onFragileGoodsChanged: (value) =>
@@ -543,32 +498,33 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
 
   Widget _buildResultSection({
     required AsyncValue<List<CalculatorTariff>> tariffsAsync,
-    required AsyncValue<List<CalculatorPhotoCoefficient>> coefsAsync,
     required AsyncValue<List<CalculatorPackaging>> packagingsAsync,
-    required AsyncValue<int>? unloadingQuoteAsync,
+    required AsyncValue<double>? unloadingQuoteAsync,
+    required double weightKg,
+    required int placesCount,
     required double volumeM3,
     required String packagingTypeIds,
   }) {
     Widget result;
-    if (tariffsAsync.isLoading || coefsAsync.isLoading) {
+    if (tariffsAsync.isLoading) {
       result = const _CalculationPendingCard(
         title: 'Подготавливаем расчёт',
-        message: 'Получаем тарифы и коэффициенты.',
+        message: 'Получаем тарифы.',
         isLoading: true,
       );
-    } else if (tariffsAsync.hasError || coefsAsync.hasError) {
+    } else if (tariffsAsync.hasError) {
       result = _CalculationPendingCard(
         title: 'Расчёт пока недоступен',
         message: 'Не удалось получить данные для расчёта.',
         onRetry: () {
           ref.invalidate(_tariffsProvider);
-          ref.invalidate(_coefsProvider);
         },
       );
-    } else if (volumeM3 > 0 && unloadingQuoteAsync?.isLoading == true) {
+    } else if (unloadingQuoteAsync?.isLoading == true) {
       result = const _CalculationPendingCard(
         title: 'Считаем разгрузку',
-        message: 'Получаем стоимость по объёму и выбранной упаковке.',
+        message:
+            'Получаем стоимость по весу, объёму, местам и выбранной упаковке.',
         isLoading: true,
       );
     } else if (unloadingQuoteAsync?.hasError == true) {
@@ -577,19 +533,18 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
         message: 'Проверьте соединение и повторите попытку.',
         onRetry: () => ref.invalidate(
           _unloadingQuoteProvider((
+            weightKg: weightKg,
             volumeM3: volumeM3,
+            placesCount: placesCount,
             packagingTypeIds: packagingTypeIds,
           )),
         ),
       );
     } else {
       final tariffs = tariffsAsync.value ?? const <CalculatorTariff>[];
-      final coefficients =
-          coefsAsync.value ?? const <CalculatorPhotoCoefficient>[];
       final packagings = packagingsAsync.value ?? const <CalculatorPackaging>[];
       final calculation = _calculate(
         tariffs,
-        coefficients,
         packagings,
         unloadingQuoteAsync?.value ?? 0,
       );
@@ -597,7 +552,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
           ? const _CalculationPendingCard(
               title: 'Заполните параметры',
               message:
-                  'Нужны тариф, основная упаковка, вес, объём и количество треков. Фотоотчётов не может быть больше, чем треков.',
+                  'Нужны тариф, основная упаковка, вес, объём и количество треков.',
             )
           : _ResultCard(result: calculation);
     }
@@ -618,19 +573,23 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     final tariffsAsync = ref.watch(_tariffsProvider);
-    final coefsAsync = ref.watch(_coefsProvider);
     final packagingsAsync = ref.watch(_packagingsProvider);
     final volumeM3 =
         double.tryParse(_volumeCtrl.text.replaceAll(',', '.')) ?? 0;
+    final weightKg =
+        double.tryParse(_weightCtrl.text.replaceAll(',', '.')) ?? 0;
+    final placesCount = int.tryParse(_placesCtrl.text) ?? 0;
     final packagingTypeIds = <int>{
       if (_selectedPrimaryPackaging != null) _selectedPrimaryPackaging!.id,
       ..._selectedAddonPackagingIds,
     }.toList()..sort();
     final packagingTypeIdsValue = packagingTypeIds.join(',');
-    final unloadingQuoteAsync = volumeM3 > 0
+    final unloadingQuoteAsync = weightKg > 0 && placesCount > 0
         ? ref.watch(
             _unloadingQuoteProvider((
+              weightKg: weightKg,
               volumeM3: volumeM3,
+              placesCount: placesCount,
               packagingTypeIds: packagingTypeIdsValue,
             )),
           )
@@ -644,9 +603,10 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
     final packagingSection = _buildPackagingSection(packagingsAsync);
     final resultSection = _buildResultSection(
       tariffsAsync: tariffsAsync,
-      coefsAsync: coefsAsync,
       packagingsAsync: packagingsAsync,
       unloadingQuoteAsync: unloadingQuoteAsync,
+      weightKg: weightKg,
+      placesCount: placesCount,
       volumeM3: volumeM3,
       packagingTypeIds: packagingTypeIdsValue,
     );
@@ -683,13 +643,6 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
           description:
               'Тариф определяет цену за кг. Уточните у менеджера, какой тариф применяется к вашим товарам.',
           targetKey: _tariffKey,
-        ),
-        TutorialStep(
-          icon: Icons.photo_camera_rounded,
-          title: 'Надбавка за фотоотчёты',
-          description:
-              'Если фотоотчёт платный по выбранному тарифу, его коэффициент будет учтён автоматически.',
-          targetKey: _photoSurchargeKey,
         ),
         TutorialStep(
           icon: Icons.inventory_rounded,
@@ -764,12 +717,9 @@ class _CalcResult {
   final double weight;
   final double volume;
   final int places;
-  final double photoCoef;
-  final double photoPercent;
   final int tracksTotal;
-  final int tracksWithPhoto;
   final double shipping;
-  final int transshipment;
+  final double transshipment;
   final double packagingCost;
   final List<String> packagingNames;
   final double packagingBaseCost;
@@ -791,10 +741,7 @@ class _CalcResult {
     required this.weight,
     required this.volume,
     required this.places,
-    required this.photoCoef,
-    required this.photoPercent,
     required this.tracksTotal,
-    required this.tracksWithPhoto,
     required this.shipping,
     required this.transshipment,
     required this.packagingCost,
@@ -820,7 +767,6 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhotoMarkup = (result.photoCoef - 1).abs() > 0.001;
     return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -905,36 +851,11 @@ class _ResultCard extends StatelessWidget {
           _Row(
             'Цена за ${result.priceUnit}',
             '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}',
-            subtitle: result.removalPriceApplied
-                ? 'применена ставка за снятие упаковки'
-                : result.packagingTariffSurcharge > 0
+            subtitle: result.packagingTariffSurcharge > 0
                 ? 'включая наценку за упаковку \$${result.packagingTariffSurcharge.toStringAsFixed(2)}'
                 : null,
           ),
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
-          if (result.packagingRemoval != PackagingRemovalOption.none)
-            _Row(
-              tr(context, ru: 'Снятие упаковки', zh: '拆除包装'),
-              packagingRemovalLabel(context, result.packagingRemoval),
-              subtitle: result.removalPriceApplied
-                  ? tr(
-                      context,
-                      ru: 'применена специальная ставка тарифа',
-                      zh: '已使用单独运价',
-                    )
-                  : tr(
-                      context,
-                      ru: 'специальная ставка не задана — расчёт по обычному тарифу',
-                      zh: '未设置单独运价，按标准运价计算',
-                    ),
-            ),
-          if (hasPhotoMarkup)
-            _Row(
-              'Надбавка за фотоотчёт',
-              '×${result.photoCoef.toStringAsFixed(2)}',
-              subtitle:
-                  '${result.tracksWithPhoto} из ${result.tracksTotal} треков (${result.photoPercent.toStringAsFixed(0)}%)',
-            ),
           const SizedBox(height: 4),
           const _Label('Статьи расходов'),
           const SizedBox(height: 10),
@@ -942,13 +863,17 @@ class _ResultCard extends StatelessWidget {
             'Доставка',
             '\$${result.shipping.toStringAsFixed(2)}',
             subtitle: result.priceUnit == 'м³'
-                ? '${result.volume.toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}'
-                : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}${hasPhotoMarkup ? ' × ${result.photoCoef.toStringAsFixed(2)}' : ''}',
+                ? '${result.volume.toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}'
+                : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}',
           ),
           _Row(
             'Разгрузка',
-            '\$${result.transshipment}',
-            subtitle: 'по объёму, минимум \$5',
+            '\$${result.transshipment.toStringAsFixed(2)}',
+            subtitle: tr(
+              context,
+              ru: 'по параметрам груза и выбранной упаковке',
+              zh: '按货物参数及所选包装计算',
+            ),
           ),
           if (result.packagingCost > 0)
             _Row(
@@ -1432,12 +1357,10 @@ class _InfoCard extends StatelessWidget {
 
 class _AssemblyOptionsCard extends StatelessWidget {
   final CalculatorTariff tariff;
-  final PackagingRemovalOption packagingRemoval;
   final AssemblyPlacePreference placePreference;
   final bool hasFragileGoods;
   final bool hasInsurance;
   final TextEditingController insuranceAmountController;
-  final ValueChanged<PackagingRemovalOption> onPackagingRemovalChanged;
   final ValueChanged<AssemblyPlacePreference> onPlacePreferenceChanged;
   final ValueChanged<bool> onFragileGoodsChanged;
   final ValueChanged<bool> onInsuranceChanged;
@@ -1445,59 +1368,15 @@ class _AssemblyOptionsCard extends StatelessWidget {
 
   const _AssemblyOptionsCard({
     required this.tariff,
-    required this.packagingRemoval,
     required this.placePreference,
     required this.hasFragileGoods,
     required this.hasInsurance,
     required this.insuranceAmountController,
-    required this.onPackagingRemovalChanged,
     required this.onPlacePreferenceChanged,
     required this.onFragileGoodsChanged,
     required this.onInsuranceChanged,
     required this.onInsuranceAmountChanged,
   });
-
-  String _removalDescription(
-    BuildContext context,
-    PackagingRemovalOption option,
-  ) {
-    final price = switch (option) {
-      PackagingRemovalOption.none => null,
-      PackagingRemovalOption.transportOnly ||
-      PackagingRemovalOption.boxOnly ||
-      PackagingRemovalOption.bagOnly => tariff.packagingRemovalTransportPrice,
-      PackagingRemovalOption.all => tariff.packagingRemovalAllPrice,
-    };
-    if (option == PackagingRemovalOption.none) {
-      return tr(
-        context,
-        ru: 'Обычная ставка выбранного тарифа',
-        zh: '所选运价的标准价格',
-      );
-    }
-    if (price != null && price > 0) {
-      return tr(
-        context,
-        ru: 'Специальная ставка \$${price.toStringAsFixed(2)} за расчётную единицу',
-        zh: '单独运价：每计费单位 \$${price.toStringAsFixed(2)}',
-      );
-    }
-    return tr(
-      context,
-      ru: 'Специальная ставка не задана — расчёт по обычному тарифу',
-      zh: '未设置单独运价，按标准运价计算',
-    );
-  }
-
-  IconData _removalIcon(PackagingRemovalOption option) {
-    return switch (option) {
-      PackagingRemovalOption.none => Icons.inventory_2_outlined,
-      PackagingRemovalOption.transportOnly ||
-      PackagingRemovalOption.boxOnly ||
-      PackagingRemovalOption.bagOnly => Icons.layers_clear_outlined,
-      PackagingRemovalOption.all => Icons.delete_sweep_outlined,
-    };
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1509,37 +1388,8 @@ class _AssemblyOptionsCard extends StatelessWidget {
             step: 3,
             icon: Icons.tune_rounded,
             title: 'Параметры сборки',
-            subtitle: 'Настройте снятие упаковки, места и защиту груза.',
+            subtitle: 'Настройте места и защиту груза.',
           ),
-          const SizedBox(height: 14),
-          _SubsectionLabel(tr(context, ru: 'Снятие упаковки', zh: '拆除包装')),
-          const SizedBox(height: 8),
-          Column(
-            children:
-                PackagingRemovalOption.available(
-                      supportsTargets: tariff.supportsPackagingRemovalTargets,
-                      current: packagingRemoval,
-                    )
-                    .map(
-                      (option) => Padding(
-                        padding: EdgeInsets.only(
-                          bottom: option == PackagingRemovalOption.all ? 0 : 8,
-                        ),
-                        child: _AssemblyOptionTile(
-                          title: packagingRemovalLabel(context, option),
-                          subtitle: _removalDescription(context, option),
-                          icon: _removalIcon(option),
-                          selected: packagingRemoval == option,
-                          onTap: () => onPackagingRemovalChanged(option),
-                        ),
-                      ),
-                    )
-                    .toList(),
-          ),
-          if (!tariff.supportsPackagingRemovalTargets) ...[
-            const SizedBox(height: 8),
-            Text(packagingRemovalTargetsUnavailableText(context)),
-          ],
           const SizedBox(height: 14),
           const _SubsectionLabel('Пожелание по упаковке'),
           const SizedBox(height: 8),
@@ -1649,115 +1499,6 @@ class _AssemblyOptionsCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _AssemblyOptionTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _AssemblyOptionTile({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: selected
-                  ? context.brandPrimary.withValues(alpha: 0.065)
-                  : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected
-                    ? context.brandPrimary
-                    : const Color(0xFFE4E8EF),
-                width: selected ? 1.3 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? context.brandPrimary.withValues(alpha: 0.12)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 19,
-                    color: selected
-                        ? context.brandPrimary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontFamily: 'Gilroy',
-                          fontSize: 13.5,
-                          height: 1.08,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontFamily: 'Gilroy',
-                          fontSize: 11.5,
-                          height: 1.18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  color: selected
-                      ? context.brandPrimary
-                      : AppColors.textSecondary.withValues(alpha: 0.65),
-                  size: 21,
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

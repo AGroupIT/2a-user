@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -122,7 +122,7 @@ class _FullscreenImageOverlayState extends State<_FullscreenImageOverlay> {
                     transformationController: _transformationController,
                     minScale: 1,
                     maxScale: 4,
-                    child: CachedNetworkImage(
+                    child: AuthenticatedCachedImage(
                       imageUrl: widget.imageUrl,
                       fit: BoxFit.contain,
                       placeholder: (context, url) => const Center(

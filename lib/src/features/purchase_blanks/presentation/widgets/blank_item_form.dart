@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -551,7 +552,7 @@ class _PhotoThumb extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: imageUrl != null
-                  ? Image.network(
+                  ? AuthenticatedImage.network(
                       ApiConfig.getMediaUrl(imageUrl!),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Container(

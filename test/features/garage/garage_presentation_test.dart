@@ -1,3 +1,5 @@
+import '../../fixtures/media_api.dart';
+import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -149,6 +151,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           activeClientCodeProvider.overrideWithValue('A-001'),
           garageRepositoryProvider.overrideWithValue(repository),
           garageRequestStatusesProvider.overrideWith(
@@ -209,6 +212,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           garageAvailabilityProvider.overrideWith(
             (ref) async => const GarageAvailability(
               available: false,
@@ -266,6 +270,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           activeClientCodeProvider.overrideWithValue('A-001'),
           garageRepositoryProvider.overrideWithValue(repository),
           garageAvailabilityProvider.overrideWith(
@@ -342,6 +347,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           paymentOperatorStatusProvider.overrideWith(
             (ref) => Stream.value(PaymentOperatorStatus.workingFallback),
           ),
@@ -407,7 +413,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [garageRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
+          garageRepositoryProvider.overrideWithValue(repository),
+        ],
         child: MaterialApp(
           home: Scaffold(body: GarageConversationCard(request: request)),
         ),
@@ -480,7 +489,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [garageRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
+          garageRepositoryProvider.overrideWithValue(repository),
+        ],
         child: MaterialApp(
           home: Scaffold(body: GarageConversationCard(request: request)),
         ),
@@ -529,7 +541,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [garageRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
+          garageRepositoryProvider.overrideWithValue(repository),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: _ConversationHarness(
@@ -600,6 +615,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           activeClientCodeProvider.overrideWithValue('A-001'),
           garageRepositoryProvider.overrideWithValue(repository),
         ],
@@ -723,6 +739,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(mediaFixtureApi()),
           activeClientCodeProvider.overrideWithValue('A-001'),
           garageRepositoryProvider.overrideWithValue(repository),
         ],
@@ -836,6 +853,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(mediaFixtureApi()),
             activeClientCodeProvider.overrideWithValue('A-001'),
             garageRepositoryProvider.overrideWithValue(repository),
             garageRequestStatusesProvider.overrideWith(
@@ -998,6 +1016,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(mediaFixtureApi()),
             activeClientCodeProvider.overrideWithValue('A-001'),
             garageRepositoryProvider.overrideWithValue(repository),
           ],
@@ -1144,6 +1163,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(mediaFixtureApi()),
             activeClientCodeProvider.overrideWithValue('A-001'),
             garageRepositoryProvider.overrideWithValue(repository),
             garageRequestStatusesProvider.overrideWith(

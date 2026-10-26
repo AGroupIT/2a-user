@@ -11,6 +11,7 @@ import 'package:twoalogisticcabineuser/src/features/assemblies/data/assemblies_p
 import 'package:twoalogisticcabineuser/src/features/invoices/data/invoices_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/home/presentation/home_screen.dart';
 import 'package:twoalogisticcabineuser/src/features/home/data/current_cny_rate_provider.dart';
+import 'package:twoalogisticcabineuser/src/features/home/data/home_counts_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/auth/data/auth_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/clients/application/client_codes_controller.dart';
 import 'package:twoalogisticcabineuser/src/features/profile/data/profile_provider.dart';
@@ -52,11 +53,11 @@ void main() {
           authProvider.overrideWith(_LoggedIn.new),
           activeClientCodeProvider.overrideWithValue('TEST'),
           clientProfileProvider.overrideWith((ref) async => null),
-          tracksCountProvider('TEST').overrideWith((ref) async {
+          homeTracksCountProvider('TEST').overrideWith((ref) async {
             if (++trackCalls == 1) throw StateError('offline');
             return 7;
           }),
-          assembliesCountProvider('TEST').overrideWith((ref) async {
+          homeAssembliesCountProvider('TEST').overrideWith((ref) async {
             assemblyCalls++;
             return 37;
           }),
@@ -89,7 +90,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Повторить'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('dashboard-load-error')), findsNothing);
-      expect(container.read(tracksCountProvider('TEST')).requireValue, 7);
+      expect(container.read(homeTracksCountProvider('TEST')).requireValue, 7);
       expect(assemblyCalls, 1);
       expect(trackCalls, 2);
       expect(tester.takeException(), isNull);
@@ -107,10 +108,10 @@ void main() {
       addTearDown(container.dispose);
       final providers = [
         tracksDigestProvider('TEST'),
-        tracksCountProvider('TEST'),
+        homeTracksCountProvider('TEST'),
         tracksWeeklyCountProvider('TEST'),
         assembliesDigestProvider('TEST'),
-        assembliesCountProvider('TEST'),
+        homeAssembliesCountProvider('TEST'),
         assembliesWeeklyCountProvider('TEST'),
         invoicesDigestProvider('TEST'),
         invoicesCountProvider('TEST'),

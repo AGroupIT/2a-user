@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -5,7 +6,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/locale_text.dart';
+import 'garage_media_image.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/ui/app_colors.dart';
@@ -721,18 +724,19 @@ class _GarageChatAttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fullUrl = ApiConfig.getMediaUrl(attachment.url);
-    final uri = Uri.tryParse(fullUrl);
     if (attachment.isImage) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 7),
         child: InkWell(
-          onTap: uri == null
-              ? null
-              : () => launchUrl(uri, mode: LaunchMode.externalApplication),
+          onTap: () => showGarageImage(
+            context: context,
+            imagePath: attachment.url,
+            fallbackFileName: attachment.fileName,
+          ),
           borderRadius: BorderRadius.circular(12),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
+            child: AuthenticatedImage.network(
               fullUrl,
               width: 230,
               height: 170,
@@ -763,9 +767,27 @@ class _GarageChatAttachmentTile extends StatelessWidget {
           ),
           subtitle: Text(_garageChatFileSize(attachment.fileSize)),
           trailing: const Icon(Icons.open_in_new_rounded, size: 17),
-          onTap: uri == null
-              ? null
-              : () => launchUrl(uri, mode: LaunchMode.externalApplication),
+          onTap: () async {
+            try {
+              final bytes = await loadMediaBytes(
+                mediaApiClient(context),
+                fullUrl,
+              );
+              if (!context.mounted) return;
+              final saved = await downloadFile(
+                bytes: bytes,
+                fileName: attachment.fileName,
+              );
+              if (!context.mounted) return;
+              if (!saved) throw StateError('attachment_not_saved');
+            } catch (_) {
+              if (!context.mounted) return;
+              AppToast.show(
+                context,
+                tr(context, ru: 'Не удалось скачать файл', zh: '无法下载文件'),
+              );
+            }
+          },
         ),
       ),
     );

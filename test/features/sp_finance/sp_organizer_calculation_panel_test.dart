@@ -1,3 +1,4 @@
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -331,6 +332,7 @@ Future<void> _pumpPanel(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
         spOrganizerCalculationPreviewProvider(
           1,
         ).overrideWith((ref) async => preview),
@@ -356,100 +358,107 @@ Future<void> _pumpPanel(
 }
 
 void main() {
-  testWidgets('read-only calculation fits 320 px and separates 2A obligation', (
-    tester,
-  ) async {
-    await _pumpPanel(
-      tester,
-      size: const Size(320, 1000),
-      locale: const Locale('ru'),
-    );
+  testWidgets(
+    'read-only calculation fits 320 px and separates Partner Cargo obligation',
+    (tester) async {
+      await _pumpPanel(
+        tester,
+        size: const Size(320, 1000),
+        locale: const Locale('ru'),
+      );
 
-    expect(find.text('Параметры расчёта'), findsOneWidget);
-    expect(find.text('Для себя'), findsOneWidget);
-    expect(find.text('Для клиента'), findsOneWidget);
-    expect(find.text('Предварительный расчёт по параметрам'), findsOneWidget);
-    expect(find.text('Для себя · себестоимость'), findsOneWidget);
-    expect(find.text('Для клиента · начисление'), findsOneWidget);
-    expect(find.text('Не полный'), findsOneWidget);
-    expect(find.textContaining('указать вес'), findsOneWidget);
-    expect(find.text('Распределение новых параметров'), findsOneWidget);
-    expect(find.text('не начислено'), findsOneWidget);
-    expect(find.text('Анна'), findsWidgets);
-    expect(find.text('Legacy-баланс и оплаты'), findsOneWidget);
-    expect(find.textContaining('только для preview'), findsOneWidget);
-    expect(find.text('Явно связанные обязательства перед 2A'), findsOneWidget);
-    expect(find.textContaining('Preview не сохранён'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+      expect(find.text('Параметры расчёта'), findsOneWidget);
+      expect(find.text('Для себя'), findsOneWidget);
+      expect(find.text('Для клиента'), findsOneWidget);
+      expect(find.text('Предварительный расчёт по параметрам'), findsOneWidget);
+      expect(find.text('Для себя · себестоимость'), findsOneWidget);
+      expect(find.text('Для клиента · начисление'), findsOneWidget);
+      expect(find.text('Не полный'), findsOneWidget);
+      expect(find.textContaining('указать вес'), findsOneWidget);
+      expect(find.text('Распределение новых параметров'), findsOneWidget);
+      expect(find.text('не начислено'), findsOneWidget);
+      expect(find.text('Анна'), findsWidgets);
+      expect(find.text('Legacy-баланс и оплаты'), findsOneWidget);
+      expect(find.textContaining('только для preview'), findsOneWidget);
+      expect(
+        find.text('Явно связанные обязательства перед Partner Cargo'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Preview не сохранён'), findsOneWidget);
+      expect(tester.takeException(), isNull);
 
-    final applyButton = find.widgetWithText(
-      FilledButton,
-      'Зафиксировать расчёт',
-    );
-    await tester.ensureVisible(applyButton.first);
-    await tester.pumpAndSettle();
-    await tester.tap(applyButton.first);
-    await tester.tap(applyButton.first, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(find.text('Зафиксировать расчёт?'), findsOneWidget);
-    expect(find.textContaining('Начисления, оплаты, позиции'), findsOneWidget);
-    await tester.tap(find.text('Отмена'));
-    await tester.pumpAndSettle();
-    await tester.tap(applyButton.first);
-    await tester.pumpAndSettle();
-    expect(find.text('Зафиксировать расчёт?'), findsOneWidget);
-    await tester.tap(find.text('Отмена'));
-    await tester.pumpAndSettle();
+      final applyButton = find.widgetWithText(
+        FilledButton,
+        'Зафиксировать расчёт',
+      );
+      await tester.ensureVisible(applyButton.first);
+      await tester.pumpAndSettle();
+      await tester.tap(applyButton.first);
+      await tester.tap(applyButton.first, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text('Зафиксировать расчёт?'), findsOneWidget);
+      expect(
+        find.textContaining('Начисления, оплаты, позиции'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Отмена'));
+      await tester.pumpAndSettle();
+      await tester.tap(applyButton.first);
+      await tester.pumpAndSettle();
+      expect(find.text('Зафиксировать расчёт?'), findsOneWidget);
+      await tester.tap(find.text('Отмена'));
+      await tester.pumpAndSettle();
 
-    final profileButton = find.byTooltip('Настроить профиль');
-    await tester.ensureVisible(profileButton);
-    await tester.pumpAndSettle();
-    await tester.tap(profileButton);
-    await tester.pumpAndSettle();
+      final profileButton = find.byTooltip('Настроить профиль');
+      await tester.ensureVisible(profileButton);
+      await tester.pumpAndSettle();
+      await tester.tap(profileButton);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Профиль расчёта'), findsOneWidget);
-    expect(find.textContaining('Текущие начисления, оплаты'), findsOneWidget);
-    expect(find.text('Для себя'), findsWidgets);
-    expect(find.text('Для клиента'), findsWidgets);
-    await tester.tap(find.text('Для клиента').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Заполнить из «Для себя»'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Тариф за 1 кг'),
-      240,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Тариф за 1 кг'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Доставка по стране или городу'),
-      240,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Доставка по стране или городу'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Дополнительные расходы'),
-      240,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Дополнительные расходы'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Комиссия организатора'),
-      240,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Комиссия организатора'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.textContaining('текущие суммы остаются'),
-      240,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.textContaining('текущие суммы остаются'), findsOneWidget);
-    final saveButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Сохранить для клиента'),
-    );
-    expect(saveButton.onPressed, isNull);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('Профиль расчёта'), findsOneWidget);
+      expect(find.textContaining('Текущие начисления, оплаты'), findsOneWidget);
+      expect(find.text('Для себя'), findsWidgets);
+      expect(find.text('Для клиента'), findsWidgets);
+      await tester.tap(find.text('Для клиента').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Заполнить из «Для себя»'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Тариф за 1 кг'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Тариф за 1 кг'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Доставка по стране или городу'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Доставка по стране или городу'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Дополнительные расходы'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Дополнительные расходы'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Комиссия организатора'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Комиссия организатора'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.textContaining('текущие суммы остаются'),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.textContaining('текущие суммы остаются'), findsOneWidget);
+      final saveButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Сохранить для клиента'),
+      );
+      expect(saveButton.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'actualized calculation shows breakdown and safe refresh dialog',
@@ -462,7 +471,7 @@ void main() {
       );
 
       expect(
-        find.text('Явно связанные обязательства перед 2A'),
+        find.text('Явно связанные обязательства перед Partner Cargo'),
         findsOneWidget,
       );
       expect(find.textContaining('2 355'), findsNothing);
@@ -501,14 +510,17 @@ void main() {
 
       final actualizeButton = find.widgetWithText(
         OutlinedButton,
-        'Актуализировать связанные суммы 2A',
+        'Актуализировать связанные суммы Partner Cargo',
       );
       await tester.ensureVisible(actualizeButton.first);
       await tester.pumpAndSettle();
       await tester.tap(actualizeButton.first);
       await tester.pumpAndSettle();
 
-      expect(find.text('Актуализировать обязательства 2A?'), findsOneWidget);
+      expect(
+        find.text('Актуализировать обязательства Partner Cargo?'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Долги участников'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Отмена'));
@@ -532,7 +544,7 @@ void main() {
     expect(find.text('新参数分摊'), findsOneWidget);
     expect(find.text('未入账'), findsOneWidget);
     expect(find.text('旧版余额与付款'), findsOneWidget);
-    expect(find.text('明确关联的2A应付'), findsOneWidget);
+    expect(find.text('明确关联的Partner Cargo应付'), findsOneWidget);
     expect(find.textContaining('预览未保存'), findsOneWidget);
     expect(find.byTooltip('设置结算配置'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -548,7 +560,10 @@ void main() {
 
     expect(find.text('Параметры расчёта'), findsOneWidget);
     expect(find.text('Предварительный расчёт по параметрам'), findsOneWidget);
-    expect(find.text('Явно связанные обязательства перед 2A'), findsOneWidget);
+    expect(
+      find.text('Явно связанные обязательства перед Partner Cargo'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

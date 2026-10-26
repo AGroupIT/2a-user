@@ -1,17 +1,23 @@
+import '../../../core/network/api_client.dart';
+import '../../../core/media/authenticated_video.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../../core/utils/file_download_helper.dart';
+import '../../../core/utils/locale_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import '../../../core/ui/media_loading_indicator.dart';
+import 'report_video_controls.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
@@ -131,7 +137,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
       unawaited(
         precacheImage(
-          CachedNetworkImageProvider(fullUrl),
+          authenticatedImageProvider(context, fullUrl),
           context,
         ).catchError((_) {}),
       );
@@ -160,6 +166,26 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
     try {
       final currentItem = _currentItem;
 
+      if (kIsWeb) {
+        final bytes = await loadMediaBytes(
+          ref.read(apiClientProvider),
+          ApiConfig.getMediaUrl(currentItem.url),
+        );
+        if (!mounted) return;
+        final saved = await downloadFile(
+          bytes: bytes,
+          fileName:
+              'media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}',
+        );
+        if (!mounted) return;
+        if (!saved) throw StateError('media_not_saved');
+        _showStyledSnackBar(
+          context,
+          tr(context, ru: 'Файл сохранён', zh: '文件已保存'),
+        );
+        return;
+      }
+
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       if (!hasAccess) {
@@ -179,17 +205,12 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       String savePath;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
 
-      if (!currentItem.isVideo) {
-        // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(fullUrl);
-        savePath = file.path;
-      } else {
-        // Для видео скачиваем через Dio
-        final tempDir = await getTemporaryDirectory();
-        savePath =
-            '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(fullUrl, savePath);
-      }
+      final bytes = await loadMediaBytes(ref.read(apiClientProvider), fullUrl);
+      final tempDir = await getTemporaryDirectory();
+      savePath =
+          '${tempDir.path}/media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}';
+      await File(savePath).writeAsBytes(bytes);
+      if (!mounted) return;
 
       // Сохраняем в галерею
       final companyName = ref.read(companyNameProvider);
@@ -230,29 +251,24 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   Future<void> _shareMedia(BuildContext context) async {
     try {
       final currentItem = _currentItem;
-      String filePath;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
 
       // Получаем box ДО async операций
       final box = context.findRenderObject() as RenderBox?;
 
-      if (!currentItem.isVideo) {
-        // Для изображений используем кеш CachedNetworkImage
-        final file = await DefaultCacheManager().getSingleFile(fullUrl);
-        filePath = file.path;
-      } else {
-        // Для видео скачиваем во временную директорию
-        final tempDir = await getTemporaryDirectory();
-        filePath =
-            '${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        await Dio().download(fullUrl, filePath);
-      }
-
+      final bytes = await loadMediaBytes(ref.read(apiClientProvider), fullUrl);
       if (!mounted) return;
 
       // Шарим файл (sharePositionOrigin нужен для iPad)
       await Share.shareXFiles(
-        [XFile(filePath)],
+        [
+          XFile.fromData(
+            bytes,
+            mimeType: currentItem.isVideo ? 'video/mp4' : 'image/jpeg',
+            name:
+                'media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}',
+          ),
+        ],
         text: currentItem.trackingNumber != null
             ? 'Трек: ${currentItem.trackingNumber}'
             : null,
@@ -260,15 +276,6 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
             ? box.localToGlobal(Offset.zero) & box.size
             : const Rect.fromLTWH(0, 0, 100, 100),
       );
-
-      // Удаляем временный файл для видео после небольшой задержки
-      if (currentItem.isVideo) {
-        Future.delayed(const Duration(seconds: 5), () async {
-          try {
-            await File(filePath).delete();
-          } catch (_) {}
-        });
-      }
     } on DioException catch (e) {
       if (!context.mounted) return;
       String message = 'Ошибка';
@@ -324,24 +331,23 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                               child: Center(
                                 child: item.isVideo
                                     ? _VideoPlayerView(
+                                        key: ValueKey(item.url),
+                                        active: index == _currentIndex,
                                         url: ApiConfig.getMediaUrl(item.url),
                                       )
                                     : InteractiveViewer(
                                         minScale: 1,
                                         maxScale: 4,
-                                        child: CachedNetworkImage(
+                                        child: AuthenticatedCachedImage(
                                           imageUrl: ApiConfig.getMediaUrl(
                                             item.url,
                                           ),
                                           fit: BoxFit.contain,
-                                          placeholder: (_, _) => const SizedBox(
-                                            width: 32,
-                                            height: 32,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          ),
+                                          progressIndicatorBuilder:
+                                              (_, _, progress) =>
+                                                  MediaLoadingIndicator(
+                                                    progress: progress,
+                                                  ),
                                           errorWidget: (_, _, _) => const Icon(
                                             Icons.broken_image_outlined,
                                             color: Colors.white70,
@@ -367,19 +373,16 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                                 : InteractiveViewer(
                                     minScale: 1,
                                     maxScale: 4,
-                                    child: CachedNetworkImage(
+                                    child: AuthenticatedCachedImage(
                                       imageUrl: ApiConfig.getMediaUrl(
                                         widget.item.url,
                                       ),
                                       fit: BoxFit.contain,
-                                      placeholder: (_, _) => const SizedBox(
-                                        width: 32,
-                                        height: 32,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      progressIndicatorBuilder:
+                                          (_, _, progress) =>
+                                              MediaLoadingIndicator(
+                                                progress: progress,
+                                              ),
                                       errorWidget: (_, _, _) => const Icon(
                                         Icons.broken_image_outlined,
                                         color: Colors.white70,
@@ -481,10 +484,10 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                 ),
               ),
               // Bottom info
-              if (widget.item.trackingNumber != null ||
-                  widget.item.assemblyNumber != null)
+              if (_currentItem.trackingNumber != null ||
+                  _currentItem.assemblyNumber != null)
                 Positioned(
-                  bottom: 0,
+                  bottom: _currentItem.isVideo ? 140 : 0,
                   left: 0,
                   right: 0,
                   child: Container(
@@ -508,7 +511,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (widget.item.trackingNumber != null)
+                        if (_currentItem.trackingNumber != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: Row(
@@ -520,7 +523,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Трек: ${widget.item.trackingNumber}',
+                                  'Трек: ${_currentItem.trackingNumber}',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w600,
@@ -530,7 +533,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                               ],
                             ),
                           ),
-                        if (widget.item.assemblyNumber != null)
+                        if (_currentItem.assemblyNumber != null)
                           Row(
                             children: [
                               const Icon(
@@ -540,7 +543,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'ID сборки: ${widget.item.assemblyNumber}',
+                                'ID сборки: ${_currentItem.assemblyNumber}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -563,82 +566,127 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
 class _VideoPlayerView extends StatefulWidget {
   final String url;
+  final bool active;
 
-  const _VideoPlayerView({required this.url});
+  const _VideoPlayerView({super.key, required this.url, this.active = true});
 
   @override
   State<_VideoPlayerView> createState() => _VideoPlayerViewState();
 }
 
 class _VideoPlayerViewState extends State<_VideoPlayerView> {
-  late final VideoPlayerController _controller;
+  VideoPlayerController? _controller;
+  bool _started = false;
+  bool _failed = false;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..setLooping(true)
-      ..initialize()
-          .then((_) {
-            if (!mounted) return;
-            setState(() {});
-            _controller.play();
-          })
-          .catchError((e) {
-            debugPrint('[VideoPlayer] Failed to initialize: $e');
-          });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    VideoPlayerController? pending;
+    try {
+      pending = await createAuthenticatedVideoController(
+        context,
+        widget.url,
+        progressivePlayback: true,
+      );
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      await pending.initialize();
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      await pending.setLooping(false);
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      if (widget.active) await pending.play();
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      if (!widget.active) await pending.pause();
+      if (!mounted) {
+        await pending.dispose();
+        return;
+      }
+      setState(() => _controller = pending);
+    } catch (error) {
+      debugPrint('[ReportVideo] Initialization failed: $error');
+      await pending?.dispose();
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoPlayerView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) unawaited(_syncPlayback());
+  }
+
+  Future<void> _syncPlayback() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      if (widget.active) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
+      if (!mounted) return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) {
-      return const SizedBox(
-        width: 32,
-        height: 32,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
+    final controller = _controller;
+    if (_failed) return const Icon(Icons.error_outline, color: Colors.white);
+    if (controller == null || !controller.value.isInitialized) {
+      return const MediaLoadingIndicator();
     }
 
-    return GestureDetector(
-      onTap: () {
-        if (_controller.value.isPlaying) {
-          _controller.pause();
-        } else {
-          _controller.play();
-        }
-        setState(() {});
-      },
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          AspectRatio(
-            aspectRatio: _controller.value.aspectRatio,
-            child: VideoPlayer(_controller),
-          ),
-          if (!_controller.value.isPlaying)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 34,
-                ),
-              ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Center(
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: SizedBox(
+              width: controller.value.size.width,
+              height: controller.value.size.height,
+              child: VideoPlayer(controller),
             ),
-        ],
-      ),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.paddingOf(context).bottom + 16,
+          child: ReportVideoControls(
+            controller: controller,
+            active: widget.active,
+          ),
+        ),
+      ],
     );
   }
 }

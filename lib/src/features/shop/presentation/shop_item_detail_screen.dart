@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
@@ -525,7 +525,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
               setState(() => _currentImageIndex = index);
             },
             itemBuilder: (context, index) {
-              return CachedNetworkImage(
+              return AuthenticatedCachedImage(
                 imageUrl: images[index],
                 fit: BoxFit.contain,
                 placeholder: (_, _) => Container(
@@ -777,7 +777,7 @@ class _ShopItemDetailScreenState extends ConsumerState<ShopItemDetailScreen> {
                       if (hasImage) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
-                          child: CachedNetworkImage(
+                          child: AuthenticatedCachedImage(
                             imageUrl: attr.imageUrl,
                             width: 28,
                             height: 28,
