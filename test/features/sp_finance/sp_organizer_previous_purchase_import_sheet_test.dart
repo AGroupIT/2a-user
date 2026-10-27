@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_previous_purchase_models.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_repository.dart';
@@ -88,6 +89,7 @@ Future<_FakeRepository> _pumpSheet(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
         spOrganizerRepositoryProvider.overrideWithValue(repository),
         spV2CustomersProvider.overrideWith((ref) async => const [_customer]),
       ],
@@ -203,6 +205,18 @@ void main() {
 
   testWidgets('previous purchase cards fit 390 px', (tester) async {
     await _pumpSheet(tester, size: const Size(390, 800));
+    await tester.scrollUntilVisible(
+      find.text('Повторяемая куртка'),
+      180,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('Повторяемая куртка'), findsOneWidget);
     expect(find.text('Закупка весна'), findsOneWidget);

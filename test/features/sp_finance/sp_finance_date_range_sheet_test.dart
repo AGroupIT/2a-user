@@ -45,6 +45,8 @@ void main() {
 
     await tester.tap(find.text('10'));
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.ensureVisible(find.text('15'));
+    await tester.pumpAndSettle();
     final endDay = find.text('15').hitTestable();
     expect(endDay, findsOneWidget);
     await tester.tap(endDay);

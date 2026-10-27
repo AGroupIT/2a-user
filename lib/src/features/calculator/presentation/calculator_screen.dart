@@ -246,6 +246,7 @@ class _CalculatorScreenState extends ConsumerState<CalculatorScreen> {
       packagingNames: selectedPackagings.map((p) => p.name).toList(),
       packagingBaseCost: calculation.packagingBaseCost,
       packagingTariffSurcharge: calculation.packagingTariffSurcharge,
+      hasSeparateDensitySurcharge: tariff.isDensity,
       insuranceAmountCny: insuranceAmount,
       insuranceBaseUsd: calculation.insuranceBaseUsd,
       insuranceCost: calculation.insuranceCost,
@@ -724,6 +725,7 @@ class _CalcResult {
   final List<String> packagingNames;
   final double packagingBaseCost;
   final double packagingTariffSurcharge;
+  final bool hasSeparateDensitySurcharge;
   final double insuranceAmountCny;
   final double insuranceBaseUsd;
   final double insuranceCost;
@@ -748,6 +750,7 @@ class _CalcResult {
     required this.packagingNames,
     required this.packagingBaseCost,
     required this.packagingTariffSurcharge,
+    required this.hasSeparateDensitySurcharge,
     required this.insuranceAmountCny,
     required this.insuranceBaseUsd,
     required this.insuranceCost,
@@ -767,6 +770,15 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseFormula = result.priceUnit == 'м³'
+        ? '${result.volume.toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}'
+        : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}';
+    final hasDensitySurcharge =
+        result.hasSeparateDensitySurcharge &&
+        result.packagingTariffSurcharge > 0;
+    final deliveryFormula = (hasDensitySurcharge
+        ? '($baseFormula + ${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг)'
+        : baseFormula);
     return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -851,20 +863,32 @@ class _ResultCard extends StatelessWidget {
           _Row(
             'Цена за ${result.priceUnit}',
             '\$${result.pricePerKg.toStringAsFixed(2)}/${result.priceUnit}',
-            subtitle: result.packagingTariffSurcharge > 0
+            subtitle:
+                result.packagingTariffSurcharge > 0 &&
+                    !result.hasSeparateDensitySurcharge
                 ? 'включая наценку за упаковку \$${result.packagingTariffSurcharge.toStringAsFixed(2)}'
                 : null,
           ),
           _Row('Вес', '${result.weight.toStringAsFixed(2)} кг'),
+          if (result.hasSeparateDensitySurcharge &&
+              result.packagingTariffSurcharge > 0)
+            _Row(
+              tr(context, ru: 'Надбавка за упаковку к доставке', zh: '包装运费附加费'),
+              '\$${(result.weight * result.packagingTariffSurcharge).toStringAsFixed(2)}',
+              subtitle: tr(
+                context,
+                ru: '${result.weight.toStringAsFixed(2)} кг × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/кг',
+                zh: '${result.weight.toStringAsFixed(2)} 公斤 × \$${result.packagingTariffSurcharge.toStringAsFixed(2)}/公斤',
+              ),
+            ),
+
           const SizedBox(height: 4),
           const _Label('Статьи расходов'),
           const SizedBox(height: 10),
           _Row(
             'Доставка',
             '\$${result.shipping.toStringAsFixed(2)}',
-            subtitle: result.priceUnit == 'м³'
-                ? '${result.volume.toStringAsFixed(3)} м³ × \$${result.pricePerKg.toStringAsFixed(2)}'
-                : '${result.weight.toStringAsFixed(2)} кг × \$${result.pricePerKg.toStringAsFixed(2)}',
+            subtitle: deliveryFormula,
           ),
           _Row(
             'Разгрузка',

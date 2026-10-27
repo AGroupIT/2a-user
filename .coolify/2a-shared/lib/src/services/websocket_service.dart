@@ -142,7 +142,13 @@ class WebSocketService {
   SocketConnectionStatus _currentStatus = SocketConnectionStatus.disconnected;
   SocketConnectionStatus get currentStatus => _currentStatus;
 
-  WebSocketService({required String serverUrl}) : _serverUrl = serverUrl;
+  final Map<String, dynamic> _authMetadata;
+
+  WebSocketService({
+    required String serverUrl,
+    Map<String, dynamic> authMetadata = const {},
+  }) : _serverUrl = serverUrl,
+       _authMetadata = Map.unmodifiable(authMetadata);
 
   dynamic _normalizeSocketValue(dynamic value) {
     if (value is Map) {
@@ -311,7 +317,7 @@ class WebSocketService {
           .setReconnectionDelayMax(30000)
           .setReconnectionAttempts(999999999)
           .setTimeout(_connectTimeout.inMilliseconds)
-          .setAuth({'token': token})
+          .setAuth({..._authMetadata, 'token': token})
           .build(),
     );
 

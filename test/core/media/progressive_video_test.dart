@@ -105,7 +105,7 @@ void main() {
         );
         final controller = await createAuthenticatedVideoController(
           context,
-          '/uploads/video.mp4',
+          '/uploads/photodesk-videos/PHOTODESK1/report/video-test.mp4',
           progressivePlayback: true,
         );
         final initialization = controller.initialize();
@@ -176,7 +176,7 @@ void main() {
       );
       final controller = await createAuthenticatedVideoController(
         context,
-        '/uploads/video.mp4',
+        '/uploads/photodesk-videos/PHOTODESK1/report/video-test.mp4',
         progressivePlayback: true,
       );
       final initialization = controller.initialize();

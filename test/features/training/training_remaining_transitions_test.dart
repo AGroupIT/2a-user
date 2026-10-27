@@ -205,16 +205,14 @@ void main() {
       expect(tester.getSize(anchor('calculator.result')).height, lessThan(45));
       Finder field(String id) =>
           find.descendant(of: anchor(id), matching: find.byType(TextField));
-      await tester.ensureVisible(field('calculator.photos'));
-      await tester.enterText(field('calculator.photos'), '2');
-      await frames(tester);
-      expect(anchor('calculator.result'), findsNothing);
-      expect(anchor('calculator.missing.photos'), findsOneWidget);
-      await tester.enterText(field('calculator.missing.photos'), '0');
-      await frames(tester);
+      // Fixed-price photo reports are billed as services rather than a
+      // percentage of delivery, so the calculator has no photo-count field.
+      expect(anchor('calculator.photos'), findsNothing);
       expect(anchor('calculator.missing.photos'), findsNothing);
       expect(anchor('calculator.result'), findsOneWidget);
       final insurance = find.widgetWithText(SwitchListTile, 'Страховка');
+      await tester.ensureVisible(insurance);
+      await tester.pumpAndSettle();
       await tester.ensureVisible(insurance);
       await tester.tap(insurance);
       await frames(tester);

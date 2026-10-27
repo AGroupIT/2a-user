@@ -10,7 +10,22 @@ ApiClient mediaFixtureApi() {
   final api = _MediaFixtureApi();
   when(() => api.getToken()).thenAnswer((_) async => 'widget-fixture-session');
   when(
+    () => api.getMediaCacheIdentity(),
+  ).thenAnswer((_) async => 'widget-fixture-session');
+  when(
     () => api.get<List<int>>(any(), options: any(named: 'options')),
+  ).thenThrow(
+    DioException(
+      requestOptions: RequestOptions(path: '/uploads/widget-fixture'),
+      type: DioExceptionType.badResponse,
+    ),
+  );
+  when(
+    () => api.getWithProgress<List<int>>(
+      any(),
+      options: any(named: 'options'),
+      onReceiveProgress: any(named: 'onReceiveProgress'),
+    ),
   ).thenThrow(
     DioException(
       requestOptions: RequestOptions(path: '/uploads/widget-fixture'),

@@ -25,6 +25,9 @@ void main() {
         final response = Completer<Response<List<int>>>();
         ProgressCallback? onProgress;
         when(
+          () => api.getMediaCacheIdentity(),
+        ).thenAnswer((_) async => 'progress-test-session');
+        when(
           () => api.getToken(),
         ).thenAnswer((_) async => 'progress-test-session');
         when(

@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -15,6 +16,7 @@ import '../services/app_distribution.dart';
 import '../services/runtime/app_runtime_info.dart';
 import 'api_config.dart';
 import 'native_http_adapter.dart';
+import 'media_http_adapter.dart';
 
 /// Callback для обработки 401 ошибки (unauthorized)
 typedef OnUnauthorizedCallback = void Function();
@@ -28,8 +30,19 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
 
+class _GetRequestLane {
+  _GetRequestLane(this.limit);
+  final int limit;
+  int active = 0;
+  final queue = Queue<Completer<void>>();
+}
+
 /// Клиент для работы с API
 class ApiClient {
+  static int _mediaSessionEpoch = 0;
+  Future<String> getMediaCacheIdentity() async =>
+      '$_mediaSessionEpoch:${await getToken()}';
+
   late Dio _dio;
   // На мобильных платформах используем FlutterSecureStorage с правильными настройками
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
@@ -49,11 +62,12 @@ class ApiClient {
   static int _requestSequence = 0;
   static const Duration _minConnectionResetInterval = Duration(seconds: 8);
   static const Duration _fallbackTtl = Duration(minutes: 5);
-  static const int _maxConcurrentGetRequests = 3;
 
   int _inFlightRequests = 0;
-  int _activeGetRequests = 0;
-  final Queue<Completer<void>> _getRequestQueue = Queue<Completer<void>>();
+  // Two large binary downloads cannot starve the three JSON/metadata slots.
+  // The combined five-request bound stays below typical per-host HTTP limits.
+  final _metadataGetLane = _GetRequestLane(3);
+  final _mediaGetLane = _GetRequestLane(2);
   final HttpClientAdapter Function()? _adapterFactory;
   final Future<Map<String, String>> Function()? _runtimeHeaders;
   final Duration _requestTimeout;
@@ -127,6 +141,7 @@ class ApiClient {
     if (nativeAdapter != null) {
       dio.httpClientAdapter = nativeAdapter;
     }
+    dio.httpClientAdapter = wrapMediaHttpAdapter(dio.httpClientAdapter);
 
     // Добавляем интерсепторы
     dio.interceptors.add(_clientTelemetryInterceptor());
@@ -374,6 +389,7 @@ class ApiClient {
     Future<T> Function() action,
     CancelToken cancelToken,
     Duration timeout,
+    _GetRequestLane lane,
   ) async {
     var deadlineExceeded = false;
     final timer = Timer(timeout, () {
@@ -381,7 +397,7 @@ class ApiClient {
       cancelToken.cancel('GET deadline exceeded');
     });
     try {
-      await _acquireGetSlot(path, cancelToken);
+      await _acquireGetSlot(path, cancelToken, lane);
       try {
         if (cancelToken.isCancelled) throw cancelToken.cancelError!;
         return await Future.any([
@@ -389,7 +405,7 @@ class ApiClient {
           cancelToken.whenCancel.then<T>((error) => throw error),
         ]);
       } finally {
-        _releaseGetSlot();
+        _releaseGetSlot(lane);
       }
     } on DioException catch (_) {
       if (deadlineExceeded) {
@@ -401,23 +417,27 @@ class ApiClient {
     }
   }
 
-  Future<void> _acquireGetSlot(String path, CancelToken cancelToken) async {
-    if (_activeGetRequests < _maxConcurrentGetRequests) {
-      _activeGetRequests++;
+  Future<void> _acquireGetSlot(
+    String path,
+    CancelToken cancelToken,
+    _GetRequestLane lane,
+  ) async {
+    if (lane.active < lane.limit) {
+      lane.active++;
       return;
     }
 
     final completer = Completer<void>();
-    _getRequestQueue.add(completer);
+    lane.queue.add(completer);
     ClientLogService.instance.add(
       type: 'api_get_queued',
       level: 'info',
       message: 'GET поставлен в очередь, чтобы не забивать mobile HTTP stack',
       data: {
         'path': path,
-        'activeGetRequests': _activeGetRequests,
-        'queuedGetRequests': _getRequestQueue.length,
-        'maxConcurrentGetRequests': _maxConcurrentGetRequests,
+        'activeGetRequests': lane.active,
+        'queuedGetRequests': lane.queue.length,
+        'maxConcurrentGetRequests': lane.limit,
       },
     );
     try {
@@ -427,17 +447,17 @@ class ApiClient {
       ]);
     } catch (_) {
       // If a slot was reserved before cancellation won, hand it on.
-      if (!_getRequestQueue.remove(completer)) _releaseGetSlot();
+      if (!lane.queue.remove(completer)) _releaseGetSlot(lane);
       rethrow;
     }
   }
 
-  void _releaseGetSlot() {
-    if (_getRequestQueue.isEmpty) {
-      if (_activeGetRequests > 0) _activeGetRequests--;
+  void _releaseGetSlot(_GetRequestLane lane) {
+    if (lane.queue.isEmpty) {
+      if (lane.active > 0) lane.active--;
       return;
     }
-    final next = _getRequestQueue.removeFirst();
+    final next = lane.queue.removeFirst();
     if (!next.isCompleted) {
       next.complete();
     }
@@ -1295,6 +1315,9 @@ class ApiClient {
   }
 
   Future<void> setToken(String token) async {
+    _mediaSessionEpoch++;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     // Кешируем в памяти
     _inMemoryToken = token;
     // Сбрасываем single-flight, чтобы следующий getToken не ждал старую попытку.
@@ -1371,6 +1394,9 @@ class ApiClient {
   }
 
   Future<void> clearToken() async {
+    _mediaSessionEpoch++;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     _inMemoryToken = null;
     _tokenLoadInFlight = null;
 
@@ -1435,7 +1461,7 @@ class ApiClient {
     Options? options,
   }) => _get<T>(path, queryParameters: queryParameters, options: options);
 
-  /// Media downloads use the same authentication, retry and concurrency guards.
+  /// Media downloads share the authenticated request guards and media lane.
   Future<Response<T>> getWithProgress<T>(
     String path, {
     Options? options,
@@ -1467,6 +1493,10 @@ class ApiClient {
       ),
       cancelToken,
       _effectiveOverallTimeout(options),
+      options?.responseType == ResponseType.bytes ||
+              options?.responseType == ResponseType.stream
+          ? _mediaGetLane
+          : _metadataGetLane,
     );
   }
 

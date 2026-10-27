@@ -164,7 +164,13 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Синяя куртка'),
       180,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
     );
     expect(find.text('Синяя куртка'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -174,7 +180,13 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Уже импортирован'),
       160,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
     );
     expect(find.text('Уже импортирован'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -193,6 +205,20 @@ void main() {
   testWidgets('sheet keeps compact layout at 390 px', (tester) async {
     await _pumpSheet(tester, size: const Size(390, 800));
 
+    // The shared mobile top gap leaves a shorter viewport; lazy rows remain
+    // reachable by scrolling instead of all being built above the fold.
+    await tester.scrollUntilVisible(
+      find.text('Синяя куртка'),
+      180,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Синяя куртка'), findsOneWidget);
     expect(find.text('PB-TRACK-501'), findsOneWidget);
     expect(find.text('Бланк №77 · #3'), findsOneWidget);

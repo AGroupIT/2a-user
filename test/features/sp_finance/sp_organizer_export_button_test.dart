@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/core/branding/company_branding_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_garage_import_models.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_models.dart';
 import 'package:twoalogisticcabineuser/src/features/sp_finance/data/sp_organizer_previous_purchase_models.dart';
@@ -117,6 +118,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        companyNameProvider.overrideWithValue('Partner Cargo'),
         spV2PurchaseDetailProvider(17).overrideWith((ref) async => _purchase),
         spOrganizerCapabilitiesProvider.overrideWith(
           (ref) async => capabilities,
@@ -233,7 +235,7 @@ void main() {
 
     expect(find.text('Участники закупки'), findsNothing);
     expect(find.text('Параметры расчёта'), findsNothing);
-    expect(find.text('Логистика 2A'), findsNothing);
+    expect(find.text('Логистика Partner Cargo'), findsNothing);
     expect(find.text('Добавить товар'), findsOneWidget);
     expect(find.text('Закрыть приём'), findsOneWidget);
 
@@ -255,7 +257,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Параметры расчёта'), findsOneWidget);
-    expect(find.text('Логистика 2A'), findsOneWidget);
+    expect(find.text('Логистика Partner Cargo'), findsOneWidget);
     for (final tooltip in [
       'Настроить профиль',
       'Обновить расчёт',

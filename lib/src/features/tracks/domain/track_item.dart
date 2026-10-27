@@ -116,7 +116,10 @@ class TrackItem {
     final date = createdAt;
 
     // Получаем фото из photos
-    final photos = json['photos'] as List<dynamic>? ?? [];
+    final photos = <dynamic>[
+      ...?json['photos'] as List<dynamic>?,
+      ...?json['videos'] as List<dynamic>?,
+    ];
     final photoUrls = photos
         .map((p) => (p as Map<String, dynamic>)['url'] as String?)
         .whereType<String>()
@@ -584,7 +587,10 @@ class PhotoRequest {
 
   factory PhotoRequest.fromJson(Map<String, dynamic> json) {
     // Парсим фотографии из photos
-    final photos = json['photos'] as List<dynamic>? ?? [];
+    final photos = <dynamic>[
+      ...?json['photos'] as List<dynamic>?,
+      ...?json['videos'] as List<dynamic>?,
+    ];
     final mediaUrls = photos
         .map((p) => (p as Map<String, dynamic>)['url'] as String?)
         .whereType<String>()

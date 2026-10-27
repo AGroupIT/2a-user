@@ -13165,7 +13165,7 @@ class _DeliveryOptionCard extends StatelessWidget {
 
 /// Определяет, является ли URL видео-файлом
 bool _isVideoUrl(String url) {
-  final lower = url.toLowerCase();
+  final lower = (Uri.tryParse(url)?.path ?? url).toLowerCase();
   return lower.endsWith('.mp4') ||
       lower.endsWith('.m4v') ||
       lower.endsWith('.webm') ||

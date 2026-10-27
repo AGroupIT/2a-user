@@ -209,6 +209,14 @@ class _TrainingTransport implements HttpClientAdapter {
           assembly != null) {
         return _response(assembly!);
       }
+      if (path == '/carriers/shipments' &&
+          assembly != null &&
+          '${query['assemblyId']}' == '$assemblyTrainingAssemblyId' &&
+          query['invoiceId'] == null) {
+        // The exercise creates a new assembly with no shipped boxes yet.
+        // Keep its optional tracking read inside this isolated transport.
+        return _response({'shipments': <dynamic>[]});
+      }
     }
     if (options.method == 'POST' && path == '/assemblies') {
       final data = options.data;

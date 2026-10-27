@@ -1,4 +1,4 @@
-import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
+import 'app_cached_media_image.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -32,8 +32,11 @@ class BlurredMediaBackdrop extends StatelessWidget {
               ),
               child: Transform.scale(
                 scale: 1.08,
-                child: AuthenticatedCachedImage(
-                  imageUrl: imageUrl!,
+                child: AppCachedMediaImage(
+                  url: imageUrl!,
+                  thumbnailSize: 360,
+                  memCacheWidth: 360,
+                  memCacheHeight: 360,
                   fit: BoxFit.cover,
                   fadeInDuration: Duration.zero,
                   fadeOutDuration: Duration.zero,
@@ -43,11 +46,8 @@ class BlurredMediaBackdrop extends StatelessWidget {
             ),
           ),
         Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-            child: ColoredBox(
-              color: Colors.black.withValues(alpha: overlayOpacity),
-            ),
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: overlayOpacity),
           ),
         ),
         child,

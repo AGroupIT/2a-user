@@ -128,6 +128,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Связать с операцией Partner Cargo'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('TRACK-041'),
+      180,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('TRACK-041'), findsOneWidget);
     expect(tester.takeException(), isNull);
 

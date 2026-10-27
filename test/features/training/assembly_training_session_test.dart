@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:twoalogisticcabineuser/src/core/network/api_client.dart';
+import 'package:twoalogisticcabineuser/src/features/carriers/data/client_carrier_tracking.dart';
 import 'package:twoalogisticcabineuser/src/features/tracks/data/assemblies_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/tracks/data/tracks_provider.dart';
 import 'package:twoalogisticcabineuser/src/features/training/data/assembly_training_session.dart';
@@ -96,7 +97,21 @@ void main() {
         )).single.id,
         assemblyTrainingAssemblyId,
       );
+      final tracking = await c.read(
+        clientCarrierTrackingProvider((
+          assemblyId: assemblyTrainingAssemblyId,
+          invoiceId: null,
+        )).future,
+      );
+      expect(tracking.shipments, isEmpty);
       expect(session.rejectedRequests, isEmpty);
+      await expectLater(
+        c
+            .read(apiClientProvider)
+            .get('/carriers/shipments', queryParameters: {'assemblyId': 123}),
+        throwsA(isA<DioException>()),
+      );
+      expect(session.rejectedRequests, ['GET /carriers/shipments']);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getKeys(), {'auth_token', 'active_client_code'});
       expect(prefs.getString('active_client_code'), 'REAL');

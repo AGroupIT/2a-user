@@ -1,5 +1,5 @@
 import '../../../core/network/api_client.dart';
-import '../../../core/media/authenticated_video.dart';
+import '../../../core/media/media_file_metadata.dart';
 import 'package:twoalogisticcabineuser/src/core/media/authenticated_media.dart';
 import 'dart:async';
 import 'dart:io';
@@ -11,9 +11,6 @@ import '../../../core/utils/locale_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:twoalogisticcabineuser/src/core/ui/app_toast.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
-import '../../../core/ui/media_loading_indicator.dart';
-import 'report_video_controls.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,8 +19,12 @@ import 'package:gal/gal.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/branding/company_branding_provider.dart';
 import '../../../core/ui/blurred_media_backdrop.dart';
+import '../../../core/ui/media_image_viewport.dart';
+import '../../../core/ui/media_loading_indicator.dart';
 import '../../../core/ui/app_colors.dart';
 import '../domain/photo_item.dart';
+import '../../../core/ui/app_cached_media_image.dart';
+import 'photo_report_video_player.dart';
 
 void _showStyledSnackBar(
   BuildContext context,
@@ -94,6 +95,7 @@ class PhotoViewerScreen extends ConsumerStatefulWidget {
 class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   bool _isDownloading = false;
   double _swipeDy = 0;
+  bool _galleryGestureBlocked = false;
   late PageController _pageController;
   late int _currentIndex;
 
@@ -132,12 +134,21 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       final item = items[index];
       if (item.isVideo) continue;
 
-      final fullUrl = ApiConfig.getMediaUrl(item.url);
+      final fullUrl = ApiConfig.getMediaThumbnailUrl(
+        item.url,
+        size: 720,
+        preserveAspectRatio: true,
+      );
       if (fullUrl.isEmpty) continue;
 
       unawaited(
         precacheImage(
-          authenticatedImageProvider(context, fullUrl),
+          ResizeImage(
+            authenticatedImageProvider(context, fullUrl),
+            width: 720,
+            height: 720,
+            policy: ResizeImagePolicy.fit,
+          ),
           context,
         ).catchError((_) {}),
       );
@@ -163,19 +174,24 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
   Future<void> _downloadMedia() async {
     setState(() => _isDownloading = true);
+    final api = ref.read(apiClientProvider);
+    final companyName = ref.read(companyNameProvider);
+    String? temporaryPath;
     try {
       final currentItem = _currentItem;
 
       if (kIsWeb) {
         final bytes = await loadMediaBytes(
-          ref.read(apiClientProvider),
+          api,
           ApiConfig.getMediaUrl(currentItem.url),
         );
         if (!mounted) return;
         final saved = await downloadFile(
           bytes: bytes,
-          fileName:
-              'media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}',
+          fileName: mediaFileName(
+            currentItem.url,
+            isVideo: currentItem.isVideo,
+          ),
         );
         if (!mounted) return;
         if (!saved) throw StateError('media_not_saved');
@@ -188,8 +204,10 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
 
       // Запрашиваем разрешение на сохранение в галерею
       final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!mounted) return;
       if (!hasAccess) {
         final granted = await Gal.requestAccess(toAlbum: true);
+        if (!mounted) return;
         if (!granted) {
           if (mounted) {
             _showStyledSnackBar(
@@ -205,21 +223,17 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       String savePath;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
 
-      final bytes = await loadMediaBytes(ref.read(apiClientProvider), fullUrl);
+      final bytes = await loadMediaBytes(api, fullUrl);
       final tempDir = await getTemporaryDirectory();
       savePath =
-          '${tempDir.path}/media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}';
+          '${tempDir.path}/${DateTime.now().microsecondsSinceEpoch}_${mediaFileName(currentItem.url, isVideo: currentItem.isVideo)}';
+      temporaryPath = savePath;
       await File(savePath).writeAsBytes(bytes);
       if (!mounted) return;
 
       // Сохраняем в галерею
-      final companyName = ref.read(companyNameProvider);
       if (currentItem.isVideo) {
         await Gal.putVideo(savePath, album: companyName);
-        // Удаляем временный файл только для видео
-        try {
-          await File(savePath).delete();
-        } catch (_) {}
       } else {
         await Gal.putImage(savePath, album: companyName);
       }
@@ -242,6 +256,11 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
         _showStyledSnackBar(context, 'Не удалось сохранить', isError: true);
       }
     } finally {
+      if (temporaryPath != null) {
+        try {
+          await File(temporaryPath).delete();
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() => _isDownloading = false);
       }
@@ -249,6 +268,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
   }
 
   Future<void> _shareMedia(BuildContext context) async {
+    final api = ref.read(apiClientProvider);
     try {
       final currentItem = _currentItem;
       final fullUrl = ApiConfig.getMediaUrl(currentItem.url);
@@ -256,7 +276,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       // Получаем box ДО async операций
       final box = context.findRenderObject() as RenderBox?;
 
-      final bytes = await loadMediaBytes(ref.read(apiClientProvider), fullUrl);
+      final bytes = await loadMediaBytes(api, fullUrl);
       if (!mounted) return;
 
       // Шарим файл (sharePositionOrigin нужен для iPad)
@@ -264,9 +284,11 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
         [
           XFile.fromData(
             bytes,
-            mimeType: currentItem.isVideo ? 'video/mp4' : 'image/jpeg',
-            name:
-                'media_${DateTime.now().microsecondsSinceEpoch}.${currentItem.isVideo ? 'mp4' : 'jpg'}',
+            mimeType: mediaMimeType(
+              currentItem.url,
+              isVideo: currentItem.isVideo,
+            ),
+            name: mediaFileName(currentItem.url, isVideo: currentItem.isVideo),
           ),
         ],
         text: currentItem.trackingNumber != null
@@ -289,6 +311,78 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
       if (!context.mounted) return;
       _showStyledSnackBar(context, 'Не удалось поделиться', isError: true);
     }
+  }
+
+  Widget _mediaPage(PhotoItem item, int index) {
+    final imageUrl = ApiConfig.getMediaUrl(item.url);
+    if (item.isVideo) {
+      return GestureDetector(
+        onVerticalDragUpdate: _onVerticalDragUpdate,
+        onVerticalDragEnd: _onVerticalDragEnd,
+        child: Transform.translate(
+          offset: Offset(0, _swipeDy),
+          child: Center(
+            child: PhotoReportVideoPlayer(
+              key: ValueKey('video-$index-${item.url}'),
+              url: imageUrl,
+              active: index == _currentIndex,
+            ),
+          ),
+        ),
+      );
+    }
+    return MediaImageViewport(
+      key: ValueKey('photo-$index-${item.url}'),
+      imageKey: item.url,
+      active: index == _currentIndex,
+      onInteractionBlockedChanged: (blocked) {
+        if (mounted &&
+            index == _currentIndex &&
+            _galleryGestureBlocked != blocked) {
+          setState(() => _galleryGestureBlocked = blocked);
+        }
+      },
+      onDismiss: () => Navigator.of(context).pop(),
+      child: AuthenticatedCachedImage(
+        imageUrl: index == _currentIndex
+            ? imageUrl
+            : ApiConfig.getMediaThumbnailUrl(
+                item.url,
+                size: 720,
+                preserveAspectRatio: true,
+              ),
+        fit: BoxFit.contain,
+        memCacheWidth: index == _currentIndex ? 3072 : 720,
+        memCacheHeight: index == _currentIndex ? 3072 : 720,
+        progressIndicatorBuilder: (context, _, progress) => Stack(
+          fit: StackFit.expand,
+          children: [
+            AppCachedMediaImage(
+              url: item.url,
+              thumbnailSize: 720,
+              fit: BoxFit.contain,
+              memCacheWidth: 720,
+              memCacheHeight: 720,
+            ),
+            Center(child: MediaLoadingIndicator(progress: progress)),
+          ],
+        ),
+        placeholder: (_, _) => AppCachedMediaImage(
+          url: item.url,
+          thumbnailSize: 720,
+          fit: BoxFit.contain,
+          memCacheWidth: 720,
+          memCacheHeight: 720,
+        ),
+        errorWidget: (_, _, _) => const Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: Colors.white70,
+            size: 48,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -314,85 +408,24 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                 child: hasMultiplePhotos
                     ? PageView.builder(
                         controller: _pageController,
+                        physics: _galleryGestureBlocked
+                            ? const NeverScrollableScrollPhysics()
+                            : null,
                         itemCount: widget.allPhotos!.length,
                         onPageChanged: (index) {
                           setState(() {
                             _currentIndex = index;
+                            _galleryGestureBlocked = false;
+                            _swipeDy = 0;
                           });
                           _precacheAdjacentImages();
                         },
                         itemBuilder: (context, index) {
                           final item = widget.allPhotos![index];
-                          return GestureDetector(
-                            onVerticalDragUpdate: _onVerticalDragUpdate,
-                            onVerticalDragEnd: _onVerticalDragEnd,
-                            child: Transform.translate(
-                              offset: Offset(0, _swipeDy),
-                              child: Center(
-                                child: item.isVideo
-                                    ? _VideoPlayerView(
-                                        key: ValueKey(item.url),
-                                        active: index == _currentIndex,
-                                        url: ApiConfig.getMediaUrl(item.url),
-                                      )
-                                    : InteractiveViewer(
-                                        minScale: 1,
-                                        maxScale: 4,
-                                        child: AuthenticatedCachedImage(
-                                          imageUrl: ApiConfig.getMediaUrl(
-                                            item.url,
-                                          ),
-                                          fit: BoxFit.contain,
-                                          progressIndicatorBuilder:
-                                              (_, _, progress) =>
-                                                  MediaLoadingIndicator(
-                                                    progress: progress,
-                                                  ),
-                                          errorWidget: (_, _, _) => const Icon(
-                                            Icons.broken_image_outlined,
-                                            color: Colors.white70,
-                                            size: 48,
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          );
+                          return _mediaPage(item, index);
                         },
                       )
-                    : GestureDetector(
-                        onVerticalDragUpdate: _onVerticalDragUpdate,
-                        onVerticalDragEnd: _onVerticalDragEnd,
-                        child: Transform.translate(
-                          offset: Offset(0, _swipeDy),
-                          child: Center(
-                            child: widget.item.isVideo
-                                ? _VideoPlayerView(
-                                    url: ApiConfig.getMediaUrl(widget.item.url),
-                                  )
-                                : InteractiveViewer(
-                                    minScale: 1,
-                                    maxScale: 4,
-                                    child: AuthenticatedCachedImage(
-                                      imageUrl: ApiConfig.getMediaUrl(
-                                        widget.item.url,
-                                      ),
-                                      fit: BoxFit.contain,
-                                      progressIndicatorBuilder:
-                                          (_, _, progress) =>
-                                              MediaLoadingIndicator(
-                                                progress: progress,
-                                              ),
-                                      errorWidget: (_, _, _) => const Icon(
-                                        Icons.broken_image_outlined,
-                                        color: Colors.white70,
-                                        size: 48,
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
+                    : _mediaPage(widget.item, 0),
               ),
               // Top bar
               Positioned(
@@ -484,10 +517,10 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                 ),
               ),
               // Bottom info
-              if (_currentItem.trackingNumber != null ||
-                  _currentItem.assemblyNumber != null)
+              if (widget.item.trackingNumber != null ||
+                  widget.item.assemblyNumber != null)
                 Positioned(
-                  bottom: _currentItem.isVideo ? 140 : 0,
+                  bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
@@ -511,7 +544,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_currentItem.trackingNumber != null)
+                        if (widget.item.trackingNumber != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: Row(
@@ -523,7 +556,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Трек: ${_currentItem.trackingNumber}',
+                                  'Трек: ${widget.item.trackingNumber}',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w600,
@@ -533,7 +566,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                               ],
                             ),
                           ),
-                        if (_currentItem.assemblyNumber != null)
+                        if (widget.item.assemblyNumber != null)
                           Row(
                             children: [
                               const Icon(
@@ -543,7 +576,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'ID сборки: ${_currentItem.assemblyNumber}',
+                                'ID сборки: ${widget.item.assemblyNumber}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -560,133 +593,6 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _VideoPlayerView extends StatefulWidget {
-  final String url;
-  final bool active;
-
-  const _VideoPlayerView({super.key, required this.url, this.active = true});
-
-  @override
-  State<_VideoPlayerView> createState() => _VideoPlayerViewState();
-}
-
-class _VideoPlayerViewState extends State<_VideoPlayerView> {
-  VideoPlayerController? _controller;
-  bool _started = false;
-  bool _failed = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    unawaited(_initialize());
-  }
-
-  Future<void> _initialize() async {
-    VideoPlayerController? pending;
-    try {
-      pending = await createAuthenticatedVideoController(
-        context,
-        widget.url,
-        progressivePlayback: true,
-      );
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      await pending.initialize();
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      await pending.setLooping(false);
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      if (widget.active) await pending.play();
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      if (!widget.active) await pending.pause();
-      if (!mounted) {
-        await pending.dispose();
-        return;
-      }
-      setState(() => _controller = pending);
-    } catch (error) {
-      debugPrint('[ReportVideo] Initialization failed: $error');
-      await pending?.dispose();
-      if (!mounted) return;
-      setState(() => _failed = true);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _VideoPlayerView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.active != widget.active) unawaited(_syncPlayback());
-  }
-
-  Future<void> _syncPlayback() async {
-    final controller = _controller;
-    if (controller == null) return;
-    try {
-      if (widget.active) {
-        await controller.play();
-      } else {
-        await controller.pause();
-      }
-      if (!mounted) return;
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _failed = true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _controller;
-    if (_failed) return const Icon(Icons.error_outline, color: Colors.white);
-    if (controller == null || !controller.value.isInitialized) {
-      return const MediaLoadingIndicator();
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Center(
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: SizedBox(
-              width: controller.value.size.width,
-              height: controller.value.size.height,
-              child: VideoPlayer(controller),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: MediaQuery.paddingOf(context).bottom + 16,
-          child: ReportVideoControls(
-            controller: controller,
-            active: widget.active,
-          ),
-        ),
-      ],
     );
   }
 }
