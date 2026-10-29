@@ -9,6 +9,7 @@ import 'package:phone_form_field/phone_form_field.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/phone_input_field.dart';
@@ -60,6 +61,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void initState() {
     super.initState();
+    _agentCodeCtrl.text = ref.read(currentAgentDomainProvider) ?? '';
     _phoneCtrl = PhoneController(
       initialValue: const PhoneNumber(isoCode: IsoCode.RU, nsn: ''),
     );

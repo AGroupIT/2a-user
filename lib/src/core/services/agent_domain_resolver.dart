@@ -1,5 +1,11 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'agent_domain_host_provider_stub.dart'
     if (dart.library.html) 'agent_domain_host_provider_web.dart';
+
+final currentAgentDomainProvider = Provider<String?>(
+  (ref) => AgentDomainResolver.currentAgentDomain,
+);
 
 class AgentDomainResolver {
   static String? get currentAgentDomain {
