@@ -99,6 +99,9 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
         ],
       ),
       data: (data) {
+        final hasDensityTariffs = data.deliveryTariffs.any(
+          (tariff) => tariff.isDensityBased,
+        );
         final isEmpty =
             data.deliveryTariffs.isEmpty &&
             data.packagingTypes.isEmpty &&
@@ -124,15 +127,27 @@ class _TariffsScreenState extends ConsumerState<TariffsScreen> {
             TutorialStep(
               icon: Icons.local_shipping_rounded,
               title: 'Тарифы доставки',
-              description:
-                  'Актуальная стоимость доставки по каждому тарифу. Цена указана за 1 кг. Тариф назначается менеджером при оформлении.',
+              description: hasDensityTariffs
+                  ? tr(
+                      context,
+                      ru: 'Актуальная стоимость доставки. Цена указана за 1 кг или 1 м³ в зависимости от тарифа. Тариф назначается менеджером при оформлении.',
+                      zh: '当前运费根据运价按每千克或每立方米显示。办理运输时由经理分配运价。',
+                    )
+                  : 'Актуальная стоимость доставки по каждому тарифу. Цена указана за 1 кг. Тариф назначается менеджером при оформлении.',
               targetKey: _tariffsListKey,
             ),
             TutorialStep(
               icon: Icons.scale_rounded,
-              title: 'Весовые диапазоны',
-              description:
-                  'Чем тяжелее партия — тем ниже цена за кг. Итоговый тариф выбирается автоматически при выставлении счёта.',
+              title: hasDensityTariffs
+                  ? tr(context, ru: 'Диапазоны тарифов', zh: '运价区间')
+                  : 'Весовые диапазоны',
+              description: hasDensityTariffs
+                  ? tr(
+                      context,
+                      ru: 'Диапазон зависит от типа тарифа: веса партии или плотности (вес ÷ объём). Ставка за кг или м³ указана в каждой строке.',
+                      zh: '区间取决于运价类型：货物重量或密度（重量 ÷ 体积）。每行注明按千克或立方米收费。',
+                    )
+                  : 'Чем тяжелее партия — тем ниже цена за кг. Итоговый тариф выбирается автоматически при выставлении счёта.',
               targetKey: _weightTiersKey,
             ),
             TutorialStep(
@@ -260,8 +275,10 @@ class _DeliveryTariffCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = _mainPrice(tariff);
-    final hasTiers = tariff.weightTiers.isNotEmpty;
+    final densityBased = tariff.isDensityBased;
+    final hasTiers = densityBased
+        ? tariff.densityTiers.isNotEmpty
+        : tariff.weightTiers.isNotEmpty;
     final hasAllowed = tariff.allowedItems?.trim().isNotEmpty == true;
     final hasProhibited = tariff.prohibitedItems?.trim().isNotEmpty == true;
 
@@ -313,7 +330,13 @@ class _DeliveryTariffCard extends StatelessWidget {
                         if (hasTiers)
                           _SmallPill(
                             icon: Icons.scale_rounded,
-                            label: 'Есть диапазоны веса',
+                            label: densityBased
+                                ? tr(
+                                    context,
+                                    ru: 'Есть диапазоны плотности',
+                                    zh: '按密度分区间',
+                                  )
+                                : 'Есть диапазоны веса',
                             color: const Color(0xFF3F7AE0),
                           ),
                       ],
@@ -322,10 +345,21 @@ class _DeliveryTariffCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              _MainPriceBadge(price: price),
+              _MainPriceBadge(
+                pricePerKg: densityBased
+                    ? tariff.minimumDensityPricePerKg
+                    : _mainPrice(tariff),
+                pricePerM3: densityBased
+                    ? tariff.minimumDensityPricePerM3
+                    : null,
+                showFrom: densityBased,
+              ),
             ],
           ),
-          if (hasTiers) ...[
+          if (densityBased) ...[
+            const SizedBox(height: 14),
+            _DensityTiersBlock(tiers: tariff.densityTiers),
+          ] else if (hasTiers) ...[
             const SizedBox(height: 14),
             _WeightTiersBlock(tiers: tariff.weightTiers),
           ],
@@ -365,12 +399,24 @@ class _DeliveryTariffCard extends StatelessWidget {
 }
 
 class _MainPriceBadge extends StatelessWidget {
-  final double price;
+  final double? pricePerKg;
+  final double? pricePerM3;
+  final bool showFrom;
 
-  const _MainPriceBadge({required this.price});
+  const _MainPriceBadge({
+    this.pricePerKg,
+    this.pricePerM3,
+    this.showFrom = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final rates = [
+      if (pricePerKg != null)
+        (pricePerKg!, tr(context, ru: 'за кг', zh: '每千克')),
+      if (pricePerM3 != null)
+        (pricePerM3!, tr(context, ru: 'за м³', zh: '每立方米')),
+    ];
     return Container(
       constraints: const BoxConstraints(minWidth: 86),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -389,30 +435,44 @@ class _MainPriceBadge extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            '\$${_fmt(price)}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontFamily: 'Gilroy',
-              fontSize: 22,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.3,
+          if (rates.isEmpty)
+            Text(
+              tr(context, ru: 'Цена не указана', zh: '价格未设置'),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'за кг',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xE6FFFFFF),
-              fontFamily: 'Gilroy',
-              fontSize: 11.5,
-              height: 1,
-              fontWeight: FontWeight.w800,
+          for (var i = 0; i < rates.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            Text(
+              showFrom
+                  ? tr(
+                      context,
+                      ru: 'от \$${_fmt(rates[i].$1)}',
+                      zh: '\$${_fmt(rates[i].$1)}起',
+                    )
+                  : '\$${_fmt(rates[i].$1)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'Gilroy',
+                fontSize: 22,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(
+              rates[i].$2,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xE6FFFFFF),
+                fontFamily: 'Gilroy',
+                fontSize: 11.5,
+                height: 1,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -444,14 +504,16 @@ class _SmallPill extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontFamily: 'Gilroy',
-              fontSize: 11.5,
-              height: 1,
-              fontWeight: FontWeight.w900,
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Gilroy',
+                fontSize: 11.5,
+                height: 1,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -498,6 +560,62 @@ class _WeightTiersBlock extends StatelessWidget {
                   ? '${_fmt(tiers[i].minWeight)} – ${_fmt(tiers[i].maxWeight!)} кг'
                   : 'от ${_fmt(tiers[i].minWeight)} кг',
               value: '\$${_fmt(tiers[i].pricePerKg)} / кг',
+            ),
+            if (i != tiers.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DensityTiersBlock extends StatelessWidget {
+  final List<UserDensityTier> tiers;
+
+  const _DensityTiersBlock({required this.tiers});
+
+  @override
+  Widget build(BuildContext context) {
+    final densityUnit = tr(context, ru: 'кг/м³', zh: 'kg/m³');
+    return Container(
+      decoration: TariffsUi.softDecoration(),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.scale_rounded, color: context.brandPrimary, size: 18),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  tr(context, ru: 'Диапазоны плотности', zh: '密度区间'),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontFamily: 'Gilroy',
+                    fontSize: 14,
+                    height: 17 / 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (tiers.isEmpty)
+            Text(tr(context, ru: 'Диапазоны не настроены', zh: '未设置密度区间')),
+          for (var i = 0; i < tiers.length; i++) ...[
+            _ValueRow(
+              label: tiers[i].maxDensity != null
+                  ? '${_fmt(tiers[i].minDensity)} – ${_fmt(tiers[i].maxDensity!)} $densityUnit'
+                  : tr(
+                      context,
+                      ru: 'от ${_fmt(tiers[i].minDensity)} $densityUnit',
+                      zh: '${_fmt(tiers[i].minDensity)} $densityUnit 起',
+                    ),
+              value: tiers[i].price == null
+                  ? tr(context, ru: 'Цена не указана', zh: '价格未设置')
+                  : '\$${_fmt(tiers[i].price!)} / ${tiers[i].isVolumetric ? tr(context, ru: 'м³', zh: 'm³') : tr(context, ru: 'кг', zh: 'kg')}',
             ),
             if (i != tiers.length - 1) const SizedBox(height: 8),
           ],

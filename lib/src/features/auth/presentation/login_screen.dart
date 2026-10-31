@@ -14,6 +14,7 @@ import '../../../core/services/agent_domain_resolver.dart';
 import '../../../core/ui/app_background.dart';
 import '../../../core/ui/app_colors.dart';
 import '../../../core/ui/blurred_modal_bottom_sheet.dart';
+import '../../../core/utils/locale_text.dart';
 import '../../tariffs/data/tariffs_provider.dart';
 import '../data/auth_provider.dart';
 import '../data/passkey_auth_service.dart';
@@ -1457,8 +1458,23 @@ class _PublicTariffRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = AuthVisuals.primary(context);
-    final price = _priceFrom(tariff);
-    final priceText = price > 0 ? 'от \$${_fmt(price)}/кг' : 'цена от —';
+    final String priceText;
+    if (tariff.isDensityBased) {
+      final kg = tariff.minimumDensityPricePerKg;
+      final m3 = tariff.minimumDensityPricePerM3;
+      final prices = [
+        if (kg != null)
+          tr(context, ru: 'от \$${_fmt(kg)}/кг', zh: '\$${_fmt(kg)}/kg起'),
+        if (m3 != null)
+          tr(context, ru: 'от \$${_fmt(m3)}/м³', zh: '\$${_fmt(m3)}/m³起'),
+      ];
+      priceText = prices.isEmpty
+          ? tr(context, ru: 'Цена не указана', zh: '价格未设置')
+          : prices.join('\n');
+    } else {
+      final price = _priceFrom(tariff);
+      priceText = price > 0 ? 'от \$${_fmt(price)}/кг' : 'цена от —';
+    }
 
     return Row(
       children: [
@@ -1484,6 +1500,7 @@ class _PublicTariffRow extends StatelessWidget {
           ),
           child: Text(
             priceText,
+            textAlign: TextAlign.right,
             style: TextStyle(
               color: accent,
               fontSize: 13,

@@ -30,6 +30,33 @@ class UserWeightTier {
   }
 }
 
+class UserDensityTier {
+  final double minDensity;
+  final double? maxDensity;
+  final double? clientPricePerKg;
+  final double? clientPricePerM3;
+
+  const UserDensityTier({
+    required this.minDensity,
+    this.maxDensity,
+    this.clientPricePerKg,
+    this.clientPricePerM3,
+  });
+
+  // Matches CalculatorDensityTier: a supplied m³ price takes precedence.
+  bool get isVolumetric => clientPricePerM3 != null;
+  double? get price => isVolumetric ? clientPricePerM3 : clientPricePerKg;
+
+  factory UserDensityTier.fromJson(Map<String, dynamic> json) {
+    return UserDensityTier(
+      minDensity: _parse(json['minDensity']),
+      maxDensity: _parseNullable(json['maxDensity']),
+      clientPricePerKg: _parseNullable(json['clientPricePerKg']),
+      clientPricePerM3: _parseNullable(json['clientPricePerM3']),
+    );
+  }
+}
+
 class UserDeliveryTariff {
   final int id;
   final String name;
@@ -37,6 +64,8 @@ class UserDeliveryTariff {
   final String? allowedItems;
   final String? prohibitedItems;
   final List<UserWeightTier> weightTiers;
+  final String pricingType;
+  final List<UserDensityTier> densityTiers;
   final bool isActive;
   final bool isCurrentlyActive;
   final DateTime? validFrom;
@@ -50,12 +79,29 @@ class UserDeliveryTariff {
     this.allowedItems,
     this.prohibitedItems,
     this.weightTiers = const [],
+    this.pricingType = 'weight',
+    this.densityTiers = const [],
     this.isActive = true,
     this.isCurrentlyActive = true,
     this.validFrom,
     this.validTo,
     this.requiresProductInfo = false,
   });
+
+  bool get isDensityBased => pricingType == 'density';
+
+  double? get minimumDensityPricePerKg => _densityMinimum(volumetric: false);
+  double? get minimumDensityPricePerM3 => _densityMinimum(volumetric: true);
+
+  double? _densityMinimum({required bool volumetric}) {
+    double? minimum;
+    for (final tier in densityTiers) {
+      final price = tier.price;
+      if (tier.isVolumetric != volumetric || price == null) continue;
+      if (minimum == null || price < minimum) minimum = price;
+    }
+    return minimum;
+  }
 
   factory UserDeliveryTariff.fromJson(Map<String, dynamic> json) {
     return UserDeliveryTariff(
@@ -67,6 +113,12 @@ class UserDeliveryTariff {
       weightTiers:
           (json['weightTiers'] as List<dynamic>?)
               ?.map((e) => UserWeightTier.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      pricingType: json['pricingType'] as String? ?? 'weight',
+      densityTiers:
+          (json['densityTiers'] as List<dynamic>?)
+              ?.map((e) => UserDensityTier.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       isActive: json['isActive'] as bool? ?? true,
@@ -203,6 +255,14 @@ double _parse(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
   return double.tryParse(v.toString()) ?? 0.0;
+}
+
+double? _parseNullable(dynamic value) {
+  if (value == null) return null;
+  final parsed = value is num
+      ? value.toDouble()
+      : double.tryParse(value.toString());
+  return parsed != null && parsed.isFinite ? parsed : null;
 }
 
 int _parseInt(dynamic v) {
