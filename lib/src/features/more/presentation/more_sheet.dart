@@ -21,10 +21,16 @@ import '../../profile/data/problem_report_repository.dart';
 import '../../profile/data/profile_provider.dart';
 import '../../profile/presentation/problem_report_sheet.dart';
 import '../../self_buyout/data/self_buyout_service.dart';
+import '../../screen_translation/presentation/screen_translation_section.dart';
 import '../../training/presentation/training_target.dart';
 
 class MoreSheet extends ConsumerStatefulWidget {
-  const MoreSheet({super.key});
+  const MoreSheet({
+    super.key,
+    this.screenTranslationEnabled = ScreenTranslationSection.featureEnabled,
+  });
+
+  final bool screenTranslationEnabled;
 
   @override
   ConsumerState<MoreSheet> createState() => _MoreSheetState();
@@ -207,43 +213,62 @@ class _MoreSheetState extends ConsumerState<MoreSheet> {
                   children: [
                     _MoreHeader(activeCode: activeCode),
                     const SizedBox(height: 14),
-                    _QuickActionsGrid(
-                      actions: [
-                        _QuickActionData(
-                          icon: Icons.account_balance_wallet_rounded,
-                          title: 'Чат по оплатам',
-                          subtitle: 'Оплата счетов',
-                          color: const Color(0xFF4CAF50),
-                          onTap: () => _go(context, '/payment-chat'),
-                        ),
-                        _QuickActionData(
-                          icon: Icons.support_agent_rounded,
-                          title: 'Чат поддержки',
-                          subtitle: 'Помощь менеджера',
-                          onTap: () => _go(context, '/support'),
-                        ),
-                        if (showSelfBuyout)
+                    ScreenTranslationSection(
+                      enabled: widget.screenTranslationEnabled,
+                      actionBuilder: (context, launchTranslation) => _QuickActionsGrid(
+                        actions: [
                           _QuickActionData(
-                            trainingTargetId: 'menu.self-buyout',
-                            icon: Icons.savings_rounded,
-                            title: 'Самовыкуп',
-                            subtitle: selfBuyoutWaitingForRates
-                                ? 'Ожидаем курсы'
-                                : 'Оплата в юанях',
-                            color: selfBuyoutWaitingForRates
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF10B981),
-                            onTap: () => _go(context, '/self-buyout'),
+                            icon: Icons.account_balance_wallet_rounded,
+                            title: 'Чат по оплатам',
+                            subtitle: 'Оплата счетов',
+                            color: const Color(0xFF4CAF50),
+                            onTap: () => _go(context, '/payment-chat'),
                           ),
-                        if (showGarage)
                           _QuickActionData(
-                            icon: Icons.garage_rounded,
-                            title: 'Гараж',
-                            subtitle: 'Запчасти и заказы',
-                            color: const Color(0xFF3B82F6),
-                            onTap: () => _go(context, '/garage'),
+                            icon: Icons.support_agent_rounded,
+                            title: 'Чат поддержки',
+                            subtitle: 'Помощь менеджера',
+                            onTap: () => _go(context, '/support'),
                           ),
-                      ],
+                          if (showSelfBuyout)
+                            _QuickActionData(
+                              trainingTargetId: 'menu.self-buyout',
+                              icon: Icons.savings_rounded,
+                              title: 'Самовыкуп',
+                              subtitle: selfBuyoutWaitingForRates
+                                  ? 'Ожидаем курсы'
+                                  : 'Оплата в юанях',
+                              color: selfBuyoutWaitingForRates
+                                  ? const Color(0xFFF59E0B)
+                                  : const Color(0xFF10B981),
+                              onTap: () => _go(context, '/self-buyout'),
+                            ),
+                          if (ScreenTranslationSection.available(
+                            enabled: widget.screenTranslationEnabled,
+                          ))
+                            _QuickActionData(
+                              icon: Icons.translate_rounded,
+                              title: tr(context, ru: 'Переводчик', zh: '翻译器'),
+                              subtitle: tr(
+                                context,
+                                ru: 'Перевод экрана',
+                                zh: '屏幕翻译',
+                              ),
+                              color: const Color(0xFF6366F1),
+                              // Keep this sheet and its session owner mounted behind
+                              // native presentation; popping it would stop capture.
+                              onTap: launchTranslation,
+                            ),
+                          if (showGarage)
+                            _QuickActionData(
+                              icon: Icons.garage_rounded,
+                              title: 'Гараж',
+                              subtitle: 'Запчасти и заказы',
+                              color: const Color(0xFF3B82F6),
+                              onTap: () => _go(context, '/garage'),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 18),
                     _MoreSection(
@@ -547,7 +572,7 @@ class _QuickActionData {
   final String subtitle;
   final Color? color;
   final String? trainingTargetId;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _QuickActionData({
     required this.icon,

@@ -79,19 +79,32 @@ void main() {
           expect(find.textContaining('%'), findsNothing);
         }
         onProgress!(_png.length, known ? _png.length : -1);
-        response.complete(
-          Response<List<int>>(
-            data: _png,
-            statusCode: 200,
-            requestOptions: RequestOptions(path: url),
-          ),
-        );
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pumpAndSettle();
+        final decodeWait = Stopwatch()..start();
+        await tester.runAsync(() async {
+          response.complete(
+            Response<List<int>>(
+              data: _png,
+              statusCode: 200,
+              requestOptions: RequestOptions(path: url),
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        await tester.pump();
+        // Native codec/first-frame delivery runs outside the fake test clock.
+        // A determinate 100% loader can settle before decoding; an indeterminate
+        // loader keeps animating. Wait for the rendered result with a real bound.
+        while (find.byType(MediaLoadingIndicator).evaluate().isNotEmpty &&
+            decodeWait.elapsed < const Duration(seconds: 5)) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump();
+        }
+        decodeWait.stop();
         expect(find.byType(MediaLoadingIndicator), findsNothing);
         expect(find.text('image failed'), findsNothing);
+        expect(tester.widget<RawImage>(find.byType(RawImage)).image, isNotNull);
         await tester.pumpWidget(const SizedBox());
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();

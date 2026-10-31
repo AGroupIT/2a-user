@@ -77,8 +77,18 @@ import AVFoundation
       }
     }
 
+    #if SCREEN_TRANSLATION_LIVE
+    if let registrar = self.registrar(forPlugin: "com.twoalogistic.user.screen_translation") {
+      ScreenTranslationLiveBridge.install(messenger: registrar.messenger())
+    }
+    #endif
+
     // Регистрация для удалённых уведомлений
     application.registerForRemoteNotifications()
+
+    #if DEBUG || SCREEN_TRANSLATION_STAGE0
+    ScreenTranslationDebugPresenter.install()
+    #endif
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
