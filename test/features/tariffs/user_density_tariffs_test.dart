@@ -93,6 +93,25 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('complete-product tariff never claims that data is optional', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      UserDeliveryTariff.fromJson({
+        'id': 1,
+        'name': 'Фото обязательно',
+        'baseCost': 2,
+        'requiresProductInfo': false,
+        'requiresCompleteProductInfo': true,
+      }),
+    );
+    expect(find.text('Нужны данные о товаре'), findsOneWidget);
+    expect(find.text('Без данных о товаре'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _dispose(tester);
+  });
+
   setUpAll(() async {
     await (FontLoader('Gilroy')
           ..addFont(rootBundle.load('assets/fonts/gilroy/Gilroy-Regular.ttf'))

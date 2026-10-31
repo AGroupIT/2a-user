@@ -3,6 +3,25 @@ import 'package:twoalogisticcabineuser/src/features/calculator/domain/assembly_c
 import 'package:twoalogisticcabineuser/src/features/tariffs/data/tariffs_provider.dart';
 
 void main() {
+  test(
+    'complete product requirement is reflected in the client catalog badge',
+    () {
+      for (final flags in [
+        (false, true),
+        (true, false),
+        (true, true),
+        (false, false),
+      ]) {
+        final tariff = UserDeliveryTariff.fromJson({
+          'requiresProductInfo': flags.$1,
+          'requiresCompleteProductInfo': flags.$2,
+        });
+        expect(tariff.requiresProductInfo, flags.$1 || flags.$2);
+      }
+      expect(UserDeliveryTariff.fromJson({}).requiresProductInfo, isFalse);
+    },
+  );
+
   test('legacy JSON and existing constructors retain weight defaults', () {
     final tariff = UserDeliveryTariff.fromJson({
       'id': 1,

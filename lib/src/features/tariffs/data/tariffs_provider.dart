@@ -128,7 +128,10 @@ class UserDeliveryTariff {
           true,
       validFrom: _parseDate(json['validFrom']),
       validTo: _parseDate(json['validTo']),
-      requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
+      // Effective requirement for the read-only client catalog.
+      requiresProductInfo:
+          (json['requiresProductInfo'] as bool? ?? false) ||
+          (json['requiresCompleteProductInfo'] as bool? ?? false),
     );
   }
 }
