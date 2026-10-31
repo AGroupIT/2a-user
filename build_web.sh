@@ -94,7 +94,13 @@ load_sentry_auth_token() {
 }
 
 # RuStore API
-RUSTORE_API="https://public-api.rustore.ru"
+RUSTORE_API="${RUSTORE_API:-https://public-api-m.rustore.ru}"
+RUSTORE_CA_BUNDLE="${RUSTORE_CA_BUNDLE:-tools/certs/rustore-request-ca.pem}"
+
+# The vendor CA applies only to RuStore, never to Coolify/Sentry or global trust.
+rustore_curl() {
+  curl --cacert "$RUSTORE_CA_BUNDLE" "$@"
+}
 RUSTORE_KEY_ID="2351027924"
 RUSTORE_PRIVATE_KEY="$HOME/.rustore/private_key_user.pem"
 RUSTORE_PACKAGE="com.twoalogistic.user"
@@ -466,7 +472,7 @@ if $BUILD_AAB; then
 
   SIGNATURE=$(echo -n "$SIGN_DATA" | openssl dgst -sha512 -sign "$RUSTORE_PRIVATE_KEY" | base64)
 
-  AUTH_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/auth/" \
+  AUTH_RESPONSE=$(rustore_curl -s -X POST "${RUSTORE_API}/public/auth/" \
     -H "Content-Type: application/json" \
     -d "{
       \"keyId\": ${RUSTORE_KEY_ID},
@@ -487,7 +493,7 @@ if $BUILD_AAB; then
   # ── RuStore: Step 2 — Get last published version ──
   echo "📋 RuStore: Получение последней опубликованной версии..."
 
-  VERSIONS_RESPONSE=$(curl -s -X GET "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version?page=0&size=10" \
+  VERSIONS_RESPONSE=$(rustore_curl -s -X GET "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version?page=0&size=10" \
     -H "Public-Token: ${JWE_TOKEN}")
 
   PARSED=$(echo "$VERSIONS_RESPONSE" | python3 -c "
@@ -522,7 +528,7 @@ print(f\"DRAFT_IDS={' '.join(drafts)}\")
   if [ -n "$DRAFT_IDS" ] && [ "$DRAFT_IDS" != "" ]; then
     for DRAFT_ID in $DRAFT_IDS; do
       echo "  🗑 Удаление старого черновика #${DRAFT_ID}..."
-      curl -s -X DELETE "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${DRAFT_ID}" \
+      rustore_curl -s -X DELETE "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${DRAFT_ID}" \
         -H "Public-Token: ${JWE_TOKEN}" > /dev/null
     done
   fi
@@ -557,7 +563,7 @@ print(json.dumps(payload, ensure_ascii=False))
 
   echo "  Контакты разработчика: ${RUSTORE_CONTACT_EMAIL}, ${RUSTORE_CONTACT_WEBSITE}"
 
-  DRAFT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version" \
+  DRAFT_RESPONSE=$(rustore_curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version" \
     -H "Content-Type: application/json" \
     -H "Public-Token: ${JWE_TOKEN}" \
     -d "$DRAFT_PAYLOAD")
@@ -575,7 +581,7 @@ print(json.dumps(payload, ensure_ascii=False))
   # ── RuStore: Step 4 — Upload AAB ──
   echo "📤 RuStore: Загрузка AAB (это может занять несколько минут)..."
 
-  UPLOAD_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/aab" \
+  UPLOAD_RESPONSE=$(rustore_curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/aab" \
     -H "Public-Token: ${JWE_TOKEN}" \
     -F "file=@${AAB_PATH}")
 
@@ -590,7 +596,7 @@ print(json.dumps(payload, ensure_ascii=False))
   # ── RuStore: Step 5 — Submit for moderation ──
   echo "📨 RuStore: Отправка на модерацию..."
 
-  COMMIT_RESPONSE=$(curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/commit?priorityUpdate=0" \
+  COMMIT_RESPONSE=$(rustore_curl -s -X POST "${RUSTORE_API}/public/v1/application/${RUSTORE_PACKAGE}/version/${VERSION_ID}/commit?priorityUpdate=0" \
     -H "Public-Token: ${JWE_TOKEN}")
 
   COMMIT_CODE=$(echo "$COMMIT_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
