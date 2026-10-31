@@ -17,6 +17,11 @@ class TrackItem {
   final String? invoiceNumber;
   final List<String> photoReportUrls;
   final ProductInfo? productInfo;
+  final List<ProductInfo> productInfos;
+
+  List<ProductInfo> get allProductInfos => productInfos.isNotEmpty
+      ? productInfos
+      : [if (productInfo != null) productInfo!];
   final List<PhotoRequest> photoRequests;
   final List<TrackQuestion> questions;
   final String? clientCode;
@@ -41,6 +46,7 @@ class TrackItem {
     this.invoiceNumber,
     this.photoReportUrls = const [],
     this.productInfo,
+    this.productInfos = const [],
     this.photoRequests = const [],
     this.questions = const [],
     this.clientCode,
@@ -132,14 +138,11 @@ class TrackItem {
       assembly = TrackAssembly.fromJson(assemblyJson);
     }
 
-    // Парсим информацию о товаре (productInfo - массив, берем первый)
-    ProductInfo? productInfo;
-    final productInfoList = json['productInfo'] as List<dynamic>?;
-    if (productInfoList != null && productInfoList.isNotEmpty) {
-      productInfo = ProductInfo.fromJson(
-        productInfoList.first as Map<String, dynamic>,
-      );
-    }
+    // Keep all API rows; the first-row property remains available to old UI.
+    final productInfos = (json['productInfo'] as List<dynamic>? ?? [])
+        .map((row) => ProductInfo.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+    final productInfo = productInfos.isEmpty ? null : productInfos.first;
 
     // Парсим фото-запросы
     final photoRequestsList = json['photoRequests'] as List<dynamic>? ?? [];
@@ -186,6 +189,7 @@ class TrackItem {
           json['invoiceNumber']?.toString() ?? assembly?.invoiceNumber,
       photoReportUrls: photoUrls,
       productInfo: productInfo,
+      productInfos: productInfos,
       photoRequests: photoRequests,
       questions: questions,
       clientCode: clientCode,
@@ -516,7 +520,7 @@ class ProductInfo {
     return ProductInfo(
       id: json['id'] as int?,
       name: json['name'] as String? ?? json['productName'] as String?,
-      quantity: json['quantity'] as int? ?? 1,
+      quantity: json['quantity'] as int? ?? 0,
       imageUrl: json['imageUrl'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString())

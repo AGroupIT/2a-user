@@ -36,6 +36,7 @@ import '../data/tracks_provider.dart';
 import '../../training/presentation/training_target.dart';
 import '../data/assemblies_provider.dart';
 import '../domain/track_item.dart';
+import '../domain/product_info_completeness.dart';
 import '../domain/photo_report_options.dart';
 import 'widgets/photo_report_selection_sheet.dart';
 import 'widgets/track_sheet_surface.dart';
@@ -55,6 +56,15 @@ const _unknownTrackQuestionType = 'unknown_track_check';
 const _clientCodeTransferQuestionType = 'client_code_transfer';
 const _unknownTrackQuestionText =
     'Не знаю что это за трек номер, могли бы проверить и код клиента и трек номер';
+
+String _completeProductInfoMessage(BuildContext context, bool needsDetails) =>
+    needsDetails
+        ? tr(context,
+            ru: 'Для выбранного тарифа у каждого товара нужны название, количество больше нуля и фотография. Заполните данные во всех выбранных треках.',
+            zh: '此运价要求每件商品填写名称、正数数量并上传商品照片。请完善所有已选运单的商品资料。')
+        : tr(context,
+            ru: 'Для выбранного тарифа обязательна фотография каждого товара. Загрузите и сохраните фото в данных товара каждого выбранного трека.',
+            zh: '此运价要求每件商品提供照片。请在每个已选运单的商品资料中上传并保存照片。');
 
 bool _canSelectTrackForAssembly(
   TrackItem track,
@@ -2113,6 +2123,15 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
             final tracksWithoutProductInfo = selectedLoadedTracks
                 .where((track) => !trackHasProductInfo(track))
                 .toList();
+            final completeProductInfoIssues = selectedLoadedTracks
+                .map((track) => productInfoCompleteness(track.allProductInfos))
+                .where((issue) => issue != ProductInfoCompleteness.complete)
+                .toList();
+            final completeProductInfoRequired =
+                selectedTariff?.requiresCompleteProductInfo == true;
+            final completeProductInfoSatisfied = !completeProductInfoRequired ||
+                (selectedLoadedTracks.length == _selectedTracks.length &&
+                    completeProductInfoIssues.isEmpty);
             final requiresAssemblyGoodsDescription =
                 selectedTariff?.requiresProductInfo == true &&
                 tracksWithoutProductInfo.isNotEmpty;
@@ -2120,8 +2139,8 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                 .trim()
                 .isNotEmpty;
             final productInfoRequirementSatisfied =
-                !requiresAssemblyGoodsDescription ||
-                hasAssemblyGoodsDescription;
+                completeProductInfoSatisfied &&
+                (!requiresAssemblyGoodsDescription || hasAssemblyGoodsDescription);
             final canSubmit =
                 placePreference != null &&
                 hasPrimaryPackaging &&
@@ -2765,6 +2784,19 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
                                   ),
                                 ),
                               ),
+                              if (!completeProductInfoSatisfied) ...[
+                                const SizedBox(height: 8),
+                                _TrackSheetNoticeCard(
+                                  icon: Icons.info_outline_rounded,
+                                  text: _completeProductInfoMessage(
+                                    context,
+                                    completeProductInfoIssues.contains(
+                                      ProductInfoCompleteness.missingNameOrQuantity,
+                                    ) || selectedLoadedTracks.length != _selectedTracks.length,
+                                  ),
+                                  color: Colors.orange.shade800,
+                                ),
+                              ],
                               if (requiresAssemblyGoodsDescription) ...[
                                 const SizedBox(height: 6),
                                 const Divider(height: 18),
@@ -3184,6 +3216,23 @@ class _TracksScreenState extends ConsumerState<TracksScreen> {
       final selectedTracks = tracks
           .where((t) => _selectedTracks.contains(t.code) && t.id != null)
           .toList();
+
+      if (selectedTariff?.requiresCompleteProductInfo == true) {
+        final issues = selectedTracks
+            .map((track) => productInfoCompleteness(track.allProductInfos))
+            .where((issue) => issue != ProductInfoCompleteness.complete)
+            .toList();
+        if (issues.isNotEmpty || selectedTracks.length != _selectedTracks.length) {
+          _showStyledSnackBar(
+            context,
+            _completeProductInfoMessage(context,
+                issues.contains(ProductInfoCompleteness.missingNameOrQuantity) ||
+                    selectedTracks.length != _selectedTracks.length),
+            isError: true,
+          );
+          return;
+        }
+      }
 
       final blockedSelectedTracks = selectedTracks
           .where(

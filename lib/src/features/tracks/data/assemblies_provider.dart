@@ -637,6 +637,7 @@ class Tariff {
   final DateTime? validFrom;
   final DateTime? validTo;
   final bool requiresProductInfo;
+  final bool requiresCompleteProductInfo;
 
   const Tariff({
     required this.id,
@@ -650,6 +651,7 @@ class Tariff {
     this.validFrom,
     this.validTo,
     this.requiresProductInfo = false,
+    this.requiresCompleteProductInfo = false,
   });
 
   factory Tariff.fromJson(Map<String, dynamic> json) {
@@ -676,6 +678,7 @@ class Tariff {
       validFrom: _parseDate(json['validFrom']),
       validTo: _parseDate(json['validTo']),
       requiresProductInfo: json['requiresProductInfo'] as bool? ?? false,
+      requiresCompleteProductInfo: json['requiresCompleteProductInfo'] == true,
     );
   }
 }
