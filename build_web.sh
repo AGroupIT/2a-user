@@ -403,7 +403,7 @@ if $BUILD_WEB; then
   sync_coolify_shared
 
   echo "🌐 Building Flutter Web..."
-  flutter build web --release --pwa-strategy none \
+  flutter build web --release --pwa-strategy none --no-web-resources-cdn \
     --dart-define=API_BASE_URL="$WEB_API_BASE_URL" \
     --dart-define=MEDIA_BASE_URL="$WEB_MEDIA_BASE_URL" \
     "${SENTRY_DART_DEFINES[@]}"

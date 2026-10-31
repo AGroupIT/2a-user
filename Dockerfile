@@ -48,7 +48,7 @@ RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
     RESOLVED_SENTRY_RELEASE="${SENTRY_RELEASE:-com.twoalogistic.user@$FULL_VERSION}" && \
     RESOLVED_SENTRY_DIST="$BUILD_NUMBER-$SOURCE_HASH" && \
     echo "Sentry artifact identity: $RESOLVED_SENTRY_RELEASE / $RESOLVED_SENTRY_DIST" && \
-    flutter build web --release --pwa-strategy none \
+    flutter build web --release --pwa-strategy none --no-web-resources-cdn \
       --source-maps \
       --dart-define=API_BASE_URL="$API_BASE_URL" \
       --dart-define=MEDIA_BASE_URL="$MEDIA_BASE_URL" \

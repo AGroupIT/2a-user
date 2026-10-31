@@ -76,6 +76,23 @@
       border-top-color: #FE3301;
       animation-duration: 1.4s;
     }
+    #flutter-startup-error {
+      max-width: 420px;
+      padding: 24px;
+      text-align: center;
+      font: 16px/1.5 Arial, sans-serif;
+      color: #202124;
+    }
+    #flutter-startup-error button {
+      margin-top: 12px;
+      padding: 12px 20px;
+      border: 0;
+      border-radius: 10px;
+      background: #FF5E04;
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -83,20 +100,49 @@
 </head>
 <body>
   <div id="flutter-splash">
-    <div class="spinner">
+    <div id="flutter-startup-spinner" class="spinner">
       <div class="spinner-ring"></div>
       <div class="spinner-ring"></div>
       <div class="spinner-ring"></div>
     </div>
+    <div id="flutter-startup-error" role="alert" hidden>
+      <p>Не удалось загрузить приложение. Проверьте соединение и повторите.<br>应用未能加载，请检查网络后重试。</p>
+      <button id="flutter-startup-retry" type="button">Повторить / 重试</button>
+    </div>
   </div>
-  <script>
-    window.addEventListener('flutter-first-frame', function() {
-      var splash = document.getElementById('flutter-splash');
-      if (splash) {
-        splash.classList.add('hidden');
-        setTimeout(function() { splash.remove(); }, 380);
+  <script id="web-startup-guard">
+    (function() {
+      var finished = false;
+      function fail() {
+        if (finished) return;
+        var spinner = document.getElementById('flutter-startup-spinner');
+        var error = document.getElementById('flutter-startup-error');
+        if (spinner) spinner.hidden = true;
+        if (error) error.hidden = false;
       }
-    });
+      var deadline = window.setTimeout(fail, 45000);
+      function complete() {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(deadline);
+        window.removeEventListener('error', fail, true);
+        window.removeEventListener('unhandledrejection', fail);
+        var splash = document.getElementById('flutter-splash');
+        if (splash) {
+          splash.classList.add('hidden');
+          window.setTimeout(function() { splash.remove(); }, 380);
+        }
+      }
+      // Resource errors (main/bootstrap/renderer) and rejected engine startup
+      // must not leave an endless HTML spinner. Never replace a rendered app.
+      window.addEventListener('error', fail, true);
+      window.addEventListener('unhandledrejection', fail);
+      window.addEventListener('flutter-first-frame', complete);
+      document.getElementById('flutter-startup-retry').addEventListener('click', function() {
+        window.location.reload();
+      });
+      window.twoaWebStartup = { fail: fail };
+    })();
   </script>
   <script>
     if ('serviceWorker' in navigator) {

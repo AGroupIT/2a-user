@@ -78,7 +78,7 @@ jobs:
           if [ -n "$SENTRY_DSN" ]; then
             SENTRY_ARGS+=(--dart-define=SENTRY_DSN="$SENTRY_DSN")
           fi
-          flutter build web --release --pwa-strategy none --source-maps "${SENTRY_ARGS[@]}"
+          flutter build web --release --pwa-strategy none --no-web-resources-cdn --source-maps "${SENTRY_ARGS[@]}"
 
       - name: Upload source maps from the deployed build
         working-directory: ${{ env.USER_DIR }}
